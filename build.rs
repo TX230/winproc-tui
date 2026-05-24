@@ -7,7 +7,7 @@ fn main() -> std::io::Result<()> {
             .set("FileVersion", &version)
             .set("ProductName", "winproc-tui")
             .set("ProductVersion", &version)
-            .set("LegalCopyright", "©2026 TX230")
+            .set("LegalCopyright", "© 2026 TX230")
             .set("OriginalFilename", "winproc-tui.exe")
             .set_language(0x0409);
         resource.compile()?;
