@@ -1,0 +1,10 @@
+/target/
+
+# Local runtime output
+/logs/
+
+# Local notes and generated design drafts
+/notes/
+
+# Local scratch / temporary files
+/temp/
