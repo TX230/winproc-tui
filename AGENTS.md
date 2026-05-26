@@ -74,13 +74,14 @@ These rules apply when the user asks an AI agent to integrate a completed agent 
 
 - Before integrating an agent branch into `main`, ask the user whether there is a related GitHub Issue number.
 - Prefer squash-merging completed agent branch work into `main` as one coherent English Conventional Commit.
+- When the squash merge corresponds to a GitHub Issue, append the issue number to the commit title as `(#n)`, for example `fix: place graph a/b labels on x-axis (#3)`, so `git log --oneline` remains easy to scan.
 - If the work completes a GitHub Issue, include `Closes #n` in the commit body. Use `Refs #n` instead if the Issue should remain open.
 - A typical local integration sequence is:
 
 ```powershell
 git switch main
 git merge --squash agent/<short-topic>
-git commit -m "<message>" -m "Closes #n"
+git commit -m "<message> (#n)" -m "Closes #n"
 ```
 
 - Pushing `main` is normally performed by the user. AI agents must not run `git push origin main` unless the user explicitly asks them to push.
