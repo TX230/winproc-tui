@@ -1628,7 +1628,79 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn setting_ab_point_stops_graph_live_scroll() {
+    fn frozen_graph_window_uses_rounded_subsecond_sample_intervals() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        assign_private_graph(&mut app);
+        let latest = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap()
+            + chrono::Duration::milliseconds(900);
+        app.snapshot.captured_at = latest;
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.details_live = false;
+        app.graph_time_offset_seconds = 60;
+        app.graph_time_window_right_at = Some(latest - chrono::Duration::seconds(60));
+        app.sampling_in_progress = true;
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = latest + chrono::Duration::milliseconds(950);
+
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.graph_time_offset_seconds, 61);
+    }
+
+    #[test]
+    fn graph_cursor_movement_does_not_stop_graph_live_scroll() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.details_live = true;
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at - chrono::Duration::seconds(1),
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.select_details_sample_latest();
+
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert!(app.graph_time_window_right_at.is_none());
+
+        app.sampling_in_progress = true;
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert!(app.graph_time_window_right_at.is_none());
+    }
+
+    #[test]
+    fn setting_ab_point_does_not_stop_graph_live_scroll() {
         let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
         let mut app = make_test_app_with_worker(1, 10, sampling_worker);
         assign_private_graph(&mut app);
@@ -1642,7 +1714,8 @@ name = "legacy-watch.exe"
         app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
             .unwrap();
 
-        assert!(!app.details_live);
+        assert!(app.details_live);
+        assert!(app.graph_time_window_right_at.is_none());
         assert!(app.ab_comparison.as_ref().and_then(|ab| ab.a).is_some());
 
         app.sampling_in_progress = true;
@@ -1656,7 +1729,8 @@ name = "legacy-watch.exe"
             .unwrap();
         app.poll_sample_results().unwrap();
 
-        assert_eq!(app.graph_time_offset_seconds, 1);
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert!(app.graph_time_window_right_at.is_none());
     }
 
     #[test]
@@ -2070,6 +2144,50 @@ name = "legacy-watch.exe"
             }
         }
         assert!(found_accent_value, "current value label should use accent");
+    }
+
+    #[test]
+    fn graph_ab_labels_render_on_x_axis_not_cursor_value_row() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.show_sample_delta = true;
+        let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+        for (seconds, value) in [(0, 100), (30, 200), (60, 424_242)] {
+            app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+            app.snapshot.processes[0].private_bytes = Some(value);
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at,
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.select_details_sample_latest();
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+            .unwrap();
+        app.select_details_sample_oldest();
+        app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE))
+            .unwrap();
+        app.select_details_sample_latest();
+
+        let screen = Rect::new(0, 0, 120, 45);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let (_, value_y) = find_text_position_in_area(&buffer, graph, "424,242")
+            .expect("selected graph value should render in graph");
+        let a_labels = find_styled_symbol_positions_in_area(&buffer, graph, "A", THEMES[0].warning);
+        let b_labels = find_styled_symbol_positions_in_area(&buffer, graph, "B", THEMES[0].warning);
+        let graph_inner = graph.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        let expected_label_y = graph_inner.bottom().saturating_sub(2);
+
+        assert_eq!(a_labels.len(), 1, "A label should render once in Graph");
+        assert_eq!(b_labels.len(), 1, "B label should render once in Graph");
+        assert_eq!(a_labels[0].1, expected_label_y);
+        assert_eq!(b_labels[0].1, expected_label_y);
+        assert!(a_labels[0].1 > value_y);
+        assert!(b_labels[0].1 > value_y);
     }
 
     #[test]
@@ -6080,6 +6198,44 @@ name = "legacy-watch.exe"
             }
         }
         None
+    }
+
+    fn find_text_position_in_area(
+        buffer: &ratatui::buffer::Buffer,
+        area: Rect,
+        needle: &str,
+    ) -> Option<(u16, u16)> {
+        let right = area.right().min(buffer.area().right());
+        let bottom = area.bottom().min(buffer.area().bottom());
+        for y in area.y..bottom {
+            let row = (area.x..right)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>();
+            if let Some(x) = row.find(needle) {
+                return Some((area.x + row[..x].chars().count() as u16, y));
+            }
+        }
+        None
+    }
+
+    fn find_styled_symbol_positions_in_area(
+        buffer: &ratatui::buffer::Buffer,
+        area: Rect,
+        symbol: &str,
+        fg: ratatui::style::Color,
+    ) -> Vec<(u16, u16)> {
+        let right = area.right().min(buffer.area().right());
+        let bottom = area.bottom().min(buffer.area().bottom());
+        let mut positions = Vec::new();
+        for y in area.y..bottom {
+            for x in area.x..right {
+                let cell = &buffer[(x, y)];
+                if cell.symbol() == symbol && cell.fg == fg {
+                    positions.push((x, y));
+                }
+            }
+        }
+        positions
     }
 
     fn find_symbol_position(buffer: &ratatui::buffer::Buffer, needle: &str) -> Option<(u16, u16)> {

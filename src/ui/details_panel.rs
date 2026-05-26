@@ -489,8 +489,6 @@ fn draw_graph_panel(
         layout[1].width as usize,
         y_label_width,
         bounds,
-        samples.last().map(|sample| sample.captured_at),
-        comparison,
         selected_age_seconds,
         selected_value_label.as_deref(),
         theme,
@@ -501,6 +499,16 @@ fn draw_graph_panel(
     frame.render_widget(
         ChartAxisOverlay {
             y_label_width,
+            theme,
+        },
+        layout[2],
+    );
+    frame.render_widget(
+        GraphAbAxisLabels {
+            y_label_width,
+            bounds,
+            latest_sample_at: samples.last().map(|sample| sample.captured_at),
+            comparison,
             theme,
         },
         layout[2],
@@ -1049,6 +1057,46 @@ impl Widget for ChartAxisOverlay {
     }
 }
 
+struct GraphAbAxisLabels<'a> {
+    y_label_width: usize,
+    bounds: (i64, i64),
+    latest_sample_at: Option<DateTime<Local>>,
+    comparison: Option<&'a AbComparison>,
+    theme: Theme,
+}
+
+impl Widget for GraphAbAxisLabels<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height < 2 {
+            return;
+        }
+        let (Some(latest_sample_at), Some(comparison)) = (self.latest_sample_at, self.comparison)
+        else {
+            return;
+        };
+
+        let label_y = area.bottom().saturating_sub(1);
+        let style = Style::default().fg(self.theme.warning).bg(self.theme.panel);
+        for (label, point) in [("A", comparison.a), ("B", comparison.b)] {
+            let Some(point) = point else {
+                continue;
+            };
+            let Some(x) = ab_point_x(
+                area,
+                self.y_label_width,
+                self.bounds,
+                latest_sample_at,
+                point,
+            ) else {
+                continue;
+            };
+            if x < area.right() && label_y < area.bottom() {
+                buf[(x, label_y)].set_symbol(label).set_style(style);
+            }
+        }
+    }
+}
+
 fn axis_tick_label_line(
     width: usize,
     y_label_width: usize,
@@ -1074,36 +1122,12 @@ fn graph_top_label_line(
     width: usize,
     y_label_width: usize,
     bounds: (i64, i64),
-    latest_sample_at: Option<DateTime<Local>>,
-    comparison: Option<&AbComparison>,
     selected_age_seconds: Option<i64>,
     selected_value_label: Option<&str>,
     theme: Theme,
 ) -> Line<'static> {
-    let Some(latest_sample_at) = latest_sample_at else {
-        return Line::from(Span::styled(
-            " ".repeat(width),
-            Style::default().bg(theme.panel),
-        ));
-    };
     let area = Rect::new(0, 0, width as u16, 1);
     let mut labels = vec![None; width];
-    if let Some(comparison) = comparison {
-        for (label, point, color) in [
-            ('A', comparison.a, theme.warning),
-            ('B', comparison.b, theme.warning),
-        ] {
-            let Some(point) = point else {
-                continue;
-            };
-            let Some(x) = ab_point_x(area, y_label_width, bounds, latest_sample_at, point) else {
-                continue;
-            };
-            if let Some(slot) = labels.get_mut(x as usize) {
-                *slot = Some((label.to_string(), color));
-            }
-        }
-    }
     if let (Some(age), Some(label)) = (selected_age_seconds, selected_value_label)
         && let Some(x) = age_point_x(area, y_label_width, bounds, age)
     {
@@ -1611,6 +1635,41 @@ mod tests {
         .render(Rect::new(0, 0, 12, 4), &mut buffer);
 
         assert_eq!(buffer[(5, 3)].symbol(), "⠉");
+    }
+
+    #[test]
+    fn graph_ab_axis_labels_draw_on_x_axis_without_clearing_plot_cells() {
+        let theme = THEMES[0];
+        let latest = chrono::Local
+            .with_ymd_and_hms(2026, 1, 1, 10, 1, 0)
+            .unwrap();
+        let comparison = AbComparison {
+            a: Some(AbComparisonPoint {
+                captured_at: latest - chrono::Duration::seconds(30),
+            }),
+            b: Some(AbComparisonPoint {
+                captured_at: latest,
+            }),
+        };
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 20, 5));
+        buffer[(4, 3)]
+            .set_symbol("x")
+            .set_style(Style::default().fg(theme.graph_line).bg(theme.panel));
+
+        GraphAbAxisLabels {
+            y_label_width: 4,
+            bounds: (-60, 0),
+            latest_sample_at: Some(latest),
+            comparison: Some(&comparison),
+            theme,
+        }
+        .render(Rect::new(0, 0, 20, 5), &mut buffer);
+
+        assert_eq!(buffer[(11, 4)].symbol(), "A");
+        assert_eq!(buffer[(11, 4)].fg, theme.warning);
+        assert_eq!(buffer[(19, 4)].symbol(), "B");
+        assert_eq!(buffer[(19, 4)].fg, theme.warning);
+        assert_eq!(buffer[(4, 3)].symbol(), "x");
     }
 
     #[test]

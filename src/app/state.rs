@@ -1772,7 +1772,7 @@ impl App {
     pub(crate) fn select_details_sample_older(&mut self, amount: usize) {
         self.details_sample_selected = self.details_sample_selected.saturating_sub(amount);
         self.ensure_details_sample_visible();
-        self.freeze_graph_time_window();
+        self.details_live = false;
         self.status = "Samples selection moved older".to_string();
     }
 
@@ -1781,11 +1781,6 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
-        if self.details_live {
-            self.graph_time_window_right_at = None;
-        } else {
-            self.freeze_graph_time_window();
-        }
         self.status = "Samples selection moved newer".to_string();
     }
 
@@ -1806,18 +1801,13 @@ impl App {
             .details_sample_selected
             .clamp(self.details_sample_offset, visible_end);
         self.details_live = self.details_sample_selected + 1 == sample_count;
-        if self.details_live {
-            self.graph_time_window_right_at = None;
-        } else {
-            self.freeze_graph_time_window();
-        }
         self.status = "Samples scrolled".to_string();
     }
 
     pub(crate) fn select_details_sample_oldest(&mut self) {
         self.details_sample_selected = 0;
         self.details_sample_offset = 0;
-        self.freeze_graph_time_window();
+        self.details_live = false;
         self.status = "Samples selection: oldest".to_string();
     }
 
@@ -1825,7 +1815,6 @@ impl App {
         self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
         self.scroll_details_samples_to_latest();
         self.details_live = true;
-        self.graph_time_window_right_at = None;
         self.status = "Samples selection: latest".to_string();
     }
 
@@ -1834,11 +1823,6 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
-        if self.details_live {
-            self.graph_time_window_right_at = None;
-        } else {
-            self.freeze_graph_time_window();
-        }
         self.status = format!("Samples selection: {}", self.details_sample_selected + 1);
     }
 
@@ -1846,7 +1830,7 @@ impl App {
         self.details_sample_selected = index;
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
-        self.freeze_graph_time_window();
+        self.details_live = false;
         self.status = format!("Samples selection: {}", self.details_sample_selected + 1);
     }
 
@@ -1923,7 +1907,6 @@ impl App {
             'B' => comparison.b = Some(point),
             _ => {}
         }
-        self.freeze_graph_time_window();
         self.status = format!(
             "{label} point set: {}",
             point.captured_at.format("%H:%M:%S"),
@@ -2277,10 +2260,7 @@ impl App {
         let Some(latest) = self.active_graph_latest_sample_at() else {
             return;
         };
-        let offset = latest
-            .signed_duration_since(right_edge)
-            .num_seconds()
-            .clamp(0, i64::from(u32::MAX)) as u32;
+        let offset = rounded_nonnegative_seconds_between(latest, right_edge);
         let max_offset = self
             .graph_time_max_seconds()
             .saturating_sub(self.graph_time_span_seconds);
@@ -3965,6 +3945,14 @@ fn graph_zoom_step(span_seconds: u32) -> u32 {
 
 fn graph_pan_step(span_seconds: u32) -> u32 {
     span_seconds.div_ceil(8).max(1)
+}
+
+fn rounded_nonnegative_seconds_between(later: DateTime<Local>, earlier: DateTime<Local>) -> u32 {
+    let milliseconds = later
+        .signed_duration_since(earlier)
+        .num_milliseconds()
+        .max(0);
+    (milliseconds.saturating_add(500) / 1_000).min(i64::from(u32::MAX)) as u32
 }
 
 fn sample_time_span_seconds(samples: &[DateTime<Local>]) -> Option<u32> {
