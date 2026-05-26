@@ -68,6 +68,23 @@ These branch / commit / push rules apply to AI agents. The maintainer usually in
 - Do not force-push or rewrite published `main`.
 - AI agents must not push `main` unless the user explicitly asks to push.
 
+## Main Integration Rules
+
+These rules apply when the user asks an AI agent to integrate a completed agent branch into `main`.
+
+- Before integrating an agent branch into `main`, ask the user whether there is a related GitHub Issue number.
+- Prefer squash-merging completed agent branch work into `main` as one coherent English Conventional Commit.
+- If the work completes a GitHub Issue, include `Closes #n` in the commit body. Use `Refs #n` instead if the Issue should remain open.
+- A typical local integration sequence is:
+
+```powershell
+git switch main
+git merge --squash agent/<short-topic>
+git commit -m "<message>" -m "Closes #n"
+```
+
+- Pushing `main` is normally performed by the user. AI agents must not run `git push origin main` unless the user explicitly asks them to push.
+
 ## Issue Workflow Rules
 
 - GitHub Issues are the backlog and status-management surface.
@@ -108,14 +125,10 @@ These branch / commit / push rules apply to AI agents. The maintainer usually in
 ## UI / UX Guide
 
 - Keep the TUI compact and low-noise. Do not add unnecessary borders, spacing, explanatory text, or decoration.
-- Do not draw an outer Details border. Treat Graph and Samples subpanel borders as the meaningful frames.
-- In Graph / Samples / A-B display, treat label/line overlap, incorrect draw order, and narrow-screen breakage as bugs.
-- For A/B comparison: `a` sets point A, `b` sets point B, `Shift+A` / `Shift+B` jump to them, and `x` clears them. Do not mix these meanings.
-- Graph display toggle is `g`. Do not restore the old `d` binding.
-- Samples A/B summary should stack A, B, and `B - A` vertically, and `B - A` should include elapsed time.
 - Keep clipboard output raw and minimal so it can be pasted as-is. Do not add unnecessary headers or explanations.
 - Buttons such as OK / Cancel at the bottom of dialogs must be operable by mouse click as well as keyboard.
-- Help, Footer, and actual key handling must stay aligned.
+- Detailed user-facing controls and UI behavior belong in README, Help, tests, and docs, not duplicated here.
+- When changing controls or UI behavior, update the canonical user-facing documentation and tests together. Help, Footer, README, tests, and actual key handling must stay aligned.
 
 ## Implementation Review Points
 
