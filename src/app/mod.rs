@@ -31,6 +31,8 @@ pub(crate) use state::DetailsMetric;
 pub(crate) use state::DetailsTarget;
 pub(crate) use state::FocusedPanel;
 pub(crate) use state::GRAPH_SLOT_MIN_HEIGHT;
+pub(crate) use state::GraphPanDrag;
+pub(crate) use state::GraphPanDragButton;
 pub(crate) use state::GraphSample;
 pub(crate) use state::GraphSlot;
 pub(crate) use state::InfoPanelMode;

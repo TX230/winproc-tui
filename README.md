@@ -150,6 +150,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | -------------------------- | ----------------------------------------------------------------------------------- |
 | `Left` / `Right`           | Move the selected sample.                                                           |
 | `Ctrl+Left` / `Ctrl+Right` | Pan the visible range.                                                              |
+| Right drag / `Ctrl`+left drag | Pan the visible range with the mouse.                                            |
 | `PageUp` / `PageDown`      | Change the visible time span.                                                       |
 | `f`                        | Switch to a time span that fits all samples.                                        |
 | `z`                        | Toggle the Y-axis lower bound between fixed at 0 and following the visible minimum. |

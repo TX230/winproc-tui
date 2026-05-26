@@ -1329,7 +1329,7 @@ name = "legacy-watch.exe"
 
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
             .unwrap();
-        assert_eq!(app.graph_time_offset_seconds, 30);
+        assert_eq!(app.graph_time_offset_seconds, 8);
 
         app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
             .unwrap();
@@ -1370,15 +1370,15 @@ name = "legacy-watch.exe"
 
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
             .unwrap();
-        assert_eq!(app.graph_time_offset_seconds, 150);
+        assert_eq!(app.graph_time_offset_seconds, 128);
 
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
             .unwrap();
-        assert_eq!(app.graph_time_offset_seconds, 180);
+        assert_eq!(app.graph_time_offset_seconds, 136);
 
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
             .unwrap();
-        assert_eq!(app.graph_time_offset_seconds, 180);
+        assert_eq!(app.graph_time_offset_seconds, 144);
     }
 
     #[test]
@@ -1399,6 +1399,313 @@ name = "legacy-watch.exe"
 
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
         assert_eq!(app.graph_time_span_seconds, 60);
+    }
+
+    #[test]
+    fn graph_right_button_drag_pans_visible_range() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in [0, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        let screen = Rect::new(0, 0, 120, 45);
+        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let start_x = graph.x.saturating_add(70);
+        let y = graph.y.saturating_add(5);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: start_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Right),
+                column: start_x.saturating_add(400),
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Right),
+                column: start_x.saturating_add(400),
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.graph_time_span_seconds, 60);
+        assert!(app.graph_time_offset_seconds > 0);
+        assert!(app.graph_pan_drag.is_none());
+    }
+
+    #[test]
+    fn graph_drag_clamps_to_range_with_visible_sample() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in [0, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        let screen = Rect::new(0, 0, 120, 45);
+        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let start_x = graph.x.saturating_add(20);
+        let y = graph.y.saturating_add(5);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: start_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Right),
+                column: start_x.saturating_add(400),
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        assert!(
+            (180..=240).contains(&app.graph_time_offset_seconds),
+            "{}",
+            app.graph_time_offset_seconds
+        );
+    }
+
+    #[test]
+    fn graph_right_click_without_drag_resets_to_live_edge() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.graph_time_offset_seconds = 60;
+        app.details_live = false;
+        let screen = Rect::new(0, 0, 120, 45);
+        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let x = graph.x.saturating_add(30);
+        let y = graph.y.saturating_add(5);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Right),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert_eq!(app.status, "Graph right edge: 0s");
+    }
+
+    #[test]
+    fn graph_ctrl_left_drag_pans_without_selecting_sample() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.graph_time_offset_seconds = 60;
+        app.details_live = false;
+        for offset in [0, 30, 60, 90, 120, 150, 180, 210, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.select_details_sample_oldest();
+        let selected = app.details_sample_selected;
+        let screen = Rect::new(0, 0, 120, 45);
+        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let start_x = graph.x.saturating_add(30);
+        let y = graph.y.saturating_add(5);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: start_x,
+                row: y,
+                modifiers: KeyModifiers::CONTROL,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Left),
+                column: start_x.saturating_sub(30),
+                row: y,
+                modifiers: KeyModifiers::CONTROL,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Left),
+                column: start_x.saturating_sub(30),
+                row: y,
+                modifiers: KeyModifiers::CONTROL,
+            },
+            screen,
+        );
+
+        assert_eq!(app.details_sample_selected, selected);
+        assert!(app.graph_time_offset_seconds < 60);
+        assert!(app.graph_pan_drag.is_none());
+    }
+
+    #[test]
+    fn graph_stops_live_scroll_when_latest_sample_is_outside_visible_range() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        assign_private_graph(&mut app);
+        app.details_live = true;
+        app.graph_time_offset_seconds = 60;
+        app.sampling_in_progress = true;
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at - chrono::Duration::seconds(60),
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert!(!app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 61);
+
+        app.sampling_in_progress = true;
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert!(!app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 62);
+    }
+
+    #[test]
+    fn setting_ab_point_stops_graph_live_scroll() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        assign_private_graph(&mut app);
+        app.details_live = true;
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!app.details_live);
+        assert!(app.ab_comparison.as_ref().and_then(|ab| ab.a).is_some());
+
+        app.sampling_in_progress = true;
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.graph_time_offset_seconds, 1);
+    }
+
+    #[test]
+    fn graph_drag_does_not_clear_fit_all_samples() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in [0, 120, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.toggle_graph_all_samples();
+        let screen = Rect::new(0, 0, 120, 45);
+        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let start_x = graph.x.saturating_add(40);
+        let y = graph.y.saturating_add(5);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: start_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Right),
+                column: start_x.saturating_add(20),
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Right),
+                column: start_x.saturating_add(20),
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        assert!(app.graph_show_all_samples);
+        assert_eq!(app.graph_time_offset_seconds, 0);
     }
 
     #[test]
@@ -5921,8 +6228,10 @@ name = "legacy-watch.exe"
             details_sample_page_size: 1,
             samples_scrollbar_dragging: false,
             samples_scrollbar_grab_offset: 0,
+            graph_pan_drag: None,
             graph_time_span_seconds: 60,
             graph_time_offset_seconds: 0,
+            graph_time_window_right_at: None,
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
             show_samples_panel: true,

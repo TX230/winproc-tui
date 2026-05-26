@@ -167,6 +167,10 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Pan time range",
     },
     HelpItem {
+        key: "Right/Ctrl+left drag",
+        label: "Pan time range",
+    },
+    HelpItem {
         key: "PageUp/PageDown",
         label: "Change time span",
     },

@@ -256,6 +256,7 @@ Representative operations:
 - Panel clicks for focus movement / row selection.
 - Scrollbar dragging for Help, column picker, and Samples.
 - Graph clicks for sample selection and Y-axis toggle.
+- Graph right-button drag and Ctrl+left-button drag for visible range panning.
 - Wheels for table, graph, and modal scrolling.
 
 Mouse capture is enabled only when `runtime.mouse` is true, and can be disabled through settings.
@@ -274,7 +275,7 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 
 - `system_panel`: Draws RAM, Committed, GPU Dedicated, and GPU Shared in four rows, highlighting the selected metric and A/B state. The right side shows System Info or Process Info according to `InfoPanelMode`.
 - `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Ghost Rows (exited tracked processes) use a different color and appear after live rows. Headers show `↑` / `↓` for the sorted column and append `L` while `process_order_locked` is active. Live metric cells compare their present raw value against `previous_snapshot` and use the success color for increases and the danger color for decreases.
-- `details_panel`: Upper Graph (`Chart` widget) plus lower Samples table. The Graph shows history for the current `details_target` / `details_metric` across `graph_time_span_seconds`. It supports Y-min lock to 0, A/B markers, selected cursor, and offset movement with Ctrl+Arrow.
+- `details_panel`: Upper Graph (`Chart` widget) plus lower Samples table. The Graph shows history for the current `details_target` / `details_metric` across `graph_time_span_seconds`. It supports Y-min lock to 0, A/B markers, selected cursor, and offset movement with Ctrl+Arrow or mouse drag. Ctrl+Arrow pans by about one eighth of the current time span; mouse drag clamps the offset so at least one sample from the active series remains in the visible range. Fit-all mode is not cleared by drag attempts. Live graph scrolling stops when the latest sample is outside the visible range or an A/B point is set; while stopped, sampling updates preserve the absolute visible time window instead of sliding it forward.
 - `recording_dialog`: Save-path edit dialog, overwrite confirmation, and no-tracked warning.
 - `open_files`: Displays disk file handles for the selected process grouped by path in a compact count / file / directory table. Permission failures and unavailable handles stay as diagnostic lines in the UI and are not part of continuous sampling. The file-name filter is modal state kept across Open files modal openings during the application session.
 

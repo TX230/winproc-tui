@@ -8,8 +8,8 @@ use ratatui::layout::Rect;
 
 use crate::{
     app::{
-        App, AppActivity, FocusedPanel, QuitConfirmSelection, RecordingOverwriteSelection,
-        TrackedRemoveSelection,
+        App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, QuitConfirmSelection,
+        RecordingOverwriteSelection, TrackedRemoveSelection,
     },
     ui::{
         GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
@@ -940,6 +940,16 @@ impl App {
                 if self.start_samples_scrollbar_drag(mouse.column, mouse.row, screen_area) {
                     return;
                 }
+                if mouse.modifiers.contains(KeyModifiers::CONTROL)
+                    && self.start_graph_pan_drag(
+                        mouse.column,
+                        mouse.row,
+                        screen_area,
+                        GraphPanDragButton::Left,
+                    )
+                {
+                    return;
+                }
                 if self.toggle_graph_all_samples_at(mouse.column, mouse.row, screen_area) {
                     return;
                 }
@@ -955,14 +965,15 @@ impl App {
             MouseEventKind::Up(MouseButton::Left) => {
                 self.samples_scrollbar_dragging = false;
                 self.samples_scrollbar_grab_offset = 0;
+                self.stop_graph_pan_drag(GraphPanDragButton::Left);
             }
             MouseEventKind::Down(MouseButton::Right) => {
-                if let Some((slot_index, _)) =
-                    graph_area_at(self, screen_area, mouse.column, mouse.row)
-                {
-                    self.active_graph_slot_index = slot_index;
-                    self.focused_panel = FocusedPanel::DetailsGraph;
-                    self.reset_graph_to_live_edge();
+                if self.start_graph_pan_drag(
+                    mouse.column,
+                    mouse.row,
+                    screen_area,
+                    GraphPanDragButton::Right,
+                ) {
                     return;
                 }
                 if let Some((slot_index, _)) =
@@ -971,6 +982,13 @@ impl App {
                     self.active_graph_slot_index = slot_index;
                     self.focused_panel = FocusedPanel::DetailsSamples;
                     self.enter_details_live_mode();
+                }
+            }
+            MouseEventKind::Up(MouseButton::Right) => {
+                if let Some(drag) = self.stop_graph_pan_drag(GraphPanDragButton::Right)
+                    && !drag.moved
+                {
+                    self.reset_graph_to_live_edge();
                 }
             }
             MouseEventKind::ScrollUp => self.scroll_at(
@@ -996,6 +1014,10 @@ impl App {
                 self.pan_graph_at(mouse.column, mouse.row, screen_area, false, true);
             }
             MouseEventKind::Drag(MouseButton::Left) => {
+                if self.drag_graph_time_window(mouse.column, screen_area, GraphPanDragButton::Left)
+                {
+                    return;
+                }
                 if self.samples_scrollbar_dragging {
                     self.drag_samples_scrollbar(mouse.column, mouse.row, screen_area);
                     return;
@@ -1007,6 +1029,9 @@ impl App {
                     self.focused_panel = FocusedPanel::DetailsGraph;
                     self.select_details_sample_from_graph_at(mouse.column, mouse.row, screen_area);
                 }
+            }
+            MouseEventKind::Drag(MouseButton::Right) => {
+                self.drag_graph_time_window(mouse.column, screen_area, GraphPanDragButton::Right);
             }
             _ => {}
         }
@@ -1125,6 +1150,72 @@ impl App {
             self.samples_scrollbar_grab_offset,
         ) {
             self.set_details_sample_offset(offset);
+        }
+    }
+
+    fn start_graph_pan_drag(
+        &mut self,
+        x: u16,
+        y: u16,
+        screen_area: Rect,
+        button: GraphPanDragButton,
+    ) -> bool {
+        let Some((slot_index, _)) = graph_area_at(self, screen_area, x, y) else {
+            self.stop_graph_pan_drag(button);
+            return false;
+        };
+        self.active_graph_slot_index = slot_index;
+        self.focused_panel = FocusedPanel::DetailsGraph;
+        self.graph_pan_drag = Some(GraphPanDrag {
+            button,
+            start_x: x,
+            start_offset_seconds: self.graph_time_offset_seconds,
+            moved: false,
+        });
+        true
+    }
+
+    fn drag_graph_time_window(
+        &mut self,
+        x: u16,
+        screen_area: Rect,
+        button: GraphPanDragButton,
+    ) -> bool {
+        let Some(mut drag) = self.graph_pan_drag else {
+            return false;
+        };
+        if drag.button != button {
+            return false;
+        }
+        let Some(area) = active_graph_chart_area_for_screen(self, screen_area) else {
+            self.graph_pan_drag = None;
+            return false;
+        };
+
+        if self.graph_show_all_samples {
+            drag.moved |= x != drag.start_x;
+            self.graph_pan_drag = Some(drag);
+            return true;
+        }
+
+        let plot_width = i64::from(area.width.saturating_sub(1).max(1));
+        let dx = i64::from(x) - i64::from(drag.start_x);
+        let offset_delta = dx * i64::from(self.graph_time_span_seconds) / plot_width;
+        let next_offset = i64::from(drag.start_offset_seconds) + offset_delta;
+        let next_offset = next_offset.max(0) as u32;
+        drag.moved |= dx != 0;
+        self.graph_pan_drag = Some(drag);
+        self.set_graph_time_window_offset(next_offset);
+        true
+    }
+
+    fn stop_graph_pan_drag(&mut self, button: GraphPanDragButton) -> Option<GraphPanDrag> {
+        let drag = self.graph_pan_drag?;
+        if drag.button == button {
+            self.graph_pan_drag = None;
+            Some(drag)
+        } else {
+            None
         }
     }
 
@@ -1467,6 +1558,17 @@ fn graph_chart_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(
             contains_point(area, x, y).then_some((index, area))
         })
         .next()
+}
+
+fn active_graph_chart_area_for_screen(app: &App, screen_area: Rect) -> Option<Rect> {
+    visible_slot_areas_for_app(app, screen_area)
+        .into_iter()
+        .find_map(|(index, slot)| {
+            (index == app.active_graph_slot_index).then(|| {
+                let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
+                graph_chart_area_for_graph(graph, app.graph_plot_left_padding())
+            })?
+        })
 }
 
 fn graph_y_axis_toggle_area_for_graph(graph: Rect) -> Option<Rect> {

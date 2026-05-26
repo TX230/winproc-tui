@@ -146,6 +146,20 @@ pub(crate) struct GraphSample {
     pub(crate) value: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphPanDragButton {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GraphPanDrag {
+    pub(crate) button: GraphPanDragButton,
+    pub(crate) start_x: u16,
+    pub(crate) start_offset_seconds: u32,
+    pub(crate) moved: bool,
+}
+
 impl GraphSlot {
     pub(crate) fn process(identity: ProcessIdentity, metric: DetailsMetric) -> Self {
         Self::Process { identity, metric }
@@ -457,8 +471,10 @@ pub(crate) struct App {
     pub(crate) details_sample_page_size: usize,
     pub(crate) samples_scrollbar_dragging: bool,
     pub(crate) samples_scrollbar_grab_offset: usize,
+    pub(crate) graph_pan_drag: Option<GraphPanDrag>,
     pub(crate) graph_time_span_seconds: u32,
     pub(crate) graph_time_offset_seconds: u32,
+    pub(crate) graph_time_window_right_at: Option<DateTime<Local>>,
     pub(crate) graph_show_all_samples: bool,
     pub(crate) graph_y_axis_zero_min: bool,
     pub(crate) show_samples_panel: bool,
@@ -623,8 +639,10 @@ impl App {
             details_sample_page_size: 1,
             samples_scrollbar_dragging: false,
             samples_scrollbar_grab_offset: 0,
+            graph_pan_drag: None,
             graph_time_span_seconds: 60,
             graph_time_offset_seconds: 0,
+            graph_time_window_right_at: None,
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
             show_samples_panel: true,
@@ -1754,7 +1772,7 @@ impl App {
     pub(crate) fn select_details_sample_older(&mut self, amount: usize) {
         self.details_sample_selected = self.details_sample_selected.saturating_sub(amount);
         self.ensure_details_sample_visible();
-        self.details_live = false;
+        self.freeze_graph_time_window();
         self.status = "Samples selection moved older".to_string();
     }
 
@@ -1763,6 +1781,11 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
+        if self.details_live {
+            self.graph_time_window_right_at = None;
+        } else {
+            self.freeze_graph_time_window();
+        }
         self.status = "Samples selection moved newer".to_string();
     }
 
@@ -1783,13 +1806,18 @@ impl App {
             .details_sample_selected
             .clamp(self.details_sample_offset, visible_end);
         self.details_live = self.details_sample_selected + 1 == sample_count;
+        if self.details_live {
+            self.graph_time_window_right_at = None;
+        } else {
+            self.freeze_graph_time_window();
+        }
         self.status = "Samples scrolled".to_string();
     }
 
     pub(crate) fn select_details_sample_oldest(&mut self) {
         self.details_sample_selected = 0;
         self.details_sample_offset = 0;
-        self.details_live = false;
+        self.freeze_graph_time_window();
         self.status = "Samples selection: oldest".to_string();
     }
 
@@ -1797,6 +1825,7 @@ impl App {
         self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
         self.scroll_details_samples_to_latest();
         self.details_live = true;
+        self.graph_time_window_right_at = None;
         self.status = "Samples selection: latest".to_string();
     }
 
@@ -1805,6 +1834,11 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
+        if self.details_live {
+            self.graph_time_window_right_at = None;
+        } else {
+            self.freeze_graph_time_window();
+        }
         self.status = format!("Samples selection: {}", self.details_sample_selected + 1);
     }
 
@@ -1812,7 +1846,7 @@ impl App {
         self.details_sample_selected = index;
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
-        self.details_live = false;
+        self.freeze_graph_time_window();
         self.status = format!("Samples selection: {}", self.details_sample_selected + 1);
     }
 
@@ -1889,6 +1923,7 @@ impl App {
             'B' => comparison.b = Some(point),
             _ => {}
         }
+        self.freeze_graph_time_window();
         self.status = format!(
             "{label} point set: {}",
             point.captured_at.format("%H:%M:%S"),
@@ -2053,6 +2088,7 @@ impl App {
     pub(crate) fn enter_details_live_mode(&mut self) {
         self.show_details = true;
         self.graph_time_offset_seconds = 0;
+        self.graph_time_window_right_at = None;
         self.details_live = true;
         self.select_details_sample_latest();
         self.status = "Details live mode enabled".to_string();
@@ -2061,6 +2097,7 @@ impl App {
     pub(crate) fn reset_graph_to_live_edge(&mut self) {
         self.graph_show_all_samples = false;
         self.graph_time_offset_seconds = 0;
+        self.graph_time_window_right_at = None;
         self.status = "Graph right edge: 0s".to_string();
     }
 
@@ -2077,6 +2114,7 @@ impl App {
         self.graph_show_all_samples = !self.graph_show_all_samples;
         if self.graph_show_all_samples {
             self.graph_time_offset_seconds = 0;
+            self.graph_time_window_right_at = None;
             self.details_live = true;
             self.status = format!(
                 "Graph span: fit all ({}s)",
@@ -2150,6 +2188,7 @@ impl App {
         self.graph_time_offset_seconds = self
             .graph_time_offset_seconds
             .min(max_span.saturating_sub(self.graph_time_span_seconds));
+        self.update_graph_time_window_right_edge();
         self.status = format!("Graph span: {}s", self.graph_time_span_seconds);
     }
 
@@ -2170,7 +2209,113 @@ impl App {
             self.graph_time_offset_seconds = offset.min(max_offset);
         }
         self.details_live = self.graph_time_offset_seconds == 0;
+        self.update_graph_time_window_right_edge();
         self.status = format!("Graph offset: -{}s", self.graph_time_offset_seconds);
+    }
+
+    pub(crate) fn set_graph_time_window_offset(&mut self, offset_seconds: u32) {
+        self.graph_show_all_samples = false;
+        let max_offset = self
+            .graph_time_max_seconds()
+            .saturating_sub(self.graph_time_span_seconds);
+        let candidate = offset_seconds.min(max_offset);
+        self.graph_time_offset_seconds = self
+            .nearest_graph_offset_with_visible_sample(candidate)
+            .unwrap_or(0)
+            .min(max_offset);
+        self.details_live = self.graph_time_offset_seconds == 0;
+        self.update_graph_time_window_right_edge();
+        self.status = format!("Graph offset: -{}s", self.graph_time_offset_seconds);
+    }
+
+    pub(crate) fn graph_visible_range_includes_latest_sample(&self) -> bool {
+        self.graph_show_all_samples || self.graph_time_offset_seconds == 0
+    }
+
+    pub(crate) fn stop_graph_live_scroll_if_latest_sample_is_outside_visible_range(&mut self) {
+        if !self.graph_visible_range_includes_latest_sample() {
+            self.details_live = false;
+            self.freeze_graph_time_window();
+        }
+    }
+
+    fn freeze_graph_time_window(&mut self) {
+        self.details_live = false;
+        if self.graph_show_all_samples {
+            return;
+        }
+        self.graph_time_window_right_at = self.graph_time_window_right_edge();
+    }
+
+    fn update_graph_time_window_right_edge(&mut self) {
+        if self.graph_show_all_samples || self.graph_time_offset_seconds == 0 {
+            self.graph_time_window_right_at = None;
+        } else {
+            self.graph_time_window_right_at = self.graph_time_window_right_edge();
+        }
+    }
+
+    fn graph_time_window_right_edge(&self) -> Option<DateTime<Local>> {
+        let latest = self.active_graph_latest_sample_at()?;
+        Some(latest - chrono::Duration::seconds(i64::from(self.graph_time_offset_seconds)))
+    }
+
+    fn active_graph_latest_sample_at(&self) -> Option<DateTime<Local>> {
+        let slot = self.active_graph_slot()?;
+        self.graph_slot_samples(slot)
+            .last()
+            .map(|sample| sample.captured_at)
+    }
+
+    fn restore_frozen_graph_time_window(&mut self) {
+        if self.graph_show_all_samples {
+            return;
+        }
+        let Some(right_edge) = self.graph_time_window_right_at else {
+            return;
+        };
+        let Some(latest) = self.active_graph_latest_sample_at() else {
+            return;
+        };
+        let offset = latest
+            .signed_duration_since(right_edge)
+            .num_seconds()
+            .clamp(0, i64::from(u32::MAX)) as u32;
+        let max_offset = self
+            .graph_time_max_seconds()
+            .saturating_sub(self.graph_time_span_seconds);
+        self.graph_time_offset_seconds = offset.min(max_offset);
+    }
+
+    fn nearest_graph_offset_with_visible_sample(&self, candidate: u32) -> Option<u32> {
+        let span = self.graph_time_span_seconds;
+        let max_offset = self.graph_time_max_seconds().saturating_sub(span);
+        let ages = self.active_graph_sample_ages_seconds();
+        if ages.is_empty() {
+            return Some(0);
+        }
+
+        if ages
+            .iter()
+            .any(|age| *age >= candidate && *age <= candidate.saturating_add(span))
+        {
+            return Some(candidate);
+        }
+
+        let mut nearest = None;
+        for age in ages {
+            let lower = age.saturating_sub(span);
+            let upper = age.min(max_offset);
+            if lower > upper {
+                continue;
+            }
+            let offset = candidate.clamp(lower, upper);
+            let distance = candidate.abs_diff(offset);
+            if nearest.is_none_or(|(_, best_distance)| distance < best_distance) {
+                nearest = Some((offset, distance));
+            }
+        }
+        nearest.map(|(offset, _)| offset)
     }
 
     fn nearest_non_empty_graph_offset(&self, candidate: u32, older: bool) -> Option<u32> {
@@ -3485,6 +3630,9 @@ impl App {
         if self.activity() == AppActivity::Playback {
             return Ok(());
         }
+        if self.details_live && !self.graph_visible_range_includes_latest_sample() {
+            self.freeze_graph_time_window();
+        }
         let next_tracked_live_identities =
             tracked_live_identities(&collected.snapshot.processes, &self.normalized_watch_names);
         self.record_exited_tracked_rows(
@@ -3505,9 +3653,15 @@ impl App {
             self.rebuild_visible_process_cache();
             self.clamp_details_sample_selection();
             if self.details_live {
+                self.stop_graph_live_scroll_if_latest_sample_is_outside_visible_range();
+            }
+            if self.details_live {
                 self.graph_time_offset_seconds = 0;
+                self.graph_time_window_right_at = None;
                 self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
                 self.scroll_details_samples_to_latest();
+            } else if !self.graph_show_all_samples {
+                self.restore_frozen_graph_time_window();
             }
             self.clamp_process_table_state();
             self.refresh_selected_process_info();
@@ -3810,7 +3964,7 @@ fn graph_zoom_step(span_seconds: u32) -> u32 {
 }
 
 fn graph_pan_step(span_seconds: u32) -> u32 {
-    graph_zoom_step(span_seconds).div_ceil(2).max(1)
+    span_seconds.div_ceil(8).max(1)
 }
 
 fn sample_time_span_seconds(samples: &[DateTime<Local>]) -> Option<u32> {
