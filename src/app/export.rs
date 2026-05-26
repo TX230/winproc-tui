@@ -1,4 +1,4 @@
-﻿use std::{
+use std::{
     env,
     fs::{self, File, OpenOptions},
     io::{BufWriter, Write},

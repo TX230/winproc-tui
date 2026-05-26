@@ -1,4 +1,4 @@
-﻿use ratatui::{layout::Rect, widgets::Clear};
+use ratatui::{layout::Rect, widgets::Clear};
 
 use crate::app::{App, QuitConfirmSelection};
 use crate::ui::{

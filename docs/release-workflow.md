@@ -41,6 +41,8 @@ The important rule is that the uploaded binary should be built from the same com
 
 ## Manual Release Procedure
 
+Before starting, use Rust 1.95.0 or later and the C++ toolchain from Build Tools for Visual Studio 2026.
+
 The commands below assume a PowerShell session in which the release version is set as shell variables.
 Setting them once at the start lets every following command stay version-agnostic.
 `$Version` stores the bare numeric version used inside file names; `$Tag` stores the `v`-prefixed Git tag.

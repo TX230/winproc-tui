@@ -48,13 +48,13 @@ If you want to try in-development code, you can build from source.
 ### 1. Install the Rust Toolchain
 
 On Windows, [rustup](https://rustup.rs/) is recommended.
-Building requires Rust 1.85 or later, the Rust 2024 edition, and the MSVC linker (the C++ toolchain from Visual Studio Build Tools).
+Building requires Rust 1.95.0 or later, the Rust 2024 edition, and the MSVC linker (the C++ toolchain from Build Tools for Visual Studio 2026).
 
 Using winget:
 
 ```powershell
 winget install --id Rustlang.Rustup -e
-winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet --wait --norestart"
+winget install --id Microsoft.VisualStudio.BuildTools -e --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet --wait --norestart"
 ```
 
 Verify the installation:

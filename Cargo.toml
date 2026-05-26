@@ -1,8 +1,8 @@
-﻿[package]
+[package]
 name = "winproc-tui"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 description = "TUI process investigation tool for Windows 11 x64: per-process memory, handles, GUI/GPU resources, I/O, A/B comparison, and JSON Lines recording with Playback."
 license = "MIT"
 repository = "https://github.com/TX230/winproc-tui"
@@ -17,7 +17,7 @@ crossterm = "0.29"
 ratatui = "0.30"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-sysinfo = "0.38"
+sysinfo = "0.39"
 toml = "1.1"
 winapi = { version = "0.3.9", features = ["dxgi", "errhandlingapi", "fileapi", "handleapi", "pdh", "processthreadsapi", "psapi", "sysinfoapi", "tlhelp32", "unknwnbase", "winerror", "winnt", "winreg", "winuser", "winver", "wow64apiset"] }
 

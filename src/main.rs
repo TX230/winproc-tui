@@ -1,4 +1,4 @@
-﻿use std::io::{self, Stdout};
+use std::io::{self, Stdout};
 
 use anyhow::{Context, Result};
 #[cfg(test)]

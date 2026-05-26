@@ -1,4 +1,4 @@
-﻿use ratatui::{
+use ratatui::{
     layout::{Alignment, Rect},
     prelude::{Modifier, Style},
     text::{Line, Span},

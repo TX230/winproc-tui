@@ -1,4 +1,4 @@
-﻿# winproc-tui Architecture
+# winproc-tui Architecture
 
 `winproc-tui` is a Windows 11 x64-only TUI process investigation tool.
 This document summarizes the overall codebase structure, responsibility boundaries, data flow, and major types.

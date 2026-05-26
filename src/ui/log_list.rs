@@ -1,4 +1,4 @@
-﻿use chrono::{DateTime, Local};
+use chrono::{DateTime, Local};
 use ratatui::{
     layout::{Alignment, Position, Rect},
     prelude::{Modifier, Style},

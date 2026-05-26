@@ -1,4 +1,4 @@
-﻿# winproc-tui Metrics Specification
+# winproc-tui Metrics Specification
 
 This document describes the metrics handled by `winproc-tui`, including display names, data sources, and display formats.
 In the current implementation, unavailable values are displayed as `--` in the UI and are omitted from recording logs rather than written as `null`.
