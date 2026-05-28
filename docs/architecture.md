@@ -230,6 +230,8 @@ Representative operations:
 
 - `KeyEventKind::Press` and `Repeat` are handled, while `Release` is ignored so held editing keys such as Backspace use terminal key repeat without double-processing key-up events.
 - `Tab` / `Shift+Tab`: move focus with `FocusedPanel::next/previous(show_details)`.
+- `Left` / `Right` (Processes): select a process-table column.
+- `Shift+Left` / `Shift+Right` (Processes): move the selected metric column left / right in the custom process-table column order.
 - `Enter` (Processes): make the selected row the Details target.
 - `Enter` (System): report the selected RAM/VRAM metric in status.
 - `1` / `2` / `3` / `4` (System): assign the selected RAM/VRAM metric to the matching Graph slot.

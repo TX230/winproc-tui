@@ -97,6 +97,10 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Select column",
     },
     HelpItem {
+        key: "Shift+Left/Right",
+        label: "Move metric column",
+    },
+    HelpItem {
         key: "1/2/3/4",
         label: "Set to Graph#n",
     },

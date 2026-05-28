@@ -138,6 +138,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `0`                 | Clear all Graphs and close the Graph panel.                                           |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |
+| `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
 | `Space`             | Add or remove the selected process name from the Tracked List.                        |
 | `t`                 | Toggle whether only tracked processes are shown.                                      |
 | `f`                 | Open the Open files list for the selected live process.                               |

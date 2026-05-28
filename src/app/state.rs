@@ -2018,6 +2018,54 @@ impl App {
         );
     }
 
+    pub(crate) fn move_selected_process_column_left(&mut self) {
+        self.move_selected_process_metric_column(-1);
+    }
+
+    pub(crate) fn move_selected_process_column_right(&mut self) {
+        self.move_selected_process_metric_column(1);
+    }
+
+    fn move_selected_process_metric_column(&mut self, direction: isize) {
+        let Some(metric_index) = self
+            .selected_process_column_index
+            .checked_sub(FIXED_PROCESS_COLUMN_COUNT)
+        else {
+            self.status = "Only metric columns can be reordered".to_string();
+            return;
+        };
+        if metric_index >= self.process_columns.len() {
+            self.clamp_selected_process_column();
+            return;
+        }
+
+        let next_metric_index = if direction < 0 {
+            metric_index.checked_sub(1)
+        } else {
+            metric_index
+                .checked_add(1)
+                .filter(|index| *index < self.process_columns.len())
+        };
+        let Some(next_metric_index) = next_metric_index else {
+            self.status = format!(
+                "Column already at {} edge: {}",
+                if direction < 0 { "left" } else { "right" },
+                self.process_columns[metric_index].label()
+            );
+            return;
+        };
+
+        self.process_columns.swap(metric_index, next_metric_index);
+        self.column_preset = ColumnPreset::Custom;
+        self.selected_process_column_index = next_metric_index + FIXED_PROCESS_COLUMN_COUNT;
+        self.ensure_selected_process_column_visible();
+        self.apply_selected_process_column_to_details_metric();
+        self.status = format!(
+            "Moved column {}",
+            self.process_columns[next_metric_index].label()
+        );
+    }
+
     fn process_column_count(&self) -> usize {
         FIXED_PROCESS_COLUMN_COUNT + self.process_columns.len()
     }

@@ -472,12 +472,26 @@ impl App {
             }
             KeyCode::Left => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    self.select_previous_process_column();
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                    {
+                        self.move_selected_process_column_left();
+                    } else {
+                        self.select_previous_process_column();
+                    }
                 }
             }
             KeyCode::Right => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    self.select_next_process_column();
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                    {
+                        self.move_selected_process_column_right();
+                    } else {
+                        self.select_next_process_column();
+                    }
                 }
             }
             KeyCode::Up => {

@@ -2287,6 +2287,71 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn shift_left_right_reorders_selected_metric_column() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.process_columns = vec![
+            MetricColumn::CpuPercent,
+            MetricColumn::PrivateBytes,
+            MetricColumn::HandleCount,
+        ];
+        app.selected_process_column_index = 3;
+
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert_eq!(
+            app.process_columns,
+            vec![
+                MetricColumn::PrivateBytes,
+                MetricColumn::CpuPercent,
+                MetricColumn::HandleCount,
+            ]
+        );
+        assert_eq!(
+            app.selected_process_column(),
+            SortColumn::Metric(MetricColumn::PrivateBytes)
+        );
+        assert_eq!(app.selected_process_column_index, 2);
+        assert_eq!(app.column_preset, ColumnPreset::Custom);
+
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert_eq!(
+            app.process_columns,
+            vec![
+                MetricColumn::CpuPercent,
+                MetricColumn::PrivateBytes,
+                MetricColumn::HandleCount,
+            ]
+        );
+        assert_eq!(
+            app.selected_process_column(),
+            SortColumn::Metric(MetricColumn::PrivateBytes)
+        );
+        assert_eq!(app.selected_process_column_index, 3);
+    }
+
+    #[test]
+    fn shift_left_right_do_not_reorder_fixed_process_columns() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.process_columns = vec![MetricColumn::PrivateBytes, MetricColumn::HandleCount];
+        app.selected_process_column_index = 1;
+
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert_eq!(
+            app.process_columns,
+            vec![MetricColumn::PrivateBytes, MetricColumn::HandleCount]
+        );
+        assert_eq!(app.selected_process_column(), SortColumn::ProcessName);
+        assert_eq!(app.status, "Only metric columns can be reordered");
+    }
+
+    #[test]
     fn process_metric_columns_scroll_only_when_selection_leaves_visible_range() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::Processes;
