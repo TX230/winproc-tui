@@ -11,6 +11,7 @@ impl App {
     pub(crate) fn copy_focused_cell_to_clipboard(&mut self) -> Result<()> {
         match self.focused_panel {
             FocusedPanel::System => self.copy_selected_system_row_to_clipboard(),
+            FocusedPanel::Cpu => self.copy_cpu_average_to_clipboard(),
             FocusedPanel::Processes => self.copy_selected_process_row_to_clipboard(),
             FocusedPanel::DetailsSamples if self.show_details => {
                 self.copy_selected_sample_row_to_clipboard()
@@ -85,6 +86,21 @@ impl App {
         match copy_text_to_clipboard(&value) {
             Ok(()) => {
                 self.status = format!("Copied row: {}", metric.label());
+            }
+            Err(error) => {
+                self.status = format!("Clipboard copy failed: {error}");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn copy_cpu_average_to_clipboard(&mut self) -> Result<()> {
+        let value = selected_system_row_text(self, SystemMetric::CpuAverage);
+
+        match copy_text_to_clipboard(&value) {
+            Ok(()) => {
+                self.status = "Copied row: CPU Avg".to_string();
             }
             Err(error) => {
                 self.status = format!("Clipboard copy failed: {error}");
@@ -172,6 +188,10 @@ fn selected_process_row_text(process: &ProcessRow, columns: &[MetricColumn]) -> 
 fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
     let snapshot = app.display_snapshot();
     let value = match metric {
+        SystemMetric::CpuAverage => snapshot
+            .cpu_total_usage_percent
+            .map(|value| format!("{}%", value.min(100)))
+            .unwrap_or_else(|| "--".to_string()),
         SystemMetric::PhysicalMemory => {
             format_memory_row_value(Some(snapshot.used_memory), Some(snapshot.total_memory))
         }

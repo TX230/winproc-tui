@@ -47,13 +47,30 @@ The `RAM/VRAM` panel and system details use four metrics.
 `RAM/VRAM` metrics always retain 7,200 samples and do not have a Tracked List display.
 When the `RAM/VRAM` panel has focus, `1` / `2` / `3` / `4` assign the selected metric to the corresponding Graph slot.
 
+## CPU Panel
+
+The `CPUs` panel is a compact system-pressure display above the Process table.
+It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
+When the `CPUs` panel has focus, `1` / `2` / `3` / `4` assign `CPU Avg` to the corresponding Graph slot.
+The left edge of the panel content reserves two character cells for the Graph slot number, matching the RAM/VRAM summary rows.
+
+| Display | Description | Primary source | Format |
+|---|---|---|---|
+| `Avg` | Average utilization across logical CPUs. | `sysinfo` CPU refresh | Integer percent |
+| `P-core` / `E-core` clock | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | `GHz` / `MHz`; omitted when the current-frequency counters are unavailable |
+| Per-logical-CPU cells | Utilization for each logical CPU. P/E boundaries are marked when Windows reports distinct efficiency classes. | `sysinfo` CPU usage and `GetLogicalProcessorInformationEx(RelationProcessorCore)` | One block glyph from `▁` to `█`, with the glyph colored green through red |
+
+If P/E classification is not available or all logical CPUs report the same `EfficiencyClass`, the panel omits P/E markers and falls back to the ordinary CPU clock summary.
+`CPU Avg` is retained in `SystemHistory`, can be graphed, and is stored in recording frames as `system_metrics.cpu_percent`.
+The per-logical-CPU cells are intended for quick visual pressure checks, not recording history.
+
 ## System Info
 
 The `System Info` panel is not part of metric history. It displays supporting information about the current environment.
 
 | Display name | Description | Primary source |
 |---|---|---|
-| `CPU` | CPU name and clock. | Registry, `sysinfo` |
+| `CPU` | CPU name and basic clock. | `sysinfo` / registry |
 | `Cores` | Topology summary such as P-cores and E-cores. | `GetLogicalProcessorInformationEx` |
 | `Cache` | CPU cache summary. | `GetLogicalProcessorInformationEx` |
 | `GPU` | GPU name and VRAM capacity. | DXGI |
@@ -122,7 +139,7 @@ Slow-sample values are cached until the next slow sample.
 |---|---:|---|
 | General process | 120 | About 2 minutes. |
 | Tracked process | 7,200 | About 2 hours. |
-| System metrics | 7,200 | Used for `RAM/VRAM` details. |
+| System metrics | 7,200 | Used for `RAM/VRAM` details and `CPU Avg`. |
 
 Process history identity consists of PID, process name, and start time.
 When start time is available, it is included in the identity to avoid mixing history after PID reuse.
@@ -182,7 +199,7 @@ Frame record fields:
 | `session_id` | string | Same ID as the session record. |
 | `captured_at` | string | RFC 3339 timestamp. |
 | `tracked_names` | string array | Tracked List at frame creation time. |
-| `system_metrics` | object | RAM/VRAM metrics that have history. |
+| `system_metrics` | object | System metrics that have history, including RAM/VRAM and CPU average. |
 | `processes` | object array | Live processes matching the Tracked List. |
 
 Process object fields:
@@ -194,7 +211,7 @@ Process object fields:
 | `start_time` | number | Present only when available. |
 | `metrics` | object | Only metrics that were collected. |
 
-A `frame` record outputs processes matching the Tracked List and RAM/VRAM system metrics.
+A `frame` record outputs processes matching the Tracked List and system metrics with history.
 
 ```json
 {
@@ -207,7 +224,8 @@ A `frame` record outputs processes matching the Tracked List and RAM/VRAM system
     "physical_memory_bytes": 1234567890,
     "total_memory_bytes": 34359738368,
     "committed_bytes": 2345678901,
-    "commit_limit_bytes": 68719476736
+    "commit_limit_bytes": 68719476736,
+    "cpu_percent": 37
   },
   "processes": [
     {

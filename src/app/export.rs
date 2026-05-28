@@ -472,6 +472,11 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
         "gpu_shared_total_bytes",
         snapshot.gpu_shared_total,
     );
+    insert_u64(
+        &mut metrics,
+        "cpu_percent",
+        snapshot.cpu_total_usage_percent.map(u64::from),
+    );
     Value::Object(metrics)
 }
 
@@ -593,6 +598,11 @@ mod tests {
             gpu_shared_total: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
+            cpu_current_frequency_mhz: None,
+            cpu_p_core_frequency_mhz: None,
+            cpu_e_core_frequency_mhz: None,
+            cpu_total_usage_percent: Some(37),
+            cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
             gpu_name: None,
@@ -618,6 +628,7 @@ mod tests {
         assert_eq!(value["processes"][0]["metrics"]["private_bytes"], 120);
         assert!(value["processes"][0]["metrics"]["handle_count"].is_null());
         assert_eq!(value["system_metrics"]["physical_memory_bytes"], 0);
+        assert_eq!(value["system_metrics"]["cpu_percent"], 37);
     }
 
     #[test]

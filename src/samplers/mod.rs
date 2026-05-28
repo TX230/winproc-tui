@@ -215,7 +215,6 @@ fn collect_snapshot(
     } else {
         cached_gpu_capacity.clone()
     };
-    let cpu_summary = collect_cpu_summary(system);
     let disks = collect_disk_usages();
 
     let mut processes = system
@@ -269,6 +268,13 @@ fn collect_snapshot(
         .as_mut()
         .map(|sampler| sampler.sample())
         .transpose();
+    let cpu_frequencies_mhz = sampled_counters
+        .as_ref()
+        .ok()
+        .and_then(|sample| sample.as_ref())
+        .map(|sample| sample.cpu_frequencies_mhz.as_slice())
+        .unwrap_or(&[]);
+    let cpu_summary = collect_cpu_summary(system, cpu_frequencies_mhz);
 
     let (
         available_memory,
@@ -297,6 +303,11 @@ fn collect_snapshot(
             gpu_shared_total: gpu_capacity.shared_total,
             cpu_name: cpu_summary.name,
             cpu_frequency_mhz: cpu_summary.frequency_mhz,
+            cpu_current_frequency_mhz: cpu_summary.current_frequency_mhz,
+            cpu_p_core_frequency_mhz: cpu_summary.p_core_frequency_mhz,
+            cpu_e_core_frequency_mhz: cpu_summary.e_core_frequency_mhz,
+            cpu_total_usage_percent: cpu_summary.total_usage_percent,
+            cpu_logical_processors: cpu_summary.logical_processors,
             cpu_topology: cpu_summary.topology,
             cpu_cache: cpu_summary.caches,
             gpu_name: gpu_capacity.name,

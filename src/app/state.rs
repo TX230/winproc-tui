@@ -200,13 +200,16 @@ impl GraphSlot {
     pub(crate) fn item_label(&self) -> String {
         match self {
             Self::Process { identity, metric } => format!("{} - {}", identity.name, metric.label()),
-            Self::System { metric } => format!("RAM/VRAM - {}", metric.label()),
+            Self::System { metric } => format!("{} - {}", metric.panel_label(), metric.label()),
         }
     }
 
     pub(crate) fn value_format_metric(&self) -> DetailsMetric {
         match self {
             Self::Process { metric, .. } => *metric,
+            Self::System {
+                metric: SystemMetric::CpuAverage,
+            } => DetailsMetric::CpuPercent,
             Self::System { .. } => DetailsMetric::Private,
         }
     }
@@ -274,6 +277,7 @@ impl From<MetricColumn> for DetailsMetric {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FocusedPanel {
     System,
+    Cpu,
     Processes,
     DetailsGraph,
     DetailsSamples,
@@ -282,7 +286,8 @@ pub(crate) enum FocusedPanel {
 impl FocusedPanel {
     fn next(self, details_visible: bool) -> Self {
         match (self, details_visible) {
-            (Self::System, _) => Self::Processes,
+            (Self::System, _) => Self::Cpu,
+            (Self::Cpu, _) => Self::Processes,
             (Self::Processes, true) => Self::DetailsGraph,
             (Self::Processes, false) => Self::System,
             (Self::DetailsGraph, _) => Self::DetailsSamples,
@@ -294,7 +299,8 @@ impl FocusedPanel {
         match (self, details_visible) {
             (Self::System, true) => Self::DetailsSamples,
             (Self::System, false) => Self::Processes,
-            (Self::Processes, _) => Self::System,
+            (Self::Cpu, _) => Self::System,
+            (Self::Processes, _) => Self::Cpu,
             (Self::DetailsGraph, _) => Self::Processes,
             (Self::DetailsSamples, _) => Self::DetailsGraph,
         }
@@ -303,6 +309,7 @@ impl FocusedPanel {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::System => "RAM/VRAM",
+            Self::Cpu => "CPUs",
             Self::Processes => "Processes",
             Self::DetailsGraph => "Graph",
             Self::DetailsSamples => "Samples",
@@ -1588,7 +1595,8 @@ impl App {
         }
 
         match self.focused_panel {
-            FocusedPanel::System => (FocusedPanel::Processes, None),
+            FocusedPanel::System => (FocusedPanel::Cpu, None),
+            FocusedPanel::Cpu => (FocusedPanel::Processes, None),
             FocusedPanel::Processes => (FocusedPanel::DetailsGraph, slots.first().copied()),
             FocusedPanel::DetailsGraph => (
                 if self.show_samples_panel {
@@ -1625,7 +1633,8 @@ impl App {
                 },
                 slots.last().copied(),
             ),
-            FocusedPanel::Processes => (FocusedPanel::System, None),
+            FocusedPanel::Cpu => (FocusedPanel::System, None),
+            FocusedPanel::Processes => (FocusedPanel::Cpu, None),
             FocusedPanel::DetailsGraph => {
                 let previous_slot = slots
                     .iter()
@@ -1703,14 +1712,35 @@ impl App {
     }
 
     pub(crate) fn toggle_selected_system_metric_for_graph_slot(&mut self, slot_index: usize) {
+        self.toggle_system_metric_for_graph_slot(
+            slot_index,
+            self.selected_system_metric(),
+            FocusedPanel::System,
+        );
+    }
+
+    pub(crate) fn toggle_cpu_average_for_graph_slot(&mut self, slot_index: usize) {
+        self.toggle_system_metric_for_graph_slot(
+            slot_index,
+            SystemMetric::CpuAverage,
+            FocusedPanel::Cpu,
+        );
+    }
+
+    fn toggle_system_metric_for_graph_slot(
+        &mut self,
+        slot_index: usize,
+        metric: SystemMetric,
+        required_focus: FocusedPanel,
+    ) {
         if slot_index >= GRAPH_SLOT_COUNT {
             return;
         }
-        if self.focused_panel != FocusedPanel::System {
-            self.status = "Graph slots require RAM/VRAM focus".to_string();
+        if self.focused_panel != required_focus {
+            self.status = format!("Graph slots require {} focus", required_focus.label());
             return;
         }
-        let next_slot = GraphSlot::system(self.selected_system_metric());
+        let next_slot = GraphSlot::system(metric);
         if self.graph_slots[slot_index].as_ref() == Some(&next_slot) {
             self.graph_slots[slot_index] = None;
             if self.active_graph_slot_index == slot_index {

@@ -49,8 +49,8 @@ use model::Snapshot;
 use model::SystemCounterSample;
 #[cfg(test)]
 use model::{
-    ColumnPreset, GpuUsageSample, InfoValue, MetricColumn, ProcessIdentity, ProcessInfo,
-    ProcessRow, SortColumn, SortDirection, SortSpec,
+    ColumnPreset, CpuCoreKind, CpuLogicalProcessorSample, GpuUsageSample, InfoValue, MetricColumn,
+    ProcessIdentity, ProcessInfo, ProcessRow, SortColumn, SortDirection, SortSpec,
 };
 #[cfg(test)]
 use model::{ProcessHistory, SystemHistory, SystemMetric};
@@ -367,6 +367,7 @@ name = "legacy-watch.exe"
                 disk_write_bytes_per_sec: Some(4_000),
                 network_received_bytes_per_sec: Some(5_000),
                 network_sent_bytes_per_sec: Some(6_000),
+                cpu_frequencies_mhz: Vec::new(),
             })),
         );
 
@@ -505,7 +506,7 @@ name = "legacy-watch.exe"
                 Rect::new(0, 0, 120, 40),
                 false,
             )),
-            26
+            23
         );
         assert_eq!(
             process_table_page_size(process_table_area_for_screen(
@@ -3238,6 +3239,79 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn cpu_panel_renders_average_frequency_and_core_cells() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.cpu_total_usage_percent = Some(42);
+        app.snapshot.cpu_p_core_frequency_mhz = Some(3_200);
+        app.snapshot.cpu_e_core_frequency_mhz = Some(1_800);
+        app.snapshot.cpu_logical_processors = vec![
+            CpuLogicalProcessorSample {
+                usage_percent: 1,
+                kind: Some(CpuCoreKind::Performance),
+            },
+            CpuLogicalProcessorSample {
+                usage_percent: 22,
+                kind: Some(CpuCoreKind::Performance),
+            },
+            CpuLogicalProcessorSample {
+                usage_percent: 99,
+                kind: Some(CpuCoreKind::Efficiency),
+            },
+        ];
+
+        let rendered = render_app_to_text(&app, 120, 45);
+
+        assert!(rendered.contains("CPUs"), "{rendered}");
+        assert!(rendered.contains("Avg 42%"), "{rendered}");
+        assert!(rendered.contains("P-core 3.20 GHz"), "{rendered}");
+        assert!(rendered.contains("E-core 1.80 GHz"), "{rendered}");
+        assert!(rendered.contains("(P) ▁▂ (E) █"), "{rendered}");
+    }
+
+    #[test]
+    fn cpu_panel_number_keys_assign_cpu_average_to_graph_slot() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Cpu;
+        app.snapshot.cpu_total_usage_percent = Some(42);
+        app.system_history.record_snapshot(&app.snapshot);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(
+            app.graph_slots[0]
+                .as_ref()
+                .and_then(GraphSlot::system_metric),
+            Some(SystemMetric::CpuAverage)
+        );
+        assert!(app.show_details);
+        assert_eq!(
+            app.active_graph_slot().map(GraphSlot::value_format_metric),
+            Some(DetailsMetric::CpuPercent)
+        );
+        assert_eq!(
+            app.graph_slot_samples(app.active_graph_slot().unwrap())[0].value,
+            Some(42.0)
+        );
+
+        let rendered = render_app_to_text(&app, 120, 45);
+        assert!(rendered.contains("1 Avg 42%"), "{rendered}");
+        assert!(rendered.contains("CPUs - CPU Avg"), "{rendered}");
+    }
+
+    #[test]
+    fn clicking_cpu_panel_moves_focus_to_cpus() {
+        let mut app = make_test_app(3, 10);
+        let screen = Rect::new(0, 0, 120, 45);
+        let area = ui::layout::cpu_panel_area_for_screen(screen);
+
+        app.on_mouse(left_click(area.x + 1, area.y + 1), screen);
+
+        assert_eq!(app.focused_panel, FocusedPanel::Cpu);
+        assert_eq!(app.status, "Focus: CPUs");
+    }
+
+    #[test]
     fn help_dialog_takes_focus_border_from_previous_panel() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::Processes;
@@ -4062,6 +4136,22 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn ctrl_c_copies_cpu_average_row_text() {
+        let mut app = make_test_app(1, 10);
+        app.focused_panel = FocusedPanel::Cpu;
+        app.snapshot.cpu_total_usage_percent = Some(37);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert_eq!(
+            app::clipboard::last_copied_text().as_deref(),
+            Some("CPU Avg\t37%")
+        );
+        assert_eq!(app.status, "Copied row: CPU Avg");
+    }
+
+    #[test]
     fn ctrl_c_copies_selected_sample_row_text_when_samples_are_focused() {
         let mut app = make_test_app(1, 10);
         let first = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
@@ -4706,6 +4796,9 @@ name = "legacy-watch.exe"
         app.show_details = true;
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::Cpu);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::Processes);
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
@@ -4731,6 +4824,16 @@ name = "legacy-watch.exe"
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
         assert_eq!(app.active_graph_slot_index, 0);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.active_graph_slot_index, 0);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::Processes);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::Cpu);
     }
 
     #[test]
@@ -6527,6 +6630,11 @@ name = "legacy-watch.exe"
             gpu_shared_total: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
+            cpu_current_frequency_mhz: None,
+            cpu_p_core_frequency_mhz: None,
+            cpu_e_core_frequency_mhz: None,
+            cpu_total_usage_percent: None,
+            cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
             gpu_name: None,

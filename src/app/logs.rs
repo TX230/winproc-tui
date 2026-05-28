@@ -437,6 +437,13 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
             .and_then(|metrics| u64_from_map(metrics, "gpu_shared_total_bytes")),
         cpu_name: session.cpu_name.clone(),
         cpu_frequency_mhz: session.cpu_frequency_mhz,
+        cpu_current_frequency_mhz: None,
+        cpu_p_core_frequency_mhz: None,
+        cpu_e_core_frequency_mhz: None,
+        cpu_total_usage_percent: system
+            .and_then(|metrics| u64_from_map(metrics, "cpu_percent"))
+            .and_then(|value| u8::try_from(value.min(100)).ok()),
+        cpu_logical_processors: Vec::new(),
         cpu_topology: session.cpu_topology.clone(),
         cpu_cache: session.cpu_cache.clone(),
         gpu_name: session.gpu_name.clone(),
@@ -533,6 +540,7 @@ fn f64_from_map(map: &Map<String, Value>, name: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::SystemMetric;
     use std::io::Write;
 
     #[test]
@@ -591,7 +599,7 @@ mod tests {
             &path,
             &[
                 r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system":{"cpu_name":"CPU"}}"#,
-                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5}}]}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"cpu_percent":37},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5}}]}"#,
             ],
         );
 
@@ -599,8 +607,13 @@ mod tests {
 
         assert_eq!(loaded.summary.schema_version, Some(2));
         assert_eq!(loaded.snapshot.cpu_name.as_deref(), Some("CPU"));
+        assert_eq!(loaded.snapshot.cpu_total_usage_percent, Some(37));
         assert_eq!(loaded.snapshot.used_memory, 1000);
         assert_eq!(loaded.system_history.len(), 1);
+        assert_eq!(
+            loaded.system_history.samples()[0].value(SystemMetric::CpuAverage),
+            Some(37)
+        );
         assert_eq!(loaded.snapshot.processes[0].private_bytes, None);
         assert_eq!(loaded.snapshot.processes[0].handle_count, Some(5));
     }

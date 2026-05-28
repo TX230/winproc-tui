@@ -11,6 +11,7 @@ const SYSTEM_HISTORY_SAMPLE_CAPACITY: usize = TRACKED_PROCESS_HISTORY_SAMPLE_CAP
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SystemMetric {
+    CpuAverage,
     PhysicalMemory,
     Committed,
     GpuDedicated,
@@ -27,10 +28,20 @@ impl SystemMetric {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::CpuAverage => "CPU Avg",
             Self::PhysicalMemory => "Physical Memory",
             Self::Committed => "Committed",
             Self::GpuDedicated => "GPU Dedicated",
             Self::GpuShared => "GPU Shared",
+        }
+    }
+
+    pub(crate) fn panel_label(self) -> &'static str {
+        match self {
+            Self::CpuAverage => "CPUs",
+            Self::PhysicalMemory | Self::Committed | Self::GpuDedicated | Self::GpuShared => {
+                "RAM/VRAM"
+            }
         }
     }
 }
@@ -231,6 +242,7 @@ impl ProcessHistory {
 pub(crate) struct SystemSample {
     #[allow(dead_code)]
     pub(crate) captured_at: DateTime<Local>,
+    pub(crate) cpu_average_percent: Option<u64>,
     pub(crate) physical_memory_bytes: Option<u64>,
     pub(crate) committed_bytes: Option<u64>,
     pub(crate) gpu_dedicated_bytes: Option<u64>,
@@ -241,6 +253,7 @@ impl SystemSample {
     pub(crate) fn from_snapshot(snapshot: &Snapshot) -> Self {
         Self {
             captured_at: snapshot.captured_at,
+            cpu_average_percent: snapshot.cpu_total_usage_percent.map(u64::from),
             physical_memory_bytes: Some(snapshot.used_memory),
             committed_bytes: snapshot.committed_memory,
             gpu_dedicated_bytes: snapshot.gpu_dedicated_used,
@@ -250,6 +263,7 @@ impl SystemSample {
 
     pub(crate) fn value(&self, metric: SystemMetric) -> Option<u64> {
         match metric {
+            SystemMetric::CpuAverage => self.cpu_average_percent,
             SystemMetric::PhysicalMemory => self.physical_memory_bytes,
             SystemMetric::Committed => self.committed_bytes,
             SystemMetric::GpuDedicated => self.gpu_dedicated_bytes,
@@ -512,6 +526,11 @@ mod tests {
             gpu_shared_total: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
+            cpu_current_frequency_mhz: None,
+            cpu_p_core_frequency_mhz: None,
+            cpu_e_core_frequency_mhz: None,
+            cpu_total_usage_percent: None,
+            cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
             gpu_name: None,

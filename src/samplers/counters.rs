@@ -1,4 +1,7 @@
-use std::ptr::{null, null_mut};
+use std::{
+    collections::HashMap,
+    ptr::{null, null_mut},
+};
 
 use anyhow::{Context, Result};
 use winapi::um::pdh::{
@@ -28,6 +31,8 @@ pub(crate) struct SystemCounterSampler {
     disk_write_counter: Option<PDH_HCOUNTER>,
     network_received_counter: Option<PDH_HCOUNTER>,
     network_sent_counter: Option<PDH_HCOUNTER>,
+    cpu_frequency_counter: Option<PDH_HCOUNTER>,
+    cpu_performance_counter: Option<PDH_HCOUNTER>,
 }
 
 pub(crate) struct ProcessCounterSampler {
@@ -97,6 +102,12 @@ impl SystemCounterSampler {
                 add_optional_pdh_counter(query, "\\Network Interface(*)\\Bytes Received/sec");
             let network_sent_counter =
                 add_optional_pdh_counter(query, "\\Network Interface(*)\\Bytes Sent/sec");
+            let cpu_frequency_counter =
+                add_optional_pdh_counter(query, "\\Processor Information(*)\\Processor Frequency");
+            let cpu_performance_counter = add_optional_pdh_counter(
+                query,
+                "\\Processor Information(*)\\% Processor Performance",
+            );
 
             ensure_pdh_success(PdhCollectQueryData(query), "priming system counter query")?;
 
@@ -113,6 +124,8 @@ impl SystemCounterSampler {
                 disk_write_counter,
                 network_received_counter,
                 network_sent_counter,
+                cpu_frequency_counter,
+                cpu_performance_counter,
             })
         }
     }
@@ -145,9 +158,72 @@ impl SystemCounterSampler {
                 network_sent_bytes_per_sec: read_optional_named_counter_values(
                     self.network_sent_counter,
                 ),
+                cpu_frequencies_mhz: read_cpu_current_frequency_items(
+                    self.cpu_frequency_counter,
+                    self.cpu_performance_counter,
+                ),
             })
         }
     }
+}
+
+fn read_cpu_current_frequency_items(
+    frequency_counter: Option<PDH_HCOUNTER>,
+    performance_counter: Option<PDH_HCOUNTER>,
+) -> Vec<(usize, u64)> {
+    let (Some(frequency_counter), Some(performance_counter)) =
+        (frequency_counter, performance_counter)
+    else {
+        return Vec::new();
+    };
+    let (Some(frequencies), Some(performances)) = (
+        read_named_counter_items(frequency_counter),
+        read_named_counter_double_items(performance_counter),
+    ) else {
+        return Vec::new();
+    };
+    current_cpu_frequency_items(frequencies, performances)
+}
+
+fn current_cpu_frequency_items(
+    frequencies: Vec<(String, u64)>,
+    performances: Vec<(String, f64)>,
+) -> Vec<(usize, u64)> {
+    let performances = performances
+        .into_iter()
+        .filter_map(|(name, performance)| {
+            if !performance.is_finite() || performance < 0.0 {
+                return None;
+            }
+            processor_information_instance_index(&name).map(|index| (index, performance))
+        })
+        .collect::<HashMap<_, _>>();
+
+    frequencies
+        .into_iter()
+        .filter_map(|(name, frequency)| {
+            if frequency == 0 {
+                return None;
+            }
+            let index = processor_information_instance_index(&name)?;
+            let performance = performances.get(&index)?;
+            Some((
+                index,
+                ((*performance * frequency as f64) / 100.0).round() as u64,
+            ))
+        })
+        .collect()
+}
+
+fn processor_information_instance_index(name: &str) -> Option<usize> {
+    if name.eq_ignore_ascii_case("_Total") || name.to_ascii_lowercase().ends_with(",_total") {
+        return None;
+    }
+    name.rsplit_once(',')
+        .map(|(_, index)| index)
+        .unwrap_or(name)
+        .parse()
+        .ok()
 }
 
 impl Drop for SystemCounterSampler {
@@ -308,5 +384,40 @@ impl Drop for ProcessCounterSampler {
         unsafe {
             PdhCloseQuery(self.query);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn processor_information_instance_index_uses_logical_processor_suffix() {
+        assert_eq!(processor_information_instance_index("0,0"), Some(0));
+        assert_eq!(processor_information_instance_index("0,15"), Some(15));
+        assert_eq!(processor_information_instance_index("12"), Some(12));
+        assert_eq!(processor_information_instance_index("_Total"), None);
+        assert_eq!(processor_information_instance_index("0,_Total"), None);
+        assert_eq!(processor_information_instance_index("0,_total"), None);
+    }
+
+    #[test]
+    fn current_cpu_frequency_items_scales_base_frequency_by_processor_performance() {
+        let frequencies = vec![
+            ("0,0".to_string(), 2_100),
+            ("0,1".to_string(), 2_100),
+            ("0,_Total".to_string(), 2_100),
+            ("missing-performance".to_string(), 2_100),
+        ];
+        let performances = vec![
+            ("0,0".to_string(), 183.0),
+            ("0,1".to_string(), 151.5),
+            ("0,_Total".to_string(), 175.0),
+        ];
+
+        assert_eq!(
+            current_cpu_frequency_items(frequencies, performances),
+            vec![(0, 3_843), (1, 3_182)]
+        );
     }
 }

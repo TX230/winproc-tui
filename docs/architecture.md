@@ -84,6 +84,7 @@ src/
     theme.rs           Dark / Light themes
     header.rs / footer.rs
     system_panel.rs    RAM/VRAM / System Info / Process Info
+    cpu_panel.rs       compact live CPU pressure row
     process_table.rs   process list (columns, sort, tracked display)
     details_panel.rs   Graph + Samples + A/B
     column_picker.rs   column-selection modal
@@ -155,7 +156,7 @@ These options are currently fixed in `build_runtime_config` rather than user-con
 1. Refresh `sysinfo` memory, processes, and CPU data.
 2. Sample process PDH counters and build PID-keyed `ProcessExtraMetrics` through `collect_process_extras`: CPU%, Private, WS metrics, handle count, GDI/USER, .NET heap, I/O, and GPU contribution when needed.
 3. Collect GPU summary/capacity only on slow ticks through `collect_gpu_summary_usage` / `collect_gpu_capacity`; reuse caches otherwise.
-4. Collect CPU summary and disk capacity.
+4. Collect CPU summary, per-logical-CPU utilization, P/E core classification when available, and disk capacity.
 5. Iterate `system.processes()` to build `ProcessRow` values, provisionally sorting them by WS -> Private -> name in descending order. Final sorting is handled by UI-side `sort_process_rows`.
 6. Map memory counters into `Snapshot` fields through `map_memory_counters`, and return warning strings for PDH failures and similar conditions.
 
@@ -170,13 +171,13 @@ The return value is `CollectSnapshotResult { snapshot, warning }`.
 - `open_files.rs`: Enumerates the system handle table through `NtQuerySystemInformation(SystemExtendedHandleInformation)`, opens the selected process with `PROCESS_DUP_HANDLE`, duplicates handles, and reconstructs open file paths through `FILE_TYPE_DISK` and `GetFinalPathNameByHandleW`. Collection happens only on explicit user action. Access-denied and duplicate failures are treated as best-effort uncollected counts.
 - `gpu.rs`: Uses DXGI for physical adapter capacity, PDH `GPU Engine` / `GPU Process Memory` for per-process usage, and `is_filtered_dxgi_adapter` to exclude remote/software adapters.
 - `memory.rs`: Maps PDH values into `Snapshot` fields and applies needed fallbacks.
-- `cpu.rs` / `disk.rs`: CPU topology/cache strings and logical-drive capacity data.
+- `cpu.rs` / `disk.rs`: CPU topology/cache strings, compact CPU panel samples, current-frequency aggregation, and logical-drive capacity data.
 
 ## 6. Data Model (`model`)
 
 ### 6.1 Snapshot
 
-`Snapshot` is the aggregate value for one tick. It contains `captured_at` (`DateTime<Local>`), memory totals/usage/commit values, dedicated/shared GPU values, CPU name/topology/cache, GPU name, disk list, and `Vec<ProcessRow>`.
+`Snapshot` is the aggregate value for one tick. It contains `captured_at` (`DateTime<Local>`), memory totals/usage/commit values, dedicated/shared GPU values, CPU name/topology/cache, compact CPU panel samples, GPU name, disk list, and `Vec<ProcessRow>`.
 
 `ProcessRow` is the smallest unit used for sorting and table drawing.
 It stores CPU%, Private, WS total / WS Priv / WS Shareable / WS Shared, thread count, handle count, USER/GDI, GPU%, dedicated/shared GPU, .NET heap, and I/O Read/Write as `Option` values. Unavailable items are `None`.
@@ -196,7 +197,7 @@ Each field is wrapped in `InfoValue` (value / Missing / AccessDenied / Exited / 
 There are two history types.
 
 - `ProcessHistory`: A map keyed by `ProcessIdentity { pid, name, start_time }` whose values are `VecDeque<ProcessSample>`. Capacity is asymmetric: **tracked processes use `TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY = 7,200`** (about 2 hours at a 1-second tick), while **non-tracked processes use `GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY = 120`** (about 2 minutes). On each `record_snapshot`, processes present in the latest snapshot append a sample; disappeared tracked processes are retained; disappeared non-tracked processes are garbage-collected.
-- `SystemHistory`: Keeps 7,200 `(captured_at, value)` entries per `SystemMetric` (PhysicalMemory / Committed / GpuDedicated / GpuShared). It is used by the RAM/VRAM panel graph and A/B comparison.
+- `SystemHistory`: Keeps 7,200 `(captured_at, value)` entries per `SystemMetric` (CpuAverage / PhysicalMemory / Committed / GpuDedicated / GpuShared). It is used by the CPU and RAM/VRAM panel graphs and A/B comparison.
 
 `ProcessSample` is a subset of `ProcessRow`: timestamp plus per-metric `Option<u64|f64>` values.
 
@@ -208,7 +209,7 @@ There are two history types.
 - **Process table**: `process_table_state: TableState`, `process_page_size`, `selected_process_identity`, `selected_process_column_index`, `process_columns`, `column_preset`, `sort: SortSpec`, `process_order_locked`, `filter_text` / `filter_draft` / `filter_editing`.
 - **Visible-row cache**: `visible_process_entries: Vec<VisibleProcessEntry>` (`Live(index)` or `Ghost(identity)`) plus exited tracked rows in `exited_tracked_rows`. `rebuild_visible_process_cache` filters by text filter, tracked state, and exited state.
 - **Tracking**: `watch_list`, `normalized_watch_names`, `watch_enabled`, `last_tracked_live_identities`.
-- **Details / Graph**: `show_details`, graph slots for Process metrics or RAM/VRAM metrics, graph span/offset/Y-min lock, sample-list selection/offset, scrollbar drag state, and `details_live` for auto-scroll.
+- **Details / Graph**: `show_details`, graph slots for Process metrics or system metrics, graph span/offset/Y-min lock, sample-list selection/offset, scrollbar drag state, and `details_live` for auto-scroll.
 - **A/B comparison**: `ab_comparison: Option<AbComparison>`. It is keyed by scope (process or system metric) plus metric, and is cleared when the target changes.
 - **Modals**: Flags and scroll/selection state for Help, column picker, log list, log directory input and validation, open files, Settings, quit confirmation, recording path input, overwrite confirmation, no-tracked warning, tracked removal confirmation, and warning dialogs. `has_modal_focus()` returns whether any modal is open.
 - **Recording/replay**: `recording_session: Option<RecordingSession>`, `recording_last_dir`, `recording_spinner_index`, `playback_path`, `playback_display`, and log-list/load workers. `activity()` returns `Live` / `Recording` / `Playback`.
@@ -224,7 +225,7 @@ Modals are handled first, in priority order:
 
 1. Quit confirmation -> overwrite confirmation -> no-tracked warning -> tracked removal confirmation -> column picker / Help / recording path input dialog.
 2. While filter editing is active (`filter_editing == true`), normal navigation is disabled. Only text editing and confirm/cancel are accepted.
-3. Otherwise, keys are interpreted based on the current `FocusedPanel` value: System / Processes / DetailsGraph / DetailsSamples.
+3. Otherwise, keys are interpreted based on the current `FocusedPanel` value: System / Cpu / Processes / DetailsGraph / DetailsSamples.
 
 Representative operations:
 
@@ -235,12 +236,13 @@ Representative operations:
 - `Enter` (Processes): make the selected row the Details target.
 - `Enter` (System): report the selected RAM/VRAM metric in status.
 - `1` / `2` / `3` / `4` (System): assign the selected RAM/VRAM metric to the matching Graph slot.
+- `1` / `2` / `3` / `4` (Cpu): assign `CPU Avg` to the matching Graph slot.
 - `Space` (Processes): add/remove the selected process name in `watch_list`.
 - `t`: toggle `watch_enabled`.
 - `Delete`: delete an exited tracked row (Ghost Row) through the history-discard confirmation dialog.
 - `s` / `c`: toggle sorting / open the column picker.
 - `i`: switch System Info / Process Info.
-- `Ctrl+C`: copy the selected row text for RAM/VRAM, Processes, or Samples to the clipboard.
+- `Ctrl+C`: copy the selected row text for RAM/VRAM, CPUs, Processes, or Samples to the clipboard.
 - `f` (Processes): open the open-files list for the selected live process.
 - `Ctrl+U` (Open files modal): refresh the open-files list for the selected live process if no previous open-files request is still running.
 - `Ctrl+O`: open the Settings dialog.
@@ -269,14 +271,15 @@ Mouse capture is enabled only when `runtime.mouse` is true, and can be disabled 
 ### 9.1 Layout
 
 `ui::draw` uses `screen_layout(area)` to split the screen vertically into header / body / footer.
-The body is split into a fixed-height top area (`SYSTEM_PANEL_HEIGHT`) for RAM/VRAM + Info and a lower area for the rest.
-When `show_details` is true, the lower area is split again into a 13-row process table and a Details panel.
+The body is split into a fixed-height top area (`SYSTEM_PANEL_HEIGHT`) for RAM/VRAM + Info, a fixed-height `CPUs` panel, and a lower area for the rest.
+When `show_details` is true, the lower area below the `CPUs` panel is split again into a 13-row process table and a Details panel.
 
 Each modal (Help, column picker, recording dialog, quit confirmation, and others) is drawn as a top-level overlay over `area`.
 
 ### 9.2 Major Panels
 
 - `system_panel`: Draws RAM, Committed, GPU Dedicated, and GPU Shared in four rows, highlighting the selected metric and A/B state. The right side shows System Info or Process Info according to `InfoPanelMode`.
+- `cpu_panel`: Draws the compact `CPUs` panel above the Process table. It shows average CPU usage, current P/E clock averages when PDH reports them, and per-logical-CPU colored load glyphs with P/E markers when Windows efficiency classes distinguish core types. The panel can take focus; `CPU Avg` uses `SystemHistory`, can be assigned to Graph slots, and reserves the first two content cells for the Graph slot number.
 - `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Ghost Rows (exited tracked processes) use a different color and appear after live rows. Headers show `↑` / `↓` for the sorted column and append `L` while `process_order_locked` is active. Live metric cells compare their present raw value against `previous_snapshot` and use the success color for increases and the danger color for decreases.
 - `details_panel`: Upper Graph (`Chart` widget) plus lower Samples table. The Graph shows history for the current `details_target` / `details_metric` across `graph_time_span_seconds`. It supports Y-min lock to 0, A/B markers, selected cursor, and offset movement with Ctrl+Arrow or mouse drag. A/B marker letters are drawn on the Graph X-axis line, separate from the selected cursor value label. Ctrl+Arrow pans by about one eighth of the current time span; mouse drag clamps the offset so at least one sample from the active series remains in the visible range. Fit-all mode is not cleared by drag attempts. Live graph scrolling stops only when the Graph visible range is moved away from the live edge by Ctrl+Arrow or graph mouse drag; moving the cursor or setting an A/B point does not freeze the Graph visible range. While stopped, sampling updates preserve the absolute visible time window instead of sliding it forward.
 - `recording_dialog`: Save-path edit dialog, overwrite confirmation, and no-tracked warning.

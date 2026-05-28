@@ -19,7 +19,7 @@ use crate::{
         display_area_warning_ok_button_area,
         format::format_integer,
         help_area, help_close_button_area, help_scrollbar_area,
-        layout::{details_graph_area, details_samples_area},
+        layout::{cpu_panel_area_for_screen, details_graph_area, details_samples_area},
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
         process_metric_column_index_at, process_table_area_for_screen, process_table_page_size,
@@ -451,6 +451,24 @@ impl App {
                 }
                 KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
                     self.toggle_selected_system_metric_for_graph_slot((ch as u8 - b'1') as usize);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        if self.focused_panel == FocusedPanel::Cpu {
+            match key.code {
+                KeyCode::Enter => {
+                    self.status = "CPUs metric selected: CPU Avg".to_string();
+                    return Ok(());
+                }
+                KeyCode::Char(' ') => {
+                    self.status = "CPU average keeps 7200 samples automatically".to_string();
+                    return Ok(());
+                }
+                KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
+                    self.toggle_cpu_average_for_graph_slot((ch as u8 - b'1') as usize);
                     return Ok(());
                 }
                 _ => {}
@@ -947,7 +965,13 @@ impl App {
                             self.focused_panel = FocusedPanel::Processes;
                             self.select_process_identity(&identity);
                         } else {
-                            self.focused_panel = FocusedPanel::System;
+                            self.focused_panel = if slot.system_metric()
+                                == Some(crate::model::SystemMetric::CpuAverage)
+                            {
+                                FocusedPanel::Cpu
+                            } else {
+                                FocusedPanel::System
+                            };
                         }
                     }
                     return;
@@ -1245,6 +1269,12 @@ impl App {
         if contains_point(ram_vram_panel_area_for_screen(screen_area, self), x, y) {
             self.focused_panel = FocusedPanel::System;
             self.status = "Focus: RAM/VRAM".to_string();
+            return;
+        }
+
+        if contains_point(cpu_panel_area_for_screen(screen_area), x, y) {
+            self.focused_panel = FocusedPanel::Cpu;
+            self.status = "Focus: CPUs".to_string();
             return;
         }
 

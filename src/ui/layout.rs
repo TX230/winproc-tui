@@ -3,6 +3,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use crate::app::GRAPH_SLOT_MIN_HEIGHT;
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
+pub(crate) const CPU_PANEL_HEIGHT: u16 = 3;
 pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 17;
 pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 12;
 pub(crate) const DETAILS_SAMPLES_HEADER_HEIGHT: u16 = 1;
@@ -28,7 +29,7 @@ pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
 
 pub(crate) fn process_table_area(body_area: Rect) -> Rect {
     let sections = body_sections(body_area);
-    sections[1]
+    sections[2]
 }
 
 pub(crate) fn process_table_area_for_screen(area: Rect, show_details: bool) -> Rect {
@@ -46,6 +47,12 @@ pub(crate) fn system_panel_area_for_screen(area: Rect) -> Rect {
     sections[0]
 }
 
+pub(crate) fn cpu_panel_area_for_screen(area: Rect) -> Rect {
+    let layout = screen_layout(area);
+    let sections = body_sections(layout[1]);
+    sections[1]
+}
+
 #[cfg(test)]
 pub(crate) fn details_panel_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
     details_slots_area_for_screen(area, show_details)
@@ -58,7 +65,7 @@ pub(crate) fn details_slots_area_for_screen(area: Rect, show_details: bool) -> O
         let lower = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(13), Constraint::Min(20)])
-            .split(sections[1]);
+            .split(sections[2]);
         lower[1]
     })
 }
@@ -218,14 +225,18 @@ pub(crate) fn details_process_table_area(body_area: Rect) -> Rect {
     let lower = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(13), Constraint::Min(20)])
-        .split(sections[1]);
+        .split(sections[2]);
     lower[0]
 }
 
 pub(crate) fn body_sections(body_area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(SYSTEM_PANEL_HEIGHT), Constraint::Min(8)])
+        .constraints([
+            Constraint::Length(SYSTEM_PANEL_HEIGHT),
+            Constraint::Length(CPU_PANEL_HEIGHT),
+            Constraint::Min(8),
+        ])
         .split(body_area)
 }
 
@@ -262,7 +273,11 @@ mod tests {
         let body = Rect::new(0, 1, 100, 40);
         let sections = body_sections(body);
 
-        assert_eq!(process_table_area(body), sections[1]);
+        assert_eq!(process_table_area(body), sections[2]);
+        assert_eq!(
+            cpu_panel_area_for_screen(Rect::new(0, 0, 100, 44)),
+            sections[1]
+        );
     }
 
     #[test]
@@ -271,6 +286,7 @@ mod tests {
         let sections = body_sections(body);
 
         assert_eq!(sections[0].height, SYSTEM_PANEL_HEIGHT);
+        assert_eq!(sections[1].height, CPU_PANEL_HEIGHT);
     }
 
     #[test]

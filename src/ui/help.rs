@@ -161,6 +161,11 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
     },
 ];
 
+const CPU_ROWS: &[HelpItem] = &[HelpItem {
+    key: "1/2/3/4",
+    label: "Set CPU Avg to Graph#n",
+}];
+
 const GRAPH_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Left/Right",
@@ -275,6 +280,11 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         title: "RAM/VRAM",
         focus_hint: None,
         rows: RAM_VRAM_ROWS,
+    },
+    HelpSection {
+        title: "CPUs",
+        focus_hint: None,
+        rows: CPU_ROWS,
     },
     HelpSection {
         title: "Graph",

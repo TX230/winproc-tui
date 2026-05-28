@@ -16,5 +16,6 @@ pub(crate) use process::{
 };
 pub(crate) use snapshot::Snapshot;
 pub(crate) use system::{
-    CpuSummarySample, DiskUsageSample, GpuCapacitySample, GpuUsageSample, SystemCounterSample,
+    CpuCoreKind, CpuLogicalProcessorSample, CpuSummarySample, DiskUsageSample, GpuCapacitySample,
+    GpuUsageSample, SystemCounterSample,
 };

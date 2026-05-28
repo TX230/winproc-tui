@@ -1,4 +1,5 @@
 pub(crate) mod column_picker;
+mod cpu_panel;
 pub(crate) mod details_panel;
 pub(crate) mod footer;
 pub(crate) mod format;
@@ -32,6 +33,7 @@ pub(crate) use column_picker::{
     column_picker_page_size_for_screen, column_picker_row_for_index,
     column_picker_scroll_max_for_page_size, column_picker_scrollbar_area,
 };
+use cpu_panel::draw_cpu_panel;
 use details_panel::draw_details_panel;
 use footer::draw_footer;
 pub(crate) use format::fmt_bytes;
@@ -42,9 +44,9 @@ pub(crate) use help::{
     help_scrollbar_area,
 };
 pub(crate) use layout::{
-    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, SYSTEM_PANEL_HEIGHT,
-    details_slot_areas_for_screen, details_slots_area_for_screen, process_table_area_for_screen,
-    process_table_page_size, screen_layout,
+    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_slot_areas_for_screen,
+    details_slots_area_for_screen, process_table_area_for_screen, process_table_page_size,
+    screen_layout,
 };
 #[cfg(test)]
 pub(crate) use layout::{details_graph_area_for_screen, details_samples_area_for_screen};
@@ -146,21 +148,19 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
 }
 
 fn draw_body(frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect, app: &App, theme: Theme) {
-    let sections = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(SYSTEM_PANEL_HEIGHT), Constraint::Min(8)])
-        .split(area);
+    let sections = layout::body_sections(area);
 
     draw_system_panel(frame, sections[0], app, theme);
+    draw_cpu_panel(frame, sections[1], app, theme);
     if app.show_details {
         let lower = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(13), Constraint::Min(20)])
-            .split(sections[1]);
+            .split(sections[2]);
         draw_process_table(frame, lower[0], app, theme);
         draw_details_panel(frame, lower[1], app, theme);
     } else {
-        draw_process_table(frame, sections[1], app, theme);
+        draw_process_table(frame, sections[2], app, theme);
     }
 }
 

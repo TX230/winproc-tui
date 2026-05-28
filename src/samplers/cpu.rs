@@ -14,15 +14,19 @@ use winapi::{
 };
 
 use crate::{
-    model::CpuSummarySample,
+    model::{CpuCoreKind, CpuLogicalProcessorSample, CpuSummarySample},
     platform::{to_wide, wide_slice_to_string},
     ui::fmt_bytes,
 };
 
-pub(crate) fn collect_cpu_summary(system: &System) -> CpuSummarySample {
+pub(crate) fn collect_cpu_summary(
+    system: &System,
+    current_frequencies_mhz: &[(usize, u64)],
+) -> CpuSummarySample {
     let cpu = system.cpus().first();
     let name = cpu.map(|cpu| cpu.brand().trim()).unwrap_or_default();
     let topology = collect_cpu_topology();
+    let current_frequency_mhz = average_current_frequency_mhz(current_frequencies_mhz, |_, _| true);
 
     CpuSummarySample {
         name: (!name.is_empty())
@@ -32,6 +36,20 @@ pub(crate) fn collect_cpu_summary(system: &System) -> CpuSummarySample {
             let frequency = cpu.map(|cpu| cpu.frequency()).unwrap_or_default();
             (frequency > 0).then_some(frequency)
         }),
+        current_frequency_mhz,
+        p_core_frequency_mhz: average_current_frequency_mhz(current_frequencies_mhz, |index, _| {
+            cpu_core_kind(index, &topology.logical_efficiency_classes)
+                == Some(CpuCoreKind::Performance)
+        }),
+        e_core_frequency_mhz: average_current_frequency_mhz(current_frequencies_mhz, |index, _| {
+            cpu_core_kind(index, &topology.logical_efficiency_classes)
+                == Some(CpuCoreKind::Efficiency)
+        }),
+        total_usage_percent: average_cpu_usage_percent(system),
+        logical_processors: collect_logical_processor_usage(
+            system,
+            &topology.logical_efficiency_classes,
+        ),
         topology: format_cpu_topology(
             topology.physical_cores,
             topology.logical_threads,
@@ -45,7 +63,7 @@ pub(crate) fn collect_cpu_summary(system: &System) -> CpuSummarySample {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct CpuTopologySample {
     physical_cores: Option<u32>,
     logical_threads: Option<u32>,
@@ -53,6 +71,7 @@ struct CpuTopologySample {
     l1_cache_bytes: Option<u64>,
     l2_cache_bytes: Option<u64>,
     l3_cache_bytes: Option<u64>,
+    logical_efficiency_classes: Vec<Option<u8>>,
 }
 
 fn collect_cpu_topology() -> CpuTopologySample {
@@ -98,12 +117,21 @@ fn collect_cpu_topology() -> CpuTopologySample {
                     (*processor).GroupMask.as_ptr(),
                     (*processor).GroupCount as usize,
                 );
+                let efficiency_class = (*processor).EfficiencyClass;
                 let thread_count = group_masks
                     .iter()
                     .map(|group| group.Mask.count_ones())
                     .sum::<u32>();
                 logical_threads = logical_threads.saturating_add(thread_count.max(1));
                 smt_enabled |= ((*processor).Flags & LTP_PC_SMT) != 0;
+                for group in group_masks {
+                    push_efficiency_class_bits(
+                        &mut sample.logical_efficiency_classes,
+                        group.Group as usize,
+                        group.Mask,
+                        efficiency_class,
+                    );
+                }
             } else if relationship == RelationCache {
                 let cache = info.u.Cache();
                 let cache_size = (*cache).CacheSize as u64;
@@ -146,6 +174,97 @@ fn collect_cpu_topology() -> CpuTopologySample {
             .zip(sample.logical_threads)
             .map(|(cores, threads)| smt_enabled || threads > cores);
         sample
+    }
+}
+
+fn push_efficiency_class_bits(
+    classes: &mut Vec<Option<u8>>,
+    group_index: usize,
+    mask: usize,
+    efficiency_class: u8,
+) {
+    for bit in 0..usize::BITS as usize {
+        if (mask & (1usize << bit)) == 0 {
+            continue;
+        }
+        let index = group_index
+            .saturating_mul(usize::BITS as usize)
+            .saturating_add(bit);
+        if classes.len() <= index {
+            classes.resize(index + 1, None);
+        }
+        classes[index] = Some(efficiency_class);
+    }
+}
+
+fn collect_logical_processor_usage(
+    system: &System,
+    efficiency_classes: &[Option<u8>],
+) -> Vec<CpuLogicalProcessorSample> {
+    system
+        .cpus()
+        .iter()
+        .enumerate()
+        .map(|(index, cpu)| CpuLogicalProcessorSample {
+            usage_percent: two_digit_cpu_percent(cpu.cpu_usage()),
+            kind: cpu_core_kind(index, efficiency_classes),
+        })
+        .collect()
+}
+
+fn average_cpu_usage_percent(system: &System) -> Option<u8> {
+    let cpus = system.cpus();
+    if cpus.is_empty() {
+        return None;
+    }
+    let total = cpus.iter().map(|cpu| cpu.cpu_usage()).sum::<f32>();
+    Some(cpu_percent_u8(total / cpus.len() as f32))
+}
+
+fn average_current_frequency_mhz(
+    frequencies: &[(usize, u64)],
+    include: impl Fn(usize, u64) -> bool,
+) -> Option<u64> {
+    let mut total = 0u64;
+    let mut count = 0u64;
+    for &(index, frequency) in frequencies {
+        if frequency == 0 || !include(index, frequency) {
+            continue;
+        }
+        total = total.saturating_add(frequency);
+        count = count.saturating_add(1);
+    }
+    if count > 0 { Some(total / count) } else { None }
+}
+
+fn cpu_core_kind(index: usize, efficiency_classes: &[Option<u8>]) -> Option<CpuCoreKind> {
+    let Some(Some(efficiency_class)) = efficiency_classes.get(index) else {
+        return None;
+    };
+    let present_classes = efficiency_classes
+        .iter()
+        .filter_map(|value| *value)
+        .collect::<Vec<_>>();
+    let min_class = present_classes.iter().min()?;
+    let max_class = present_classes.iter().max()?;
+    if min_class == max_class {
+        None
+    } else if efficiency_class == max_class {
+        Some(CpuCoreKind::Performance)
+    } else {
+        Some(CpuCoreKind::Efficiency)
+    }
+}
+
+fn two_digit_cpu_percent(value: f32) -> u8 {
+    cpu_percent_u8(value).min(99)
+}
+
+fn cpu_percent_u8(value: f32) -> u8 {
+    if !value.is_finite() || value <= 0.0 {
+        0
+    } else {
+        value.round().clamp(0.0, 100.0) as u8
     }
 }
 
@@ -252,4 +371,27 @@ fn format_cpu_caches(
     }
 
     (!parts.is_empty()).then_some(parts.join("  "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn average_current_frequency_mhz_uses_matching_processors_only() {
+        let frequencies = [(0, 4_100), (1, 4_300), (2, 0), (3, 2_200)];
+
+        assert_eq!(
+            average_current_frequency_mhz(&frequencies, |index, _| index < 2),
+            Some(4_200)
+        );
+        assert_eq!(
+            average_current_frequency_mhz(&frequencies, |index, _| index >= 2),
+            Some(2_200)
+        );
+        assert_eq!(
+            average_current_frequency_mhz(&frequencies, |index, _| index > 3),
+            None
+        );
+    }
 }
