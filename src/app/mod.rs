@@ -8,6 +8,7 @@ pub(crate) mod state;
 
 use std::{
     io::Stdout,
+    thread,
     time::{Duration, Instant},
 };
 
@@ -21,6 +22,8 @@ use crate::ui::{
     layout::{details_samples_area, details_samples_row_capacity},
     open_files_page_size_for_screen, process_table_area_for_screen, process_table_page_size,
 };
+
+const EVENT_POLL_SLICE: Duration = Duration::from_millis(50);
 
 pub(crate) use state::AbComparison;
 pub(crate) use state::AbComparisonPoint;
@@ -59,6 +62,11 @@ pub(crate) fn run_tui(
     let mut dirty = true;
 
     loop {
+        if crate::platform::termination_requested() {
+            app.confirm_quit()?;
+            break;
+        }
+
         dirty |= app.poll_sample_results()?;
         dirty |= app.poll_process_info_results()?;
         dirty |= app.poll_open_files_results()?;
@@ -90,7 +98,12 @@ pub(crate) fn run_tui(
             .map(|open_files_timeout| timeout.min(open_files_timeout))
             .unwrap_or(timeout);
 
-        if event::poll(timeout)? {
+        let wait = timeout.min(EVENT_POLL_SLICE);
+        if event::poll(Duration::ZERO)? {
+            if crate::platform::termination_requested() {
+                app.confirm_quit()?;
+                break;
+            }
             match event::read()? {
                 Event::Key(key) => {
                     app.on_key(key)?;
@@ -113,6 +126,8 @@ pub(crate) fn run_tui(
                 }
                 _ => {}
             }
+        } else if !wait.is_zero() {
+            thread::sleep(wait);
         }
 
         if last_tick.elapsed() >= app.tick_interval() {

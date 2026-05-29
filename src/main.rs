@@ -94,18 +94,24 @@ use ui::{column_picker_area, column_picker_scrollbar_area, help_area, help_scrol
 
 fn main() -> Result<()> {
     Cli::parse();
+    platform::install_console_control_handler()
+        .context("failed to install console control handler")?;
     let config_path = resolve_config_path()?;
 
-    let config = load_config(&config_path)?;
-    let runtime = build_runtime_config(config)?;
-    let mut app = App::new(runtime)?;
-    let mut terminal = setup_terminal(app.runtime.mouse)?;
-    let run_result = run_tui(&mut terminal, &mut app);
-    restore_terminal(&mut terminal, app.runtime.mouse)?;
-    if run_result.is_ok() {
-        write_app_config(&config_path, &app)?;
-    }
-    run_result
+    let result = (|| {
+        let config = load_config(&config_path)?;
+        let runtime = build_runtime_config(config)?;
+        let mut app = App::new(runtime)?;
+        let mut terminal = setup_terminal(app.runtime.mouse)?;
+        let run_result = run_tui(&mut terminal, &mut app);
+        restore_terminal(&mut terminal, app.runtime.mouse)?;
+        if run_result.is_ok() {
+            write_app_config(&config_path, &app)?;
+        }
+        run_result
+    })();
+    platform::mark_shutdown_complete();
+    result
 }
 
 fn setup_terminal(mouse_enabled: bool) -> Result<Terminal<CrosstermBackend<Stdout>>> {

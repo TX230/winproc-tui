@@ -103,12 +103,13 @@ docs/                  architecture, metrics, release workflow
 `main` performs the following steps (`src/main.rs`):
 
 1. Parse only `--help` / `--version` through `Cli::parse()`.
-2. Resolve `winproc-tui.toml` next to the executable through `resolve_config_path()`.
-3. Read TOML through `load_config()`; on failure, warn and continue with defaults. Convert it to `RuntimeConfig` through `build_runtime_config()`.
-4. Construct `App::new(runtime)`. The constructor creates `SamplingRuntime::new(...)`, performs the first `collect()` **synchronously once**, initializes history from that result, and then starts a separate `SamplingWorker::spawn(...)` thread.
-5. Enter raw mode + AlternateScreen through `setup_terminal(mouse)`, enabling mouse capture if needed.
-6. Call `run_tui(&mut terminal, &mut app)`, then restore the terminal reliably through `restore_terminal(...)`.
-7. Write TOML back through `write_app_config()` only if `run_tui` succeeds, so a failure does not destroy user settings.
+2. Install a Windows console control handler. `Ctrl+C`, `Ctrl+Break`, terminal close, logoff, and shutdown set a process-wide termination flag. Terminal close, logoff, and shutdown events also wait briefly for the main TUI loop and worker cleanup to finish within the Windows console cleanup window.
+3. Resolve `winproc-tui.toml` next to the executable through `resolve_config_path()`.
+4. Read TOML through `load_config()`; on failure, warn and continue with defaults. Convert it to `RuntimeConfig` through `build_runtime_config()`.
+5. Construct `App::new(runtime)`. The constructor creates `SamplingRuntime::new(...)`, performs the first `collect()` **synchronously once**, initializes history from that result, and then starts a separate `SamplingWorker::spawn(...)` thread.
+6. Enter raw mode + AlternateScreen through `setup_terminal(mouse)`, enabling mouse capture if needed.
+7. Call `run_tui(&mut terminal, &mut app)`, then restore the terminal reliably through `restore_terminal(...)`.
+8. Write TOML back through `write_app_config()` only if `run_tui` succeeds, so a failure does not destroy user settings.
 
 ## 4. Runtime Control Flow (`app::run_tui`)
 
@@ -118,7 +119,7 @@ The main loop is a single-threaded event loop driven by `Instant`:
 
 1. `app.poll_sample_results()` receives arrived snapshots from `SamplingWorker` and applies them to state through `apply_sample_result`.
 2. If `dirty` is set, `sync_layout_state` recalculates panel page sizes from the screen size, then `ui::draw(frame, app)` redraws.
-3. Until the next tick, or while `sampling_in_progress` is true, `event::poll()` waits up to 50 ms.
+3. Until the next tick, the loop checks terminal input with non-blocking `event::poll(Duration::ZERO)` and sleeps in slices no longer than 50 ms. This keeps the main loop able to observe Windows console control requests promptly even if the terminal is closing.
 4. Keys are delegated to `App::on_key`; mouse events are delegated to `App::on_mouse`; `Resize` sets `dirty`.
 5. When `tick_interval()` has elapsed, currently fixed at 1 second, the loop issues `app.request_sample()` and updates `last_tick`.
 
@@ -126,7 +127,8 @@ Key points:
 
 - Drawing is **dirty-driven**. `terminal.draw` runs only when state has changed.
 - Sampling is **non-blocking**. The UI only sends requests; responses are read later with `try_recv`.
-- `should_quit` is set only by key handling, with the quit confirmation modal in between.
+- Interactive quits set `should_quit` through key handling, with the quit confirmation modal in between.
+- If the Windows console control handler has observed `Ctrl+C`, `Ctrl+Break`, terminal close, logoff, or shutdown, the loop confirms quit internally without opening the modal, so recording is stopped and flushed before `App` drops its workers. For terminal close, logoff, and shutdown, the handler thread waits up to 4.5 seconds for this cleanup path to complete, then lets Windows continue its default close handling if the main loop did not finish.
 
 ## 5. Sampling Subsystem (`samplers`)
 
