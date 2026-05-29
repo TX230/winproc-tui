@@ -2,7 +2,7 @@
 name: Feature request
 about: Suggest an idea for this project
 title: ''
-labels: ''
+labels: enhancement
 assignees: ''
 
 ---
@@ -18,4 +18,3 @@ assignees: ''
 ## Proposed Behavior
 
 <!-- Describe the expected behavior after the change. -->
-
