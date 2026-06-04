@@ -19,6 +19,7 @@ pub(crate) struct Theme {
     pub(crate) tracked: Color,
     pub(crate) exited: Color,
     pub(crate) highlight: Color,
+    pub(crate) selection: Color,
 }
 
 pub(crate) const THEMES: [Theme; 2] = [
@@ -39,6 +40,7 @@ pub(crate) const THEMES: [Theme; 2] = [
         tracked: Color::Rgb(231, 184, 69),
         exited: Color::Rgb(92, 98, 108),
         highlight: Color::Rgb(37, 43, 50),
+        selection: Color::Rgb(36, 30, 22),
     },
     Theme {
         name: "Light",
@@ -57,6 +59,7 @@ pub(crate) const THEMES: [Theme; 2] = [
         tracked: Color::Rgb(180, 83, 9),
         exited: Color::Rgb(100, 116, 139),
         highlight: Color::Rgb(203, 213, 225),
+        selection: Color::Rgb(255, 237, 213),
     },
 ];
 

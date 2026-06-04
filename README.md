@@ -138,8 +138,12 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `0`                 | Clear all Graphs and close the Graph panel.                                           |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |
+| `Shift+Up/Down`     | Select a continuous range of live process rows.                                       |
+| `Ctrl+Up/Down`      | Move the cursor without changing the multi-selection.                                 |
+| `Ctrl+Space`        | Add or remove the current live process row from the multi-selection.                  |
 | `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
 | `Space`             | Add or remove the selected process name from the Tracked List.                        |
+| `Delete`            | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
 | `t`                 | Toggle whether only tracked processes are shown.                                      |
 | `f`                 | Open the Open files list for the selected live process.                               |
 | `g`                 | Open or close all configured Graphs at once.                                          |

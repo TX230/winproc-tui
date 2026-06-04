@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    process::Command,
     sync::mpsc::TryRecvError,
     time::{Duration, Instant},
 };
@@ -39,6 +40,7 @@ pub(crate) const GRAPH_SLOT_MIN_HEIGHT: u16 = 13;
 pub(crate) const PROCESS_INFO_DEBOUNCE: Duration = Duration::from_millis(200);
 const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const PROCESS_NAVIGATION_ORDER_HOLD: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessLifecycle {
@@ -57,6 +59,7 @@ pub(crate) struct VisibleProcessRow<'a> {
     pub(crate) process: &'a ProcessRow,
     pub(crate) tracked: bool,
     pub(crate) lifecycle: ProcessLifecycle,
+    pub(crate) multi_selected: bool,
     pub(crate) is_tracked_total: bool,
 }
 
@@ -403,6 +406,28 @@ impl TrackedRemoveSelection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessKillSelection {
+    Kill,
+    Cancel,
+}
+
+impl ProcessKillSelection {
+    pub(crate) fn toggled(self) -> Self {
+        match self {
+            Self::Kill => Self::Cancel,
+            Self::Cancel => Self::Kill,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProcessKillTarget {
+    pub(crate) identity: ProcessIdentity,
+    pub(crate) pid: u32,
+    pub(crate) name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppActivity {
     Live,
     Recording,
@@ -420,8 +445,11 @@ pub(crate) struct App {
     pub(crate) process_table_state: TableState,
     pub(crate) process_page_size: usize,
     pub(crate) selected_process_identity: Option<ProcessIdentity>,
+    pub(crate) process_selection_anchor: Option<ProcessIdentity>,
+    pub(crate) selected_process_identities: HashSet<ProcessIdentity>,
     pub(crate) selected_process_column_index: usize,
     pub(crate) process_metric_column_offset: usize,
+    pub(crate) process_order_hold_until: Option<Instant>,
     pub(crate) show_help: bool,
     pub(crate) help_scroll: ScrollableModalState,
     pub(crate) show_column_picker: bool,
@@ -442,6 +470,9 @@ pub(crate) struct App {
     pub(crate) tracked_remove_name: String,
     pub(crate) tracked_remove_total_samples: usize,
     pub(crate) tracked_remove_discarded_samples: usize,
+    pub(crate) show_process_kill_confirmation: bool,
+    pub(crate) process_kill_selection: ProcessKillSelection,
+    pub(crate) process_kill_targets: Vec<ProcessKillTarget>,
     pub(crate) show_display_area_warning: bool,
     pub(crate) show_metric_column_warning: bool,
     pub(crate) show_no_graph_metrics_warning: bool,
@@ -576,8 +607,11 @@ impl App {
             process_table_state,
             process_page_size: 1,
             selected_process_identity,
+            process_selection_anchor: None,
+            selected_process_identities: HashSet::new(),
             selected_process_column_index,
             process_metric_column_offset: 0,
+            process_order_hold_until: None,
             show_help: false,
             help_scroll: ScrollableModalState {
                 page_size: 1,
@@ -601,6 +635,9 @@ impl App {
             tracked_remove_name: String::new(),
             tracked_remove_total_samples: 0,
             tracked_remove_discarded_samples: 0,
+            show_process_kill_confirmation: false,
+            process_kill_selection: ProcessKillSelection::Cancel,
+            process_kill_targets: Vec::new(),
             show_display_area_warning: false,
             show_metric_column_warning: false,
             show_no_graph_metrics_warning: false,
@@ -775,6 +812,7 @@ impl App {
             || self.show_recording_path_dialog
             || self.show_recording_overwrite_confirmation
             || self.show_tracked_remove_confirmation
+            || self.show_process_kill_confirmation
             || self.show_display_area_warning
             || self.show_metric_column_warning
             || self.show_no_graph_metrics_warning
@@ -849,6 +887,7 @@ impl App {
         offset: usize,
         rows: usize,
     ) -> Vec<VisibleProcessRow<'_>> {
+        let has_multi_selection = !self.selected_process_identities.is_empty();
         self.visible_process_entries
             .iter()
             .skip(offset)
@@ -859,6 +898,12 @@ impl App {
                     process,
                     tracked: self.is_tracked_process_name(&process.name),
                     lifecycle: self.lifecycle_for_visible_entry(entry),
+                    multi_selected: has_multi_selection
+                        && self
+                            .identity_for_visible_entry(entry)
+                            .is_some_and(|identity| {
+                                self.selected_process_identities.contains(&identity)
+                            }),
                     is_tracked_total: false,
                 })
             })
@@ -871,6 +916,7 @@ impl App {
                 process: self.tracked_total_row.as_ref().expect("tracked total row"),
                 tracked: false,
                 lifecycle: ProcessLifecycle::Live,
+                multi_selected: false,
                 is_tracked_total: true,
             })
     }
@@ -889,6 +935,19 @@ impl App {
 
     pub(crate) fn is_display_paused(&self) -> bool {
         self.paused_display.is_some()
+    }
+
+    pub(crate) fn hold_process_order_during_navigation(&mut self) {
+        self.process_order_hold_until = Some(Instant::now() + PROCESS_NAVIGATION_ORDER_HOLD);
+    }
+
+    fn process_order_hold_active(&self) -> bool {
+        self.process_order_hold_until
+            .is_some_and(|until| Instant::now() < until)
+    }
+
+    fn clear_process_order_hold(&mut self) {
+        self.process_order_hold_until = None;
     }
 
     pub(crate) fn display_snapshot(&self) -> &Snapshot {
@@ -1013,6 +1072,7 @@ impl App {
         };
         self.visible_process_entries
             .extend(self.visible_ghost_entries(&filter));
+        self.prune_process_selection_to_visible_live_rows();
         if let Some(selected) = self.process_table_state.selected() {
             if selected < self.visible_process_entries.len()
                 && self.visible_process_identity_at(selected).is_none()
@@ -1062,6 +1122,20 @@ impl App {
         }
     }
 
+    pub(crate) fn live_identity_for_visible_entry(
+        &self,
+        entry: &VisibleProcessEntry,
+    ) -> Option<ProcessIdentity> {
+        match entry {
+            VisibleProcessEntry::Live(index) => self
+                .display_snapshot()
+                .processes
+                .get(*index)
+                .map(ProcessIdentity::from_row),
+            VisibleProcessEntry::Ghost(_) => None,
+        }
+    }
+
     fn lifecycle_for_visible_entry(&self, entry: &VisibleProcessEntry) -> ProcessLifecycle {
         match entry {
             VisibleProcessEntry::Live(_) => ProcessLifecycle::Live,
@@ -1080,6 +1154,59 @@ impl App {
         self.visible_process_entries
             .get(selected)
             .map(|entry| self.lifecycle_for_visible_entry(entry))
+    }
+
+    pub(crate) fn selected_live_process_identity(&self) -> Option<ProcessIdentity> {
+        let selected = self.process_table_state.selected()?;
+        self.visible_process_entries
+            .get(selected)
+            .and_then(|entry| self.live_identity_for_visible_entry(entry))
+    }
+
+    pub(crate) fn prune_process_selection_to_visible_live_rows(&mut self) {
+        if self.selected_process_identities.is_empty() && self.process_selection_anchor.is_none() {
+            return;
+        }
+        let visible_live = self
+            .visible_process_entries
+            .iter()
+            .filter_map(|entry| self.live_identity_for_visible_entry(entry))
+            .collect::<HashSet<_>>();
+        self.selected_process_identities
+            .retain(|identity| visible_live.contains(identity));
+        if self
+            .process_selection_anchor
+            .as_ref()
+            .is_some_and(|identity| !visible_live.contains(identity))
+        {
+            self.process_selection_anchor = None;
+        }
+    }
+
+    pub(crate) fn clear_process_multi_selection(&mut self) {
+        self.selected_process_identities.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn selected_process_identities_count(&self) -> usize {
+        self.selected_process_identities.len()
+    }
+
+    pub(crate) fn toggle_focused_process_multi_selection(&mut self) {
+        let Some(identity) = self.selected_live_process_identity() else {
+            self.status = "Only live process rows can be multi-selected".to_string();
+            return;
+        };
+        if !self.selected_process_identities.insert(identity.clone()) {
+            self.selected_process_identities.remove(&identity);
+        }
+        self.process_selection_anchor = Some(identity);
+        let count = self.selected_process_identities.len();
+        self.status = if count == 0 {
+            "Process multi-selection cleared".to_string()
+        } else {
+            format!("Selected {count} live process rows")
+        };
     }
 
     fn visible_ghost_entries(&self, filter: &str) -> Vec<VisibleProcessEntry> {
@@ -2682,6 +2809,112 @@ impl App {
         self.status = format!("Hidden exited tracked row: {}", identity.name);
     }
 
+    pub(crate) fn request_process_kill_confirmation(&mut self) -> bool {
+        if self.activity() == AppActivity::Playback {
+            self.status = "Process kill is unavailable during playback".to_string();
+            return false;
+        }
+        if self.is_display_paused() {
+            self.status = "Resume the live display before killing processes".to_string();
+            return false;
+        }
+
+        let targets = self.selected_live_processes_for_kill();
+        if targets.is_empty() {
+            return false;
+        }
+
+        let image_count = distinct_process_kill_image_names(&targets).len();
+        let row_count = targets.len();
+        self.process_kill_targets = targets;
+        self.process_kill_selection = ProcessKillSelection::Cancel;
+        self.show_process_kill_confirmation = true;
+        self.status = format!("Confirm kill for {row_count} selected rows / {image_count} images");
+        true
+    }
+
+    pub(crate) fn confirm_process_kill(&mut self) {
+        let image_names = distinct_process_kill_image_names(&self.process_kill_targets);
+        let attempts = image_names
+            .iter()
+            .map(|image_name| taskkill_force_image(image_name))
+            .collect::<Vec<_>>();
+        self.reset_process_kill_confirmation();
+        self.clear_process_multi_selection();
+
+        let succeeded = attempts.iter().filter(|attempt| attempt.success).count();
+        let failed = attempts.len().saturating_sub(succeeded);
+        self.status = match (succeeded, failed) {
+            (0, 0) => "No process image names selected".to_string(),
+            (_, 0) => format!("Killed {succeeded} process image name(s)"),
+            (0, _) => format!(
+                "Kill failed for {failed} image name(s): {}",
+                failed_taskkill_names(&attempts)
+            ),
+            _ => format!(
+                "Killed {succeeded}; failed {failed}: {}",
+                failed_taskkill_names(&attempts)
+            ),
+        };
+    }
+
+    pub(crate) fn cancel_process_kill_confirmation(&mut self) {
+        self.reset_process_kill_confirmation();
+        self.status = "Process kill canceled".to_string();
+    }
+
+    pub(crate) fn toggle_process_kill_selection(&mut self) {
+        self.process_kill_selection = self.process_kill_selection.toggled();
+    }
+
+    pub(crate) fn activate_process_kill_selection(&mut self) {
+        match self.process_kill_selection {
+            ProcessKillSelection::Kill => self.confirm_process_kill(),
+            ProcessKillSelection::Cancel => self.cancel_process_kill_confirmation(),
+        }
+    }
+
+    fn reset_process_kill_confirmation(&mut self) {
+        self.show_process_kill_confirmation = false;
+        self.process_kill_selection = ProcessKillSelection::Cancel;
+        self.process_kill_targets.clear();
+    }
+
+    fn selected_live_processes_for_kill(&self) -> Vec<ProcessKillTarget> {
+        if !self.selected_process_identities.is_empty() {
+            return self
+                .visible_process_entries
+                .iter()
+                .filter_map(|entry| self.process_kill_target_for_entry(entry))
+                .filter(|target| self.selected_process_identities.contains(&target.identity))
+                .collect();
+        }
+
+        let Some(selected) = self.process_table_state.selected() else {
+            return Vec::new();
+        };
+        self.visible_process_entries
+            .get(selected)
+            .and_then(|entry| self.process_kill_target_for_entry(entry))
+            .into_iter()
+            .collect()
+    }
+
+    fn process_kill_target_for_entry(
+        &self,
+        entry: &VisibleProcessEntry,
+    ) -> Option<ProcessKillTarget> {
+        let VisibleProcessEntry::Live(index) = entry else {
+            return None;
+        };
+        let process = self.display_snapshot().processes.get(*index)?;
+        Some(ProcessKillTarget {
+            identity: ProcessIdentity::from_row(process),
+            pid: process.pid,
+            name: process.name.clone(),
+        })
+    }
+
     fn selected_visible_process_name(&self) -> Option<String> {
         let selected = self.process_table_state.selected()?;
         self.visible_process_at(selected)
@@ -3665,6 +3898,7 @@ impl App {
     }
 
     pub(crate) fn cycle_sort_column(&mut self) {
+        self.clear_process_order_hold();
         let selected_column = self.selected_process_column();
         if self.sort.column == selected_column {
             self.sort.direction = self.sort.direction.toggled();
@@ -3736,8 +3970,7 @@ impl App {
         loop {
             match self.sampling_worker.try_recv() {
                 Ok(collected) => {
-                    self.apply_sample_result(collected)?;
-                    changed = true;
+                    changed |= self.apply_sample_result(collected)?;
                 }
                 Err(TryRecvError::Empty) => return Ok(changed),
                 Err(TryRecvError::Disconnected) => {
@@ -3749,10 +3982,10 @@ impl App {
         }
     }
 
-    fn apply_sample_result(&mut self, collected: CollectSnapshotResult) -> Result<()> {
+    fn apply_sample_result(&mut self, collected: CollectSnapshotResult) -> Result<bool> {
         self.sampling_in_progress = false;
         if self.activity() == AppActivity::Playback {
-            return Ok(());
+            return Ok(false);
         }
         if self.details_live && !self.graph_visible_range_includes_latest_sample() {
             self.freeze_graph_time_window();
@@ -3765,7 +3998,16 @@ impl App {
         );
         self.last_tracked_live_identities = next_tracked_live_identities;
         let mut next_snapshot = collected.snapshot;
-        sort_process_rows(&mut next_snapshot.processes, self.sort);
+        if self.process_order_hold_active() {
+            preserve_process_row_order(
+                &mut next_snapshot.processes,
+                &self.snapshot.processes,
+                self.sort,
+            );
+        } else {
+            self.clear_process_order_hold();
+            sort_process_rows(&mut next_snapshot.processes, self.sort);
+        }
         self.previous_snapshot = Some(std::mem::replace(&mut self.snapshot, next_snapshot));
         self.process_history.record_snapshot(
             self.snapshot.captured_at,
@@ -3817,7 +4059,7 @@ impl App {
         if !self.is_display_paused() || recording_stopped {
             self.status = status_parts.join(" | ");
         }
-        Ok(())
+        Ok(!self.is_display_paused() || recording_stopped)
     }
 
     fn apply_process_sort(&mut self) {
@@ -3971,6 +4213,69 @@ fn normalized_process_names(names: &[String]) -> HashSet<String> {
         .map(|name| name.trim().to_ascii_lowercase())
         .filter(|name| !name.is_empty())
         .collect()
+}
+
+fn preserve_process_row_order(
+    rows: &mut [ProcessRow],
+    previous_rows: &[ProcessRow],
+    sort: SortSpec,
+) {
+    sort_process_rows(rows, sort);
+    let previous_positions = previous_rows
+        .iter()
+        .enumerate()
+        .map(|(index, process)| (ProcessIdentity::from_row(process), index))
+        .collect::<HashMap<_, _>>();
+    rows.sort_by(|left, right| {
+        let left_position = previous_positions.get(&ProcessIdentity::from_row(left));
+        let right_position = previous_positions.get(&ProcessIdentity::from_row(right));
+        match (left_position, right_position) {
+            (Some(left), Some(right)) => left.cmp(right),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
+}
+
+pub(crate) fn distinct_process_kill_image_names(targets: &[ProcessKillTarget]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut names = Vec::new();
+    for target in targets {
+        let key = target.name.trim().to_ascii_lowercase();
+        if key.is_empty() || !seen.insert(key) {
+            continue;
+        }
+        names.push(target.name.clone());
+    }
+    names
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskkillAttempt {
+    image_name: String,
+    success: bool,
+}
+
+fn taskkill_force_image(image_name: &str) -> TaskkillAttempt {
+    let success = Command::new("taskkill")
+        .args(["/f", "/im", image_name])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    TaskkillAttempt {
+        image_name: image_name.to_string(),
+        success,
+    }
+}
+
+fn failed_taskkill_names(attempts: &[TaskkillAttempt]) -> String {
+    attempts
+        .iter()
+        .filter(|attempt| !attempt.success)
+        .map(|attempt| attempt.image_name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn tracked_live_identities(

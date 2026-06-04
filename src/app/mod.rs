@@ -7,8 +7,9 @@ pub(crate) mod path_completion;
 pub(crate) mod state;
 
 use std::{
-    io::Stdout,
-    thread,
+    fs::File,
+    io::{BufWriter, Stdout, Write},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -43,6 +44,7 @@ pub(crate) use state::InfoPanelMode;
 pub(crate) use state::LogDirSelection;
 #[cfg(test)]
 pub(crate) use state::PROCESS_INFO_DEBOUNCE;
+pub(crate) use state::ProcessKillSelection;
 pub(crate) use state::ProcessLifecycle;
 pub(crate) use state::QuitConfirmSelection;
 pub(crate) use state::RecordingOverwriteSelection;
@@ -52,6 +54,7 @@ pub(crate) use state::TrackedRemoveSelection;
 #[cfg(test)]
 pub(crate) use state::VisibleProcessEntry;
 pub(crate) use state::VisibleProcessRow;
+pub(crate) use state::distinct_process_kill_image_names;
 
 pub(crate) fn run_tui(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -60,6 +63,7 @@ pub(crate) fn run_tui(
     let mut last_tick = Instant::now();
     let mut screen_size = terminal.size()?;
     let mut dirty = true;
+    let mut loop_trace = LoopTrace::from_env();
 
     loop {
         if crate::platform::termination_requested() {
@@ -67,7 +71,20 @@ pub(crate) fn run_tui(
             break;
         }
 
-        dirty |= app.poll_sample_results()?;
+        let trace_selected = app.process_table_state.selected();
+        let trace_start = Instant::now();
+        let sample_dirty = app.poll_sample_results()?;
+        if sample_dirty {
+            if let Some(trace) = loop_trace.as_mut() {
+                trace.log(
+                    "sample",
+                    trace_start.elapsed(),
+                    trace_selected,
+                    trace_selected,
+                );
+            }
+        }
+        dirty |= sample_dirty;
         dirty |= app.poll_process_info_results()?;
         dirty |= app.poll_open_files_results()?;
         dirty |= app.poll_log_workers();
@@ -76,7 +93,17 @@ pub(crate) fn run_tui(
         if dirty {
             screen_size = terminal.size()?;
             sync_layout_state(app, Rect::new(0, 0, screen_size.width, screen_size.height));
+            let trace_selected = app.process_table_state.selected();
+            let trace_start = Instant::now();
             terminal.draw(|frame| draw(frame, app))?;
+            if let Some(trace) = loop_trace.as_mut() {
+                trace.log(
+                    "draw",
+                    trace_start.elapsed(),
+                    trace_selected,
+                    trace_selected,
+                );
+            }
             dirty = false;
         }
 
@@ -99,14 +126,24 @@ pub(crate) fn run_tui(
             .unwrap_or(timeout);
 
         let wait = timeout.min(EVENT_POLL_SLICE);
-        if event::poll(Duration::ZERO)? {
+        if event::poll(wait)? {
             if crate::platform::termination_requested() {
                 app.confirm_quit()?;
                 break;
             }
             match event::read()? {
                 Event::Key(key) => {
+                    let trace_before = app.process_table_state.selected();
+                    let trace_start = Instant::now();
                     app.on_key(key)?;
+                    if let Some(trace) = loop_trace.as_mut() {
+                        trace.log(
+                            "key",
+                            trace_start.elapsed(),
+                            trace_before,
+                            app.process_table_state.selected(),
+                        );
+                    }
                     if app.should_quit {
                         break;
                     }
@@ -126,18 +163,70 @@ pub(crate) fn run_tui(
                 }
                 _ => {}
             }
-        } else if !wait.is_zero() {
-            thread::sleep(wait);
         }
 
         if last_tick.elapsed() >= app.tick_interval() {
             app.request_sample()?;
             last_tick = Instant::now();
-            dirty = true;
+            dirty |= !app.is_display_paused();
         }
     }
 
     Ok(())
+}
+
+struct LoopTrace {
+    start: Instant,
+    writer: BufWriter<File>,
+}
+
+impl LoopTrace {
+    fn from_env() -> Option<Self> {
+        let path = std::env::var_os("WINPROC_TUI_TRACE_LOOP")?;
+        let path = if path == "1" {
+            PathBuf::from("logs/loop-trace.csv")
+        } else {
+            PathBuf::from(path)
+        };
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent).ok()?;
+        }
+        let mut writer = BufWriter::new(File::create(path).ok()?);
+        writeln!(
+            writer,
+            "elapsed_ms,event,duration_us,selected_before,selected_after"
+        )
+        .ok()?;
+        Some(Self {
+            start: Instant::now(),
+            writer,
+        })
+    }
+
+    fn log(
+        &mut self,
+        event: &str,
+        duration: Duration,
+        selected_before: Option<usize>,
+        selected_after: Option<usize>,
+    ) {
+        let _ = writeln!(
+            self.writer,
+            "{},{},{},{},{}",
+            self.start.elapsed().as_millis(),
+            event,
+            duration.as_micros(),
+            selected_before
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            selected_after
+                .map(|value| value.to_string())
+                .unwrap_or_default()
+        );
+    }
 }
 
 fn sync_layout_state(app: &mut App, screen_area: Rect) {

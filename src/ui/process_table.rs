@@ -407,7 +407,12 @@ fn process_table_row(
             theme,
         ));
     }
-    Row::new(cells).style(process_row_style(row_selected, row.is_tracked_total, theme))
+    Row::new(cells).style(process_row_style(
+        row_selected,
+        row.multi_selected,
+        row.is_tracked_total,
+        theme,
+    ))
 }
 
 fn process_metric_cell(
@@ -498,7 +503,12 @@ fn process_metric_change_color(change: Option<Ordering>, theme: Theme) -> Option
     }
 }
 
-fn process_row_style(selected: bool, tracked_total: bool, theme: Theme) -> Style {
+fn process_row_style(
+    selected: bool,
+    multi_selected: bool,
+    tracked_total: bool,
+    theme: Theme,
+) -> Style {
     let fg = if tracked_total {
         theme.accent
     } else {
@@ -509,6 +519,8 @@ fn process_row_style(selected: bool, tracked_total: bool, theme: Theme) -> Style
             .fg(fg)
             .bg(theme.highlight)
             .add_modifier(Modifier::BOLD)
+    } else if multi_selected {
+        Style::default().fg(fg).bg(theme.selection)
     } else {
         Style::default().fg(fg).bg(theme.panel)
     }
@@ -866,12 +878,14 @@ mod tests {
             process: &process,
             tracked: true,
             lifecycle: ProcessLifecycle::Live,
+            multi_selected: false,
             is_tracked_total: false,
         };
         let ordinary = VisibleProcessRow {
             process: &process,
             tracked: false,
             lifecycle: ProcessLifecycle::Live,
+            multi_selected: false,
             is_tracked_total: false,
         };
 
@@ -931,17 +945,33 @@ mod tests {
             process: &process,
             tracked: false,
             lifecycle: ProcessLifecycle::Live,
+            multi_selected: false,
             is_tracked_total: true,
         };
 
         assert_eq!(process_text_style(&row, theme).fg, Some(theme.accent));
         assert_eq!(
-            process_row_style(false, row.is_tracked_total, theme).fg,
+            process_row_style(false, false, row.is_tracked_total, theme).fg,
             Some(theme.accent)
         );
         assert_eq!(
-            process_row_style(true, row.is_tracked_total, theme).fg,
+            process_row_style(true, false, row.is_tracked_total, theme).fg,
             Some(theme.accent)
+        );
+    }
+
+    #[test]
+    fn multi_selected_rows_use_selection_color() {
+        let theme = crate::ui::theme::THEMES[0];
+
+        assert_eq!(
+            process_row_style(false, true, false, theme).bg,
+            Some(theme.selection)
+        );
+        assert!(
+            !process_row_style(false, true, false, theme)
+                .add_modifier
+                .contains(Modifier::BOLD)
         );
     }
 

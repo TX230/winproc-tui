@@ -8,8 +8,8 @@ use ratatui::layout::Rect;
 
 use crate::{
     app::{
-        App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, QuitConfirmSelection,
-        RecordingOverwriteSelection, TrackedRemoveSelection,
+        App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, ProcessKillSelection,
+        QuitConfirmSelection, RecordingOverwriteSelection, TrackedRemoveSelection,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
@@ -22,11 +22,11 @@ use crate::{
         layout::{cpu_panel_area_for_screen, details_graph_area, details_samples_area},
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
-        process_metric_column_index_at, process_table_area_for_screen, process_table_page_size,
-        process_tracked_only_checkbox_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
-        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
-        recording_path_button_at, settings_ok_button_area, settings_selection_at,
-        tracked_remove_button_at,
+        process_kill_button_at, process_metric_column_index_at, process_table_area_for_screen,
+        process_table_page_size, process_tracked_only_checkbox_area, quit_confirm_button_at,
+        ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
+        recording_overwrite_button_at, recording_path_button_at, settings_ok_button_area,
+        settings_selection_at, tracked_remove_button_at,
     },
 };
 
@@ -129,6 +129,24 @@ impl App {
                 }
                 KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
                     self.toggle_tracked_remove_selection();
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
+        if self.show_process_kill_confirmation {
+            match key.code {
+                KeyCode::Enter => self.activate_process_kill_selection(),
+                KeyCode::Esc => self.cancel_process_kill_confirmation(),
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
+                    self.cancel_process_kill_confirmation();
+                }
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
+                    self.confirm_process_kill();
+                }
+                KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+                    self.toggle_process_kill_selection();
                 }
                 _ => {}
             }
@@ -514,12 +532,36 @@ impl App {
             }
             KeyCode::Up => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    self.move_selection_up(1);
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                    {
+                        self.extend_process_selection_up(1);
+                    } else if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                    {
+                        self.move_selection_cursor_up(1);
+                    } else {
+                        self.move_selection_up(1);
+                    }
                 }
             }
             KeyCode::Down => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    self.move_selection_down(1);
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                    {
+                        self.extend_process_selection_down(1);
+                    } else if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                    {
+                        self.move_selection_cursor_down(1);
+                    } else {
+                        self.move_selection_down(1);
+                    }
                 }
             }
             KeyCode::PageUp => {
@@ -559,7 +601,9 @@ impl App {
             }
             KeyCode::Delete => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    if !self.clear_selected_graph_metric() {
+                    if !self.request_process_kill_confirmation()
+                        && !self.clear_selected_graph_metric()
+                    {
                         self.hide_selected_ghost_row();
                     }
                 }
@@ -606,8 +650,18 @@ impl App {
             KeyCode::Char('x') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.clear_ab_comparison_with_status();
             }
+            KeyCode::Char(' ')
+                if self.focused_panel == FocusedPanel::Processes
+                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.toggle_focused_process_multi_selection();
+            }
             KeyCode::Char(' ') => {
-                if self.focused_panel == FocusedPanel::Processes {
+                if self.focused_panel == FocusedPanel::Processes
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
                     self.toggle_selected_process_tracking();
                 }
             }
@@ -928,6 +982,17 @@ impl App {
                     Some(TrackedRemoveSelection::Cancel) => {
                         self.cancel_tracked_remove_confirmation()
                     }
+                    None => {}
+                }
+            }
+            return;
+        }
+
+        if self.show_process_kill_confirmation {
+            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                match process_kill_button_at(screen_area, mouse.column, mouse.row) {
+                    Some(ProcessKillSelection::Kill) => self.confirm_process_kill(),
+                    Some(ProcessKillSelection::Cancel) => self.cancel_process_kill_confirmation(),
                     None => {}
                 }
             }

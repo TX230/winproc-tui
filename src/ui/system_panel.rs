@@ -546,7 +546,7 @@ pub(crate) fn render_summary_info_value_spans(value: &str, theme: Theme) -> Vec<
 
     for ch in value.chars() {
         let is_numeric = if current_is_numeric == Some(true) {
-            ch.is_ascii_digit() || ch == '.'
+            ch.is_ascii_digit() || ch == '.' || ch == ','
         } else {
             starts_numeric_value_span(previous_char, ch)
         };

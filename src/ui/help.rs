@@ -85,6 +85,18 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Move selected row",
     },
     HelpItem {
+        key: "Shift+Up/Down",
+        label: "Select row range",
+    },
+    HelpItem {
+        key: "Ctrl+Up/Down",
+        label: "Move cursor only",
+    },
+    HelpItem {
+        key: "Ctrl+Space",
+        label: "Toggle row selection",
+    },
+    HelpItem {
         key: "PageUp/PageDown",
         label: "Move by page",
     },
@@ -138,7 +150,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Delete",
-        label: "Clear metric / hide row",
+        label: "Kill selected live process",
     },
     HelpItem {
         key: "Ctrl+U",

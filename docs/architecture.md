@@ -119,13 +119,14 @@ The main loop is a single-threaded event loop driven by `Instant`:
 
 1. `app.poll_sample_results()` receives arrived snapshots from `SamplingWorker` and applies them to state through `apply_sample_result`.
 2. If `dirty` is set, `sync_layout_state` recalculates panel page sizes from the screen size, then `ui::draw(frame, app)` redraws.
-3. Until the next tick, the loop checks terminal input with non-blocking `event::poll(Duration::ZERO)` and sleeps in slices no longer than 50 ms. This keeps the main loop able to observe Windows console control requests promptly even if the terminal is closing.
+3. Until the next tick, the loop waits for terminal input with `event::poll(wait)`, where `wait` is capped at 50 ms and shortened for in-flight worker polling. This wakes promptly for key repeats while still checking Windows console control requests regularly.
 4. Keys are delegated to `App::on_key`; mouse events are delegated to `App::on_mouse`; `Resize` sets `dirty`.
 5. When `tick_interval()` has elapsed, currently fixed at 1 second, the loop issues `app.request_sample()` and updates `last_tick`.
 
 Key points:
 
 - Drawing is **dirty-driven**. `terminal.draw` runs only when state has changed.
+- While display pause is active, background sample results continue updating live history, but they do not mark the UI dirty unless a visible warning or recording error needs to be shown.
 - Sampling is **non-blocking**. The UI only sends requests; responses are read later with `try_recv`.
 - Interactive quits set `should_quit` through key handling, with the quit confirmation modal in between.
 - If the Windows console control handler has observed `Ctrl+C`, `Ctrl+Break`, terminal close, logoff, or shutdown, the loop confirms quit internally without opening the modal, so recording is stopped and flushed before `App` drops its workers. For terminal close, logoff, and shutdown, the handler thread waits up to 4.5 seconds for this cleanup path to complete, then lets Windows continue its default close handling if the main loop did not finish.
@@ -208,12 +209,12 @@ There are two history types.
 `App` is a single large struct that holds all state shared by UI drawing and event handling. Main groups:
 
 - **Runtime/sampler**: `runtime: RuntimeConfig`, `sampling_worker: SamplingWorker`, `sampling_in_progress: bool`, `snapshot: Snapshot`, `previous_snapshot: Option<Snapshot>` for live process-table change highlighting.
-- **Process table**: `process_table_state: TableState`, `process_page_size`, `selected_process_identity`, `selected_process_column_index`, `process_columns`, `column_preset`, `sort: SortSpec`, `process_order_locked`, `filter_text` / `filter_draft` / `filter_editing`.
+- **Process table**: `process_table_state: TableState`, `process_page_size`, `selected_process_identity`, multi-selection anchor / live identity set, `selected_process_column_index`, short navigation order hold, `process_columns`, `column_preset`, `sort: SortSpec`, `filter_text` / `filter_draft` / `filter_editing`.
 - **Visible-row cache**: `visible_process_entries: Vec<VisibleProcessEntry>` (`Live(index)` or `Ghost(identity)`) plus exited tracked rows in `exited_tracked_rows`. `rebuild_visible_process_cache` filters by text filter, tracked state, and exited state.
 - **Tracking**: `watch_list`, `normalized_watch_names`, `watch_enabled`, `last_tracked_live_identities`.
 - **Details / Graph**: `show_details`, graph slots for Process metrics or system metrics, graph span/offset/Y-min lock, sample-list selection/offset, scrollbar drag state, and `details_live` for auto-scroll.
 - **A/B comparison**: `ab_comparison: Option<AbComparison>`. It is keyed by scope (process or system metric) plus metric, and is cleared when the target changes.
-- **Modals**: Flags and scroll/selection state for Help, column picker, log list, log directory input and validation, open files, Settings, quit confirmation, recording path input, overwrite confirmation, no-tracked warning, tracked removal confirmation, and warning dialogs. `has_modal_focus()` returns whether any modal is open.
+- **Modals**: Flags and scroll/selection state for Help, column picker, log list, log directory input and validation, open files, Settings, quit confirmation, recording path input, overwrite confirmation, no-tracked warning, tracked removal confirmation, process-kill confirmation, and warning dialogs. `has_modal_focus()` returns whether any modal is open.
 - **Recording/replay**: `recording_session: Option<RecordingSession>`, `recording_last_dir`, `recording_spinner_index`, `playback_path`, `playback_display`, and log-list/load workers. `activity()` returns `Live` / `Recording` / `Playback`.
 - **Theme/status**: `theme_index`, `status` footer text.
 
@@ -234,6 +235,9 @@ Representative operations:
 - `KeyEventKind::Press` and `Repeat` are handled, while `Release` is ignored so held editing keys such as Backspace use terminal key repeat without double-processing key-up events.
 - `Tab` / `Shift+Tab`: move focus with `FocusedPanel::next/previous(show_details)`.
 - `Left` / `Right` (Processes): select a process-table column.
+- `Shift+Up` / `Shift+Down` (Processes): extend live-row multi-selection from the anchor to the cursor row.
+- `Ctrl+Up` / `Ctrl+Down` (Processes): move the process-table cursor without changing the multi-selection.
+- `Ctrl+Space` (Processes): add/remove the current live row from the multi-selection.
 - `Shift+Left` / `Shift+Right` (Processes): move the selected metric column left / right in the custom process-table column order.
 - `Enter` (Processes): make the selected row the Details target.
 - `Enter` (System): report the selected RAM/VRAM metric in status.
@@ -241,7 +245,7 @@ Representative operations:
 - `1` / `2` / `3` / `4` (Cpu): assign `CPU Avg` to the matching Graph slot.
 - `Space` (Processes): add/remove the selected process name in `watch_list`.
 - `t`: toggle `watch_enabled`.
-- `Delete`: delete an exited tracked row (Ghost Row) through the history-discard confirmation dialog.
+- `Delete`: for live rows, open process-kill confirmation and run `taskkill /f /im` per selected image name after confirmation; for Ghost Rows, delete an exited tracked row through the history-discard confirmation dialog.
 - `s` / `c`: toggle sorting / open the column picker.
 - `i`: switch System Info / Process Info.
 - `Ctrl+C`: copy the selected row text for RAM/VRAM, CPUs, Processes, or Samples to the clipboard.
@@ -282,7 +286,7 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 
 - `system_panel`: Draws RAM, Committed, GPU Dedicated, and GPU Shared in four rows, highlighting the selected metric and A/B state. The right side shows System Info or Process Info according to `InfoPanelMode`.
 - `cpu_panel`: Draws the compact `CPUs` panel above the Process table. It shows average CPU usage, current P/E clock averages when PDH reports them, and per-logical-CPU colored load glyphs with P/E markers when Windows efficiency classes distinguish core types. The panel can take focus; `CPU Avg` uses `SystemHistory`, can be assigned to Graph slots, and reserves the first two content cells for the Graph slot number.
-- `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Ghost Rows (exited tracked processes) use a different color and appear after live rows. Headers show `↑` / `↓` for the sorted column and append `L` while `process_order_locked` is active. Live metric cells compare their present raw value against `previous_snapshot` and use the success color for increases and the danger color for decreases.
+- `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Ghost Rows (exited tracked processes) use a different color and appear after live rows. The cursor row and live multi-selected rows use separate highlights. Headers show `↑` / `↓` for the sorted column. Live metric cells compare their present raw value against `previous_snapshot` and use the success color for increases and the danger color for decreases. While the user is actively moving the process cursor, sample refreshes briefly preserve the current row order to avoid periodic cursor jumps from metric-driven resorting.
 - `details_panel`: Upper Graph (`Chart` widget) plus lower Samples table. The Graph shows history for the current `details_target` / `details_metric` across `graph_time_span_seconds`. It supports Y-min lock to 0, A/B markers, selected cursor, and offset movement with Ctrl+Arrow or mouse drag. A/B marker letters are drawn on the Graph X-axis line, separate from the selected cursor value label. Ctrl+Arrow pans by about one eighth of the current time span; mouse drag clamps the offset so at least one sample from the active series remains in the visible range. Fit-all mode is not cleared by drag attempts. Live graph scrolling stops only when the Graph visible range is moved away from the live edge by Ctrl+Arrow or graph mouse drag; moving the cursor or setting an A/B point does not freeze the Graph visible range. While stopped, sampling updates preserve the absolute visible time window instead of sliding it forward.
 - `recording_dialog`: Save-path edit dialog, overwrite confirmation, and no-tracked warning.
 - `open_files`: Displays disk file handles for the selected process grouped by path in a compact count / file / directory table. Permission failures and unavailable handles stay as diagnostic lines in the UI and are not part of continuous sampling. The file-name filter is modal state kept across Open files modal openings during the application session.
@@ -347,7 +351,7 @@ During Playback, `Esc` returns to Live. Closing the Log list while in Playback a
 - `watch_list` contains only **process names normalized to lowercase**, not PIDs. All processes with the same name are tracked.
 - When a tracked process existed in the previous snapshot but not in the current one, `record_exited_tracked_rows` saves the last observed `ProcessRow` in `exited_tracked_rows`, and the table keeps showing it as `VisibleProcessEntry::Ghost(identity)`.
 - History is also retained per `ProcessIdentity`, so values remain available in Details after exit.
-- `Delete` through the tracked-removal confirmation modal discards a Ghost Row and its history. `tracked_remove_total_samples` / `discarded_samples` are aggregate values shown in that confirmation dialog.
+- `Delete` on a live row opens the process-kill confirmation dialog. After confirmation, `taskkill /f /im` runs once for each selected image name. `Delete` on a Ghost Row still discards that exited tracked row and its history.
 
 ## 13. Tests
 

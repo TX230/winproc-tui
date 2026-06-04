@@ -8,6 +8,7 @@ pub(crate) mod help;
 pub(crate) mod layout;
 pub(crate) mod log_list;
 pub(crate) mod open_files;
+pub(crate) mod process_kill_confirm;
 pub(crate) mod process_table;
 pub(crate) mod quit_confirm;
 pub(crate) mod recording_dialog;
@@ -60,6 +61,10 @@ pub(crate) use open_files::{
     open_files_close_button_area_for_screen, open_files_page_size_for_screen,
     open_files_scrollbar_area_for_screen, open_files_total_rows,
 };
+use process_kill_confirm::draw_process_kill_confirm;
+pub(crate) use process_kill_confirm::process_kill_button_at;
+#[cfg(test)]
+pub(crate) use process_kill_confirm::process_kill_dialog_area;
 use process_table::draw_process_table;
 #[cfg(test)]
 pub(crate) use process_table::process_table_visible_column_count;
@@ -129,6 +134,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_tracked_remove_confirmation {
         draw_tracked_remove_confirm(frame, area, app, theme);
+    }
+    if app.show_process_kill_confirmation {
+        draw_process_kill_confirm(frame, area, app, theme);
     }
     if app.show_settings_dialog {
         draw_settings_dialog(frame, area, app, theme);

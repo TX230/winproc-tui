@@ -1,4 +1,6 @@
 use std::io::{self, Stdout};
+#[cfg(test)]
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 #[cfg(test)]
@@ -82,7 +84,8 @@ use ui::layout::centered_rect;
 use ui::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
     details_graph_area_for_screen, details_samples_area_for_screen, details_slot_areas_for_screen,
-    process_table_area_for_screen, process_table_page_size, process_table_visible_column_count,
+    process_kill_button_at, process_kill_dialog_area, process_table_area_for_screen,
+    process_table_page_size, process_table_visible_column_count,
 };
 #[cfg(test)]
 use ui::{
@@ -440,6 +443,23 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn render_summary_info_value_spans_keeps_comma_numbers_together() {
+        let spans = render_summary_info_value_spans("C: 861/999 GB, X: 400/2,000 GB", THEMES[0]);
+        let rendered = spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "C: ", "861", "/", "999", " GB, X: ", "400", "/", "2,000", " GB"
+            ]
+        );
+        assert_eq!(spans[7].style.fg, Some(THEMES[0].text));
+    }
+
+    #[test]
     fn render_summary_info_value_spans_keeps_cache_labels_as_text() {
         let spans =
             render_summary_info_value_spans("L1 1.00 MiB  L2 12.00 MiB  L3 25.00 MiB", THEMES[0]);
@@ -557,6 +577,259 @@ name = "legacy-watch.exe"
         app.select_first_row();
         assert_eq!(app.process_table_state.selected(), Some(0));
         assert_eq!(app.process_table_state.offset(), 0);
+    }
+
+    #[test]
+    fn process_shift_up_down_selects_live_row_range() {
+        let mut app = make_test_app(5, 10);
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert_eq!(app.process_table_state.selected(), Some(1));
+        assert_eq!(app.selected_process_identities_count(), 2);
+        assert!(
+            app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[0]
+                ))
+        );
+        assert!(
+            app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[1]
+                ))
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.process_table_state.selected(), Some(2));
+        assert_eq!(app.selected_process_identities_count(), 0);
+    }
+
+    #[test]
+    fn normal_process_navigation_does_not_keep_multi_selection_anchor() {
+        let mut app = make_test_app(5, 10);
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.process_table_state.selected(), Some(1));
+        assert!(app.process_selection_anchor.is_none());
+        assert_eq!(app.selected_process_identities_count(), 0);
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert_eq!(app.process_table_state.selected(), Some(2));
+        assert_eq!(app.selected_process_identities_count(), 2);
+        assert!(
+            app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[1]
+                ))
+        );
+        assert!(
+            app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[2]
+                ))
+        );
+    }
+
+    #[test]
+    #[ignore = "manual performance probe; run with --ignored --nocapture"]
+    fn perf_process_cursor_navigation_and_refresh_frames() {
+        fn summarize(label: &str, durations: &[Duration]) {
+            let mut micros = durations
+                .iter()
+                .map(|duration| duration.as_micros() as u64)
+                .collect::<Vec<_>>();
+            micros.sort_unstable();
+            let percentile = |percent: usize| -> u64 {
+                let index = micros.len().saturating_sub(1).saturating_mul(percent) / 100;
+                micros[index]
+            };
+            let avg = micros.iter().sum::<u64>() / micros.len().max(1) as u64;
+            println!(
+                "{label}: avg={}us p50={}us p95={}us p99={}us max={}us",
+                avg,
+                percentile(50),
+                percentile(95),
+                percentile(99),
+                micros.last().copied().unwrap_or(0)
+            );
+        }
+
+        let screen = Rect::new(0, 0, 100, 45);
+        let page_size = process_table_page_size(process_table_area_for_screen(screen, false));
+
+        for row_count in [120usize, 1_000usize] {
+            let mut app = make_test_app(row_count, page_size);
+            app.focused_panel = FocusedPanel::Processes;
+            app.set_screen_area(screen);
+            app.previous_snapshot = Some(app.snapshot.clone());
+            let backend = TestBackend::new(screen.width, screen.height);
+            let mut terminal = Terminal::new(backend).expect("test terminal should be created");
+            terminal
+                .draw(|frame| ui::draw(frame, &app))
+                .expect("warmup render should succeed");
+
+            let mut moving_down = true;
+            let mut frame_durations = Vec::new();
+            for _ in 0..300 {
+                let selected = app.process_table_state.selected().unwrap_or(0);
+                if selected >= row_count.saturating_sub(1) {
+                    moving_down = false;
+                } else if selected == 0 {
+                    moving_down = true;
+                }
+                let key = if moving_down {
+                    KeyCode::Down
+                } else {
+                    KeyCode::Up
+                };
+                let start = Instant::now();
+                app.on_key(KeyEvent::new(key, KeyModifiers::NONE))
+                    .expect("navigation should succeed");
+                terminal
+                    .draw(|frame| ui::draw(frame, &app))
+                    .expect("render should succeed");
+                frame_durations.push(start.elapsed());
+            }
+            summarize(&format!("cursor+render rows={row_count}"), &frame_durations);
+
+            let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+            let mut app = make_test_app_with_worker(row_count, page_size, sampling_worker);
+            app.focused_panel = FocusedPanel::Processes;
+            app.set_screen_area(screen);
+            app.previous_snapshot = Some(app.snapshot.clone());
+            let backend = TestBackend::new(screen.width, screen.height);
+            let mut terminal = Terminal::new(backend).expect("test terminal should be created");
+            terminal
+                .draw(|frame| ui::draw(frame, &app))
+                .expect("warmup render should succeed");
+
+            let snapshots = (0..40)
+                .map(|index| {
+                    let mut snapshot = test_snapshot(row_count);
+                    snapshot.captured_at =
+                        app.snapshot.captured_at + chrono::Duration::seconds(index + 1);
+                    CollectSnapshotResult {
+                        snapshot,
+                        warning: None,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mut refresh_durations = Vec::new();
+            for sample in snapshots {
+                app.sampling_in_progress = true;
+                result_tx.send(sample).unwrap();
+                let start = Instant::now();
+                app.poll_sample_results()
+                    .expect("sample poll should succeed");
+                terminal
+                    .draw(|frame| ui::draw(frame, &app))
+                    .expect("render should succeed");
+                refresh_durations.push(start.elapsed());
+            }
+            summarize(
+                &format!("sample+render rows={row_count}"),
+                &refresh_durations,
+            );
+        }
+    }
+
+    #[test]
+    fn process_ctrl_space_toggles_discontiguous_live_rows() {
+        let mut app = make_test_app(5, 10);
+
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert_eq!(app.process_table_state.selected(), Some(2));
+        assert_eq!(app.selected_process_identities_count(), 2);
+        assert!(
+            app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[0]
+                ))
+        );
+        assert!(
+            app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[2]
+                ))
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert_eq!(app.selected_process_identities_count(), 1);
+        assert!(
+            !app.selected_process_identities
+                .contains(&model::ProcessIdentity::from_row(
+                    &app.snapshot.processes[2]
+                ))
+        );
+    }
+
+    #[test]
+    fn process_kill_confirmation_uses_multi_selection_and_distinct_image_names() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.processes[0].name = "same.exe".to_string();
+        app.snapshot.processes[1].name = "same.exe".to_string();
+        app.snapshot.processes[2].name = "other.exe".to_string();
+        app.rebuild_visible_process_cache();
+        app.clamp_process_table_state();
+
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert!(app.request_process_kill_confirmation());
+        assert!(app.show_process_kill_confirmation);
+        assert_eq!(app.process_kill_targets.len(), 3);
+        assert_eq!(
+            app::distinct_process_kill_image_names(&app.process_kill_targets),
+            vec!["same.exe".to_string(), "other.exe".to_string()]
+        );
+    }
+
+    #[test]
+    fn process_kill_confirmation_dialog_is_compact_and_clickable() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.snapshot.processes[0].name = "msedge.exe".to_string();
+        app.rebuild_visible_process_cache();
+        app.clamp_process_table_state();
+
+        assert!(app.request_process_kill_confirmation());
+
+        let screen = Rect::new(0, 0, 100, 45);
+        let popup = process_kill_dialog_area(screen);
+        assert_eq!(popup.width, 64);
+        assert_eq!(popup.height, 11);
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (kill_x, kill_y) =
+            find_text_position(&buffer, "[ Kill ]").expect("kill button should render");
+
+        assert!(kill_y < popup.bottom());
+        assert_eq!(
+            process_kill_button_at(screen, kill_x + 2, kill_y),
+            Some(app::ProcessKillSelection::Kill)
+        );
     }
 
     #[test]
@@ -1059,7 +1332,7 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn delete_clears_graph_metric_for_selected_cell_before_ghost_delete() {
+    fn delete_on_live_process_opens_kill_confirm_before_graph_clear() {
         let mut app = make_test_app(3, 10);
         app.set_screen_area(Rect::new(0, 0, 120, 80));
 
@@ -1068,9 +1341,9 @@ name = "legacy-watch.exe"
         app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE))
             .unwrap();
 
-        assert!(app.graph_slots[0].is_none());
-        assert!(!app.show_details);
-        assert_eq!(app.status, "Graph#1 cleared");
+        assert!(app.show_process_kill_confirmation);
+        assert!(app.graph_slots[0].is_some());
+        assert_eq!(app.process_kill_targets.len(), 1);
     }
 
     #[test]
@@ -2791,6 +3064,50 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn sample_refresh_keeps_process_order_while_navigation_is_active() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(3, 10, sampling_worker);
+        app.snapshot.processes[0].private_bytes = Some(10);
+        app.snapshot.processes[1].private_bytes = Some(30);
+        app.snapshot.processes[2].private_bytes = Some(20);
+        app.selected_process_column_index = 2;
+        app.cycle_sort_column();
+        app.select_first_row();
+        app.move_selection_down(1);
+        assert_eq!(app.process_table_state.selected(), Some(1));
+        let sorted_pids = app
+            .snapshot
+            .processes
+            .iter()
+            .map(|process| process.pid)
+            .collect::<Vec<_>>();
+        assert_eq!(sorted_pids, vec![1, 2, 0]);
+
+        let mut next = test_snapshot(3);
+        next.processes[0].private_bytes = Some(100);
+        next.processes[1].private_bytes = Some(30);
+        next.processes[2].private_bytes = Some(20);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: next,
+                warning: None,
+            })
+            .unwrap();
+
+        app.poll_sample_results().unwrap();
+
+        let refreshed_pids = app
+            .snapshot
+            .processes
+            .iter()
+            .map(|process| process.pid)
+            .collect::<Vec<_>>();
+        assert_eq!(refreshed_pids, vec![1, 2, 0]);
+        assert_eq!(app.process_table_state.selected(), Some(1));
+    }
+
+    #[test]
     fn paused_display_freezes_visible_metrics_while_histories_continue() {
         let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
         let mut app = make_test_app_with_worker(3, 10, sampling_worker);
@@ -2817,7 +3134,7 @@ name = "legacy-watch.exe"
             })
             .unwrap();
 
-        app.poll_sample_results().unwrap();
+        assert!(!app.poll_sample_results().unwrap());
 
         assert_eq!(app.snapshot.used_memory, 99);
         assert_eq!(app.snapshot.processes[0].private_bytes, Some(99));
@@ -3046,7 +3363,12 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("Pause / Resume"), "{rendered}");
         assert!(rendered.contains("Copy selected row"), "{rendered}");
 
-        assert!(rendered.contains("Clear metric / hide row"), "{rendered}");
+        assert!(rendered.contains("Select row range"), "{rendered}");
+        assert!(rendered.contains("Toggle row selection"), "{rendered}");
+        assert!(
+            rendered.contains("Kill selected live process"),
+            "{rendered}"
+        );
         assert!(rendered.contains("Refresh open-files list"), "{rendered}");
 
         assert!(rendered.contains("Click panel"), "{rendered}");
@@ -6481,8 +6803,11 @@ name = "legacy-watch.exe"
             process_table_state: table_state,
             process_page_size: page_size,
             selected_process_identity,
+            process_selection_anchor: None,
+            selected_process_identities: std::collections::HashSet::new(),
             selected_process_column_index: 2,
             process_metric_column_offset: 0,
+            process_order_hold_until: None,
             show_help: false,
             help_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,
@@ -6506,6 +6831,9 @@ name = "legacy-watch.exe"
             tracked_remove_name: String::new(),
             tracked_remove_total_samples: 0,
             tracked_remove_discarded_samples: 0,
+            show_process_kill_confirmation: false,
+            process_kill_selection: app::ProcessKillSelection::Cancel,
+            process_kill_targets: Vec::new(),
             show_display_area_warning: false,
             show_metric_column_warning: false,
             show_no_graph_metrics_warning: false,
