@@ -21,6 +21,7 @@ impl SortColumn {
     pub(crate) fn default_direction(self) -> SortDirection {
         match self {
             Self::Pid | Self::ProcessName => SortDirection::Asc,
+            Self::Metric(MetricColumn::FullPath) => SortDirection::Asc,
             Self::Metric(_) => SortDirection::Desc,
         }
     }
@@ -84,10 +85,11 @@ pub(crate) enum MetricColumn {
     GpuSharedBytes,
     IoReadBytesPerSec,
     IoWriteBytesPerSec,
+    FullPath,
 }
 
 impl MetricColumn {
-    pub(crate) const ALL: [Self; 14] = [
+    pub(crate) const ALL: [Self; 15] = [
         Self::CpuPercent,
         Self::PrivateBytes,
         Self::WorksetBytes,
@@ -102,6 +104,7 @@ impl MetricColumn {
         Self::GpuSharedBytes,
         Self::IoReadBytesPerSec,
         Self::IoWriteBytesPerSec,
+        Self::FullPath,
     ];
 
     pub(crate) fn label(self) -> &'static str {
@@ -122,6 +125,7 @@ impl MetricColumn {
             Self::GpuSharedBytes => "GPU S",
             Self::IoReadBytesPerSec => "IO Read/s",
             Self::IoWriteBytesPerSec => "IO Write/s",
+            Self::FullPath => "Full Path",
         }
     }
 
@@ -145,6 +149,7 @@ impl MetricColumn {
             Self::GpuSharedBytes => "Shared system memory used by the process for GPU resources",
             Self::IoReadBytesPerSec => "I/O read throughput by the process (file/net/dev)",
             Self::IoWriteBytesPerSec => "I/O write throughput by the process (file/net/dev)",
+            Self::FullPath => "Executable path, when available",
         }
     }
 
@@ -157,6 +162,7 @@ impl MetricColumn {
             | Self::UserObjectCount
             | Self::GdiObjectCount => 8,
             Self::IoReadBytesPerSec | Self::IoWriteBytesPerSec => 12,
+            Self::FullPath => 36,
             _ => 16,
         }
     }
@@ -186,6 +192,7 @@ impl MetricColumn {
             Self::GpuSharedBytes => row.gpu_shared_bytes.map(|value| value.to_string()),
             Self::IoReadBytesPerSec => row.io_read_bytes_per_sec.map(|value| value.to_string()),
             Self::IoWriteBytesPerSec => row.io_write_bytes_per_sec.map(|value| value.to_string()),
+            Self::FullPath => row.executable_path.clone(),
         }
     }
 
@@ -227,6 +234,10 @@ impl MetricColumn {
             Self::IoWriteBytesPerSec => {
                 compare_optional_u64(left.io_write_bytes_per_sec, right.io_write_bytes_per_sec)
             }
+            Self::FullPath => compare_optional_strings(
+                left.executable_path.as_deref(),
+                right.executable_path.as_deref(),
+            ),
         }
     }
 
@@ -272,6 +283,7 @@ impl MetricColumn {
             Self::IoWriteBytesPerSec => {
                 compare_present_u64(left.io_write_bytes_per_sec, right.io_write_bytes_per_sec)
             }
+            Self::FullPath => None,
         }
     }
 
@@ -293,7 +305,12 @@ impl MetricColumn {
             Self::GpuSharedBytes => row.gpu_shared_bytes.is_some(),
             Self::IoReadBytesPerSec => row.io_read_bytes_per_sec.is_some(),
             Self::IoWriteBytesPerSec => row.io_write_bytes_per_sec.is_some(),
+            Self::FullPath => row.executable_path.is_some(),
         }
+    }
+
+    pub(crate) fn is_graphable(self) -> bool {
+        !matches!(self, Self::FullPath)
     }
 }
 
@@ -322,6 +339,7 @@ impl FromStr for MetricColumn {
             "gpus" | "gpushared" => Ok(Self::GpuSharedBytes),
             "ioread/s" | "ioreads" | "ioread" => Ok(Self::IoReadBytesPerSec),
             "iowrite/s" | "iowrites" | "iowrite" => Ok(Self::IoWriteBytesPerSec),
+            "path" | "fullpath" | "exepath" | "executablepath" => Ok(Self::FullPath),
             _ => Err(()),
         }
     }
@@ -519,6 +537,15 @@ fn compare_optional_f64(left: Option<f64>, right: Option<f64>) -> Ordering {
     }
 }
 
+fn compare_optional_strings(left: Option<&str>, right: Option<&str>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
+}
+
 fn compare_present_u64(left: Option<u64>, right: Option<u64>) -> Option<Ordering> {
     Some(left?.cmp(&right?))
 }
@@ -540,6 +567,7 @@ mod tests {
         ProcessRow {
             pid,
             name: name.to_string(),
+            executable_path: None,
             start_time: Some(1_700_000_000 + u64::from(pid)),
             cpu_percent: None,
             private_bytes,
@@ -596,10 +624,22 @@ mod tests {
     }
 
     #[test]
+    fn full_path_column_is_selectable_but_not_graphable() {
+        assert!(MetricColumn::ALL.contains(&MetricColumn::FullPath));
+        assert!(MetricColumn::FullPath.is_selectable());
+        assert!(!MetricColumn::FullPath.is_graphable());
+        assert_eq!(
+            SortColumn::Metric(MetricColumn::FullPath).default_direction(),
+            SortDirection::Asc
+        );
+    }
+
+    #[test]
     fn raw_value_returns_unformatted_metric_values() {
         let row = ProcessRow {
             pid: 1,
             name: "app.exe".to_string(),
+            executable_path: Some(r"C:\work\app.exe".to_string()),
             start_time: Some(1_700_000_000),
             cpu_percent: Some(12.3),
             private_bytes: Some(1001),
@@ -684,6 +724,10 @@ mod tests {
         assert_eq!(
             MetricColumn::IoWriteBytesPerSec.raw_value(&row).as_deref(),
             Some("1015")
+        );
+        assert_eq!(
+            MetricColumn::FullPath.raw_value(&row).as_deref(),
+            Some(r"C:\work\app.exe")
         );
     }
 

@@ -261,25 +261,29 @@ impl DetailsMetric {
     }
 }
 
-impl From<MetricColumn> for DetailsMetric {
-    fn from(column: MetricColumn) -> Self {
+impl DetailsMetric {
+    pub(crate) fn from_graphable_column(column: MetricColumn) -> Option<Self> {
+        if !column.is_graphable() {
+            return None;
+        }
         match column {
-            MetricColumn::CpuPercent => Self::CpuPercent,
-            MetricColumn::PrivateBytes => Self::Private,
-            MetricColumn::WorksetBytes => Self::Workset,
-            MetricColumn::WorksetPrivateBytes => Self::WorksetPrivate,
-            MetricColumn::WorksetShareableBytes => Self::WorksetShareable,
-            MetricColumn::WorksetSharedBytes => Self::WorksetShared,
-            MetricColumn::ThreadCount => Self::ThreadCount,
-            MetricColumn::HandleCount => Self::HandleCount,
-            MetricColumn::UserObjectCount => Self::UserObjectCount,
-            MetricColumn::GdiObjectCount => Self::GdiObjectCount,
-            MetricColumn::GpuPercent => Self::GpuPercent,
-            MetricColumn::DotNetHeapBytes => Self::DotNetHeap,
-            MetricColumn::GpuDedicatedBytes => Self::GpuDedicated,
-            MetricColumn::GpuSharedBytes => Self::GpuShared,
-            MetricColumn::IoReadBytesPerSec => Self::IoRead,
-            MetricColumn::IoWriteBytesPerSec => Self::IoWrite,
+            MetricColumn::CpuPercent => Some(Self::CpuPercent),
+            MetricColumn::PrivateBytes => Some(Self::Private),
+            MetricColumn::WorksetBytes => Some(Self::Workset),
+            MetricColumn::WorksetPrivateBytes => Some(Self::WorksetPrivate),
+            MetricColumn::WorksetShareableBytes => Some(Self::WorksetShareable),
+            MetricColumn::WorksetSharedBytes => Some(Self::WorksetShared),
+            MetricColumn::ThreadCount => Some(Self::ThreadCount),
+            MetricColumn::HandleCount => Some(Self::HandleCount),
+            MetricColumn::UserObjectCount => Some(Self::UserObjectCount),
+            MetricColumn::GdiObjectCount => Some(Self::GdiObjectCount),
+            MetricColumn::GpuPercent => Some(Self::GpuPercent),
+            MetricColumn::DotNetHeapBytes => Some(Self::DotNetHeap),
+            MetricColumn::GpuDedicatedBytes => Some(Self::GpuDedicated),
+            MetricColumn::GpuSharedBytes => Some(Self::GpuShared),
+            MetricColumn::IoReadBytesPerSec => Some(Self::IoRead),
+            MetricColumn::IoWriteBytesPerSec => Some(Self::IoWrite),
+            MetricColumn::FullPath => unreachable!("non-graphable column returned early"),
         }
     }
 }
@@ -1050,6 +1054,7 @@ impl App {
 
     pub(crate) fn rebuild_visible_process_cache(&mut self) {
         let filter = self.active_filter_text().trim().to_ascii_lowercase();
+        let filter_includes_path = self.process_columns.contains(&MetricColumn::FullPath);
         let normalized_watch_names = self.active_normalized_watch_names().clone();
 
         self.tracked_total_row =
@@ -1062,7 +1067,8 @@ impl App {
                 .enumerate()
                 .filter(|(_, process)| {
                     let name = process.name.to_ascii_lowercase();
-                    let filter_matches = filter.is_empty() || name.contains(&filter);
+                    let filter_matches = filter.is_empty()
+                        || process_matches_filter(process, &filter, filter_includes_path);
                     let watch_matches =
                         !self.watch_enabled || normalized_watch_names.contains(&name);
                     filter_matches && watch_matches
@@ -1071,7 +1077,7 @@ impl App {
                 .collect::<Vec<_>>()
         };
         self.visible_process_entries
-            .extend(self.visible_ghost_entries(&filter));
+            .extend(self.visible_ghost_entries(&filter, filter_includes_path));
         self.prune_process_selection_to_visible_live_rows();
         if let Some(selected) = self.process_table_state.selected() {
             if selected < self.visible_process_entries.len()
@@ -1209,7 +1215,11 @@ impl App {
         };
     }
 
-    fn visible_ghost_entries(&self, filter: &str) -> Vec<VisibleProcessEntry> {
+    fn visible_ghost_entries(
+        &self,
+        filter: &str,
+        filter_includes_path: bool,
+    ) -> Vec<VisibleProcessEntry> {
         let mut latest_by_name: HashMap<String, (&ProcessIdentity, DateTime<Local>)> =
             HashMap::new();
         for (identity, row) in self.display_exited_tracked_rows() {
@@ -1217,7 +1227,9 @@ impl App {
             if !self.active_normalized_watch_names().contains(&name) {
                 continue;
             }
-            if !filter.is_empty() && !name.contains(filter) {
+            if !filter.is_empty()
+                && !process_matches_filter(&row.process, filter, filter_includes_path)
+            {
                 continue;
             }
             match latest_by_name.get(&name) {
@@ -1671,7 +1683,12 @@ impl App {
             self.status = "Select a metric cell before pressing 1-4".to_string();
             return;
         };
-        let next_slot = GraphSlot::process(identity, DetailsMetric::from(column));
+        let Some(metric) = DetailsMetric::from_graphable_column(column) else {
+            self.show_metric_column_warning = true;
+            self.status = "Full Path cannot be graphed".to_string();
+            return;
+        };
+        let next_slot = GraphSlot::process(identity, metric);
         if self.graph_slots[slot_index].as_ref() == Some(&next_slot) {
             self.clear_graph_slot(slot_index);
             self.status = format!("Graph#{} cleared", slot_index + 1);
@@ -1717,7 +1734,7 @@ impl App {
             return None;
         }
         let identity = self.selected_visible_process_identity()?;
-        let metric = DetailsMetric::from(self.selected_process_metric_column()?);
+        let metric = DetailsMetric::from_graphable_column(self.selected_process_metric_column()?)?;
         let selected_slot = GraphSlot::process(identity, metric);
         self.graph_slots
             .iter()
@@ -4135,7 +4152,9 @@ impl App {
         let Some(column) = self.selected_process_metric_column() else {
             return;
         };
-        let next_metric = DetailsMetric::from(column);
+        let Some(next_metric) = DetailsMetric::from_graphable_column(column) else {
+            return;
+        };
         if self.details_metric != next_metric {
             self.details_metric = next_metric;
             self.clear_ab_comparison();
@@ -4153,6 +4172,15 @@ fn process_column_index_for_sort(sort_column: SortColumn, columns: &[MetricColum
             .map(|index| index + FIXED_PROCESS_COLUMN_COUNT)
             .unwrap_or(FIXED_PROCESS_COLUMN_COUNT),
     }
+}
+
+fn process_matches_filter(process: &ProcessRow, filter: &str, include_path: bool) -> bool {
+    process.name.to_ascii_lowercase().contains(filter)
+        || include_path
+            && process
+                .executable_path
+                .as_deref()
+                .is_some_and(|path| path.to_ascii_lowercase().contains(filter))
 }
 
 fn process_sample_metric_value(
@@ -4304,6 +4332,7 @@ fn tracked_total_row(
     Some(ProcessRow {
         pid: 0,
         name: "Tracked Total".to_string(),
+        executable_path: None,
         start_time: None,
         cpu_percent: sum_optional_f64(tracked.iter().filter_map(|process| process.cpu_percent)),
         private_bytes: sum_optional_u64(tracked.iter().filter_map(|process| process.private_bytes)),

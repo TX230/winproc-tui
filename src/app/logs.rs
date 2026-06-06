@@ -470,6 +470,7 @@ fn parse_process(value: &Value) -> Result<ProcessRow> {
     Ok(ProcessRow {
         pid: u32_from_map(object, "pid").ok_or_else(|| anyhow!("process is missing pid"))?,
         name: string_from_map(object, "name").ok_or_else(|| anyhow!("process is missing name"))?,
+        executable_path: string_from_map(object, "path"),
         start_time: u64_from_map(object, "start_time"),
         cpu_percent: f64_from_map(&metrics, "cpu_percent"),
         private_bytes: u64_from_map(&metrics, "private_bytes"),

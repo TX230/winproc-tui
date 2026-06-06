@@ -484,6 +484,9 @@ fn process_json(process: &ProcessRow) -> Value {
     let mut object = Map::new();
     object.insert("pid".to_string(), json!(process.pid));
     object.insert("name".to_string(), json!(process.name));
+    if let Some(path) = &process.executable_path {
+        object.insert("path".to_string(), json!(path));
+    }
     if let Some(start_time) = process.start_time {
         object.insert("start_time".to_string(), json!(start_time));
     }
@@ -625,6 +628,7 @@ mod tests {
         assert_eq!(value["tracked_names"][0], "app.exe");
         assert_eq!(value["processes"].as_array().unwrap().len(), 1);
         assert_eq!(value["processes"][0]["name"], "app.exe");
+        assert_eq!(value["processes"][0]["path"], r"C:\work\app.exe");
         assert_eq!(value["processes"][0]["metrics"]["private_bytes"], 120);
         assert!(value["processes"][0]["metrics"]["handle_count"].is_null());
         assert_eq!(value["system_metrics"]["physical_memory_bytes"], 0);
@@ -648,6 +652,7 @@ mod tests {
         ProcessRow {
             pid,
             name: name.to_string(),
+            executable_path: Some(format!(r"C:\work\{name}")),
             start_time: Some(1000 + pid as u64),
             cpu_percent: None,
             private_bytes,
