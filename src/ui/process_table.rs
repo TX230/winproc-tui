@@ -8,17 +8,17 @@ use ratatui::{
 };
 
 use crate::{
+    App,
     app::{AppActivity, FocusedPanel, ProcessLifecycle, VisibleProcessRow},
     model::{
-        MetricColumn, ProcessRow, SortColumn, SortDirection,
-        GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
+        GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessRow, SortColumn,
+        SortDirection, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
     },
     ui::{
+        Theme,
         format::{format_integer, format_mbps},
         widgets::block::panel_block_focused,
-        Theme,
     },
-    App,
 };
 
 const TRACKED_COLUMN_WIDTH: u16 = 1;
@@ -651,11 +651,7 @@ fn tracked_cell(row: &VisibleProcessRow<'_>, theme: Theme) -> Cell<'static> {
 }
 
 fn tracked_symbol(tracked: bool) -> &'static str {
-    if tracked {
-        "★"
-    } else {
-        " "
-    }
+    if tracked { "★" } else { " " }
 }
 
 fn process_display_name(process: &ProcessRow, lifecycle: &ProcessLifecycle) -> String {
@@ -1137,9 +1133,11 @@ mod tests {
             process_row_style(false, true, false, theme).bg,
             Some(theme.selection)
         );
-        assert!(!process_row_style(false, true, false, theme)
-            .add_modifier
-            .contains(Modifier::BOLD));
+        assert!(
+            !process_row_style(false, true, false, theme)
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
     }
 
     #[test]
