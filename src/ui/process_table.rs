@@ -8,17 +8,17 @@ use ratatui::{
 };
 
 use crate::{
-    App,
     app::{AppActivity, FocusedPanel, ProcessLifecycle, VisibleProcessRow},
     model::{
-        GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessRow, SortColumn,
-        SortDirection, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
+        MetricColumn, ProcessRow, SortColumn, SortDirection,
+        GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
     },
     ui::{
-        Theme,
         format::{format_integer, format_mbps},
         widgets::block::panel_block_focused,
+        Theme,
     },
+    App,
 };
 
 const TRACKED_COLUMN_WIDTH: u16 = 1;
@@ -61,6 +61,7 @@ pub(crate) fn draw_process_table(
         &app.process_columns,
         app.process_metric_column_offset,
     );
+    let full_path_width = full_path_column_render_width(area.width, &visible_columns);
     let selected_row_index = app.process_table_state.selected();
     let mut rows = visible_processes
         .iter()
@@ -71,6 +72,7 @@ pub(crate) fn draw_process_table(
                 row,
                 app,
                 &visible_columns,
+                full_path_width,
                 selected_table_column_index,
                 row_selected,
                 theme,
@@ -83,6 +85,7 @@ pub(crate) fn draw_process_table(
                 &total_row,
                 app,
                 &visible_columns,
+                full_path_width,
                 selected_table_column_index,
                 false,
                 theme,
@@ -261,19 +264,58 @@ fn metric_column_window_width(column: MetricColumn) -> u16 {
 }
 
 fn process_table_constraints(visible_columns: &[(usize, MetricColumn)]) -> Vec<Constraint> {
+    let process_constraint = if visible_columns
+        .iter()
+        .any(|(_, column)| *column == MetricColumn::FullPath)
+    {
+        Constraint::Length(PROCESS_COLUMN_MIN_WIDTH)
+    } else {
+        Constraint::Min(PROCESS_COLUMN_MIN_WIDTH)
+    };
     let mut constraints = vec![
         Constraint::Length(TRACKED_COLUMN_WIDTH),
         Constraint::Length(PID_COLUMN_WIDTH),
-        Constraint::Min(PROCESS_COLUMN_MIN_WIDTH),
+        process_constraint,
     ];
     for (_, column) in visible_columns {
-        constraints.push(Constraint::Length(column.width()));
+        let constraint = if *column == MetricColumn::FullPath {
+            Constraint::Min(column.width())
+        } else {
+            Constraint::Length(column.width())
+        };
+        constraints.push(constraint);
     }
     constraints
 }
 
 fn metric_column_render_width(column: MetricColumn) -> u16 {
     column.width()
+}
+
+fn full_path_column_render_width(
+    area_width: u16,
+    visible_columns: &[(usize, MetricColumn)],
+) -> Option<u16> {
+    visible_columns
+        .iter()
+        .any(|(_, column)| *column == MetricColumn::FullPath)
+        .then(|| {
+            let usable_width =
+                area_width.saturating_sub(TABLE_BORDER_WIDTH + HIGHLIGHT_SYMBOL_WIDTH);
+            let metric_width = visible_columns
+                .iter()
+                .map(|(_, column)| metric_column_render_width(*column))
+                .sum::<u16>();
+            let total_columns = 3 + visible_columns.len() as u16;
+            let required_width = TRACKED_COLUMN_WIDTH
+                + PID_COLUMN_WIDTH
+                + PROCESS_COLUMN_MIN_WIDTH
+                + metric_width
+                + TABLE_COLUMN_SPACING.saturating_mul(total_columns.saturating_sub(1));
+            MetricColumn::FullPath
+                .width()
+                .saturating_add(usable_width.saturating_sub(required_width))
+        })
 }
 
 fn process_table_block<'a>(
@@ -359,6 +401,7 @@ fn process_table_row(
     row: &VisibleProcessRow<'_>,
     app: &App,
     visible_columns: &[(usize, MetricColumn)],
+    full_path_width: Option<u16>,
     selected_table_column_index: usize,
     row_selected: bool,
     theme: Theme,
@@ -396,9 +439,15 @@ fn process_table_row(
         let change = (!row.is_tracked_total && matches!(row.lifecycle, ProcessLifecycle::Live))
             .then(|| process_metric_change(app, process, *column))
             .flatten();
+        let column_width = if *column == MetricColumn::FullPath {
+            full_path_width.unwrap_or_else(|| column.width())
+        } else {
+            column.width()
+        };
         cells.push(process_metric_cell(
             process,
             *column,
+            column_width,
             selected_column,
             selected_cell,
             graph_slot_numbers.as_deref(),
@@ -418,6 +467,7 @@ fn process_table_row(
 fn process_metric_cell(
     process: &ProcessRow,
     column: MetricColumn,
+    column_width: u16,
     selected: bool,
     selected_cell: bool,
     graph_slot_numbers: Option<&str>,
@@ -429,6 +479,7 @@ fn process_metric_cell(
         let mut cell = Cell::from(process_metric_line_with_graph_slots(
             process,
             column,
+            column_width,
             graph_slot_numbers,
             theme,
             selected_cell,
@@ -448,7 +499,12 @@ fn process_metric_cell(
     let value_style = process_metric_change_color(change, theme)
         .map(|color| text_style.fg(color).add_modifier(Modifier::BOLD))
         .unwrap_or(text_style);
-    let mut cell = Cell::from(process_metric_line(process, column, value_style));
+    let mut cell = Cell::from(process_metric_line(
+        process,
+        column,
+        column_width,
+        value_style,
+    ));
     if selected_cell {
         cell = cell.style(
             Style::default()
@@ -529,10 +585,11 @@ fn process_row_style(
 fn process_metric_line(
     process: &ProcessRow,
     column: MetricColumn,
+    column_width: u16,
     text_style: Style,
 ) -> Line<'static> {
     Line::from(Span::styled(
-        format_process_column(process, column),
+        format_process_column(process, column, column_width),
         text_style,
     ))
     .alignment(process_metric_alignment(column))
@@ -541,13 +598,14 @@ fn process_metric_line(
 fn process_metric_line_with_graph_slots(
     process: &ProcessRow,
     column: MetricColumn,
+    column_width: u16,
     graph_slot_numbers: &str,
     theme: Theme,
     selected_cell: bool,
     change: Option<Ordering>,
 ) -> Line<'static> {
-    let value = format_process_column(process, column);
-    let column_width = column.width() as usize;
+    let value = format_process_column(process, column, column_width);
+    let column_width = column_width as usize;
     let number_width = graph_slot_numbers.chars().count().min(column_width);
     let value_width = value.chars().count();
     let spacing = column_width.saturating_sub(number_width + value_width);
@@ -582,7 +640,11 @@ fn tracked_cell(row: &VisibleProcessRow<'_>, theme: Theme) -> Cell<'static> {
 }
 
 fn tracked_symbol(tracked: bool) -> &'static str {
-    if tracked { "★" } else { " " }
+    if tracked {
+        "★"
+    } else {
+        " "
+    }
 }
 
 fn process_display_name(process: &ProcessRow, lifecycle: &ProcessLifecycle) -> String {
@@ -807,7 +869,7 @@ fn format_optional_integer(value: Option<u64>) -> String {
         .unwrap_or_else(|| "--".to_string())
 }
 
-fn format_process_column(process: &ProcessRow, column: MetricColumn) -> String {
+fn format_process_column(process: &ProcessRow, column: MetricColumn, column_width: u16) -> String {
     match column {
         MetricColumn::CpuPercent => process
             .cpu_percent
@@ -842,7 +904,7 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn) -> String {
         MetricColumn::FullPath => process
             .executable_path
             .as_deref()
-            .map(|path| compact_path_start(path, MetricColumn::FullPath.width() as usize))
+            .map(|path| compact_path_start(path, column_width as usize))
             .unwrap_or_else(|| "--".to_string()),
     }
 }
@@ -1014,11 +1076,9 @@ mod tests {
             process_row_style(false, true, false, theme).bg,
             Some(theme.selection)
         );
-        assert!(
-            !process_row_style(false, true, false, theme)
-                .add_modifier
-                .contains(Modifier::BOLD)
-        );
+        assert!(!process_row_style(false, true, false, theme)
+            .add_modifier
+            .contains(Modifier::BOLD));
     }
 
     #[test]
@@ -1039,6 +1099,42 @@ mod tests {
             + metric_width
             + TABLE_COLUMN_SPACING.saturating_mul(total_columns.saturating_sub(1));
         assert!(total_width <= 100 - TABLE_BORDER_WIDTH - HIGHLIGHT_SYMBOL_WIDTH);
+    }
+
+    #[test]
+    fn full_path_column_takes_extra_width_when_visible() {
+        let visible = vec![(0, MetricColumn::PrivateBytes), (1, MetricColumn::FullPath)];
+
+        assert_eq!(
+            process_table_constraints(&visible),
+            vec![
+                Constraint::Length(TRACKED_COLUMN_WIDTH),
+                Constraint::Length(PID_COLUMN_WIDTH),
+                Constraint::Length(PROCESS_COLUMN_MIN_WIDTH),
+                Constraint::Length(MetricColumn::PrivateBytes.width()),
+                Constraint::Min(MetricColumn::FullPath.width()),
+            ]
+        );
+        assert_eq!(
+            full_path_column_render_width(140, &visible),
+            Some(MetricColumn::FullPath.width() + 54)
+        );
+    }
+
+    #[test]
+    fn process_column_takes_extra_width_when_full_path_is_hidden() {
+        let visible = vec![(0, MetricColumn::PrivateBytes)];
+
+        assert_eq!(
+            process_table_constraints(&visible),
+            vec![
+                Constraint::Length(TRACKED_COLUMN_WIDTH),
+                Constraint::Length(PID_COLUMN_WIDTH),
+                Constraint::Min(PROCESS_COLUMN_MIN_WIDTH),
+                Constraint::Length(MetricColumn::PrivateBytes.width()),
+            ]
+        );
+        assert_eq!(full_path_column_render_width(140, &visible), None);
     }
 
     #[test]
