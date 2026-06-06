@@ -448,6 +448,7 @@ fn process_table_row(
             process,
             *column,
             column_width,
+            app,
             selected_column,
             selected_cell,
             graph_slot_numbers.as_deref(),
@@ -468,6 +469,7 @@ fn process_metric_cell(
     process: &ProcessRow,
     column: MetricColumn,
     column_width: u16,
+    app: &App,
     selected: bool,
     selected_cell: bool,
     graph_slot_numbers: Option<&str>,
@@ -503,7 +505,9 @@ fn process_metric_cell(
         process,
         column,
         column_width,
+        app,
         value_style,
+        theme,
     ));
     if selected_cell {
         cell = cell.style(
@@ -586,13 +590,20 @@ fn process_metric_line(
     process: &ProcessRow,
     column: MetricColumn,
     column_width: u16,
+    app: &App,
     text_style: Style,
+    theme: Theme,
 ) -> Line<'static> {
-    Line::from(Span::styled(
-        format_process_column(process, column, column_width),
-        text_style,
-    ))
-    .alignment(process_metric_alignment(column))
+    let value = format_process_column(process, column, column_width);
+    let line = if column == MetricColumn::FullPath {
+        match active_filter_query(app) {
+            Some(query) => highlighted_match_line(value, query, text_style, theme),
+            None => Line::from(Span::styled(value, text_style)),
+        }
+    } else {
+        Line::from(Span::styled(value, text_style))
+    };
+    line.alignment(process_metric_alignment(column))
 }
 
 fn process_metric_line_with_graph_slots(
@@ -660,28 +671,78 @@ fn process_name_line(row: &VisibleProcessRow<'_>, app: &App, theme: Theme) -> Li
     let process = row.process;
     let display_name = process_display_name(process, &row.lifecycle);
     let base_style = process_text_style(row, theme);
-    let query = app.process_jump_draft().trim();
-    if !app.is_process_jump_editing() || query.is_empty() {
-        return Line::from(Span::styled(display_name, base_style));
+    let query = (if app.is_process_jump_editing() {
+        Some(app.process_jump_draft().trim())
+    } else {
+        active_filter_query(app)
+    })
+    .filter(|query| !query.is_empty());
+    match query {
+        Some(query) => {
+            highlighted_process_name_line(&display_name, &process.name, query, base_style, theme)
+        }
+        None => Line::from(Span::styled(display_name, base_style)),
     }
-    let name_lower = process.name.to_ascii_lowercase();
+}
+
+fn active_filter_query(app: &App) -> Option<&str> {
+    let query = app.active_filter_text().trim();
+    (!query.is_empty()).then_some(query)
+}
+
+fn highlighted_process_name_line(
+    display_name: &str,
+    process_name: &str,
+    query: &str,
+    base_style: Style,
+    theme: Theme,
+) -> Line<'static> {
+    let name_lower = process_name.to_ascii_lowercase();
     let query_lower = query.to_ascii_lowercase();
     let Some(start) = name_lower.find(&query_lower) else {
-        return Line::from(Span::styled(display_name, base_style));
+        return Line::from(Span::styled(display_name.to_string(), base_style));
     };
     let end = start + query_lower.len();
     if !display_name.is_char_boundary(start) || !display_name.is_char_boundary(end) {
-        return Line::from(Span::styled(display_name, base_style));
+        return Line::from(Span::styled(display_name.to_string(), base_style));
     }
+    highlighted_match_line_at(display_name, start, end, base_style, theme)
+}
+
+fn highlighted_match_line(
+    value: String,
+    query: &str,
+    base_style: Style,
+    theme: Theme,
+) -> Line<'static> {
+    let value_lower = value.to_ascii_lowercase();
+    let query_lower = query.to_ascii_lowercase();
+    let Some(start) = value_lower.find(&query_lower) else {
+        return Line::from(Span::styled(value, base_style));
+    };
+    let end = start + query_lower.len();
+    if !value.is_char_boundary(start) || !value.is_char_boundary(end) {
+        return Line::from(Span::styled(value, base_style));
+    }
+    highlighted_match_line_at(&value, start, end, base_style, theme)
+}
+
+fn highlighted_match_line_at(
+    value: &str,
+    start: usize,
+    end: usize,
+    base_style: Style,
+    theme: Theme,
+) -> Line<'static> {
     Line::from(vec![
-        Span::styled(display_name[..start].to_string(), base_style),
+        Span::styled(value[..start].to_string(), base_style),
         Span::styled(
-            display_name[start..end].to_string(),
+            value[start..end].to_string(),
             Style::default()
                 .fg(theme.warning)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(display_name[end..].to_string(), base_style),
+        Span::styled(value[end..].to_string(), base_style),
     ])
 }
 

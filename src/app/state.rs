@@ -3498,6 +3498,8 @@ impl App {
         self.clamp_selected_process_column();
         self.ensure_sort_column_visible();
         self.refresh_process_order();
+        self.rebuild_visible_process_cache();
+        self.clamp_process_table_state();
     }
 
     pub(crate) fn toggle_picker_column_at(&mut self, index: usize) {

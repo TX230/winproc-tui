@@ -896,6 +896,35 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn column_picker_full_path_toggle_rebuilds_active_filter_matches() {
+        let mut app = make_test_app(2, 10);
+        app.snapshot.processes[0].name = "app.exe".to_string();
+        app.snapshot.processes[0].executable_path = Some(r"C:\work\alpha\app.exe".to_string());
+        app.snapshot.processes[1].name = "app.exe".to_string();
+        app.snapshot.processes[1].executable_path = Some(r"C:\work\beta\app.exe".to_string());
+
+        app.begin_filter_edit();
+        for ch in "beta".chars() {
+            app.push_filter_char(ch);
+        }
+        assert!(app.visible_processes().is_empty());
+
+        app.column_picker_index = MetricColumn::ALL
+            .iter()
+            .position(|column| *column == MetricColumn::FullPath)
+            .unwrap();
+        app.toggle_picker_column();
+
+        let visible = app
+            .visible_processes()
+            .into_iter()
+            .map(|process| process.executable_path.as_deref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(visible, vec![Some(r"C:\work\beta\app.exe")]);
+    }
+
+    #[test]
     fn visible_process_window_returns_only_requested_rows() {
         let app = make_test_app(10, 10);
 
@@ -1172,6 +1201,58 @@ name = "legacy-watch.exe"
         assert_eq!(buffer[(x + 1, y)].fg, ui::THEMES[0].warning);
         assert_eq!(buffer[(x + 2, y)].fg, ui::THEMES[0].warning);
         assert_eq!(buffer[(x + 3, y)].fg, ui::THEMES[0].text);
+    }
+
+    #[test]
+    fn process_filter_highlights_matching_name_text() {
+        let mut app = make_test_app(2, 10);
+        app.snapshot.processes[0].name = "winproc-tui.exe".to_string();
+        app.snapshot.processes[1].name = "codex.exe".to_string();
+
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+            .unwrap();
+        for ch in "win".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
+                .unwrap();
+        }
+
+        let buffer = render_app_to_buffer(&app, 100, 45);
+        let (x, y) = find_text_position(&buffer, "winproc-tui.exe")
+            .expect("filter target name should be rendered");
+
+        assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(x + 1, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(x + 2, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(x + 3, y)].fg, ui::THEMES[0].text);
+    }
+
+    #[test]
+    fn process_filter_highlights_matching_full_path_text() {
+        let mut app = make_test_app(2, 10);
+        app.process_columns = vec![MetricColumn::FullPath];
+        app.snapshot.processes[0].name = "app.exe".to_string();
+        app.snapshot.processes[0].executable_path = Some(r"C:\work\alpha\app.exe".to_string());
+        app.snapshot.processes[1].name = "app.exe".to_string();
+        app.snapshot.processes[1].executable_path = Some(r"C:\work\beta\app.exe".to_string());
+
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+            .unwrap();
+        for ch in "beta".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
+                .unwrap();
+        }
+
+        let buffer = render_app_to_buffer(&app, 160, 45);
+        let path = r"C:\work\beta\app.exe";
+        let (x, y) =
+            find_text_position(&buffer, path).expect("filter target path should be rendered");
+        let beta_x = x + r"C:\work\".chars().count() as u16;
+
+        assert_eq!(buffer[(beta_x, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(beta_x + 1, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(beta_x + 2, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(beta_x + 3, y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(beta_x + 4, y)].fg, ui::THEMES[0].text);
     }
 
     #[test]
