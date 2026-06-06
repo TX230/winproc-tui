@@ -3,9 +3,11 @@
 This document describes the metrics handled by `winproc-tui`, including display names, data sources, and display formats.
 In the current implementation, unavailable values are displayed as `--` in the UI and are omitted from recording logs rather than written as `null`.
 
-## Process Metrics
+## Process Table Columns
 
-The Process table can select the 14 metrics included in `MetricColumn::ALL`.
+The Process table can select the 15 columns included in `MetricColumn::ALL`.
+Most columns are numeric metrics that can be sorted, graphed, sampled, and recorded.
+`Full Path` is a text column for process identification; it can be displayed, sorted, copied, filtered, and recorded, but it is not a Graph metric.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
@@ -23,6 +25,10 @@ The Process table can select the 14 metrics included in `MetricColumn::ALL`.
 | `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Byte integer with thousands separators |
 | `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | `Mbps` |
 | `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | `Mbps` |
+| `Full Path` | `path` | Executable path. Used to distinguish same-name processes from different build or working directories. | `sysinfo::Process::exe()` | Path text, shortened from the start when the cell is narrow |
+
+When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
+When it is not selected, filtering matches process name only.
 
 ## Process Metrics Defined Internally Only
 
@@ -208,6 +214,7 @@ Process object fields:
 |---|---|---|
 | `pid` | number | PID. |
 | `name` | string | Process name. |
+| `path` | string | Present only when the executable path is available. |
 | `start_time` | number | Present only when available. |
 | `metrics` | object | Only metrics that were collected. |
 
@@ -231,6 +238,7 @@ A `frame` record outputs processes matching the Tracked List and system metrics 
     {
       "pid": 1234,
       "name": "app.exe",
+      "path": "C:\\work\\app\\target\\release\\app.exe",
       "start_time": 1700000000,
       "metrics": {
         "private_bytes": 123456789,

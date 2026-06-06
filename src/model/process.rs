@@ -3,6 +3,7 @@
 pub(crate) struct ProcessRow {
     pub(crate) pid: u32,
     pub(crate) name: String,
+    pub(crate) executable_path: Option<String>,
     pub(crate) start_time: Option<u64>,
     pub(crate) cpu_percent: Option<f64>,
     pub(crate) private_bytes: Option<u64>,

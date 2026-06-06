@@ -227,6 +227,10 @@ fn collect_snapshot(
             ProcessRow {
                 pid,
                 name: process.name().to_string_lossy().into_owned(),
+                executable_path: process
+                    .exe()
+                    .map(|path| path.display().to_string())
+                    .filter(|path| !path.is_empty()),
                 start_time: Some(process.start_time()).filter(|value| *value > 0),
                 cpu_percent: extras.cpu_percent,
                 private_bytes: extras.private_bytes.or(Some(process.virtual_memory())),

@@ -868,6 +868,34 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn process_filter_matches_paths_only_when_full_path_column_is_selected() {
+        let mut app = make_test_app(2, 10);
+        app.snapshot.processes[0].name = "app.exe".to_string();
+        app.snapshot.processes[0].executable_path = Some(r"C:\work\alpha\app.exe".to_string());
+        app.snapshot.processes[1].name = "app.exe".to_string();
+        app.snapshot.processes[1].executable_path = Some(r"C:\work\beta\app.exe".to_string());
+
+        app.begin_filter_edit();
+        app.push_filter_char('b');
+        app.push_filter_char('e');
+        app.push_filter_char('t');
+        app.push_filter_char('a');
+
+        assert!(app.visible_processes().is_empty());
+
+        app.process_columns.push(MetricColumn::FullPath);
+        app.rebuild_visible_process_cache();
+
+        let visible = app
+            .visible_processes()
+            .into_iter()
+            .map(|process| process.executable_path.as_deref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(visible, vec![Some(r"C:\work\beta\app.exe")]);
+    }
+
+    #[test]
     fn visible_process_window_returns_only_requested_rows() {
         let app = make_test_app(10, 10);
 
@@ -2971,6 +2999,22 @@ name = "legacy-watch.exe"
             SortColumn::Metric(MetricColumn::ThreadCount)
         );
         assert_eq!(app.details_metric, DetailsMetric::Private);
+    }
+
+    #[test]
+    fn full_path_column_is_not_graphable() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.process_columns = vec![MetricColumn::FullPath];
+        app.selected_process_column_index = 2;
+        app.select_process_index(0);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.graph_slots[0].is_none());
+        assert_eq!(app.details_metric, DetailsMetric::Private);
+        assert_eq!(app.status, "Full Path cannot be graphed");
     }
 
     #[test]
@@ -6932,6 +6976,7 @@ name = "legacy-watch.exe"
             .map(|index| ProcessRow {
                 pid: index as u32,
                 name: format!("proc-{index}"),
+                executable_path: None,
                 start_time: Some(1_700_000_000 + index as u64),
                 cpu_percent: None,
                 private_bytes: Some(index as u64),

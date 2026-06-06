@@ -253,6 +253,10 @@ fn format_process_metric_column(process: &ProcessRow, column: MetricColumn) -> S
             .io_write_bytes_per_sec
             .map(format_mbps)
             .unwrap_or_else(|| "--".to_string()),
+        MetricColumn::FullPath => process
+            .executable_path
+            .clone()
+            .unwrap_or_else(|| "--".to_string()),
     }
 }
 

@@ -114,7 +114,7 @@ pub(crate) fn draw_process_table(
                 column.label(),
                 app.sort_indicator_for_column(SortColumn::Metric(*column)),
             ),
-            Alignment::Right,
+            process_metric_alignment(*column),
             column_index + FIXED_SELECTABLE_COLUMN_COUNT == selected_table_column_index,
             theme,
         ));
@@ -535,7 +535,7 @@ fn process_metric_line(
         format_process_column(process, column),
         text_style,
     ))
-    .alignment(Alignment::Right)
+    .alignment(process_metric_alignment(column))
 }
 
 fn process_metric_line_with_graph_slots(
@@ -839,7 +839,39 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn) -> String {
             .io_write_bytes_per_sec
             .map(format_mbps)
             .unwrap_or_else(|| "--".to_string()),
+        MetricColumn::FullPath => process
+            .executable_path
+            .as_deref()
+            .map(|path| compact_path_start(path, MetricColumn::FullPath.width() as usize))
+            .unwrap_or_else(|| "--".to_string()),
     }
+}
+
+fn process_metric_alignment(column: MetricColumn) -> Alignment {
+    if matches!(column, MetricColumn::FullPath) {
+        Alignment::Left
+    } else {
+        Alignment::Right
+    }
+}
+
+fn compact_path_start(path: &str, width: usize) -> String {
+    let char_count = path.chars().count();
+    if char_count <= width {
+        return path.to_string();
+    }
+    if width <= 3 {
+        return ".".repeat(width);
+    }
+    let tail = path
+        .chars()
+        .rev()
+        .take(width - 3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("...{tail}")
 }
 
 fn format_cpu_percent(value: f64) -> String {
@@ -856,6 +888,7 @@ mod tests {
         let process = ProcessRow {
             pid: 1,
             name: "app.exe".to_string(),
+            executable_path: None,
             start_time: Some(1_700_000_001),
             cpu_percent: None,
             private_bytes: Some(120),
@@ -918,11 +951,24 @@ mod tests {
     }
 
     #[test]
+    fn full_path_column_is_left_aligned_and_keeps_path_tail() {
+        assert_eq!(
+            process_metric_alignment(MetricColumn::FullPath),
+            Alignment::Left
+        );
+        assert_eq!(
+            compact_path_start(r"C:\very\long\workspace\target\debug\app.exe", 18),
+            r"...t\debug\app.exe"
+        );
+    }
+
+    #[test]
     fn tracked_total_text_style_uses_accent_color() {
         let theme = crate::ui::theme::THEMES[0];
         let process = ProcessRow {
             pid: 0,
             name: "Tracked Total".to_string(),
+            executable_path: None,
             start_time: None,
             cpu_percent: Some(1.0),
             private_bytes: Some(120),

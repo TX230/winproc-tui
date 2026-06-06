@@ -74,7 +74,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
 const PROCESSES_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Ctrl+F",
-        label: "Edit name filter",
+        label: "Edit process filter",
     },
     HelpItem {
         key: "Ctrl+I/J",

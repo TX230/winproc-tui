@@ -13,7 +13,7 @@ It launches quickly from the terminal and lets you observe **current values** an
 
 ## Features
 
-- **Monitoring**: Shows RAM / VRAM, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, name filtering, and jump search help you narrow down the target.
+- **Monitoring**: Shows RAM / VRAM, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process, RAM / VRAM, and CPU average history keep about 7,200 seconds.
 - **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Their last collected values remain visible after the processes exit.
 - **Recording and Playback**: Saves tracked processes, RAM / VRAM, and CPU average as JSON Lines logs and replays them later in the same Processes / Graph / Samples / A/B view layout.
@@ -132,7 +132,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 
 | Key                 | Action                                                                                |
 | ------------------- | ------------------------------------------------------------------------------------- |
-| `Ctrl+F`            | Filter the process list by name.                                                      |
+| `Ctrl+F`            | Filter the process list by name, or by executable path when the `Full Path` column is selected. |
 | `Ctrl+I` / `Ctrl+J` | Process-name incremental search.                                                      |
 | `1` – `4`           | Show the selected process, RAM / VRAM, or CPU Avg metric in Graph#1 – Graph#4 (press the same number again to clear). |
 | `0`                 | Clear all Graphs and close the Graph panel.                                           |
