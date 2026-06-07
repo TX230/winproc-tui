@@ -158,7 +158,15 @@ Get-FileHash $ZipPath -Algorithm SHA256 |
   Set-Content $Sha256
 ```
 
-This file lets users verify that the downloaded `.zip` matches the published artifact.
+GitHub also computes and displays a `sha256:` digest for each uploaded release asset. The `.sha256` file remains useful as a downloadable checksum for command-line or scripted checks.
+Before upload, compare the generated checksum against the package you are about to attach:
+
+```powershell
+Get-FileHash $ZipPath -Algorithm SHA256
+Get-Content $Sha256
+```
+
+The hash values should match.
 
 ### 8. Create and Push the Git Tag
 
@@ -209,7 +217,10 @@ Open the draft release in GitHub and confirm:
 - The release title is correct.
 - The generated notes match the intended release contents. Edit them in the draft if any entry is missing, unclear, or duplicated; the edited text becomes the final published release notes.
 - The `.zip` and `.sha256` files are attached.
+- The attached `.sha256` file matches the attached `.zip` file.
+- The GitHub-displayed `sha256:` digest for the `.zip` asset matches the generated checksum.
 - The `.zip` file contains the expected executable, README files, and `LICENSE`.
+- The release page does not point users to third-party binaries or mirrors as official builds.
 - The executable starts successfully on Windows 11 x64.
 
 After confirming the draft, publish it from the GitHub Releases page.

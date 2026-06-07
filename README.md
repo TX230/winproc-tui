@@ -6,8 +6,11 @@
 
 Languages: [English](README.md) | [Japanese](README.ja.md)
 
-`winproc-tui` is a **process investigation tool for Windows 11, built for developers**.
-It launches quickly from the terminal and lets you observe **current values** and **changes over time** for memory, handles, GUI resources, GPU memory, I/O, and other process metrics — all in a single screen. With up to four Graphs, A/B comparison, and JSON Lines recording with Playback, it is well suited for grasping the resource behavior of an application you are developing on the spot. Rather than competing on coverage with tools like Process Explorer or System Informer, `winproc-tui` is laser-focused on **quickly answering "what resources the app I am running right now uses, when, and how much"**.
+This is the original upstream repository for `winproc-tui`.
+Third-party copies, mirrors, or modified repositories are not official project repositories.
+
+`winproc-tui` is a **process monitoring TUI** for tracking per-process resource usage over time.
+It runs in the terminal and shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other process metrics. With up to four Graphs, A/B comparison, and JSON Lines recording with Playback, it is built to quickly answer what resources the process you are watching uses, when, and how much. Rather than competing on breadth with Process Explorer or System Informer, `winproc-tui` focuses on targeted resource behavior checks during development, verification, and day-to-day troubleshooting. It is built with Rust/Ratatui.
 
 ![winproc-tui main screen showing the process list, multiple Graphs, Samples, and A/B comparison](assets/screenshots/main-screen.png)
 
@@ -37,9 +40,18 @@ This project is Windows-only. Linux, macOS, and other platforms are not supporte
 
 ## Use a Prebuilt Binary
 
-Release binaries are available from [GitHub Releases](https://github.com/TX230/winproc-tui/releases).
-Download the zip, extract it to any folder, and run `winproc-tui.exe`.
-No additional runtime or installer is required.
+Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it to any folder, and run `winproc-tui.exe`. No additional runtime or installer is required.
+
+Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases).
+Binaries from third-party copies, mirrors, or modified repositories are not official builds.
+
+Use this PowerShell command to calculate the zip file's SHA256 hash:
+
+```powershell
+Get-FileHash .\winproc-tui-X.Y.Z-windows-x64.zip -Algorithm SHA256
+```
+
+Compare the `Hash` value with the `sha256:` digest shown next to the `.zip` asset on the official GitHub Releases page.
 
 ## Build From Source
 
