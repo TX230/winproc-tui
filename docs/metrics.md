@@ -55,7 +55,7 @@ When the `RAM/VRAM` panel has focus, `1` / `2` / `3` / `4` assign the selected m
 
 ## CPU Panel
 
-The `CPUs` panel is a compact system-pressure display above the Process table.
+The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after `RAM/VRAM` and `NW/DISK`.
 It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
 When the `CPUs` panel has focus, `1` / `2` / `3` / `4` assign `CPU Avg` to the corresponding Graph slot.
 The left edge of the panel content reserves two character cells for the Graph slot number, matching the RAM/VRAM summary rows.
@@ -70,26 +70,26 @@ If P/E classification is not available or all logical CPUs report the same `Effi
 `CPU Avg` is retained in `SystemHistory`, can be graphed, and is stored in recording frames as `system_metrics.cpu_percent`.
 The per-logical-CPU cells are intended for quick visual pressure checks, not recording history.
 
-## System Activity
+## NW/DISK Activity
 
-The right side of the top panel defaults to `System Activity`.
-Pressing `i` switches between `System Activity` and `System Info`.
+The middle of the top panel shows `NW/DISK`, a compact System Activity view for network and disk counters.
+Pressing `i` opens `System Info` as a dialog instead of replacing this panel.
 These values are sampled once per screen update and are stored in recording frames so Playback can show the recorded values.
-When the `System Activity` panel has focus, `Up` / `Down` select a metric and `1` / `2` / `3` / `4` assign it to the corresponding Graph slot, matching the `RAM/VRAM` panel behavior.
+When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `1` / `2` / `3` / `4` assign it to the corresponding Graph slot, matching the `RAM/VRAM` panel behavior.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
-| `Net In` | `network_received_bytes_per_sec` | Total receive throughput across network interfaces. | PDH `\Network Interface(*)\Bytes Received/sec`, excluding `_Total` and summing instances | `Mbps` |
-| `Net Out` | `network_sent_bytes_per_sec` | Total send throughput across network interfaces. | PDH `\Network Interface(*)\Bytes Sent/sec`, excluding `_Total` and summing instances | `Mbps` |
-| `Disk R` | `disk_read_bytes_per_sec` | Total disk read throughput. | PDH `\PhysicalDisk(_Total)\Disk Read Bytes/sec` | `MB/s` |
-| `Disk W` | `disk_write_bytes_per_sec` | Total disk write throughput. | PDH `\PhysicalDisk(_Total)\Disk Write Bytes/sec` | `MB/s` |
-| `Disk Q` | `disk_queue_length` | Current total physical disk queue length. | PDH `\PhysicalDisk(_Total)\Current Disk Queue Length` | Decimal with 1 digit |
+| `Net Rx` | `network_received_bytes_per_sec` | Total receive throughput across network interfaces. | PDH `\Network Interface(*)\Bytes Received/sec`, excluding `_Total` and summing instances | Whole-number `Mbps`, value right-aligned to at least 4 characters |
+| `Net Tx` | `network_sent_bytes_per_sec` | Total send throughput across network interfaces. | PDH `\Network Interface(*)\Bytes Sent/sec`, excluding `_Total` and summing instances | Whole-number `Mbps`, value right-aligned to at least 4 characters |
+| `Disk R` | `disk_read_bytes_per_sec` | Total disk read throughput. | PDH `\PhysicalDisk(_Total)\Disk Read Bytes/sec` | Whole-number `MB/s`, value right-aligned to at least 4 characters |
+| `Disk W` | `disk_write_bytes_per_sec` | Total disk write throughput. | PDH `\PhysicalDisk(_Total)\Disk Write Bytes/sec` | Whole-number `MB/s`, value right-aligned to at least 4 characters |
+| `Disk Q` | `disk_queue_length` | Current total physical disk queue length. | PDH `\PhysicalDisk(_Total)\Current Disk Queue Length` | Whole number, right-aligned to at least 4 characters |
 
 Unavailable values are displayed as `--` and omitted from recording frames.
 
 ## System Info
 
-The `System Info` panel is not part of metric history. It displays supporting information about the current environment.
+The `System Info` dialog is not part of metric history. It displays static supporting information about the current environment; live System Activity and CPU summaries stay in the top panels.
 
 | Display name | Description | Primary source |
 |---|---|---|

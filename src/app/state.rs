@@ -89,12 +89,6 @@ pub(crate) struct PausedDisplay {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InfoPanelMode {
-    SystemActivity,
-    SystemInfo,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DetailsMetric {
     CpuPercent,
     Private,
@@ -354,7 +348,7 @@ impl FocusedPanel {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::System => "RAM/VRAM",
-            Self::SystemActivity => "System Activity",
+            Self::SystemActivity => "NW/DISK",
             Self::Cpu => "CPUs",
             Self::Processes => "Processes",
             Self::DetailsGraph => "Graph",
@@ -535,6 +529,7 @@ pub(crate) struct App {
     pub(crate) open_files_filter: String,
     pub(crate) open_files_filter_cursor: usize,
     pub(crate) show_process_info_dialog: bool,
+    pub(crate) show_system_info_dialog: bool,
     pub(crate) log_summaries: Vec<LogSummary>,
     pub(crate) log_list_dir: Option<PathBuf>,
     pub(crate) log_list_worker: Option<LogListWorker>,
@@ -583,7 +578,6 @@ pub(crate) struct App {
     pub(crate) system_history: SystemHistory,
     pub(crate) ram_vram_selected_index: usize,
     pub(crate) system_activity_selected_index: usize,
-    pub(crate) info_panel_mode: InfoPanelMode,
     pub(crate) process_info_cache: HashMap<ProcessIdentity, ProcessInfo>,
     pub(crate) process_info_display_identity: Option<ProcessIdentity>,
     pub(crate) pending_process_info: Option<PendingProcessInfo>,
@@ -711,6 +705,7 @@ impl App {
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
             show_process_info_dialog: false,
+            show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
             log_list_worker: None,
@@ -759,7 +754,6 @@ impl App {
             system_history,
             ram_vram_selected_index: 0,
             system_activity_selected_index: 0,
-            info_panel_mode: InfoPanelMode::SystemActivity,
             process_info_cache: HashMap::new(),
             process_info_display_identity: None,
             pending_process_info: None,
@@ -848,6 +842,7 @@ impl App {
             || self.show_log_dir_dialog
             || self.show_open_files
             || self.show_process_info_dialog
+            || self.show_system_info_dialog
             || self.show_quit_confirmation
             || self.show_recording_no_tracked_warning
             || self.show_recording_path_dialog
@@ -1901,9 +1896,6 @@ impl App {
             FocusedPanel::DetailsSamples => {
                 format!("Focus: Samples#{}", self.active_graph_slot_index + 1)
             }
-            FocusedPanel::SystemActivity if self.info_panel_mode == InfoPanelMode::SystemInfo => {
-                "Focus: System Info".to_string()
-            }
             panel => format!("Focus: {}", panel.label()),
         }
     }
@@ -1930,7 +1922,7 @@ impl App {
     pub(crate) fn select_previous_system_activity_metric(&mut self) {
         self.system_activity_selected_index = self.system_activity_selected_index.saturating_sub(1);
         self.status = format!(
-            "System Activity row: {}",
+            "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
     }
@@ -1949,7 +1941,7 @@ impl App {
             .saturating_add(1)
             .min(SystemMetric::SYSTEM_ACTIVITY_PANEL.len().saturating_sub(1));
         self.status = format!(
-            "System Activity row: {}",
+            "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
     }
@@ -1962,7 +1954,7 @@ impl App {
     pub(crate) fn select_first_system_activity_metric(&mut self) {
         self.system_activity_selected_index = 0;
         self.status = format!(
-            "System Activity row: {}",
+            "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
     }
@@ -1976,7 +1968,7 @@ impl App {
         self.system_activity_selected_index =
             SystemMetric::SYSTEM_ACTIVITY_PANEL.len().saturating_sub(1);
         self.status = format!(
-            "System Activity row: {}",
+            "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
     }
@@ -1991,7 +1983,7 @@ impl App {
         self.system_activity_selected_index =
             index.min(SystemMetric::SYSTEM_ACTIVITY_PANEL.len().saturating_sub(1));
         self.status = format!(
-            "System Activity row: {}",
+            "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
     }
@@ -2002,12 +1994,8 @@ impl App {
     }
 
     pub(crate) fn apply_selected_system_activity_metric_to_details(&mut self) {
-        if self.info_panel_mode != InfoPanelMode::SystemActivity {
-            self.status = "System Activity metrics are hidden".to_string();
-            return;
-        }
         let metric = self.selected_system_activity_metric();
-        self.status = format!("System Activity metric selected: {}", metric.label());
+        self.status = format!("NW/DISK metric selected: {}", metric.label());
     }
 
     pub(crate) fn toggle_selected_system_metric_for_graph_slot(&mut self, slot_index: usize) {
@@ -2022,10 +2010,6 @@ impl App {
         &mut self,
         slot_index: usize,
     ) {
-        if self.info_panel_mode != InfoPanelMode::SystemActivity {
-            self.status = "System Activity metrics are hidden".to_string();
-            return;
-        }
         self.toggle_system_metric_for_graph_slot(
             slot_index,
             self.selected_system_activity_metric(),
@@ -2114,12 +2098,8 @@ impl App {
     }
 
     pub(crate) fn apply_selected_system_activity_metric_to_visible_details(&mut self) {
-        if self.info_panel_mode != InfoPanelMode::SystemActivity {
-            self.status = "System Activity metrics are hidden".to_string();
-            return;
-        }
         self.status = format!(
-            "System Activity row: {}",
+            "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
     }
@@ -3088,15 +3068,14 @@ impl App {
         })
     }
 
-    pub(crate) fn toggle_info_panel_mode(&mut self) {
-        self.info_panel_mode = match self.info_panel_mode {
-            InfoPanelMode::SystemActivity => InfoPanelMode::SystemInfo,
-            InfoPanelMode::SystemInfo => InfoPanelMode::SystemActivity,
-        };
-        self.status = match self.info_panel_mode {
-            InfoPanelMode::SystemActivity => "System Activity shown".to_string(),
-            InfoPanelMode::SystemInfo => "System Info shown".to_string(),
-        };
+    pub(crate) fn open_system_info_dialog(&mut self) {
+        self.show_system_info_dialog = true;
+        self.status = "System Info shown".to_string();
+    }
+
+    pub(crate) fn close_system_info_dialog(&mut self) {
+        self.show_system_info_dialog = false;
+        self.status = "System Info closed".to_string();
     }
 
     pub(crate) fn ensure_selected_process_info(&mut self) {

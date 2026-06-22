@@ -15,11 +15,11 @@ use crate::{
     ui::{
         GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
         column_picker_close_button_area_for_screen, column_picker_index_at,
-        column_picker_scrollbar_area, details_slot_areas_for_screen,
+        column_picker_scrollbar_area, cpu_panel_area_for_screen, details_slot_areas_for_screen,
         display_area_warning_ok_button_area,
         format::format_integer,
         help_area, help_close_button_area, help_scrollbar_area,
-        layout::{cpu_panel_area_for_screen, details_graph_area, details_samples_area},
+        layout::{details_graph_area, details_samples_area},
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
         process_info_close_button_area_for_screen, process_kill_button_at,
@@ -27,7 +27,8 @@ use crate::{
         process_tracked_only_checkbox_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
         recording_no_tracked_ok_button_area, recording_overwrite_button_at,
         recording_path_button_at, settings_ok_button_area, settings_selection_at,
-        system_activity_panel_area_for_screen, tracked_remove_button_at,
+        system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
+        tracked_remove_button_at,
     },
 };
 
@@ -274,6 +275,14 @@ impl App {
         if self.show_process_info_dialog {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_process_info_dialog(),
+                _ => {}
+            }
+            return Ok(());
+        }
+
+        if self.show_system_info_dialog {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => self.close_system_info_dialog(),
                 _ => {}
             }
             return Ok(());
@@ -740,7 +749,7 @@ impl App {
                 self.begin_process_jump_edit();
             }
             KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'i') && key.modifiers.is_empty() => {
-                self.toggle_info_panel_mode();
+                self.open_system_info_dialog();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'r')
@@ -961,6 +970,16 @@ impl App {
                     .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
             {
                 self.close_process_info_dialog();
+            }
+            return;
+        }
+
+        if self.show_system_info_dialog {
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+                && system_info_ok_button_area_for_screen(screen_area)
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+            {
+                self.close_system_info_dialog();
             }
             return;
         }
@@ -1402,14 +1421,11 @@ impl App {
             y,
         ) {
             self.focused_panel = FocusedPanel::SystemActivity;
-            self.status = match self.info_panel_mode {
-                crate::app::InfoPanelMode::SystemActivity => "Focus: System Activity".to_string(),
-                crate::app::InfoPanelMode::SystemInfo => "Focus: System Info".to_string(),
-            };
+            self.status = "Focus: NW/DISK".to_string();
             return;
         }
 
-        if contains_point(cpu_panel_area_for_screen(screen_area), x, y) {
+        if contains_point(cpu_panel_area_for_screen(screen_area, self), x, y) {
             self.focused_panel = FocusedPanel::Cpu;
             self.status = "Focus: CPUs".to_string();
             return;
@@ -1491,9 +1507,6 @@ impl App {
     }
 
     fn select_system_activity_metric_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
-        if self.info_panel_mode != crate::app::InfoPanelMode::SystemActivity {
-            return;
-        }
         let area = system_activity_panel_area_for_screen(screen_area, self);
         if !contains_point(area, x, y) {
             return;

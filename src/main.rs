@@ -36,8 +36,8 @@ use app::run_tui;
 #[cfg(test)]
 use app::{
     AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphSlot, GraphValueFormat,
-    InfoPanelMode, PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SettingsSelection,
-    TrackedRemoveSelection, VisibleProcessEntry,
+    PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SettingsSelection, TrackedRemoveSelection,
+    VisibleProcessEntry,
 };
 use cli::Cli;
 #[cfg(test)]
@@ -518,7 +518,7 @@ name = "legacy-watch.exe"
                 Rect::new(0, 0, 120, 40),
                 false,
             )),
-            23
+            26
         );
         assert_eq!(
             process_table_page_size(process_table_area_for_screen(
@@ -1047,7 +1047,7 @@ name = "legacy-watch.exe"
         assert!(app.jump_editing);
         assert_eq!(app.jump_draft, "");
         assert_eq!(app.focused_panel, FocusedPanel::Processes);
-        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemActivity);
+        assert!(!app.show_system_info_dialog);
     }
 
     #[test]
@@ -3010,8 +3010,7 @@ name = "legacy-watch.exe"
 
     #[test]
     fn ram_vram_panel_excludes_cache_standby_and_separates_gpu_rows() {
-        let mut app = make_test_app(3, 10);
-        app.info_panel_mode = InfoPanelMode::SystemInfo;
+        let app = make_test_app(3, 10);
 
         let rendered = render_app_to_text(&app, 120, 30);
 
@@ -3036,17 +3035,20 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 30);
 
-        assert!(rendered.contains("System Activity"), "{rendered}");
-        assert!(rendered.contains("Net In"), "{rendered}");
-        assert!(rendered.contains("240 Mbps"), "{rendered}");
-        assert!(rendered.contains("Net Out"), "{rendered}");
-        assert!(rendered.contains("320 Mbps"), "{rendered}");
-        assert!(rendered.contains("Disk R"), "{rendered}");
-        assert!(rendered.contains("10.0 MB/s"), "{rendered}");
-        assert!(rendered.contains("Disk W"), "{rendered}");
-        assert!(rendered.contains("20.0 MB/s"), "{rendered}");
-        assert!(rendered.contains("Disk Q"), "{rendered}");
-        assert!(rendered.contains("1.5"), "{rendered}");
+        assert!(rendered.contains("NW/DISK"), "{rendered}");
+        assert!(
+            rendered.find("RAM/VRAM").unwrap() < rendered.find("NW/DISK").unwrap(),
+            "{rendered}"
+        );
+        assert!(
+            rendered.find("NW/DISK").unwrap() < rendered.find("CPUs").unwrap(),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Net Rx   240 Mbps"), "{rendered}");
+        assert!(rendered.contains("Net Tx   320 Mbps"), "{rendered}");
+        assert!(rendered.contains("Disk R    10 MB/s"), "{rendered}");
+        assert!(rendered.contains("Disk W    20 MB/s"), "{rendered}");
+        assert!(rendered.contains("Disk Q     2"), "{rendered}");
     }
 
     #[test]
@@ -3522,7 +3524,7 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("Global  (any focus)"), "{rendered}");
         assert!(rendered.contains("Processes"), "{rendered}");
         assert!(rendered.contains("RAM/VRAM"), "{rendered}");
-        assert!(rendered.contains("System Activity"), "{rendered}");
+        assert!(rendered.contains("NW/DISK"), "{rendered}");
         assert!(rendered.contains("Graph"), "{rendered}");
         assert!(rendered.contains("Samples"), "{rendered}");
         assert!(
@@ -3777,7 +3779,8 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("Avg 42%"), "{rendered}");
         assert!(rendered.contains("P-core 3.20 GHz"), "{rendered}");
         assert!(rendered.contains("E-core 1.80 GHz"), "{rendered}");
-        assert!(rendered.contains("(P) ▁▂ (E) █"), "{rendered}");
+        assert!(rendered.contains("Load (P)"), "{rendered}");
+        assert!(rendered.contains("(E) █"), "{rendered}");
     }
 
     #[test]
@@ -3815,7 +3818,7 @@ name = "legacy-watch.exe"
     fn clicking_cpu_panel_moves_focus_to_cpus() {
         let mut app = make_test_app(3, 10);
         let screen = Rect::new(0, 0, 120, 45);
-        let area = ui::layout::cpu_panel_area_for_screen(screen);
+        let area = ui::cpu_panel_area_for_screen(screen, &app);
 
         app.on_mouse(left_click(area.x + 1, area.y + 1), screen);
 
@@ -3832,7 +3835,7 @@ name = "legacy-watch.exe"
         app.on_mouse(left_click(area.x + 1, area.y + 1), screen);
 
         assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
-        assert_eq!(app.status, "System Activity row: Net In");
+        assert_eq!(app.status, "NW/DISK row: Net Rx");
     }
 
     #[test]
@@ -4720,20 +4723,28 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn plain_i_toggles_system_activity_and_info_panel() {
+    fn plain_i_opens_system_info_dialog() {
         let mut app = make_test_app(1, 10);
 
         app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemInfo);
+        assert!(app.show_system_info_dialog);
         assert_eq!(app.process_info_cache.len(), 0);
         assert!(app.pending_process_info.is_none());
 
-        app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
+        let rendered = render_app_to_text(&app, 100, 20);
+        assert_eq!(rendered.matches("System Info").count(), 1, "{rendered}");
+        assert!(!rendered.contains("System Activity"), "{rendered}");
+        assert!(!rendered.contains("CPUs"), "{rendered}");
+        assert!(!rendered.contains("CPU Usage ["), "{rendered}");
+        assert!(!rendered.contains("Net Rx"), "{rendered}");
+        assert!(!rendered.contains("Disk Q"), "{rendered}");
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemActivity);
+        assert!(!app.show_system_info_dialog);
         assert!(app.pending_process_info.is_none());
     }
 
@@ -4744,7 +4755,7 @@ name = "legacy-watch.exe"
         app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::CONTROL))
             .unwrap();
 
-        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemActivity);
+        assert!(!app.show_system_info_dialog);
         assert!(app.jump_editing);
     }
 
@@ -7071,6 +7082,7 @@ name = "legacy-watch.exe"
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
             show_process_info_dialog: false,
+            show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
             log_list_worker: None,
@@ -7119,7 +7131,6 @@ name = "legacy-watch.exe"
             system_history: SystemHistory::default(),
             ram_vram_selected_index: 0,
             system_activity_selected_index: 0,
-            info_panel_mode: InfoPanelMode::SystemActivity,
             process_info_cache: std::collections::HashMap::new(),
             process_info_display_identity: None,
             pending_process_info: None,

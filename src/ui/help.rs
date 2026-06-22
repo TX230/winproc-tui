@@ -146,7 +146,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "i",
-        label: "Toggle System Activity/Info",
+        label: "Open System Info",
     },
     HelpItem {
         key: "f",
@@ -313,7 +313,7 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         rows: RAM_VRAM_ROWS,
     },
     HelpSection {
-        title: "System Activity",
+        title: "NW/DISK",
         focus_hint: None,
         rows: SYSTEM_ACTIVITY_ROWS,
     },

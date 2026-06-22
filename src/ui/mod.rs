@@ -35,7 +35,6 @@ pub(crate) use column_picker::{
     column_picker_page_size_for_screen, column_picker_row_for_index,
     column_picker_scroll_max_for_page_size, column_picker_scrollbar_area,
 };
-use cpu_panel::draw_cpu_panel;
 use details_panel::draw_details_panel;
 use footer::draw_footer;
 pub(crate) use format::fmt_bytes;
@@ -85,15 +84,16 @@ pub(crate) use recording_dialog::{
 };
 use settings_dialog::draw_settings_dialog;
 pub(crate) use settings_dialog::{settings_ok_button_area, settings_selection_at};
-use system_panel::draw_system_panel;
 #[cfg(test)]
 pub(crate) use system_panel::{
     SummaryInfoStyle, optional_value_color, render_summary_info_line,
     render_summary_info_value_spans, render_summary_line,
 };
 pub(crate) use system_panel::{
-    ram_vram_panel_area_for_screen, system_activity_panel_area_for_screen,
+    cpu_panel_area_for_screen, ram_vram_panel_area_for_screen,
+    system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
 };
+use system_panel::{draw_system_info_dialog, draw_system_panel};
 pub(crate) use theme::{THEMES, Theme, theme_index_by_name};
 use tracked_remove_confirm::draw_tracked_remove_confirm;
 pub(crate) use tracked_remove_confirm::tracked_remove_button_at;
@@ -131,6 +131,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     if app.show_process_info_dialog {
         draw_process_info_dialog(frame, area, app, theme);
     }
+    if app.show_system_info_dialog {
+        draw_system_info_dialog(frame, area, app, theme);
+    }
     if app.show_recording_no_tracked_warning {
         draw_recording_no_tracked_warning(frame, area, theme);
     }
@@ -167,16 +170,15 @@ fn draw_body(frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect, app: &
     let sections = layout::body_sections(area);
 
     draw_system_panel(frame, sections[0], app, theme);
-    draw_cpu_panel(frame, sections[1], app, theme);
     if app.show_details {
         let lower = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(13), Constraint::Min(20)])
-            .split(sections[2]);
+            .split(sections[1]);
         draw_process_table(frame, lower[0], app, theme);
         draw_details_panel(frame, lower[1], app, theme);
     } else {
-        draw_process_table(frame, sections[2], app, theme);
+        draw_process_table(frame, sections[1], app, theme);
     }
 }
 

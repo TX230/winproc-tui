@@ -1,20 +1,18 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    prelude::Style,
+    layout::{Margin, Rect},
+    prelude::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::Paragraph,
+    widgets::{Clear, Paragraph},
 };
 
 use crate::{
     App,
-    app::{AppActivity, FocusedPanel, InfoPanelMode},
+    app::{AppActivity, FocusedPanel},
     model::{DiskUsageSample, SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY},
     ui::{
         Theme,
-        format::{
-            format_frequency_mhz, format_integer, format_mb, format_mb_per_sec, format_mbps,
-            ratio_optional,
-        },
+        cpu_panel::draw_cpu_panel,
+        format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
         layout::system_panel_area_for_screen,
         widgets::block::panel_block_focused,
     },
@@ -26,12 +24,8 @@ pub(crate) fn draw_system_panel(
     app: &App,
     theme: Theme,
 ) {
+    let panels = top_panel_areas(area, app);
     let usage_lines = memory_usage_lines(app, theme);
-    let memory_width = memory_panel_width_for_lines(area.width, &usage_lines);
-    let panels = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(memory_width), Constraint::Min(20)])
-        .split(area);
 
     let memory_block = panel_block_focused(
         ram_vram_title(app, theme),
@@ -44,25 +38,88 @@ pub(crate) fn draw_system_panel(
     let left = Paragraph::new(Text::from(usage_lines)).style(Style::default().bg(theme.panel));
     frame.render_widget(left, memory_inner);
 
-    let info_title = match app.info_panel_mode {
-        InfoPanelMode::SystemActivity => "System Activity",
-        InfoPanelMode::SystemInfo => "System Info",
-    };
-    let info_block = panel_block_focused(
-        info_title,
+    let activity_block = panel_block_focused(
+        "NW/DISK",
         theme,
         app.panel_has_focus(FocusedPanel::SystemActivity),
     );
-    let info_inner = info_block.inner(panels[1]);
-    frame.render_widget(info_block, panels[1]);
+    let activity_inner = activity_block.inner(panels[1]);
+    frame.render_widget(activity_block, panels[1]);
 
-    let info_lines = match app.info_panel_mode {
-        InfoPanelMode::SystemActivity => system_activity_lines(app, theme),
-        InfoPanelMode::SystemInfo => system_info_lines(app, theme),
-    };
+    let right = Paragraph::new(Text::from(system_activity_lines(app, theme)))
+        .style(Style::default().bg(theme.panel));
+    frame.render_widget(right, activity_inner);
 
-    let right = Paragraph::new(Text::from(info_lines)).style(Style::default().bg(theme.panel));
-    frame.render_widget(right, info_inner);
+    draw_cpu_panel(frame, panels[2], app, theme);
+}
+
+pub(crate) fn draw_system_info_dialog(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &App,
+    theme: Theme,
+) {
+    let popup = system_info_dialog_area(area);
+    frame.render_widget(Clear, popup);
+    let block = panel_block_focused("System Info", theme, true);
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let content_height = inner.height.saturating_sub(2);
+    let content = Rect::new(inner.x, inner.y, inner.width, content_height);
+    let lines = system_info_dialog_lines(app, theme);
+    frame.render_widget(
+        Paragraph::new(Text::from(lines)).style(Style::default().bg(theme.panel)),
+        content,
+    );
+
+    if let Some(area) = system_info_ok_button_area_in_popup(popup) {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "[ OK ]",
+                Style::default()
+                    .fg(theme.background)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))),
+            area,
+        );
+    }
+}
+
+fn system_info_dialog_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
+    system_info_lines(app, theme)
+}
+
+pub(crate) fn system_info_ok_button_area_for_screen(area: Rect) -> Option<Rect> {
+    system_info_ok_button_area_in_popup(system_info_dialog_area(area))
+}
+
+fn system_info_dialog_area(area: Rect) -> Rect {
+    let width = 100.min(area.width);
+    let height = 20.min(area.height);
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    )
+}
+
+fn system_info_ok_button_area_in_popup(popup: Rect) -> Option<Rect> {
+    if popup.width < 6 || popup.height < 4 {
+        return None;
+    }
+    let inner = popup.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    Some(Rect::new(
+        inner.x + inner.width.saturating_sub(6) / 2,
+        inner.bottom().saturating_sub(1),
+        6,
+        1,
+    ))
 }
 
 fn ram_vram_title(app: &App, theme: Theme) -> Line<'static> {
@@ -102,7 +159,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
             SystemMetric::NetworkReceived,
             render_summary_graph_slot_value_line(
                 system_metric_graph_slot_numbers(app, SystemMetric::NetworkReceived),
-                "Net In",
+                "Net Rx",
                 &format_optional_mbps(snapshot.network_received_bytes_per_sec),
                 theme,
             ),
@@ -111,7 +168,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
             SystemMetric::NetworkSent,
             render_summary_graph_slot_value_line(
                 system_metric_graph_slot_numbers(app, SystemMetric::NetworkSent),
-                "Net Out",
+                "Net Tx",
                 &format_optional_mbps(snapshot.network_sent_bytes_per_sec),
                 theme,
             ),
@@ -121,7 +178,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
             render_summary_graph_slot_value_line(
                 system_metric_graph_slot_numbers(app, SystemMetric::DiskRead),
                 "Disk R",
-                &format_optional_mb_per_sec(snapshot.disk_read_bytes_per_sec),
+                &format_optional_whole_mb_per_sec(snapshot.disk_read_bytes_per_sec),
                 theme,
             ),
         ),
@@ -130,7 +187,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
             render_summary_graph_slot_value_line(
                 system_metric_graph_slot_numbers(app, SystemMetric::DiskWrite),
                 "Disk W",
-                &format_optional_mb_per_sec(snapshot.disk_write_bytes_per_sec),
+                &format_optional_whole_mb_per_sec(snapshot.disk_write_bytes_per_sec),
                 theme,
             ),
         ),
@@ -233,21 +290,43 @@ fn graph_slot_prefix_span(graph_slot_numbers: Option<String>, theme: Theme) -> S
 
 pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
     let area = system_panel_area_for_screen(screen_area);
-    let usage_lines = memory_usage_lines(app, app.theme());
-    let memory_width = memory_panel_width_for_lines(area.width, &usage_lines);
-    Rect::new(area.x, area.y, memory_width.min(area.width), area.height)
+    top_panel_areas(area, app)[0]
+}
+
+pub(crate) fn cpu_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
+    let area = system_panel_area_for_screen(screen_area);
+    top_panel_areas(area, app)[2]
 }
 
 pub(crate) fn system_activity_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
     let area = system_panel_area_for_screen(screen_area);
+    top_panel_areas(area, app)[1]
+}
+
+fn top_panel_areas(area: Rect, app: &App) -> [Rect; 3] {
     let usage_lines = memory_usage_lines(app, app.theme());
     let memory_width = memory_panel_width_for_lines(area.width, &usage_lines).min(area.width);
-    Rect::new(
-        area.x.saturating_add(memory_width),
-        area.y,
-        area.width.saturating_sub(memory_width),
-        area.height,
-    )
+    let remaining = area.width.saturating_sub(memory_width);
+    let activity_lines = system_activity_lines(app, app.theme());
+    let activity_width = activity_panel_width_for_lines(remaining, &activity_lines);
+    let cpu_width = remaining.saturating_sub(activity_width);
+    [
+        Rect::new(area.x, area.y, memory_width, area.height),
+        Rect::new(
+            area.x.saturating_add(memory_width),
+            area.y,
+            activity_width,
+            area.height,
+        ),
+        Rect::new(
+            area.x
+                .saturating_add(memory_width)
+                .saturating_add(activity_width),
+            area.y,
+            cpu_width,
+            area.height,
+        ),
+    ]
 }
 
 fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
@@ -349,6 +428,12 @@ fn memory_panel_width_for_lines(area_width: u16, lines: &[Line<'_>]) -> u16 {
     desired.max(min_width).min(max_width).min(area_width)
 }
 
+fn activity_panel_width_for_lines(area_width: u16, lines: &[Line<'_>]) -> u16 {
+    let content_width = lines.iter().map(line_width).max().unwrap_or(12) as u16;
+    let desired = content_width.saturating_add(2);
+    desired.min(area_width)
+}
+
 fn line_width(line: &Line<'_>) -> usize {
     line.spans
         .iter()
@@ -391,20 +476,27 @@ fn format_disk_summary(disks: &[DiskUsageSample]) -> String {
 }
 
 fn format_optional_mbps(value: Option<u64>) -> String {
-    value.map(format_mbps).unwrap_or_else(|| "--".to_string())
+    value
+        .map(|value| {
+            format!(
+                "{:>4} Mbps",
+                ((value as f64 * 8.0) / 1_000_000.0).round() as u64
+            )
+        })
+        .unwrap_or_else(|| format!("{:>4}", "--"))
 }
 
-fn format_optional_mb_per_sec(value: Option<u64>) -> String {
+fn format_optional_whole_mb_per_sec(value: Option<u64>) -> String {
     value
-        .map(format_mb_per_sec)
-        .unwrap_or_else(|| "--".to_string())
+        .map(|value| format!("{:>4} MB/s", ((value as f64) / 1_000_000.0).round() as u64))
+        .unwrap_or_else(|| format!("{:>4}", "--"))
 }
 
 fn format_optional_queue_length(value: Option<f64>) -> String {
     value
         .filter(|value| value.is_finite())
-        .map(|value| format!("{value:.1}"))
-        .unwrap_or_else(|| "--".to_string())
+        .map(|value| format!("{:>4}", value.round().max(0.0) as u64))
+        .unwrap_or_else(|| format!("{:>4}", "--"))
 }
 
 fn format_gb_number(bytes: u64) -> String {
@@ -479,6 +571,17 @@ mod tests {
 
         assert_eq!(line.spans[1].content.as_ref(), "14,915 MB / 34,089 MB");
         assert_eq!(line.spans[1].style.fg, Some(THEMES[0].text));
+    }
+
+    #[test]
+    fn system_activity_formatters_use_whole_number_panel_units() {
+        assert_eq!(format_optional_mbps(Some(30_000_000)), " 240 Mbps");
+        assert_eq!(
+            format_optional_whole_mb_per_sec(Some(10_400_000)),
+            "  10 MB/s"
+        );
+        assert_eq!(format_optional_queue_length(Some(1.5)), "   2");
+        assert_eq!(format_optional_queue_length(None), "  --");
     }
 }
 

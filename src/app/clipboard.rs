@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::{
     App,
-    app::{FocusedPanel, GraphValueFormat, InfoPanelMode},
+    app::{FocusedPanel, GraphValueFormat},
     model::{MetricColumn, ProcessRow, history::SystemMetric},
     ui::format::{
         format_integer, format_mb, format_mb_per_sec, format_mbps, format_signed_integer,
@@ -100,10 +100,6 @@ impl App {
     }
 
     fn copy_selected_system_activity_row_to_clipboard(&mut self) -> Result<()> {
-        if self.info_panel_mode != InfoPanelMode::SystemActivity {
-            self.status = "No row to copy".to_string();
-            return Ok(());
-        }
         let metric = self.selected_system_activity_metric();
         let value = selected_system_row_text(self, metric);
 

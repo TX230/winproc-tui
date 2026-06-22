@@ -83,9 +83,9 @@ src/
     layout.rs          screen-area calculation
     theme.rs           Dark / Light themes
     header.rs / footer.rs
-    system_panel.rs    RAM/VRAM / System Activity / System Info
+    system_panel.rs    top RAM/VRAM / NW/DISK / CPUs panels and System Info dialog
     process_info_dialog.rs
-    cpu_panel.rs       compact live CPU pressure row
+    cpu_panel.rs       compact live CPU pressure panel
     process_table.rs   process list (columns, sort, tracked display)
     details_panel.rs   Graph + Samples + A/B
     column_picker.rs   column-selection modal
@@ -243,15 +243,15 @@ Representative operations:
 - `Enter` (Processes): open the Process Info dialog for the selected row.
 - `Enter` (System): report the selected RAM/VRAM metric in status.
 - `1` / `2` / `3` / `4` (System): assign the selected RAM/VRAM metric to the matching Graph slot.
-- `Enter` (System Activity): report the selected activity metric in status.
-- `1` / `2` / `3` / `4` (System Activity): assign the selected network/disk activity metric to the matching Graph slot.
+- `Enter` (NW/DISK): report the selected activity metric in status.
+- `1` / `2` / `3` / `4` (NW/DISK): assign the selected network/disk activity metric to the matching Graph slot.
 - `1` / `2` / `3` / `4` (Cpu): assign `CPU Avg` to the matching Graph slot.
 - `Space` (Processes): add/remove the selected process name in `watch_list`.
 - `t`: toggle `watch_enabled`.
 - `Delete`: for live rows, open process-kill confirmation and run `taskkill /f /im` per selected image name after confirmation; for Ghost Rows, delete an exited tracked row through the history-discard confirmation dialog.
 - `s` / `c`: toggle sorting / open the column picker.
-- `i`: switch the top-right panel between System Activity and System Info.
-- `Ctrl+C`: copy the selected row text for RAM/VRAM, System Activity, CPUs, Processes, or Samples to the clipboard.
+- `i`: open the System Info dialog.
+- `Ctrl+C`: copy the selected row text for RAM/VRAM, NW/DISK, CPUs, Processes, or Samples to the clipboard.
 - `f` (Processes): open the open-files list for the selected live process.
 - `Ctrl+U` (Open files modal): refresh the open-files list for the selected live process if no previous open-files request is still running.
 - `Ctrl+O`: open the Settings dialog.
@@ -280,15 +280,15 @@ Mouse capture is enabled only when `runtime.mouse` is true, and can be disabled 
 ### 9.1 Layout
 
 `ui::draw` uses `screen_layout(area)` to split the screen vertically into header / body / footer.
-The body is split into a fixed-height top area (`SYSTEM_PANEL_HEIGHT`) for RAM/VRAM + Activity/Info, a fixed-height `CPUs` panel, and a lower area for the rest.
-When `show_details` is true, the lower area below the `CPUs` panel is split again into a 13-row process table and a Details panel.
+The body is split into a fixed-height top area (`SYSTEM_PANEL_HEIGHT`) for `RAM/VRAM`, `NW/DISK`, and `CPUs`, plus a lower area for the rest.
+When `show_details` is true, the lower area is split again into a 13-row process table and a Details panel.
 
 Each modal (Help, column picker, recording dialog, quit confirmation, and others) is drawn as a top-level overlay over `area`.
 
 ### 9.2 Major Panels
 
-- `system_panel`: Draws RAM, Committed, GPU Dedicated, and GPU Shared in four rows, highlighting the selected metric and Graph slot state. The right side shows System Activity or System Info according to `InfoPanelMode`; System Activity rows can take focus, select a metric, and assign Graph slots with the same row/number behavior as RAM/VRAM.
-- `cpu_panel`: Draws the compact `CPUs` panel above the Process table. It shows average CPU usage, current P/E clock averages when PDH reports them, and per-logical-CPU colored load glyphs with P/E markers when Windows efficiency classes distinguish core types. The panel can take focus; `CPU Avg` uses `SystemHistory`, can be assigned to Graph slots, and reserves the first two content cells for the Graph slot number.
+- `system_panel`: Draws the top row as `RAM/VRAM`, `NW/DISK`, and `CPUs`. RAM/VRAM rows highlight the selected metric and Graph slot state. NW/DISK rows show System Activity metrics and can take focus, select a metric, and assign Graph slots with the same row/number behavior as RAM/VRAM. The System Info view is drawn as a top-level modal dialog when requested.
+- `cpu_panel`: Draws the compact `CPUs` panel in the top row. It shows average CPU usage, current P/E clock averages when PDH reports them, and per-logical-CPU colored load glyphs with P/E markers when Windows efficiency classes distinguish core types. The panel can take focus; `CPU Avg` uses `SystemHistory`, can be assigned to Graph slots, and reserves the first two content cells for the Graph slot number.
 - `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Ghost Rows (exited tracked processes) use a different color and appear after live rows. The cursor row and live multi-selected rows use separate highlights. Headers show `↑` / `↓` for the sorted column. Live metric cells compare their present raw value against `previous_snapshot` and use the success color for increases and the danger color for decreases. The `Full Path` column is rendered as left-aligned text, takes extra table width when visible, and is shortened from the start when needed. While the user is actively moving the process cursor, sample refreshes briefly preserve the current row order to avoid periodic cursor jumps from metric-driven resorting.
 - `details_panel`: Upper Graph (`Chart` widget) plus lower Samples table. The Graph shows history for the current `details_target` / `details_metric` across `graph_time_span_seconds`. It supports Y-min lock to 0, A/B markers, selected cursor, and offset movement with Ctrl+Arrow or mouse drag. A/B marker letters are drawn on the Graph X-axis line, separate from the selected cursor value label. Ctrl+Arrow pans by about one eighth of the current time span; mouse drag clamps the offset so at least one sample from the active series remains in the visible range. Fit-all mode is not cleared by drag attempts. Live graph scrolling stops only when the Graph visible range is moved away from the live edge by Ctrl+Arrow or graph mouse drag; moving the cursor or setting an A/B point does not freeze the Graph visible range. While stopped, sampling updates preserve the absolute visible time window instead of sliding it forward.
 - `recording_dialog`: Save-path edit dialog, overwrite confirmation, and no-tracked warning.

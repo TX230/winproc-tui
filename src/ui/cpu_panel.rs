@@ -17,13 +17,50 @@ pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &A
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let paragraph = Paragraph::new(Text::from(vec![cpu_panel_line(
+    let paragraph = Paragraph::new(Text::from(cpu_panel_lines_for_app(
+        app,
+        theme,
+        inner.height,
+    )))
+    .style(Style::default().bg(theme.panel));
+    frame.render_widget(paragraph, inner);
+}
+
+pub(crate) fn cpu_panel_lines_for_app(app: &App, theme: Theme, height: u16) -> Vec<Line<'static>> {
+    cpu_panel_lines(
         &cpu_average_graph_slot_numbers(app),
         app.display_snapshot(),
         theme,
-    )]))
-    .style(Style::default().bg(theme.panel));
-    frame.render_widget(paragraph, inner);
+        height,
+    )
+}
+
+fn cpu_panel_lines(
+    cpu_average_graph_slot_numbers: &str,
+    snapshot: &Snapshot,
+    theme: Theme,
+    height: u16,
+) -> Vec<Line<'static>> {
+    if height <= 1 || snapshot.cpu_logical_processors.is_empty() {
+        return vec![cpu_panel_line(
+            cpu_average_graph_slot_numbers,
+            snapshot,
+            theme,
+        )];
+    }
+
+    let mut lines = vec![cpu_panel_summary_line(
+        cpu_average_graph_slot_numbers,
+        snapshot,
+        theme,
+    )];
+    let bar_height = usize::from(height.saturating_sub(1).min(3));
+    lines.extend(cpu_core_bar_lines(
+        &snapshot.cpu_logical_processors,
+        theme,
+        bar_height,
+    ));
+    lines
 }
 
 fn cpu_panel_line(
@@ -31,16 +68,7 @@ fn cpu_panel_line(
     snapshot: &Snapshot,
     theme: Theme,
 ) -> Line<'static> {
-    let mut spans = vec![
-        cpu_average_graph_slot_span(cpu_average_graph_slot_numbers, theme),
-        Span::styled("Avg ", Style::default().fg(theme.muted)),
-        Span::styled(
-            format_cpu_average(snapshot.cpu_total_usage_percent),
-            Style::default().fg(theme.text),
-        ),
-        Span::raw("  "),
-    ];
-    spans.extend(cpu_frequency_spans(snapshot, theme));
+    let mut spans = cpu_panel_summary_spans(cpu_average_graph_slot_numbers, snapshot, theme);
 
     if snapshot.cpu_logical_processors.is_empty() {
         spans.push(Span::raw("  "));
@@ -51,6 +79,84 @@ fn cpu_panel_line(
     }
 
     Line::from(spans)
+}
+
+fn cpu_panel_summary_line(
+    cpu_average_graph_slot_numbers: &str,
+    snapshot: &Snapshot,
+    theme: Theme,
+) -> Line<'static> {
+    Line::from(cpu_panel_summary_spans(
+        cpu_average_graph_slot_numbers,
+        snapshot,
+        theme,
+    ))
+}
+
+fn cpu_panel_summary_spans(
+    cpu_average_graph_slot_numbers: &str,
+    snapshot: &Snapshot,
+    theme: Theme,
+) -> Vec<Span<'static>> {
+    let mut spans = vec![
+        cpu_average_graph_slot_span(cpu_average_graph_slot_numbers, theme),
+        Span::styled("Avg ", Style::default().fg(theme.muted)),
+        Span::styled(
+            format_cpu_average(snapshot.cpu_total_usage_percent),
+            Style::default().fg(theme.text),
+        ),
+        Span::raw("  "),
+    ];
+    spans.extend(cpu_frequency_spans(snapshot, theme));
+    spans
+}
+
+fn cpu_core_bar_lines(
+    cores: &[CpuLogicalProcessorSample],
+    theme: Theme,
+    height: usize,
+) -> Vec<Line<'static>> {
+    if height == 0 {
+        return Vec::new();
+    }
+    let classified = cores.iter().any(|core| core.kind.is_some());
+    (0..height)
+        .map(|row| {
+            let mut spans = vec![Span::styled(
+                if row == 0 { "  Load " } else { "       " },
+                Style::default().fg(theme.muted),
+            )];
+            let threshold = ((height - row - 1) * 100 / height) as u8;
+            let mut previous_kind = None;
+            for (index, core) in cores.iter().enumerate() {
+                if classified && (index == 0 || core.kind != previous_kind) {
+                    if index > 0 {
+                        spans.push(Span::raw(" "));
+                    }
+                    spans.push(Span::styled(
+                        if row == 0 {
+                            cpu_core_marker(core.kind)
+                        } else {
+                            "   "
+                        },
+                        Style::default().fg(theme.muted),
+                    ));
+                    spans.push(Span::raw(" "));
+                }
+                let filled = core.usage_percent >= threshold;
+                spans.push(Span::styled(
+                    if filled { "█" } else { " " },
+                    if filled {
+                        cpu_usage_style(core.usage_percent)
+                    } else {
+                        Style::default().fg(theme.muted)
+                    },
+                ));
+                previous_kind = core.kind;
+            }
+            Line::from(spans)
+        })
+        .collect()
 }
 
 fn cpu_average_graph_slot_span(numbers: &str, theme: Theme) -> Span<'static> {
@@ -273,5 +379,37 @@ mod tests {
 
         assert_eq!(usage_span.style.bg, None);
         assert_eq!(usage_span.style.fg, Some(cpu_usage_color(77)));
+    }
+
+    #[test]
+    fn cpu_core_bar_lines_show_low_usage_cores() {
+        let snapshot = snapshot_with_cores(vec![
+            CpuLogicalProcessorSample {
+                usage_percent: 1,
+                kind: None,
+            },
+            CpuLogicalProcessorSample {
+                usage_percent: 22,
+                kind: None,
+            },
+            CpuLogicalProcessorSample {
+                usage_percent: 99,
+                kind: None,
+            },
+        ]);
+
+        let text = cpu_panel_lines("", &snapshot, crate::ui::THEMES[0], 4)
+            .into_iter()
+            .map(|line| {
+                line.spans
+                    .into_iter()
+                    .map(|span| span.content.into_owned())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(text.contains("Load   █"), "{text}");
+        assert!(text.contains("       ███"), "{text}");
     }
 }

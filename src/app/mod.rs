@@ -42,7 +42,6 @@ pub(crate) use state::GraphPanDragButton;
 pub(crate) use state::GraphSample;
 pub(crate) use state::GraphSlot;
 pub(crate) use state::GraphValueFormat;
-pub(crate) use state::InfoPanelMode;
 pub(crate) use state::LogDirSelection;
 #[cfg(test)]
 pub(crate) use state::PROCESS_INFO_DEBOUNCE;
