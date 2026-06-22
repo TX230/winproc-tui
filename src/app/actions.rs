@@ -535,7 +535,7 @@ impl App {
         if self.focused_panel == FocusedPanel::Cpu {
             match key.code {
                 KeyCode::Enter => {
-                    self.status = "CPUs metric selected: CPU Avg".to_string();
+                    self.status = "CPUs metric selected: CPU Usage".to_string();
                     return Ok(());
                 }
                 KeyCode::Char(' ') => {

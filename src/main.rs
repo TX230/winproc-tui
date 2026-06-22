@@ -3776,11 +3776,12 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 45);
 
         assert!(rendered.contains("CPUs"), "{rendered}");
-        assert!(rendered.contains("Avg 42%"), "{rendered}");
-        assert!(rendered.contains("P-core 3.20 GHz"), "{rendered}");
-        assert!(rendered.contains("E-core 1.80 GHz"), "{rendered}");
-        assert!(rendered.contains("Load (P)"), "{rendered}");
-        assert!(rendered.contains("(E) █"), "{rendered}");
+        assert!(rendered.contains("CPU Usage ["), "{rendered}");
+        assert!(rendered.contains("]  42%"), "{rendered}");
+        assert!(rendered.contains("P-core 3200 MHz"), "{rendered}");
+        assert!(rendered.contains("E-core 1800 MHz"), "{rendered}");
+        assert!(rendered.contains("Per-core Usage (P/E)"), "{rendered}");
+        assert!(rendered.contains("P ▁▂  E █"), "{rendered}");
     }
 
     #[test]
@@ -3810,8 +3811,9 @@ name = "legacy-watch.exe"
         );
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("1 Avg 42%"), "{rendered}");
-        assert!(rendered.contains("CPUs - CPU Avg"), "{rendered}");
+        assert!(rendered.contains("1 CPU Usage ["), "{rendered}");
+        assert!(rendered.contains("]  42%"), "{rendered}");
+        assert!(rendered.contains("CPUs - CPU Usage"), "{rendered}");
     }
 
     #[test]
@@ -4673,9 +4675,9 @@ name = "legacy-watch.exe"
 
         assert_eq!(
             app::clipboard::last_copied_text().as_deref(),
-            Some("CPU Avg\t37%")
+            Some("CPU Usage\t37%")
         );
-        assert_eq!(app.status, "Copied row: CPU Avg");
+        assert_eq!(app.status, "Copied row: CPU Usage");
     }
 
     #[test]

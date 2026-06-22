@@ -120,7 +120,7 @@ impl App {
 
         match copy_text_to_clipboard(&value) {
             Ok(()) => {
-                self.status = "Copied row: CPU Avg".to_string();
+                self.status = "Copied row: CPU Usage".to_string();
             }
             Err(error) => {
                 self.status = format!("Clipboard copy failed: {error}");

@@ -194,7 +194,7 @@ const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
 
 const CPU_ROWS: &[HelpItem] = &[HelpItem {
     key: "1/2/3/4",
-    label: "Set CPU Avg to Graph#n",
+    label: "Set CPU Usage to Graph#n",
 }];
 
 const GRAPH_ROWS: &[HelpItem] = &[

@@ -40,7 +40,7 @@ impl SystemMetric {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::CpuAverage => "CPU Avg",
+            Self::CpuAverage => "CPU Usage",
             Self::PhysicalMemory => "Physical Memory",
             Self::Committed => "Committed",
             Self::GpuDedicated => "GPU Dedicated",

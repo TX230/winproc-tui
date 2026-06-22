@@ -146,7 +146,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `Ctrl+F`            | Filter the process list by name, or by executable path when the `Full Path` column is selected. |
 | `Ctrl+I` / `Ctrl+J` | Process-name incremental search.                                                      |
-| `1` – `4`           | Show the selected process, RAM / VRAM, NW/DISK activity, or CPU Avg metric in Graph#1 – Graph#4 (press the same number again to clear). |
+| `1` – `4`           | Show the selected process, RAM / VRAM, NW/DISK activity, or CPU Usage metric in Graph#1 – Graph#4 (press the same number again to clear). |
 | `0`                 | Clear all Graphs and close the Graph panel.                                           |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |

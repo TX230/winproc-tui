@@ -57,17 +57,17 @@ When the `RAM/VRAM` panel has focus, `1` / `2` / `3` / `4` assign the selected m
 
 The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after `RAM/VRAM` and `NW/DISK`.
 It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
-When the `CPUs` panel has focus, `1` / `2` / `3` / `4` assign `CPU Avg` to the corresponding Graph slot.
+When the `CPUs` panel has focus, `1` / `2` / `3` / `4` assign `CPU Usage` to the corresponding Graph slot.
 The left edge of the panel content reserves two character cells for the Graph slot number, matching the RAM/VRAM summary rows.
 
 | Display | Description | Primary source | Format |
 |---|---|---|---|
-| `Avg` | Average utilization across logical CPUs. | `sysinfo` CPU refresh | Integer percent |
-| `P-core` / `E-core` clock | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | `GHz` / `MHz`; omitted when the current-frequency counters are unavailable |
-| Per-logical-CPU cells | Utilization for each logical CPU. P/E boundaries are marked when Windows reports distinct efficiency classes. | `sysinfo` CPU usage and `GetLogicalProcessorInformationEx(RelationProcessorCore)` | One block glyph from `▁` to `█`, with the glyph colored green through red |
+| `CPU Usage` | Average utilization across logical CPUs. | `sysinfo` CPU refresh | Three-character right-aligned integer percent, with a colored horizontal bar when panel height allows |
+| `P-core` / `E-core` clock | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | Four-character right-aligned integer `MHz`; omitted when the current-frequency counters are unavailable |
+| Per-logical-CPU cells | Utilization for each logical CPU. P/E groups are labeled when Windows reports distinct efficiency classes. | `sysinfo` CPU usage and `GetLogicalProcessorInformationEx(RelationProcessorCore)` | One block glyph from `▁` to `█`; `0%` is displayed as `▁` |
 
-If P/E classification is not available or all logical CPUs report the same `EfficiencyClass`, the panel omits P/E markers and falls back to the ordinary CPU clock summary.
-`CPU Avg` is retained in `SystemHistory`, can be graphed, and is stored in recording frames as `system_metrics.cpu_percent`.
+If P/E classification is not available or all logical CPUs report the same `EfficiencyClass`, the panel omits P/E grouping labels and falls back to the ordinary CPU clock summary.
+`CPU Usage` is retained in `SystemHistory`, can be graphed, and is stored in recording frames as `system_metrics.cpu_percent`.
 The per-logical-CPU cells are intended for quick visual pressure checks, not recording history.
 
 ## NW/DISK Activity
@@ -162,7 +162,7 @@ Slow-sample values are cached until the next slow sample.
 |---|---:|---|
 | General process | 120 | About 2 minutes. |
 | Tracked process | 7,200 | About 2 hours. |
-| System metrics | 7,200 | Used for `RAM/VRAM`, `System Activity`, and `CPU Avg` graphs. |
+| System metrics | 7,200 | Used for `RAM/VRAM`, `System Activity`, and `CPU Usage` graphs. |
 
 Process history identity consists of PID, process name, and start time.
 When start time is available, it is included in the identity to avoid mixing history after PID reuse.
