@@ -52,7 +52,7 @@ pub(crate) struct GpuCapacitySample {
     pub(crate) name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SystemCounterSample {
     pub(crate) available_memory: u64,
     pub(crate) committed_memory: u64,
@@ -61,6 +61,7 @@ pub(crate) struct SystemCounterSample {
     pub(crate) standby_cache_bytes: Option<u64>,
     pub(crate) disk_read_bytes_per_sec: Option<u64>,
     pub(crate) disk_write_bytes_per_sec: Option<u64>,
+    pub(crate) disk_queue_length: Option<f64>,
     pub(crate) network_received_bytes_per_sec: Option<u64>,
     pub(crate) network_sent_bytes_per_sec: Option<u64>,
     pub(crate) cpu_frequencies_mhz: Vec<(usize, u64)>,

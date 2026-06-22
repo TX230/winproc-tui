@@ -141,8 +141,12 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Toggle Graphs panel",
     },
     HelpItem {
+        key: "Enter",
+        label: "Open Process Info",
+    },
+    HelpItem {
         key: "i",
-        label: "Toggle System/Process Info",
+        label: "Toggle System Activity/Info",
     },
     HelpItem {
         key: "f",
@@ -159,6 +163,21 @@ const PROCESSES_ROWS: &[HelpItem] = &[
 ];
 
 const RAM_VRAM_ROWS: &[HelpItem] = &[
+    HelpItem {
+        key: "Up/Down",
+        label: "Move selected metric",
+    },
+    HelpItem {
+        key: "Home/End",
+        label: "Move to top / bottom",
+    },
+    HelpItem {
+        key: "1/2/3/4",
+        label: "Set to Graph#n",
+    },
+];
+
+const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Up/Down",
         label: "Move selected metric",
@@ -292,6 +311,11 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         title: "RAM/VRAM",
         focus_hint: None,
         rows: RAM_VRAM_ROWS,
+    },
+    HelpSection {
+        title: "System Activity",
+        focus_hint: None,
+        rows: SYSTEM_ACTIVITY_ROWS,
     },
     HelpSection {
         title: "CPUs",

@@ -2,15 +2,19 @@ use anyhow::Result;
 
 use crate::{
     App,
-    app::{DetailsMetric, FocusedPanel},
+    app::{FocusedPanel, GraphValueFormat, InfoPanelMode},
     model::{MetricColumn, ProcessRow, history::SystemMetric},
-    ui::format::{format_integer, format_mb, format_mbps, format_signed_integer, ratio_optional},
+    ui::format::{
+        format_integer, format_mb, format_mb_per_sec, format_mbps, format_signed_integer,
+        ratio_optional,
+    },
 };
 
 impl App {
     pub(crate) fn copy_focused_cell_to_clipboard(&mut self) -> Result<()> {
         match self.focused_panel {
             FocusedPanel::System => self.copy_selected_system_row_to_clipboard(),
+            FocusedPanel::SystemActivity => self.copy_selected_system_activity_row_to_clipboard(),
             FocusedPanel::Cpu => self.copy_cpu_average_to_clipboard(),
             FocusedPanel::Processes => self.copy_selected_process_row_to_clipboard(),
             FocusedPanel::DetailsSamples if self.show_details => {
@@ -95,6 +99,26 @@ impl App {
         Ok(())
     }
 
+    fn copy_selected_system_activity_row_to_clipboard(&mut self) -> Result<()> {
+        if self.info_panel_mode != InfoPanelMode::SystemActivity {
+            self.status = "No row to copy".to_string();
+            return Ok(());
+        }
+        let metric = self.selected_system_activity_metric();
+        let value = selected_system_row_text(self, metric);
+
+        match copy_text_to_clipboard(&value) {
+            Ok(()) => {
+                self.status = format!("Copied row: {}", metric.label());
+            }
+            Err(error) => {
+                self.status = format!("Clipboard copy failed: {error}");
+            }
+        }
+
+        Ok(())
+    }
+
     fn copy_cpu_average_to_clipboard(&mut self) -> Result<()> {
         let value = selected_system_row_text(self, SystemMetric::CpuAverage);
 
@@ -136,8 +160,8 @@ impl App {
         let slot = self.active_graph_slot()?;
         let samples = self.graph_slot_samples(slot);
         let sample = samples.get(self.details_sample_selected)?;
-        let metric = slot.value_format_metric();
-        let value = format_graph_sample_value(sample.value, metric);
+        let value_format = slot.value_format();
+        let value = format_graph_sample_value(sample.value, value_format);
         let current_value = sample.value;
         let previous_value = self
             .details_sample_selected
@@ -149,7 +173,7 @@ impl App {
             time: sample.captured_at.format("%H:%M:%S").to_string(),
             metric_label: slot.metric_label(),
             value,
-            delta: format_details_sample_delta(current_value, previous_value, metric),
+            delta: format_details_sample_delta(current_value, previous_value, value_format),
         })
     }
 }
@@ -204,6 +228,27 @@ fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
         SystemMetric::GpuShared => {
             format_memory_row_value(snapshot.gpu_shared_used, snapshot.gpu_shared_total)
         }
+        SystemMetric::NetworkReceived => snapshot
+            .network_received_bytes_per_sec
+            .map(format_mbps)
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::NetworkSent => snapshot
+            .network_sent_bytes_per_sec
+            .map(format_mbps)
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::DiskRead => snapshot
+            .disk_read_bytes_per_sec
+            .map(format_mb_per_sec)
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::DiskWrite => snapshot
+            .disk_write_bytes_per_sec
+            .map(format_mb_per_sec)
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::DiskQueueLength => snapshot
+            .disk_queue_length
+            .filter(|value| value.is_finite())
+            .map(|value| format!("{value:.1}"))
+            .unwrap_or_else(|| "--".to_string()),
     };
     format!("{}\t{value}", metric.label())
 }
@@ -260,23 +305,23 @@ fn format_process_metric_column(process: &ProcessRow, column: MetricColumn) -> S
     }
 }
 
-fn format_graph_sample_value(value: Option<f64>, metric: DetailsMetric) -> String {
+fn format_graph_sample_value(value: Option<f64>, value_format: GraphValueFormat) -> String {
     let Some(value) = value else {
         return "--".to_string();
     };
-    match metric {
-        DetailsMetric::CpuPercent | DetailsMetric::GpuPercent => format!("{value:.1}%"),
-        DetailsMetric::IoRead | DetailsMetric::IoWrite => {
-            format_mbps(value.round().max(0.0) as u64)
-        }
-        _ => format_integer(value.round().max(0.0) as u64),
+    match value_format {
+        GraphValueFormat::Percent => format!("{value:.1}%"),
+        GraphValueFormat::MegabitsPerSec => format_mbps(value.round().max(0.0) as u64),
+        GraphValueFormat::MegabytesPerSec => format_mb_per_sec(value.round().max(0.0) as u64),
+        GraphValueFormat::QueueLength => format!("{value:.1}"),
+        GraphValueFormat::Integer => format_integer(value.round().max(0.0) as u64),
     }
 }
 
 fn format_details_sample_delta(
     value: Option<f64>,
     previous: Option<f64>,
-    metric: DetailsMetric,
+    value_format: GraphValueFormat,
 ) -> String {
     let Some(value) = value else {
         return "--".to_string();
@@ -284,18 +329,22 @@ fn format_details_sample_delta(
     let Some(previous) = previous else {
         return "--".to_string();
     };
-    format_details_delta(value - previous, metric)
+    format_details_delta(value - previous, value_format)
 }
 
-fn format_details_delta(delta: f64, metric: DetailsMetric) -> String {
-    match metric {
-        DetailsMetric::CpuPercent => format!("{delta:+.1}%"),
-        DetailsMetric::GpuPercent => format!("{delta:+.1}%"),
-        DetailsMetric::IoRead | DetailsMetric::IoWrite => {
+fn format_details_delta(delta: f64, value_format: GraphValueFormat) -> String {
+    match value_format {
+        GraphValueFormat::Percent => format!("{delta:+.1}%"),
+        GraphValueFormat::MegabitsPerSec => {
             let mbps = ((delta * 8.0) / 1_000_000.0).round() as i128;
             format_signed_integer(mbps) + " Mbps"
         }
-        _ => format_signed_integer(delta.round() as i128),
+        GraphValueFormat::MegabytesPerSec => {
+            let mb_per_sec = (delta / 1_000_000.0).round() as i128;
+            format_signed_integer(mb_per_sec) + " MB/s"
+        }
+        GraphValueFormat::QueueLength => format!("{delta:+.1}"),
+        GraphValueFormat::Integer => format_signed_integer(delta.round() as i128),
     }
 }
 

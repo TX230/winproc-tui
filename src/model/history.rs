@@ -16,6 +16,11 @@ pub(crate) enum SystemMetric {
     Committed,
     GpuDedicated,
     GpuShared,
+    NetworkReceived,
+    NetworkSent,
+    DiskRead,
+    DiskWrite,
+    DiskQueueLength,
 }
 
 impl SystemMetric {
@@ -25,6 +30,13 @@ impl SystemMetric {
         Self::GpuDedicated,
         Self::GpuShared,
     ];
+    pub(crate) const SYSTEM_ACTIVITY_PANEL: [Self; 5] = [
+        Self::NetworkReceived,
+        Self::NetworkSent,
+        Self::DiskRead,
+        Self::DiskWrite,
+        Self::DiskQueueLength,
+    ];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
@@ -33,6 +45,11 @@ impl SystemMetric {
             Self::Committed => "Committed",
             Self::GpuDedicated => "GPU Dedicated",
             Self::GpuShared => "GPU Shared",
+            Self::NetworkReceived => "Net In",
+            Self::NetworkSent => "Net Out",
+            Self::DiskRead => "Disk R",
+            Self::DiskWrite => "Disk W",
+            Self::DiskQueueLength => "Disk Q",
         }
     }
 
@@ -42,6 +59,11 @@ impl SystemMetric {
             Self::PhysicalMemory | Self::Committed | Self::GpuDedicated | Self::GpuShared => {
                 "RAM/VRAM"
             }
+            Self::NetworkReceived
+            | Self::NetworkSent
+            | Self::DiskRead
+            | Self::DiskWrite
+            | Self::DiskQueueLength => "System Activity",
         }
     }
 }
@@ -247,6 +269,11 @@ pub(crate) struct SystemSample {
     pub(crate) committed_bytes: Option<u64>,
     pub(crate) gpu_dedicated_bytes: Option<u64>,
     pub(crate) gpu_shared_bytes: Option<u64>,
+    pub(crate) network_received_bytes_per_sec: Option<u64>,
+    pub(crate) network_sent_bytes_per_sec: Option<u64>,
+    pub(crate) disk_read_bytes_per_sec: Option<u64>,
+    pub(crate) disk_write_bytes_per_sec: Option<u64>,
+    pub(crate) disk_queue_length: Option<f64>,
 }
 
 impl SystemSample {
@@ -258,16 +285,28 @@ impl SystemSample {
             committed_bytes: snapshot.committed_memory,
             gpu_dedicated_bytes: snapshot.gpu_dedicated_used,
             gpu_shared_bytes: snapshot.gpu_shared_used,
+            network_received_bytes_per_sec: snapshot.network_received_bytes_per_sec,
+            network_sent_bytes_per_sec: snapshot.network_sent_bytes_per_sec,
+            disk_read_bytes_per_sec: snapshot.disk_read_bytes_per_sec,
+            disk_write_bytes_per_sec: snapshot.disk_write_bytes_per_sec,
+            disk_queue_length: snapshot.disk_queue_length,
         }
     }
 
-    pub(crate) fn value(&self, metric: SystemMetric) -> Option<u64> {
+    pub(crate) fn value(&self, metric: SystemMetric) -> Option<f64> {
         match metric {
-            SystemMetric::CpuAverage => self.cpu_average_percent,
-            SystemMetric::PhysicalMemory => self.physical_memory_bytes,
-            SystemMetric::Committed => self.committed_bytes,
-            SystemMetric::GpuDedicated => self.gpu_dedicated_bytes,
-            SystemMetric::GpuShared => self.gpu_shared_bytes,
+            SystemMetric::CpuAverage => self.cpu_average_percent.map(|value| value as f64),
+            SystemMetric::PhysicalMemory => self.physical_memory_bytes.map(|value| value as f64),
+            SystemMetric::Committed => self.committed_bytes.map(|value| value as f64),
+            SystemMetric::GpuDedicated => self.gpu_dedicated_bytes.map(|value| value as f64),
+            SystemMetric::GpuShared => self.gpu_shared_bytes.map(|value| value as f64),
+            SystemMetric::NetworkReceived => self
+                .network_received_bytes_per_sec
+                .map(|value| value as f64),
+            SystemMetric::NetworkSent => self.network_sent_bytes_per_sec.map(|value| value as f64),
+            SystemMetric::DiskRead => self.disk_read_bytes_per_sec.map(|value| value as f64),
+            SystemMetric::DiskWrite => self.disk_write_bytes_per_sec.map(|value| value as f64),
+            SystemMetric::DiskQueueLength => self.disk_queue_length,
         }
     }
 }
@@ -536,6 +575,11 @@ mod tests {
             cpu_cache: None,
             gpu_name: None,
             disks: Vec::new(),
+            disk_read_bytes_per_sec: None,
+            disk_write_bytes_per_sec: None,
+            disk_queue_length: None,
+            network_received_bytes_per_sec: None,
+            network_sent_bytes_per_sec: None,
             process_count: 0,
             processes: Vec::new(),
         };
@@ -550,7 +594,7 @@ mod tests {
         assert_eq!(history.len(), SYSTEM_HISTORY_SAMPLE_CAPACITY);
         assert_eq!(
             history.samples()[0].value(SystemMetric::PhysicalMemory),
-            Some(1)
+            Some(1.0)
         );
     }
 }

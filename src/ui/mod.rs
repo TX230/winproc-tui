@@ -8,6 +8,7 @@ pub(crate) mod help;
 pub(crate) mod layout;
 pub(crate) mod log_list;
 pub(crate) mod open_files;
+pub(crate) mod process_info_dialog;
 pub(crate) mod process_kill_confirm;
 pub(crate) mod process_table;
 pub(crate) mod quit_confirm;
@@ -61,6 +62,8 @@ pub(crate) use open_files::{
     open_files_close_button_area_for_screen, open_files_page_size_for_screen,
     open_files_scrollbar_area_for_screen, open_files_total_rows,
 };
+use process_info_dialog::draw_process_info_dialog;
+pub(crate) use process_info_dialog::process_info_close_button_area_for_screen;
 use process_kill_confirm::draw_process_kill_confirm;
 pub(crate) use process_kill_confirm::process_kill_button_at;
 #[cfg(test)]
@@ -83,11 +86,13 @@ pub(crate) use recording_dialog::{
 use settings_dialog::draw_settings_dialog;
 pub(crate) use settings_dialog::{settings_ok_button_area, settings_selection_at};
 use system_panel::draw_system_panel;
-pub(crate) use system_panel::ram_vram_panel_area_for_screen;
 #[cfg(test)]
 pub(crate) use system_panel::{
     SummaryInfoStyle, optional_value_color, render_summary_info_line,
     render_summary_info_value_spans, render_summary_line,
+};
+pub(crate) use system_panel::{
+    ram_vram_panel_area_for_screen, system_activity_panel_area_for_screen,
 };
 pub(crate) use theme::{THEMES, Theme, theme_index_by_name};
 use tracked_remove_confirm::draw_tracked_remove_confirm;
@@ -122,6 +127,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_open_files {
         draw_open_files(frame, area, app, theme);
+    }
+    if app.show_process_info_dialog {
+        draw_process_info_dialog(frame, area, app, theme);
     }
     if app.show_recording_no_tracked_warning {
         draw_recording_no_tracked_warning(frame, area, theme);

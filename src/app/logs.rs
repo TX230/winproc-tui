@@ -448,6 +448,15 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
         cpu_cache: session.cpu_cache.clone(),
         gpu_name: session.gpu_name.clone(),
         disks: Vec::new(),
+        disk_read_bytes_per_sec: system
+            .and_then(|metrics| u64_from_map(metrics, "disk_read_bytes_per_sec")),
+        disk_write_bytes_per_sec: system
+            .and_then(|metrics| u64_from_map(metrics, "disk_write_bytes_per_sec")),
+        disk_queue_length: system.and_then(|metrics| f64_from_map(metrics, "disk_queue_length")),
+        network_received_bytes_per_sec: system
+            .and_then(|metrics| u64_from_map(metrics, "network_received_bytes_per_sec")),
+        network_sent_bytes_per_sec: system
+            .and_then(|metrics| u64_from_map(metrics, "network_sent_bytes_per_sec")),
         process_count: processes.len(),
         processes,
     };
@@ -600,7 +609,7 @@ mod tests {
             &path,
             &[
                 r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system":{"cpu_name":"CPU"}}"#,
-                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"cpu_percent":37},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5}}]}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"cpu_percent":37,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5}}]}"#,
             ],
         );
 
@@ -609,11 +618,19 @@ mod tests {
         assert_eq!(loaded.summary.schema_version, Some(2));
         assert_eq!(loaded.snapshot.cpu_name.as_deref(), Some("CPU"));
         assert_eq!(loaded.snapshot.cpu_total_usage_percent, Some(37));
+        assert_eq!(loaded.snapshot.disk_read_bytes_per_sec, Some(10_000_000));
+        assert_eq!(loaded.snapshot.disk_write_bytes_per_sec, Some(20_000_000));
+        assert_eq!(loaded.snapshot.disk_queue_length, Some(1.5));
+        assert_eq!(
+            loaded.snapshot.network_received_bytes_per_sec,
+            Some(30_000_000)
+        );
+        assert_eq!(loaded.snapshot.network_sent_bytes_per_sec, Some(40_000_000));
         assert_eq!(loaded.snapshot.used_memory, 1000);
         assert_eq!(loaded.system_history.len(), 1);
         assert_eq!(
             loaded.system_history.samples()[0].value(SystemMetric::CpuAverage),
-            Some(37)
+            Some(37.0)
         );
         assert_eq!(loaded.snapshot.processes[0].private_bytes, None);
         assert_eq!(loaded.snapshot.processes[0].handle_count, Some(5));

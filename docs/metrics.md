@@ -70,6 +70,23 @@ If P/E classification is not available or all logical CPUs report the same `Effi
 `CPU Avg` is retained in `SystemHistory`, can be graphed, and is stored in recording frames as `system_metrics.cpu_percent`.
 The per-logical-CPU cells are intended for quick visual pressure checks, not recording history.
 
+## System Activity
+
+The right side of the top panel defaults to `System Activity`.
+Pressing `i` switches between `System Activity` and `System Info`.
+These values are sampled once per screen update and are stored in recording frames so Playback can show the recorded values.
+When the `System Activity` panel has focus, `Up` / `Down` select a metric and `1` / `2` / `3` / `4` assign it to the corresponding Graph slot, matching the `RAM/VRAM` panel behavior.
+
+| Display name | Log field | Description | Primary source | Display format |
+|---|---|---|---|---|
+| `Net In` | `network_received_bytes_per_sec` | Total receive throughput across network interfaces. | PDH `\Network Interface(*)\Bytes Received/sec`, excluding `_Total` and summing instances | `Mbps` |
+| `Net Out` | `network_sent_bytes_per_sec` | Total send throughput across network interfaces. | PDH `\Network Interface(*)\Bytes Sent/sec`, excluding `_Total` and summing instances | `Mbps` |
+| `Disk R` | `disk_read_bytes_per_sec` | Total disk read throughput. | PDH `\PhysicalDisk(_Total)\Disk Read Bytes/sec` | `MB/s` |
+| `Disk W` | `disk_write_bytes_per_sec` | Total disk write throughput. | PDH `\PhysicalDisk(_Total)\Disk Write Bytes/sec` | `MB/s` |
+| `Disk Q` | `disk_queue_length` | Current total physical disk queue length. | PDH `\PhysicalDisk(_Total)\Current Disk Queue Length` | Decimal with 1 digit |
+
+Unavailable values are displayed as `--` and omitted from recording frames.
+
 ## System Info
 
 The `System Info` panel is not part of metric history. It displays supporting information about the current environment.
@@ -84,9 +101,9 @@ The `System Info` panel is not part of metric history. It displays supporting in
 
 ## Process Info
 
-Pressing `i` switches from `System Info` to `Process Info`, which displays supporting information for the selected process.
+Pressing `Enter` on the Processes panel opens a `Process Info` dialog for the selected process.
 Process Info is collected on a worker thread after the selected row has been stable for 200 ms.
-While collection is pending or running, the UI keeps the most recently displayed Process Info. If no information has been displayed yet, it shows `--`.
+While collection is pending or running, the UI keeps the most recently displayed Process Info. If no information has been displayed yet, it shows `Loading...`.
 
 | Display name | Description |
 |---|---|
@@ -145,7 +162,7 @@ Slow-sample values are cached until the next slow sample.
 |---|---:|---|
 | General process | 120 | About 2 minutes. |
 | Tracked process | 7,200 | About 2 hours. |
-| System metrics | 7,200 | Used for `RAM/VRAM` details and `CPU Avg`. |
+| System metrics | 7,200 | Used for `RAM/VRAM`, `System Activity`, and `CPU Avg` graphs. |
 
 Process history identity consists of PID, process name, and start time.
 When start time is available, it is included in the identity to avoid mixing history after PID reuse.
@@ -205,7 +222,7 @@ Frame record fields:
 | `session_id` | string | Same ID as the session record. |
 | `captured_at` | string | RFC 3339 timestamp. |
 | `tracked_names` | string array | Tracked List at frame creation time. |
-| `system_metrics` | object | System metrics that have history, including RAM/VRAM and CPU average. |
+| `system_metrics` | object | System metrics recorded with the frame, including RAM/VRAM, CPU average, and System Activity values. |
 | `processes` | object array | Live processes matching the Tracked List. |
 
 Process object fields:
@@ -218,7 +235,8 @@ Process object fields:
 | `start_time` | number | Present only when available. |
 | `metrics` | object | Only metrics that were collected. |
 
-A `frame` record outputs processes matching the Tracked List and system metrics with history.
+A `frame` record outputs processes matching the Tracked List and system metrics.
+System Activity fields are optional for compatibility with older logs and with systems where a PDH counter is unavailable.
 
 ```json
 {
@@ -232,7 +250,12 @@ A `frame` record outputs processes matching the Tracked List and system metrics 
     "total_memory_bytes": 34359738368,
     "committed_bytes": 2345678901,
     "commit_limit_bytes": 68719476736,
-    "cpu_percent": 37
+    "cpu_percent": 37,
+    "disk_read_bytes_per_sec": 10000000,
+    "disk_write_bytes_per_sec": 20000000,
+    "disk_queue_length": 1.5,
+    "network_received_bytes_per_sec": 30000000,
+    "network_sent_bytes_per_sec": 40000000
   },
   "processes": [
     {

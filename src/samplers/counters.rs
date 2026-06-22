@@ -14,8 +14,8 @@ use crate::{model::ProcessExtraMetrics, platform::to_wide};
 use super::pdh::{
     add_optional_pdh_counter, ensure_pdh_success, map_process_counter_instances_to_pids,
     normalize_process_cpu_percent, pdh_ok, read_named_counter_double_items,
-    read_named_counter_items, read_optional_named_counter_values, read_optional_pdh_large_value,
-    read_pdh_large_value, sum_optional_values,
+    read_named_counter_items, read_optional_named_counter_values, read_optional_pdh_double_value,
+    read_optional_pdh_large_value, read_pdh_large_value, sum_optional_values,
 };
 
 pub(crate) struct SystemCounterSampler {
@@ -29,6 +29,7 @@ pub(crate) struct SystemCounterSampler {
     standby_core_counter: Option<PDH_HCOUNTER>,
     disk_read_counter: Option<PDH_HCOUNTER>,
     disk_write_counter: Option<PDH_HCOUNTER>,
+    disk_queue_length_counter: Option<PDH_HCOUNTER>,
     network_received_counter: Option<PDH_HCOUNTER>,
     network_sent_counter: Option<PDH_HCOUNTER>,
     cpu_frequency_counter: Option<PDH_HCOUNTER>,
@@ -98,6 +99,10 @@ impl SystemCounterSampler {
                 add_optional_pdh_counter(query, "\\PhysicalDisk(_Total)\\Disk Read Bytes/sec");
             let disk_write_counter =
                 add_optional_pdh_counter(query, "\\PhysicalDisk(_Total)\\Disk Write Bytes/sec");
+            let disk_queue_length_counter = add_optional_pdh_counter(
+                query,
+                "\\PhysicalDisk(_Total)\\Current Disk Queue Length",
+            );
             let network_received_counter =
                 add_optional_pdh_counter(query, "\\Network Interface(*)\\Bytes Received/sec");
             let network_sent_counter =
@@ -122,6 +127,7 @@ impl SystemCounterSampler {
                 standby_core_counter,
                 disk_read_counter,
                 disk_write_counter,
+                disk_queue_length_counter,
                 network_received_counter,
                 network_sent_counter,
                 cpu_frequency_counter,
@@ -152,6 +158,7 @@ impl SystemCounterSampler {
                 ]),
                 disk_read_bytes_per_sec: read_optional_pdh_large_value(self.disk_read_counter),
                 disk_write_bytes_per_sec: read_optional_pdh_large_value(self.disk_write_counter),
+                disk_queue_length: read_optional_pdh_double_value(self.disk_queue_length_counter),
                 network_received_bytes_per_sec: read_optional_named_counter_values(
                     self.network_received_counter,
                 ),

@@ -173,8 +173,33 @@ pub(crate) fn read_pdh_large_value(counter: PDH_HCOUNTER) -> Result<u64> {
     }
 }
 
+pub(crate) fn read_pdh_double_value(counter: PDH_HCOUNTER) -> Result<f64> {
+    unsafe {
+        let mut counter_type = 0u32;
+        let mut value: PDH_FMT_COUNTERVALUE = zeroed();
+        ensure_pdh_success(
+            PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, &mut counter_type, &mut value),
+            "reading formatted counter value",
+        )?;
+        let c_status = value.CStatus as i32;
+        if c_status != ERROR_SUCCESS as i32 {
+            anyhow::bail!("counter status {c_status:#x}");
+        }
+
+        let value = *value.u.doubleValue();
+        if !value.is_finite() || value < 0.0 {
+            anyhow::bail!("counter returned invalid value {value}");
+        }
+        Ok(value)
+    }
+}
+
 pub(crate) fn read_optional_pdh_large_value(counter: Option<PDH_HCOUNTER>) -> Option<u64> {
     counter.and_then(|counter| read_pdh_large_value(counter).ok())
+}
+
+pub(crate) fn read_optional_pdh_double_value(counter: Option<PDH_HCOUNTER>) -> Option<f64> {
+    counter.and_then(|counter| read_pdh_double_value(counter).ok())
 }
 
 pub(crate) fn read_optional_named_counter_values(counter: Option<PDH_HCOUNTER>) -> Option<u64> {

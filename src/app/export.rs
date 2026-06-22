@@ -477,6 +477,31 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
         "cpu_percent",
         snapshot.cpu_total_usage_percent.map(u64::from),
     );
+    insert_u64(
+        &mut metrics,
+        "disk_read_bytes_per_sec",
+        snapshot.disk_read_bytes_per_sec,
+    );
+    insert_u64(
+        &mut metrics,
+        "disk_write_bytes_per_sec",
+        snapshot.disk_write_bytes_per_sec,
+    );
+    insert_f64(
+        &mut metrics,
+        "disk_queue_length",
+        snapshot.disk_queue_length,
+    );
+    insert_u64(
+        &mut metrics,
+        "network_received_bytes_per_sec",
+        snapshot.network_received_bytes_per_sec,
+    );
+    insert_u64(
+        &mut metrics,
+        "network_sent_bytes_per_sec",
+        snapshot.network_sent_bytes_per_sec,
+    );
     Value::Object(metrics)
 }
 
@@ -610,6 +635,11 @@ mod tests {
             cpu_cache: None,
             gpu_name: None,
             disks: Vec::new(),
+            disk_read_bytes_per_sec: Some(10_000_000),
+            disk_write_bytes_per_sec: Some(20_000_000),
+            disk_queue_length: Some(1.5),
+            network_received_bytes_per_sec: Some(30_000_000),
+            network_sent_bytes_per_sec: Some(40_000_000),
             process_count: 2,
             processes: vec![
                 row(1, "app.exe", Some(120), None),
@@ -633,6 +663,23 @@ mod tests {
         assert!(value["processes"][0]["metrics"]["handle_count"].is_null());
         assert_eq!(value["system_metrics"]["physical_memory_bytes"], 0);
         assert_eq!(value["system_metrics"]["cpu_percent"], 37);
+        assert_eq!(
+            value["system_metrics"]["disk_read_bytes_per_sec"],
+            10_000_000
+        );
+        assert_eq!(
+            value["system_metrics"]["disk_write_bytes_per_sec"],
+            20_000_000
+        );
+        assert_eq!(value["system_metrics"]["disk_queue_length"], 1.5);
+        assert_eq!(
+            value["system_metrics"]["network_received_bytes_per_sec"],
+            30_000_000
+        );
+        assert_eq!(
+            value["system_metrics"]["network_sent_bytes_per_sec"],
+            40_000_000
+        );
     }
 
     #[test]

@@ -16,10 +16,10 @@ It runs in the terminal and shows current values and changes over time for memor
 
 ## Features
 
-- **Monitoring**: Shows RAM / VRAM, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
+- **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process, RAM / VRAM, and CPU average history keep about 7,200 seconds.
 - **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Their last collected values remain visible after the processes exit.
-- **Recording and Playback**: Saves tracked processes, RAM / VRAM, and CPU average as JSON Lines logs and replays them later in the same Processes / Graph / Samples / A/B view layout.
+- **Recording and Playback**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and replays them later in the same Processes / Graph / Samples / A/B view layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Open files**: Lists the files a selected live process has open.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
@@ -146,7 +146,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `Ctrl+F`            | Filter the process list by name, or by executable path when the `Full Path` column is selected. |
 | `Ctrl+I` / `Ctrl+J` | Process-name incremental search.                                                      |
-| `1` – `4`           | Show the selected process, RAM / VRAM, or CPU Avg metric in Graph#1 – Graph#4 (press the same number again to clear). |
+| `1` – `4`           | Show the selected process, RAM / VRAM, System Activity, or CPU Avg metric in Graph#1 – Graph#4 (press the same number again to clear). |
 | `0`                 | Clear all Graphs and close the Graph panel.                                           |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |
@@ -157,6 +157,8 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Space`             | Add or remove the selected process name from the Tracked List.                        |
 | `Delete`            | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
 | `t`                 | Toggle whether only tracked processes are shown.                                      |
+| `Enter`             | Open Process Info for the selected process.                                          |
+| `i`                 | Switch the top-right panel between System Activity and System Info.                  |
 | `f`                 | Open the Open files list for the selected live process.                               |
 | `g`                 | Open or close all configured Graphs at once.                                          |
 

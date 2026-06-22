@@ -280,27 +280,17 @@ fn collect_snapshot(
         .unwrap_or(&[]);
     let cpu_summary = collect_cpu_summary(system, cpu_frequencies_mhz);
 
-    let (
-        available_memory,
-        committed_memory,
-        commit_limit,
-        _cache_bytes,
-        _standby_cache_bytes,
-        _disk_read_bytes_per_sec,
-        _disk_write_bytes_per_sec,
-        _network_received_bytes_per_sec,
-        _network_sent_bytes_per_sec,
-        warning,
-    ) = map_memory_counters(total_memory, fallback_available_memory, sampled_counters);
-    let used_memory = total_memory.saturating_sub(available_memory);
+    let mapped_counters =
+        map_memory_counters(total_memory, fallback_available_memory, sampled_counters);
+    let used_memory = total_memory.saturating_sub(mapped_counters.available_memory);
 
     CollectSnapshotResult {
         snapshot: Snapshot {
             captured_at: Local::now(),
             total_memory,
             used_memory,
-            committed_memory,
-            commit_limit,
+            committed_memory: mapped_counters.committed_memory,
+            commit_limit: mapped_counters.commit_limit,
             gpu_dedicated_used: gpu_summary_usage.dedicated,
             gpu_dedicated_total: gpu_capacity.dedicated_total,
             gpu_shared_used: gpu_summary_usage.shared,
@@ -316,9 +306,14 @@ fn collect_snapshot(
             cpu_cache: cpu_summary.caches,
             gpu_name: gpu_capacity.name,
             disks,
+            disk_read_bytes_per_sec: mapped_counters.disk_read_bytes_per_sec,
+            disk_write_bytes_per_sec: mapped_counters.disk_write_bytes_per_sec,
+            disk_queue_length: mapped_counters.disk_queue_length,
+            network_received_bytes_per_sec: mapped_counters.network_received_bytes_per_sec,
+            network_sent_bytes_per_sec: mapped_counters.network_sent_bytes_per_sec,
             process_count: processes.len(),
             processes,
         },
-        warning,
+        warning: mapped_counters.warning,
     }
 }

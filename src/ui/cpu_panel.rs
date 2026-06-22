@@ -189,6 +189,11 @@ mod tests {
             cpu_cache: None,
             gpu_name: None,
             disks: Vec::new(),
+            disk_read_bytes_per_sec: None,
+            disk_write_bytes_per_sec: None,
+            disk_queue_length: None,
+            network_received_bytes_per_sec: None,
+            network_sent_bytes_per_sec: None,
             process_count: 0,
             processes: Vec::new(),
         }

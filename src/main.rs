@@ -35,9 +35,9 @@ pub(crate) use app::App;
 use app::run_tui;
 #[cfg(test)]
 use app::{
-    AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphSlot, InfoPanelMode,
-    PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SettingsSelection, TrackedRemoveSelection,
-    VisibleProcessEntry,
+    AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphSlot, GraphValueFormat,
+    InfoPanelMode, PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SettingsSelection,
+    TrackedRemoveSelection, VisibleProcessEntry,
 };
 use cli::Cli;
 #[cfg(test)]
@@ -352,18 +352,7 @@ name = "legacy-watch.exe"
 
     #[test]
     fn map_memory_counters_uses_real_commit_values() {
-        let (
-            available,
-            committed,
-            limit,
-            cache,
-            standby,
-            disk_read,
-            disk_write,
-            net_recv,
-            net_sent,
-            warning,
-        ) = map_memory_counters(
+        let mapped = map_memory_counters(
             32_000,
             12_000,
             Ok(Some(SystemCounterSample {
@@ -374,49 +363,46 @@ name = "legacy-watch.exe"
                 standby_cache_bytes: Some(2_000),
                 disk_read_bytes_per_sec: Some(3_000),
                 disk_write_bytes_per_sec: Some(4_000),
+                disk_queue_length: Some(1.5),
                 network_received_bytes_per_sec: Some(5_000),
                 network_sent_bytes_per_sec: Some(6_000),
                 cpu_frequencies_mhz: Vec::new(),
             })),
         );
 
-        assert_eq!(available, 10_000);
-        assert_eq!(committed, Some(9_000));
-        assert_eq!(limit, Some(24_000));
-        assert_eq!(cache, Some(1_000));
-        assert_eq!(standby, Some(2_000));
-        assert_eq!(disk_read, Some(3_000));
-        assert_eq!(disk_write, Some(4_000));
-        assert_eq!(net_recv, Some(5_000));
-        assert_eq!(net_sent, Some(6_000));
-        assert_eq!(warning, None);
+        assert_eq!(mapped.available_memory, 10_000);
+        assert_eq!(mapped.committed_memory, Some(9_000));
+        assert_eq!(mapped.commit_limit, Some(24_000));
+        assert_eq!(mapped.cache_bytes, Some(1_000));
+        assert_eq!(mapped.standby_cache_bytes, Some(2_000));
+        assert_eq!(mapped.disk_read_bytes_per_sec, Some(3_000));
+        assert_eq!(mapped.disk_write_bytes_per_sec, Some(4_000));
+        assert_eq!(mapped.disk_queue_length, Some(1.5));
+        assert_eq!(mapped.network_received_bytes_per_sec, Some(5_000));
+        assert_eq!(mapped.network_sent_bytes_per_sec, Some(6_000));
+        assert_eq!(mapped.warning, None);
     }
 
     #[test]
     fn map_memory_counters_drops_commit_fields_on_failure() {
-        let (
-            available,
-            committed,
-            limit,
-            cache,
-            standby,
-            disk_read,
-            disk_write,
-            net_recv,
-            net_sent,
-            warning,
-        ) = map_memory_counters(32_000, 12_000, Err(anyhow::anyhow!("pdh failed")));
+        let mapped = map_memory_counters(32_000, 12_000, Err(anyhow::anyhow!("pdh failed")));
 
-        assert_eq!(available, 12_000);
-        assert_eq!(committed, None);
-        assert_eq!(limit, None);
-        assert_eq!(cache, None);
-        assert_eq!(standby, None);
-        assert_eq!(disk_read, None);
-        assert_eq!(disk_write, None);
-        assert_eq!(net_recv, None);
-        assert_eq!(net_sent, None);
-        assert!(warning.unwrap().contains("commit counters unavailable"));
+        assert_eq!(mapped.available_memory, 12_000);
+        assert_eq!(mapped.committed_memory, None);
+        assert_eq!(mapped.commit_limit, None);
+        assert_eq!(mapped.cache_bytes, None);
+        assert_eq!(mapped.standby_cache_bytes, None);
+        assert_eq!(mapped.disk_read_bytes_per_sec, None);
+        assert_eq!(mapped.disk_write_bytes_per_sec, None);
+        assert_eq!(mapped.disk_queue_length, None);
+        assert_eq!(mapped.network_received_bytes_per_sec, None);
+        assert_eq!(mapped.network_sent_bytes_per_sec, None);
+        assert!(
+            mapped
+                .warning
+                .unwrap()
+                .contains("commit counters unavailable")
+        );
     }
 
     #[test]
@@ -1061,7 +1047,7 @@ name = "legacy-watch.exe"
         assert!(app.jump_editing);
         assert_eq!(app.jump_draft, "");
         assert_eq!(app.focused_panel, FocusedPanel::Processes);
-        assert_eq!(app.info_panel_mode, InfoPanelMode::System);
+        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemActivity);
     }
 
     #[test]
@@ -3025,7 +3011,7 @@ name = "legacy-watch.exe"
     #[test]
     fn ram_vram_panel_excludes_cache_standby_and_separates_gpu_rows() {
         let mut app = make_test_app(3, 10);
-        app.info_panel_mode = InfoPanelMode::Process;
+        app.info_panel_mode = InfoPanelMode::SystemInfo;
 
         let rendered = render_app_to_text(&app, 120, 30);
 
@@ -3037,6 +3023,70 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("GPU Shared"), "{rendered}");
         assert!(rendered.contains("────────"), "{rendered}");
         assert!(!rendered.contains("Standby"), "{rendered}");
+    }
+
+    #[test]
+    fn system_activity_panel_shows_network_disk_and_queue_metrics() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.network_received_bytes_per_sec = Some(30_000_000);
+        app.snapshot.network_sent_bytes_per_sec = Some(40_000_000);
+        app.snapshot.disk_read_bytes_per_sec = Some(10_000_000);
+        app.snapshot.disk_write_bytes_per_sec = Some(20_000_000);
+        app.snapshot.disk_queue_length = Some(1.5);
+
+        let rendered = render_app_to_text(&app, 120, 30);
+
+        assert!(rendered.contains("System Activity"), "{rendered}");
+        assert!(rendered.contains("Net In"), "{rendered}");
+        assert!(rendered.contains("240 Mbps"), "{rendered}");
+        assert!(rendered.contains("Net Out"), "{rendered}");
+        assert!(rendered.contains("320 Mbps"), "{rendered}");
+        assert!(rendered.contains("Disk R"), "{rendered}");
+        assert!(rendered.contains("10.0 MB/s"), "{rendered}");
+        assert!(rendered.contains("Disk W"), "{rendered}");
+        assert!(rendered.contains("20.0 MB/s"), "{rendered}");
+        assert!(rendered.contains("Disk Q"), "{rendered}");
+        assert!(rendered.contains("1.5"), "{rendered}");
+    }
+
+    #[test]
+    fn system_activity_number_keys_assign_graph_slot_and_show_slot_number() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::SystemActivity;
+        app.snapshot.disk_queue_length = Some(1.5);
+        app.system_history.record_snapshot(&app.snapshot);
+
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.selected_system_activity_metric(),
+            SystemMetric::DiskQueueLength
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(
+            app.graph_slots[1]
+                .as_ref()
+                .and_then(GraphSlot::system_metric),
+            Some(SystemMetric::DiskQueueLength)
+        );
+        assert!(app.show_details);
+        assert_eq!(
+            app.active_graph_slot().map(GraphSlot::value_format),
+            Some(GraphValueFormat::QueueLength)
+        );
+        assert_eq!(
+            app.graph_slot_samples(app.active_graph_slot().unwrap())
+                .last()
+                .and_then(|sample| sample.value),
+            Some(1.5)
+        );
+
+        let rendered = render_app_to_text(&app, 120, 45);
+        assert!(rendered.contains("2 Disk Q"), "{rendered}");
+        assert!(rendered.contains("System Activity - Disk Q"), "{rendered}");
     }
 
     #[test]
@@ -3063,7 +3113,13 @@ name = "legacy-watch.exe"
                 .map(|identity| identity.name.as_str()),
             Some("proc-2")
         );
-        assert!(app.status.contains("Use 1-4"));
+        assert!(app.show_process_info_dialog);
+        assert!(app.pending_process_info.is_some());
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!app.show_process_info_dialog);
     }
 
     #[test]
@@ -3466,6 +3522,7 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("Global  (any focus)"), "{rendered}");
         assert!(rendered.contains("Processes"), "{rendered}");
         assert!(rendered.contains("RAM/VRAM"), "{rendered}");
+        assert!(rendered.contains("System Activity"), "{rendered}");
         assert!(rendered.contains("Graph"), "{rendered}");
         assert!(rendered.contains("Samples"), "{rendered}");
         assert!(
@@ -3672,6 +3729,8 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("g Toggle graphs"), "{rendered}");
         assert!(rendered.contains("s Sort rows"), "{rendered}");
         assert!(rendered.contains("f Open files"), "{rendered}");
+        assert!(rendered.contains("i Info page"), "{rendered}");
+        assert!(rendered.contains("Enter Process info"), "{rendered}");
         assert!(rendered.contains("Ctrl+O Settings"), "{rendered}");
         assert!(rendered.contains("Ctrl+P Pause"), "{rendered}");
         assert!(rendered.contains("Space Track"), "{rendered}");
@@ -3739,8 +3798,8 @@ name = "legacy-watch.exe"
         );
         assert!(app.show_details);
         assert_eq!(
-            app.active_graph_slot().map(GraphSlot::value_format_metric),
-            Some(DetailsMetric::CpuPercent)
+            app.active_graph_slot().map(GraphSlot::value_format),
+            Some(GraphValueFormat::Percent)
         );
         assert_eq!(
             app.graph_slot_samples(app.active_graph_slot().unwrap())[0].value,
@@ -3762,6 +3821,18 @@ name = "legacy-watch.exe"
 
         assert_eq!(app.focused_panel, FocusedPanel::Cpu);
         assert_eq!(app.status, "Focus: CPUs");
+    }
+
+    #[test]
+    fn clicking_system_activity_panel_moves_focus_to_system_activity() {
+        let mut app = make_test_app(3, 10);
+        let screen = Rect::new(0, 0, 120, 45);
+        let area = ui::system_activity_panel_area_for_screen(screen, &app);
+
+        app.on_mouse(left_click(area.x + 1, area.y + 1), screen);
+
+        assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
+        assert_eq!(app.status, "System Activity row: Net In");
     }
 
     #[test]
@@ -4649,20 +4720,20 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn plain_i_toggles_process_info_panel() {
+    fn plain_i_toggles_system_activity_and_info_panel() {
         let mut app = make_test_app(1, 10);
 
         app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.info_panel_mode, InfoPanelMode::Process);
+        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemInfo);
         assert_eq!(app.process_info_cache.len(), 0);
-        assert!(app.pending_process_info.is_some());
+        assert!(app.pending_process_info.is_none());
 
         app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.info_panel_mode, InfoPanelMode::System);
+        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemActivity);
         assert!(app.pending_process_info.is_none());
     }
 
@@ -4673,7 +4744,7 @@ name = "legacy-watch.exe"
         app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::CONTROL))
             .unwrap();
 
-        assert_eq!(app.info_panel_mode, InfoPanelMode::System);
+        assert_eq!(app.info_panel_mode, InfoPanelMode::SystemActivity);
         assert!(app.jump_editing);
     }
 
@@ -4689,7 +4760,7 @@ name = "legacy-watch.exe"
             process_info_worker,
             open_files_worker,
         );
-        app.info_panel_mode = InfoPanelMode::Process;
+        app.show_process_info_dialog = true;
         app.ensure_selected_process_info();
 
         app.move_selection_down(1);
@@ -4726,7 +4797,7 @@ name = "legacy-watch.exe"
             process_info_worker,
             open_files_worker,
         );
-        app.info_panel_mode = InfoPanelMode::Process;
+        app.show_process_info_dialog = true;
         app.ensure_selected_process_info();
         app.pending_process_info.as_mut().unwrap().changed_at =
             std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
@@ -4761,7 +4832,7 @@ name = "legacy-watch.exe"
             process_info_worker,
             open_files_worker,
         );
-        app.info_panel_mode = InfoPanelMode::Process;
+        app.show_process_info_dialog = true;
         app.ensure_selected_process_info();
         app.pending_process_info.as_mut().unwrap().changed_at =
             std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
@@ -5198,7 +5269,7 @@ name = "legacy-watch.exe"
     #[test]
     fn cached_process_info_is_reused_without_worker_request() {
         let mut app = make_test_app(2, 10);
-        app.info_panel_mode = InfoPanelMode::Process;
+        app.show_process_info_dialog = true;
         let identity = app.selected_visible_process_identity().unwrap();
         app.process_info_cache.insert(
             identity.clone(),
@@ -5214,7 +5285,7 @@ name = "legacy-watch.exe"
     #[test]
     fn process_info_panel_keeps_previous_info_while_selected_row_is_pending() {
         let mut app = make_test_app(2, 10);
-        app.info_panel_mode = InfoPanelMode::Process;
+        app.show_process_info_dialog = true;
         let identity = app.selected_visible_process_identity().unwrap();
         app.process_info_cache.insert(
             identity.clone(),
@@ -5249,6 +5320,9 @@ name = "legacy-watch.exe"
         app.show_details = true;
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::Cpu);
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
@@ -5287,6 +5361,9 @@ name = "legacy-watch.exe"
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::Cpu);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
     }
 
     #[test]
@@ -6993,6 +7070,7 @@ name = "legacy-watch.exe"
             open_files_in_flight: None,
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
+            show_process_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
             log_list_worker: None,
@@ -7040,7 +7118,8 @@ name = "legacy-watch.exe"
             process_history: ProcessHistory::default(),
             system_history: SystemHistory::default(),
             ram_vram_selected_index: 0,
-            info_panel_mode: InfoPanelMode::System,
+            system_activity_selected_index: 0,
+            info_panel_mode: InfoPanelMode::SystemActivity,
             process_info_cache: std::collections::HashMap::new(),
             process_info_display_identity: None,
             pending_process_info: None,
@@ -7099,6 +7178,11 @@ name = "legacy-watch.exe"
             cpu_cache: None,
             gpu_name: None,
             disks: Vec::new(),
+            disk_read_bytes_per_sec: None,
+            disk_write_bytes_per_sec: None,
+            disk_queue_length: None,
+            network_received_bytes_per_sec: None,
+            network_sent_bytes_per_sec: None,
             process_count: row_count,
             processes,
         }

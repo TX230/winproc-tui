@@ -90,8 +90,8 @@ pub(crate) struct PausedDisplay {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InfoPanelMode {
-    System,
-    Process,
+    SystemActivity,
+    SystemInfo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,6 +112,25 @@ pub(crate) enum DetailsMetric {
     GpuShared,
     IoRead,
     IoWrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphValueFormat {
+    Integer,
+    Percent,
+    MegabitsPerSec,
+    MegabytesPerSec,
+    QueueLength,
+}
+
+impl GraphValueFormat {
+    pub(crate) fn from_details_metric(metric: DetailsMetric) -> Self {
+        match metric {
+            DetailsMetric::CpuPercent | DetailsMetric::GpuPercent => Self::Percent,
+            DetailsMetric::IoRead | DetailsMetric::IoWrite => Self::MegabitsPerSec,
+            _ => Self::Integer,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,13 +233,22 @@ impl GraphSlot {
         }
     }
 
-    pub(crate) fn value_format_metric(&self) -> DetailsMetric {
+    pub(crate) fn value_format(&self) -> GraphValueFormat {
         match self {
-            Self::Process { metric, .. } => *metric,
+            Self::Process { metric, .. } => GraphValueFormat::from_details_metric(*metric),
             Self::System {
                 metric: SystemMetric::CpuAverage,
-            } => DetailsMetric::CpuPercent,
-            Self::System { .. } => DetailsMetric::Private,
+            } => GraphValueFormat::Percent,
+            Self::System {
+                metric: SystemMetric::NetworkReceived | SystemMetric::NetworkSent,
+            } => GraphValueFormat::MegabitsPerSec,
+            Self::System {
+                metric: SystemMetric::DiskRead | SystemMetric::DiskWrite,
+            } => GraphValueFormat::MegabytesPerSec,
+            Self::System {
+                metric: SystemMetric::DiskQueueLength,
+            } => GraphValueFormat::QueueLength,
+            Self::System { .. } => GraphValueFormat::Integer,
         }
     }
 }
@@ -291,6 +319,7 @@ impl DetailsMetric {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FocusedPanel {
     System,
+    SystemActivity,
     Cpu,
     Processes,
     DetailsGraph,
@@ -300,7 +329,8 @@ pub(crate) enum FocusedPanel {
 impl FocusedPanel {
     fn next(self, details_visible: bool) -> Self {
         match (self, details_visible) {
-            (Self::System, _) => Self::Cpu,
+            (Self::System, _) => Self::SystemActivity,
+            (Self::SystemActivity, _) => Self::Cpu,
             (Self::Cpu, _) => Self::Processes,
             (Self::Processes, true) => Self::DetailsGraph,
             (Self::Processes, false) => Self::System,
@@ -313,7 +343,8 @@ impl FocusedPanel {
         match (self, details_visible) {
             (Self::System, true) => Self::DetailsSamples,
             (Self::System, false) => Self::Processes,
-            (Self::Cpu, _) => Self::System,
+            (Self::SystemActivity, _) => Self::System,
+            (Self::Cpu, _) => Self::SystemActivity,
             (Self::Processes, _) => Self::Cpu,
             (Self::DetailsGraph, _) => Self::Processes,
             (Self::DetailsSamples, _) => Self::DetailsGraph,
@@ -323,6 +354,7 @@ impl FocusedPanel {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::System => "RAM/VRAM",
+            Self::SystemActivity => "System Activity",
             Self::Cpu => "CPUs",
             Self::Processes => "Processes",
             Self::DetailsGraph => "Graph",
@@ -502,6 +534,7 @@ pub(crate) struct App {
     pub(crate) open_files_in_flight: Option<ProcessIdentity>,
     pub(crate) open_files_filter: String,
     pub(crate) open_files_filter_cursor: usize,
+    pub(crate) show_process_info_dialog: bool,
     pub(crate) log_summaries: Vec<LogSummary>,
     pub(crate) log_list_dir: Option<PathBuf>,
     pub(crate) log_list_worker: Option<LogListWorker>,
@@ -549,6 +582,7 @@ pub(crate) struct App {
     pub(crate) process_history: ProcessHistory,
     pub(crate) system_history: SystemHistory,
     pub(crate) ram_vram_selected_index: usize,
+    pub(crate) system_activity_selected_index: usize,
     pub(crate) info_panel_mode: InfoPanelMode,
     pub(crate) process_info_cache: HashMap<ProcessIdentity, ProcessInfo>,
     pub(crate) process_info_display_identity: Option<ProcessIdentity>,
@@ -676,6 +710,7 @@ impl App {
             open_files_in_flight: None,
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
+            show_process_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
             log_list_worker: None,
@@ -723,7 +758,8 @@ impl App {
             process_history,
             system_history,
             ram_vram_selected_index: 0,
-            info_panel_mode: InfoPanelMode::System,
+            system_activity_selected_index: 0,
+            info_panel_mode: InfoPanelMode::SystemActivity,
             process_info_cache: HashMap::new(),
             process_info_display_identity: None,
             pending_process_info: None,
@@ -811,6 +847,7 @@ impl App {
             || self.show_log_list
             || self.show_log_dir_dialog
             || self.show_open_files
+            || self.show_process_info_dialog
             || self.show_quit_confirmation
             || self.show_recording_no_tracked_warning
             || self.show_recording_path_dialog
@@ -1542,7 +1579,7 @@ impl App {
                 .iter()
                 .map(|sample| GraphSample {
                     captured_at: sample.captured_at,
-                    value: sample.value(*metric).map(|value| value as f64),
+                    value: sample.value(*metric),
                 })
                 .collect(),
         }
@@ -1791,7 +1828,8 @@ impl App {
         }
 
         match self.focused_panel {
-            FocusedPanel::System => (FocusedPanel::Cpu, None),
+            FocusedPanel::System => (FocusedPanel::SystemActivity, None),
+            FocusedPanel::SystemActivity => (FocusedPanel::Cpu, None),
             FocusedPanel::Cpu => (FocusedPanel::Processes, None),
             FocusedPanel::Processes => (FocusedPanel::DetailsGraph, slots.first().copied()),
             FocusedPanel::DetailsGraph => (
@@ -1829,7 +1867,8 @@ impl App {
                 },
                 slots.last().copied(),
             ),
-            FocusedPanel::Cpu => (FocusedPanel::System, None),
+            FocusedPanel::SystemActivity => (FocusedPanel::System, None),
+            FocusedPanel::Cpu => (FocusedPanel::SystemActivity, None),
             FocusedPanel::Processes => (FocusedPanel::Cpu, None),
             FocusedPanel::DetailsGraph => {
                 let previous_slot = slots
@@ -1862,6 +1901,9 @@ impl App {
             FocusedPanel::DetailsSamples => {
                 format!("Focus: Samples#{}", self.active_graph_slot_index + 1)
             }
+            FocusedPanel::SystemActivity if self.info_panel_mode == InfoPanelMode::SystemInfo => {
+                "Focus: System Info".to_string()
+            }
             panel => format!("Focus: {}", panel.label()),
         }
     }
@@ -1873,9 +1915,24 @@ impl App {
             .unwrap_or(SystemMetric::PhysicalMemory)
     }
 
+    pub(crate) fn selected_system_activity_metric(&self) -> SystemMetric {
+        SystemMetric::SYSTEM_ACTIVITY_PANEL
+            .get(self.system_activity_selected_index)
+            .copied()
+            .unwrap_or(SystemMetric::NetworkReceived)
+    }
+
     pub(crate) fn select_previous_system_metric(&mut self) {
         self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_sub(1);
         self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+    }
+
+    pub(crate) fn select_previous_system_activity_metric(&mut self) {
+        self.system_activity_selected_index = self.system_activity_selected_index.saturating_sub(1);
+        self.status = format!(
+            "System Activity row: {}",
+            self.selected_system_activity_metric().label()
+        );
     }
 
     pub(crate) fn select_next_system_metric(&mut self) {
@@ -1886,14 +1943,42 @@ impl App {
         self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
     }
 
+    pub(crate) fn select_next_system_activity_metric(&mut self) {
+        self.system_activity_selected_index = self
+            .system_activity_selected_index
+            .saturating_add(1)
+            .min(SystemMetric::SYSTEM_ACTIVITY_PANEL.len().saturating_sub(1));
+        self.status = format!(
+            "System Activity row: {}",
+            self.selected_system_activity_metric().label()
+        );
+    }
+
     pub(crate) fn select_first_system_metric(&mut self) {
         self.ram_vram_selected_index = 0;
         self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
     }
 
+    pub(crate) fn select_first_system_activity_metric(&mut self) {
+        self.system_activity_selected_index = 0;
+        self.status = format!(
+            "System Activity row: {}",
+            self.selected_system_activity_metric().label()
+        );
+    }
+
     pub(crate) fn select_last_system_metric(&mut self) {
         self.ram_vram_selected_index = SystemMetric::RAM_VRAM_PANEL.len().saturating_sub(1);
         self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+    }
+
+    pub(crate) fn select_last_system_activity_metric(&mut self) {
+        self.system_activity_selected_index =
+            SystemMetric::SYSTEM_ACTIVITY_PANEL.len().saturating_sub(1);
+        self.status = format!(
+            "System Activity row: {}",
+            self.selected_system_activity_metric().label()
+        );
     }
 
     pub(crate) fn select_system_metric_index(&mut self, index: usize) {
@@ -1902,9 +1987,27 @@ impl App {
         self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
     }
 
+    pub(crate) fn select_system_activity_metric_index(&mut self, index: usize) {
+        self.system_activity_selected_index =
+            index.min(SystemMetric::SYSTEM_ACTIVITY_PANEL.len().saturating_sub(1));
+        self.status = format!(
+            "System Activity row: {}",
+            self.selected_system_activity_metric().label()
+        );
+    }
+
     pub(crate) fn apply_selected_system_metric_to_details(&mut self) {
         let metric = self.selected_system_metric();
         self.status = format!("RAM/VRAM metric selected: {}", metric.label());
+    }
+
+    pub(crate) fn apply_selected_system_activity_metric_to_details(&mut self) {
+        if self.info_panel_mode != InfoPanelMode::SystemActivity {
+            self.status = "System Activity metrics are hidden".to_string();
+            return;
+        }
+        let metric = self.selected_system_activity_metric();
+        self.status = format!("System Activity metric selected: {}", metric.label());
     }
 
     pub(crate) fn toggle_selected_system_metric_for_graph_slot(&mut self, slot_index: usize) {
@@ -1912,6 +2015,21 @@ impl App {
             slot_index,
             self.selected_system_metric(),
             FocusedPanel::System,
+        );
+    }
+
+    pub(crate) fn toggle_selected_system_activity_metric_for_graph_slot(
+        &mut self,
+        slot_index: usize,
+    ) {
+        if self.info_panel_mode != InfoPanelMode::SystemActivity {
+            self.status = "System Activity metrics are hidden".to_string();
+            return;
+        }
+        self.toggle_system_metric_for_graph_slot(
+            slot_index,
+            self.selected_system_activity_metric(),
+            FocusedPanel::SystemActivity,
         );
     }
 
@@ -1993,6 +2111,17 @@ impl App {
 
     pub(crate) fn apply_selected_system_metric_to_visible_details(&mut self) {
         self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+    }
+
+    pub(crate) fn apply_selected_system_activity_metric_to_visible_details(&mut self) {
+        if self.info_panel_mode != InfoPanelMode::SystemActivity {
+            self.status = "System Activity metrics are hidden".to_string();
+            return;
+        }
+        self.status = format!(
+            "System Activity row: {}",
+            self.selected_system_activity_metric().label()
+        );
     }
 
     pub(crate) fn select_details_sample_older(&mut self, amount: usize) {
@@ -2961,16 +3090,12 @@ impl App {
 
     pub(crate) fn toggle_info_panel_mode(&mut self) {
         self.info_panel_mode = match self.info_panel_mode {
-            InfoPanelMode::System => InfoPanelMode::Process,
-            InfoPanelMode::Process => InfoPanelMode::System,
+            InfoPanelMode::SystemActivity => InfoPanelMode::SystemInfo,
+            InfoPanelMode::SystemInfo => InfoPanelMode::SystemActivity,
         };
-        match self.info_panel_mode {
-            InfoPanelMode::System => self.cancel_process_info_request(),
-            InfoPanelMode::Process => self.ensure_selected_process_info(),
-        }
         self.status = match self.info_panel_mode {
-            InfoPanelMode::System => "System Info shown".to_string(),
-            InfoPanelMode::Process => "Process Info shown".to_string(),
+            InfoPanelMode::SystemActivity => "System Activity shown".to_string(),
+            InfoPanelMode::SystemInfo => "System Info shown".to_string(),
         };
     }
 
@@ -2987,7 +3112,7 @@ impl App {
             self.pending_process_info = None;
             return;
         }
-        if self.info_panel_mode != InfoPanelMode::Process {
+        if !self.show_process_info_dialog {
             return;
         }
         let Some(identity) = self.selected_visible_process_identity() else {
@@ -3088,7 +3213,7 @@ impl App {
             return false;
         }
         self.process_info_in_flight = None;
-        if self.info_panel_mode != InfoPanelMode::Process
+        if !self.show_process_info_dialog
             || self.selected_visible_process_identity().as_ref() != Some(&result.identity)
         {
             return false;
@@ -3100,6 +3225,28 @@ impl App {
 
     pub(crate) fn open_selected_process_files(&mut self) -> Result<()> {
         self.request_open_files_for_selected_process(true, "Loading open files for")
+    }
+
+    pub(crate) fn open_selected_process_info_dialog(&mut self) -> Result<()> {
+        if self.activity() == AppActivity::Playback {
+            self.status = "Process Info is unavailable during playback".to_string();
+            return Ok(());
+        }
+        let Some(process) = self.selected_visible_process() else {
+            self.status = "No process selected".to_string();
+            return Ok(());
+        };
+        let process_name = process.name.clone();
+        self.show_process_info_dialog = true;
+        self.ensure_selected_process_info();
+        self.status = format!("Process Info: {process_name}");
+        Ok(())
+    }
+
+    pub(crate) fn close_process_info_dialog(&mut self) {
+        self.show_process_info_dialog = false;
+        self.cancel_process_info_request();
+        self.status = "Process Info closed".to_string();
     }
 
     pub(crate) fn refresh_open_files(&mut self) -> Result<()> {

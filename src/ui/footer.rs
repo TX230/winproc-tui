@@ -49,6 +49,8 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
     let mut items = vec![
         ("Ctrl+F", "Filter"),
         ("Ctrl+I/J", "Jump"),
+        ("Enter", "Process info"),
+        ("i", "Info page"),
         ("Ctrl+L", "Logs"),
         ("Ctrl+R", "Record"),
         ("a/b", "Set A/B"),

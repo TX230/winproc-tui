@@ -8,15 +8,15 @@ use ratatui::{
 use crate::{
     App,
     app::{AppActivity, FocusedPanel, InfoPanelMode},
-    model::{
-        DiskUsageSample, InfoValue, ProcessInfo, SystemMetric,
-        TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
-    },
+    model::{DiskUsageSample, SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY},
     ui::{
         Theme,
-        format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
+        format::{
+            format_frequency_mhz, format_integer, format_mb, format_mb_per_sec, format_mbps,
+            ratio_optional,
+        },
         layout::system_panel_area_for_screen,
-        widgets::block::{panel_block, panel_block_focused},
+        widgets::block::panel_block_focused,
     },
 };
 
@@ -45,16 +45,20 @@ pub(crate) fn draw_system_panel(
     frame.render_widget(left, memory_inner);
 
     let info_title = match app.info_panel_mode {
-        InfoPanelMode::System => "System Info",
-        InfoPanelMode::Process => "Process Info",
+        InfoPanelMode::SystemActivity => "System Activity",
+        InfoPanelMode::SystemInfo => "System Info",
     };
-    let info_block = panel_block(info_title, theme);
+    let info_block = panel_block_focused(
+        info_title,
+        theme,
+        app.panel_has_focus(FocusedPanel::SystemActivity),
+    );
     let info_inner = info_block.inner(panels[1]);
     frame.render_widget(info_block, panels[1]);
 
     let info_lines = match app.info_panel_mode {
-        InfoPanelMode::System => system_info_lines(app, theme),
-        InfoPanelMode::Process => process_info_lines(app, info_inner.width, theme),
+        InfoPanelMode::SystemActivity => system_activity_lines(app, theme),
+        InfoPanelMode::SystemInfo => system_info_lines(app, theme),
     };
 
     let right = Paragraph::new(Text::from(info_lines)).style(Style::default().bg(theme.panel));
@@ -89,6 +93,67 @@ fn ram_vram_samples_label(app: &App) -> String {
     } else {
         format!("[Max samples: {TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY}]")
     }
+}
+
+fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
+    let snapshot = app.display_snapshot();
+    let rows = [
+        (
+            SystemMetric::NetworkReceived,
+            render_summary_graph_slot_value_line(
+                system_metric_graph_slot_numbers(app, SystemMetric::NetworkReceived),
+                "Net In",
+                &format_optional_mbps(snapshot.network_received_bytes_per_sec),
+                theme,
+            ),
+        ),
+        (
+            SystemMetric::NetworkSent,
+            render_summary_graph_slot_value_line(
+                system_metric_graph_slot_numbers(app, SystemMetric::NetworkSent),
+                "Net Out",
+                &format_optional_mbps(snapshot.network_sent_bytes_per_sec),
+                theme,
+            ),
+        ),
+        (
+            SystemMetric::DiskRead,
+            render_summary_graph_slot_value_line(
+                system_metric_graph_slot_numbers(app, SystemMetric::DiskRead),
+                "Disk R",
+                &format_optional_mb_per_sec(snapshot.disk_read_bytes_per_sec),
+                theme,
+            ),
+        ),
+        (
+            SystemMetric::DiskWrite,
+            render_summary_graph_slot_value_line(
+                system_metric_graph_slot_numbers(app, SystemMetric::DiskWrite),
+                "Disk W",
+                &format_optional_mb_per_sec(snapshot.disk_write_bytes_per_sec),
+                theme,
+            ),
+        ),
+        (
+            SystemMetric::DiskQueueLength,
+            render_summary_graph_slot_value_line(
+                system_metric_graph_slot_numbers(app, SystemMetric::DiskQueueLength),
+                "Disk Q",
+                &format_optional_queue_length(snapshot.disk_queue_length),
+                theme,
+            ),
+        ),
+    ];
+    let selected_metric = app.selected_system_activity_metric();
+    rows.into_iter()
+        .map(|(metric, line)| {
+            if app.panel_has_focus(FocusedPanel::SystemActivity) && metric == selected_metric {
+                line.style(Style::default().bg(theme.highlight))
+            } else {
+                line
+            }
+        })
+        .collect()
 }
 
 fn system_info_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
@@ -133,98 +198,37 @@ fn system_info_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
     ]
 }
 
-fn process_info_lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'static>> {
-    let Some(info) = app.process_info_for_selected() else {
-        return vec![render_summary_info_line(
-            "Process",
-            "--",
-            SummaryInfoStyle::Plain,
-            theme,
-        )];
-    };
-    let value_width = width.saturating_sub(11) as usize;
-    [
-        ("Process", format_process_identity(info)),
-        ("Parent", value_text(&info.parent_process)),
-        ("Started", format_process_started(info)),
-        ("Executable", value_text(&info.executable)),
-        ("Command", value_text(&info.command_line)),
-        ("File", format_process_file(info)),
-    ]
-    .into_iter()
-    .map(|(label, value)| {
-        render_process_info_line(label, &truncate_end(&value, value_width), theme)
-    })
-    .collect()
-}
-
-fn render_process_info_line(title: &str, value: &str, theme: Theme) -> Line<'static> {
+fn render_summary_graph_slot_value_line(
+    slot_numbers: Option<String>,
+    label: &'static str,
+    value: &str,
+    theme: Theme,
+) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{title:<10} "), Style::default().fg(theme.muted)),
-        Span::styled(value.to_string(), Style::default().fg(theme.text)),
+        graph_slot_prefix_span(slot_numbers, theme),
+        Span::styled(format!("{label:<8}"), Style::default().fg(theme.muted)),
+        Span::styled(
+            value.to_string(),
+            Style::default()
+                .fg(theme.text)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        ),
     ])
 }
 
-fn format_process_identity(info: &ProcessInfo) -> String {
-    format!("{} / PID {}", info.name, info.pid)
-}
-
-fn format_process_started(info: &ProcessInfo) -> String {
-    let Some(start_time) = info.start_time else {
-        return "--".to_string();
-    };
-    let Some(started_utc) = chrono::DateTime::from_timestamp(start_time as i64, 0) else {
-        return start_time.to_string();
-    };
-    let started = started_utc.with_timezone(&chrono::Local);
-    let uptime = chrono::Local::now()
-        .signed_duration_since(started)
-        .max(chrono::Duration::zero());
-    format!(
-        "{} / Uptime {}",
-        started.format("%Y-%m-%d %H:%M:%S"),
-        format_duration(uptime)
+fn graph_slot_prefix_span(graph_slot_numbers: Option<String>, theme: Theme) -> Span<'static> {
+    let label = graph_slot_numbers.unwrap_or_default();
+    Span::styled(
+        format!("{label:<2}"),
+        if label.is_empty() {
+            Style::default().fg(theme.muted)
+        } else {
+            Style::default()
+                .fg(ratatui::prelude::Color::Rgb(112, 74, 0))
+                .bg(theme.warning)
+                .add_modifier(ratatui::style::Modifier::BOLD)
+        },
     )
-}
-
-fn format_process_file(info: &ProcessInfo) -> String {
-    format!(
-        "Modified {} / Size {} / Product {}",
-        info.file_modified.text(),
-        info.file_size.text(),
-        info.product_version.text()
-    )
-}
-
-fn value_text(value: &InfoValue) -> String {
-    value.text().to_string()
-}
-
-fn format_duration(duration: chrono::Duration) -> String {
-    let total_seconds = duration.num_seconds().max(0);
-    let hours = total_seconds / 3600;
-    let minutes = (total_seconds % 3600) / 60;
-    let seconds = total_seconds % 60;
-    format!("{hours:02}:{minutes:02}:{seconds:02}")
-}
-
-fn truncate_end(value: &str, max_width: usize) -> String {
-    if max_width == 0 || value.chars().count() <= max_width {
-        return value.to_string();
-    }
-    if max_width <= 1 {
-        return "…".to_string();
-    }
-    let keep = max_width - 1;
-    let tail = value
-        .chars()
-        .rev()
-        .take(keep)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<String>();
-    format!("…{tail}")
 }
 
 pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
@@ -232,6 +236,18 @@ pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Re
     let usage_lines = memory_usage_lines(app, app.theme());
     let memory_width = memory_panel_width_for_lines(area.width, &usage_lines);
     Rect::new(area.x, area.y, memory_width.min(area.width), area.height)
+}
+
+pub(crate) fn system_activity_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
+    let area = system_panel_area_for_screen(screen_area);
+    let usage_lines = memory_usage_lines(app, app.theme());
+    let memory_width = memory_panel_width_for_lines(area.width, &usage_lines).min(area.width);
+    Rect::new(
+        area.x.saturating_add(memory_width),
+        area.y,
+        area.width.saturating_sub(memory_width),
+        area.height,
+    )
 }
 
 fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
@@ -372,6 +388,23 @@ fn format_disk_summary(disks: &[DiskUsageSample]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn format_optional_mbps(value: Option<u64>) -> String {
+    value.map(format_mbps).unwrap_or_else(|| "--".to_string())
+}
+
+fn format_optional_mb_per_sec(value: Option<u64>) -> String {
+    value
+        .map(format_mb_per_sec)
+        .unwrap_or_else(|| "--".to_string())
+}
+
+fn format_optional_queue_length(value: Option<f64>) -> String {
+    value
+        .filter(|value| value.is_finite())
+        .map(|value| format!("{value:.1}"))
+        .unwrap_or_else(|| "--".to_string())
 }
 
 fn format_gb_number(bytes: u64) -> String {

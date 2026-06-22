@@ -22,11 +22,12 @@ use crate::{
         layout::{cpu_panel_area_for_screen, details_graph_area, details_samples_area},
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
-        process_kill_button_at, process_metric_column_index_at, process_table_area_for_screen,
-        process_table_page_size, process_tracked_only_checkbox_area, quit_confirm_button_at,
-        ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
-        recording_overwrite_button_at, recording_path_button_at, settings_ok_button_area,
-        settings_selection_at, tracked_remove_button_at,
+        process_info_close_button_area_for_screen, process_kill_button_at,
+        process_metric_column_index_at, process_table_area_for_screen, process_table_page_size,
+        process_tracked_only_checkbox_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
+        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
+        recording_path_button_at, settings_ok_button_area, settings_selection_at,
+        system_activity_panel_area_for_screen, tracked_remove_button_at,
     },
 };
 
@@ -270,6 +271,14 @@ impl App {
             return Ok(());
         }
 
+        if self.show_process_info_dialog {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => self.close_process_info_dialog(),
+                _ => {}
+            }
+            return Ok(());
+        }
+
         if self.is_process_jump_editing() {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_process_jump_edit(),
@@ -475,6 +484,45 @@ impl App {
             }
         }
 
+        if self.focused_panel == FocusedPanel::SystemActivity {
+            match key.code {
+                KeyCode::Up => {
+                    self.select_previous_system_activity_metric();
+                    self.apply_selected_system_activity_metric_to_visible_details();
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    self.select_next_system_activity_metric();
+                    self.apply_selected_system_activity_metric_to_visible_details();
+                    return Ok(());
+                }
+                KeyCode::Home => {
+                    self.select_first_system_activity_metric();
+                    return Ok(());
+                }
+                KeyCode::End => {
+                    self.select_last_system_activity_metric();
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    self.apply_selected_system_activity_metric_to_details();
+                    return Ok(());
+                }
+                KeyCode::Char(' ') => {
+                    self.status =
+                        "System Activity metrics keep 7200 samples automatically".to_string();
+                    return Ok(());
+                }
+                KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
+                    self.toggle_selected_system_activity_metric_for_graph_slot(
+                        (ch as u8 - b'1') as usize,
+                    );
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         if self.focused_panel == FocusedPanel::Cpu {
             match key.code {
                 KeyCode::Enter => {
@@ -586,7 +634,7 @@ impl App {
             }
             KeyCode::Enter => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    self.status = "Use 1-4 to show selected metric in a graph".to_string();
+                    self.open_selected_process_info_dialog()?;
                 }
             }
             KeyCode::Char(ch @ '1'..='4') => {
@@ -907,6 +955,16 @@ impl App {
             return;
         }
 
+        if self.show_process_info_dialog {
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+                && process_info_close_button_area_for_screen(screen_area)
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+            {
+                self.close_process_info_dialog();
+            }
+            return;
+        }
+
         if self.show_settings_dialog {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left)
@@ -1069,6 +1127,7 @@ impl App {
                 }
                 self.focus_panel_at(mouse.column, mouse.row, screen_area);
                 self.select_system_metric_row_at(mouse.column, mouse.row, screen_area);
+                self.select_system_activity_metric_row_at(mouse.column, mouse.row, screen_area);
                 self.select_process_row_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_from_graph_at(mouse.column, mouse.row, screen_area);
@@ -1337,6 +1396,19 @@ impl App {
             return;
         }
 
+        if contains_point(
+            system_activity_panel_area_for_screen(screen_area, self),
+            x,
+            y,
+        ) {
+            self.focused_panel = FocusedPanel::SystemActivity;
+            self.status = match self.info_panel_mode {
+                crate::app::InfoPanelMode::SystemActivity => "Focus: System Activity".to_string(),
+                crate::app::InfoPanelMode::SystemInfo => "Focus: System Info".to_string(),
+            };
+            return;
+        }
+
         if contains_point(cpu_panel_area_for_screen(screen_area), x, y) {
             self.focused_panel = FocusedPanel::Cpu;
             self.status = "Focus: CPUs".to_string();
@@ -1416,6 +1488,22 @@ impl App {
             row
         };
         self.select_system_metric_index(index);
+    }
+
+    fn select_system_activity_metric_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
+        if self.info_panel_mode != crate::app::InfoPanelMode::SystemActivity {
+            return;
+        }
+        let area = system_activity_panel_area_for_screen(screen_area, self);
+        if !contains_point(area, x, y) {
+            return;
+        }
+        let first_row_y = area.y.saturating_add(1);
+        let last_row_y = area.bottom().saturating_sub(1);
+        if y < first_row_y || y >= last_row_y {
+            return;
+        }
+        self.select_system_activity_metric_index(usize::from(y - first_row_y));
     }
 
     fn scroll_at(&mut self, x: u16, y: u16, screen_area: Rect, up: bool, _shift: bool) {

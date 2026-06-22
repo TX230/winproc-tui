@@ -30,6 +30,7 @@ pub(crate) use state::AbComparison;
 pub(crate) use state::AbComparisonPoint;
 pub(crate) use state::App;
 pub(crate) use state::AppActivity;
+#[cfg(test)]
 pub(crate) use state::DetailsMetric;
 pub(crate) use state::DetailsSampleViewState;
 #[cfg(test)]
@@ -40,6 +41,7 @@ pub(crate) use state::GraphPanDrag;
 pub(crate) use state::GraphPanDragButton;
 pub(crate) use state::GraphSample;
 pub(crate) use state::GraphSlot;
+pub(crate) use state::GraphValueFormat;
 pub(crate) use state::InfoPanelMode;
 pub(crate) use state::LogDirSelection;
 #[cfg(test)]

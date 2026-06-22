@@ -79,3 +79,7 @@ pub(crate) fn format_mbps(bytes_per_sec: u64) -> String {
         ((bytes_per_sec as f64 * 8.0) / 1_000_000.0).round() as u64
     )
 }
+
+pub(crate) fn format_mb_per_sec(bytes_per_sec: u64) -> String {
+    format!("{:.1} MB/s", bytes_per_sec as f64 / 1_000_000.0)
+}

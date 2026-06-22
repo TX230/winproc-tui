@@ -24,6 +24,11 @@ pub(crate) struct Snapshot {
     pub(crate) cpu_cache: Option<String>,
     pub(crate) gpu_name: Option<String>,
     pub(crate) disks: Vec<DiskUsageSample>,
+    pub(crate) disk_read_bytes_per_sec: Option<u64>,
+    pub(crate) disk_write_bytes_per_sec: Option<u64>,
+    pub(crate) disk_queue_length: Option<f64>,
+    pub(crate) network_received_bytes_per_sec: Option<u64>,
+    pub(crate) network_sent_bytes_per_sec: Option<u64>,
     pub(crate) process_count: usize,
     pub(crate) processes: Vec<ProcessRow>,
 }
