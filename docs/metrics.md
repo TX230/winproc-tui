@@ -223,7 +223,7 @@ Frame record fields:
 | `captured_at` | string | RFC 3339 timestamp. |
 | `tracked_names` | string array | Tracked List at frame creation time. |
 | `system_metrics` | object | System metrics recorded with the frame, including RAM/VRAM, CPU average, and System Activity values. |
-| `processes` | object array | Live processes matching the Tracked List. |
+| `processes` | object array | Live processes matching the Tracked List. This can be empty when the configured tracked names have no live match. |
 
 Process object fields:
 
@@ -235,7 +235,8 @@ Process object fields:
 | `start_time` | number | Present only when available. |
 | `metrics` | object | Only metrics that were collected. |
 
-A `frame` record outputs processes matching the Tracked List and system metrics.
+A `frame` record outputs system metrics and the live processes matching the Tracked List.
+System metrics are recorded even when no live process currently matches the Tracked List.
 System Activity fields are optional for compatibility with older logs and with systems where a PDH counter is unavailable.
 
 ```json

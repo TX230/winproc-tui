@@ -185,7 +185,9 @@ If there is not enough display area, the message `Not enough display area.` is s
 ## Recording and Playback
 
 Press `Ctrl+R` to start or stop recording.
-Recording targets processes that match the Tracked List and saves logs as JSON Lines (with the `.log` extension).
+Recording requires at least one Tracked List entry and saves logs as JSON Lines (with the `.log` extension).
+Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracked List.
+If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
 When recording starts, a save-path input dialog opens, and `Tab` completes directory names there.
 Playback cannot start during recording, and recording cannot start during Playback.
 

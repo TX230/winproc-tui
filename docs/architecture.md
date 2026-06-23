@@ -314,11 +314,14 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 The `Ctrl+R` start flow is:
 
 1. `toggle_recording` checks `activity()` to decide start / stop / reject during Playback.
-2. If the tracked list is empty, set `show_recording_no_tracked_warning` and stop.
+2. If the configured Tracked List is empty, set `show_recording_no_tracked_warning` and stop.
 3. Open the path-input modal with the default path: previous `recording_last_dir` or cwd plus `winproc-tui-YYYYMMDDhhmmss.log`. The modal uses `app::path_completion` for `Tab` directory completion.
 4. On confirmation, if the file already exists, go through `RecordingOverwriteSelection` for overwrite confirmation.
 5. Allocate the file + `BufWriter`, write the `record_type: "session"` header JSON, then append one JSON Lines `record_type: "frame"` line on each sample application.
 6. On another `Ctrl+R`, or when `should_quit` is confirmed, append `record_type: "end"` if possible, flush, close, and update `recording_last_dir` for persistence.
+
+Recording may start when the Tracked List has configured names but none of those names currently match a live process.
+In that case, frames still record system metrics and write an empty `processes` array until matching processes appear.
 
 See `docs/metrics.md` for the log value specification.
 

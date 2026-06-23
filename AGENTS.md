@@ -113,7 +113,8 @@ git commit -m "<message> (#n)" -m "Closes #n"
 - `Recording` displays live snapshots and appends them to a JSON Lines recording session.
 - `Playback` loads snapshots and history from a recording log.
 - `Recording` and `Playback` are mutually exclusive.
-- Starting recording requires at least one tracked process.
+- Starting recording requires at least one configured Tracked List entry.
+- Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array until a matching process appears.
 - Recording is unavailable during Playback, and Playback is unavailable during Recording.
 - Stopping recording must flush and close the recording log.
 - Quitting during recording must flush the recording log before exit.
