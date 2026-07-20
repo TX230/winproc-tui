@@ -324,8 +324,8 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         rows: CPU_ROWS,
     },
     HelpSection {
-        title: "Graph",
-        focus_hint: None,
+        title: "Graph slot",
+        focus_hint: Some("Graph or Samples"),
         rows: GRAPH_ROWS,
     },
     HelpSection {

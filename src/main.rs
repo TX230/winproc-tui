@@ -85,9 +85,10 @@ use ui::layout::centered_rect;
 #[cfg(test)]
 use ui::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
-    details_graph_area_for_screen, details_samples_area_for_screen, details_slot_areas_for_screen,
-    process_kill_button_at, process_kill_dialog_area, process_table_area_for_screen,
-    process_table_page_size, process_table_visible_column_count, screen_layout,
+    details_graph_area_for_screen, details_samples_area_for_screen,
+    details_shared_controls_area_for_screen, details_slot_areas_for_screen, process_kill_button_at,
+    process_kill_dialog_area, process_table_area_for_screen, process_table_page_size,
+    process_table_visible_column_count, screen_layout,
 };
 #[cfg(test)]
 use ui::{
@@ -1668,9 +1669,9 @@ name = "legacy-watch.exe"
         }
         let screen = Rect::new(0, 0, 120, 60);
         let samples = details_samples_area_for_screen(screen, app.show_details).unwrap();
-        let scrollbar_x = samples.right().saturating_sub(2);
-        let scrollbar_top = samples.y.saturating_add(1);
-        let scrollbar_bottom = samples.bottom().saturating_sub(2);
+        let scrollbar_x = samples.right().saturating_sub(1);
+        let scrollbar_top = samples.y;
+        let scrollbar_bottom = samples.bottom().saturating_sub(1);
 
         app.on_mouse(
             MouseEvent {
@@ -1829,7 +1830,7 @@ name = "legacy-watch.exe"
         }
         let screen = Rect::new(0, 0, 120, 45);
         let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
-        let start_x = graph.x.saturating_add(70);
+        let start_x = graph.x.saturating_add(graph.width / 2);
         let y = graph.y.saturating_add(5);
 
         app.on_mouse(
@@ -2210,14 +2211,13 @@ name = "legacy-watch.exe"
         }
 
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
-        let x = graph
+        let controls = details_shared_controls_area_for_screen(screen, app.show_details).unwrap();
+        let x = controls
             .right()
-            .saturating_sub(1)
             .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
             .saturating_sub(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH)
             .saturating_add(1);
-        let y = graph.y.saturating_add(1);
+        let y = controls.y;
 
         app.on_mouse(
             MouseEvent {
@@ -2261,6 +2261,31 @@ name = "legacy-watch.exe"
 
         assert!(!app.graph_show_all_samples);
         assert_eq!(app.effective_graph_time_span_seconds(), 60);
+    }
+
+    #[test]
+    fn graph_shared_keys_work_when_samples_are_focused() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsSamples;
+        for offset in [0, 120, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.graph_show_all_samples);
+        assert_eq!(app.effective_graph_time_span_seconds(), 240);
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.graph_y_axis_zero_min);
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
     }
 
     #[test]
@@ -2318,13 +2343,12 @@ name = "legacy-watch.exe"
         assert!(app.graph_y_axis_zero_min);
 
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
-        let x = graph
+        let controls = details_shared_controls_area_for_screen(screen, app.show_details).unwrap();
+        let x = controls
             .right()
-            .saturating_sub(1)
             .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
             .saturating_add(1);
-        let y = graph.y.saturating_add(1);
+        let y = controls.y;
 
         app.on_mouse(
             MouseEvent {
@@ -2361,20 +2385,15 @@ name = "legacy-watch.exe"
         assert!(app.graph_y_axis_zero_min);
 
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_slot_areas_for_screen(screen, app.show_details, 1)
-            .into_iter()
-            .next()
-            .expect("graph slot");
-        let y = graph.y.saturating_add(1);
-        let all_samples_x = graph
+        let controls = details_shared_controls_area_for_screen(screen, app.show_details).unwrap();
+        let y = controls.y;
+        let all_samples_x = controls
             .right()
-            .saturating_sub(1)
             .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
             .saturating_sub(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH)
             .saturating_add(1);
-        let y_axis_x = graph
+        let y_axis_x = controls
             .right()
-            .saturating_sub(1)
             .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
             .saturating_add(1);
 
@@ -2482,12 +2501,15 @@ name = "legacy-watch.exe"
         app.select_process_index(0);
 
         let screen = Rect::new(0, 0, 120, 60);
-        let graph = details_graph_area_for_screen(screen, true).unwrap();
+        let slot = details_slot_areas_for_screen(screen, true, 1)
+            .into_iter()
+            .next()
+            .unwrap();
         app.on_mouse(
             MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
-                column: graph.x + 3,
-                row: graph.y + 1,
+                column: slot.x + 3,
+                row: slot.y,
                 modifiers: KeyModifiers::NONE,
             },
             screen,
@@ -2511,7 +2533,7 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("Settings"), "{rendered}");
-        assert!(!rendered.contains("Samples#1"), "{rendered}");
+        assert!(!rendered.contains("M  Time      Private"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
@@ -2595,11 +2617,8 @@ name = "legacy-watch.exe"
             .expect("selected graph value should render in graph");
         let a_labels = find_styled_symbol_positions_in_area(&buffer, graph, "A", THEMES[0].warning);
         let b_labels = find_styled_symbol_positions_in_area(&buffer, graph, "B", THEMES[0].warning);
-        let graph_inner = graph.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
-        let expected_label_y = graph_inner.bottom().saturating_sub(2);
+        let graph_rows = ui::layout::details_graph_rows(graph);
+        let expected_label_y = graph_rows[1].bottom().saturating_sub(1);
 
         assert_eq!(a_labels.len(), 1, "A label should render once in Graph");
         assert_eq!(b_labels.len(), 1, "B label should render once in Graph");
@@ -2610,7 +2629,7 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn details_rendering_keeps_only_graph_and_samples_frames() {
+    fn details_rendering_groups_graph_and_samples_in_one_slot() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
         app.process_history.record_snapshot(
@@ -2621,8 +2640,13 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("Graph#1"), "{rendered}");
-        assert!(rendered.contains("Samples#1"), "{rendered}");
+        assert!(rendered.contains("Graphs · Span 60s"), "{rendered}");
+        assert!(
+            rendered.contains("Graph#1 · proc-0 · Private"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("Samples#1"), "{rendered}");
+        assert!(rendered.contains("M  Time      Private"), "{rendered}");
         assert!(rendered.contains("MA5:"), "{rendered}");
         assert!(!rendered.contains("Details"), "{rendered}");
         assert!(!rendered.contains("A/B not set"), "{rendered}");
@@ -2649,12 +2673,25 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 140, 80);
 
-        assert!(rendered.contains("Graph#1"), "{rendered}");
-        assert!(rendered.contains("Samples#1"), "{rendered}");
-        assert!(rendered.contains("Graph#2"), "{rendered}");
-        assert!(rendered.contains("Samples#2"), "{rendered}");
+        assert!(
+            rendered.contains("Graph#1 · proc-0 · Private"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Graph#2 · proc-0 · WS"), "{rendered}");
+        assert_eq!(rendered.matches("f: Fit all").count(), 1, "{rendered}");
+        assert_eq!(rendered.matches("z: Min 0").count(), 1, "{rendered}");
+        assert!(!rendered.contains("Samples#1"), "{rendered}");
+        assert!(!rendered.contains("Samples#2"), "{rendered}");
         assert!(!rendered.contains("Max:"), "{rendered}");
         assert!(!rendered.contains("MA5:"), "{rendered}");
+
+        let buffer = render_app_to_buffer(&app, 140, 80);
+        let (active_x, active_y) =
+            find_text_position(&buffer, "Graph#1").expect("active slot title should render");
+        let (inactive_x, inactive_y) =
+            find_text_position(&buffer, "Graph#2").expect("inactive slot title should render");
+        assert_eq!(buffer[(active_x, active_y)].fg, THEMES[0].accent);
+        assert_eq!(buffer[(inactive_x, inactive_y)].fg, THEMES[0].muted);
     }
 
     #[test]
@@ -3141,7 +3178,10 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("2 Disk Q"), "{rendered}");
-        assert!(rendered.contains("System Activity - Disk Q"), "{rendered}");
+        assert!(
+            rendered.contains("Graph#2 · System Activity · Disk Q"),
+            "{rendered}"
+        );
 
         let buffer = render_app_to_buffer(&app, 120, 45);
         let (x, y) =
@@ -3843,6 +3883,8 @@ name = "legacy-watch.exe"
         assert!(samples.contains("Samples#2"), "{samples}");
         assert!(samples.contains("PgUp/PgDn Page"), "{samples}");
         assert!(samples.contains("Home/End Edge"), "{samples}");
+        assert!(samples.contains("f Fit"), "{samples}");
+        assert!(samples.contains("z Min 0"), "{samples}");
         assert!(samples.contains("x Clear A/B"), "{samples}");
         assert!(!samples.contains("Up/Down Sample"), "{samples}");
     }
@@ -3908,7 +3950,10 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("1 CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
-        assert!(rendered.contains("CPUs - CPU Usage"), "{rendered}");
+        assert!(
+            rendered.contains("Graph#1 · CPUs · CPU Usage"),
+            "{rendered}"
+        );
 
         let buffer = render_app_to_buffer(&app, 120, 45);
         let (x, y) =
@@ -6965,7 +7010,11 @@ name = "legacy-watch.exe"
         assert_eq!(samples[1].value, Some(1024.0));
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("Samples#1"), "{rendered}");
+        assert!(
+            rendered.contains("Graph#1 · app.exe · Private"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("M  Time      Private"), "{rendered}");
         assert!(rendered.contains("1,024"), "{rendered}");
     }
 

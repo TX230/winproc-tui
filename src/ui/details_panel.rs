@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     prelude::{Modifier, Style},
     symbols::Marker,
     text::{Line, Span},
@@ -17,13 +17,15 @@ use crate::{
         AbComparison, AbComparisonPoint, FocusedPanel, GraphSample, GraphSlot, GraphValueFormat,
     },
     ui::{
-        GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, Theme,
+        Theme,
         format::{format_integer, format_mb_per_sec, format_signed_integer},
         layout::{
-            DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, details_graph_area, details_samples_area,
-            details_samples_row_capacity, details_samples_summary_height, details_slot_areas,
+            DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, details_graph_area, details_graph_rows,
+            details_samples_area, details_samples_divider_area, details_samples_row_capacity,
+            details_samples_summary_height, details_shared_controls_area, details_slot_areas,
+            graph_all_samples_toggle_area, graph_shared_status_area, graph_y_axis_toggle_area,
         },
-        widgets::block::{panel_block, panel_block_focused},
+        widgets::block::panel_block_focused,
     },
 };
 
@@ -51,6 +53,8 @@ pub(crate) fn draw_details_panel(
         return;
     }
 
+    draw_graph_shared_controls(frame, details_shared_controls_area(area), app, theme);
+
     let bounds = graph_bounds(
         app.effective_graph_time_span_seconds(),
         app.effective_graph_time_offset_seconds(),
@@ -72,13 +76,17 @@ pub(crate) fn draw_details_panel(
     for ((slot_index, slot), slot_area) in slots.into_iter().zip(slot_areas) {
         let samples = app.graph_slot_samples(slot);
         let peak = app.graph_slot_peak(slot);
-        let item_line = graph_slot_item_line(slot, theme);
         let metric = slot.value_format();
         render_details_content(
             frame,
             slot_area,
             slot_index,
-            item_line,
+            graph_slot_title_line(
+                slot,
+                slot_index,
+                app.active_graph_slot_index == slot_index,
+                theme,
+            ),
             samples.as_slice(),
             peak,
             metric,
@@ -96,7 +104,7 @@ fn render_details_content(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
     slot_index: usize,
-    item_line: Line<'static>,
+    title: Line<'static>,
     samples: &[GraphSample],
     peak: Option<f64>,
     metric: GraphValueFormat,
@@ -107,12 +115,24 @@ fn render_details_content(
     y_label_width: usize,
     selected_sample_time: Option<DateTime<Local>>,
 ) {
+    let slot_focused = app.active_graph_slot_index == slot_index
+        && matches!(
+            app.focused_panel,
+            FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+        );
+    let block = panel_block_focused(title, theme, slot_focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     if samples.is_empty() {
         let lines = vec![Line::from(Span::styled(
             "No samples available",
             Style::default().fg(theme.muted),
         ))];
-        frame.render_widget(details_paragraph(lines, theme), area);
+        frame.render_widget(
+            Paragraph::new(lines).style(Style::default().fg(theme.muted).bg(theme.panel)),
+            inner,
+        );
         return;
     }
 
@@ -121,23 +141,18 @@ fn render_details_content(
         .show_samples_panel
         .then(|| details_samples_area(area, app.show_sample_delta))
         .unwrap_or_default();
-    draw_graph_panel(
+    draw_graph_content(
         frame,
         graph_area,
-        item_line,
         samples,
         peak,
         metric,
         selected_sample_time,
         app.effective_graph_time_span_seconds(),
         app.effective_graph_time_offset_seconds(),
-        app.graph_show_all_samples,
         app.graph_y_axis_zero_min,
         app.active_ab_comparison(),
         theme,
-        app.panel_has_focus(FocusedPanel::DetailsGraph)
-            && app.active_graph_slot_index == slot_index,
-        slot_index,
         y_label_width,
     );
     if !app.show_samples_panel {
@@ -155,12 +170,26 @@ fn render_details_content(
         app.active_graph_slot_index == slot_index,
         app.active_ab_comparison(),
         theme,
-        app.panel_has_focus(FocusedPanel::DetailsSamples)
-            && app.active_graph_slot_index == slot_index,
         slot_index,
         show_base_summary,
         app.show_sample_delta,
     );
+    if let Some(divider) = details_samples_divider_area(samples_area) {
+        frame.render_widget(
+            VerticalDivider {
+                style: Style::default().fg(
+                    if app.panel_has_focus(FocusedPanel::DetailsSamples)
+                        && app.active_graph_slot_index == slot_index
+                    {
+                        theme.accent
+                    } else {
+                        theme.border
+                    },
+                ),
+            },
+            divider,
+        );
+    }
     render_samples_scrollbar(frame, samples_area, sample_viewport, theme);
 }
 
@@ -169,6 +198,21 @@ struct SampleViewport {
     start: usize,
     rows: usize,
     total: usize,
+}
+
+struct VerticalDivider {
+    style: Style,
+}
+
+impl Widget for VerticalDivider {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.is_empty() {
+            return;
+        }
+        for y in area.y..area.bottom() {
+            buf[(area.x, y)].set_symbol("│").set_style(self.style);
+        }
+    }
 }
 
 fn draw_samples_subpanel(
@@ -183,18 +227,18 @@ fn draw_samples_subpanel(
     is_active_slot: bool,
     comparison: Option<&AbComparison>,
     theme: Theme,
-    focused: bool,
     slot_index: usize,
     show_base_summary: bool,
     show_delta: bool,
 ) -> SampleViewport {
-    let block = panel_block_focused(format!("Samples#{}", slot_index + 1), theme, focused);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let metric_header_style = Style::default()
-        .fg(theme.accent)
-        .add_modifier(Modifier::BOLD);
+    let inner = area;
+    let metric_header_style = if is_active_slot {
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted)
+    };
     let mut lines = vec![Line::from(vec![
         Span::styled("M  ", Style::default().fg(theme.muted)),
         Span::styled("Time      ", Style::default().fg(theme.muted)),
@@ -431,8 +475,7 @@ fn render_samples_scrollbar(
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
         .thumb_style(Style::default().fg(theme.accent_alt).bg(theme.panel));
-    let inner = panel_block("", theme).inner(area);
-    frame.render_stateful_widget(scrollbar, inner, &mut state);
+    frame.render_stateful_widget(scrollbar, area, &mut state);
 }
 
 fn samples_scrollbar_position(total: usize, rows: usize, start: usize) -> usize {
@@ -445,48 +488,27 @@ fn samples_scrollbar_position(total: usize, rows: usize, start: usize) -> usize 
     (start.min(max_offset) * max_scrollbar_position + max_offset / 2) / max_offset
 }
 
-fn draw_graph_panel(
+fn draw_graph_content(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
-    item_line: Line<'static>,
     samples: &[GraphSample],
     peak: Option<f64>,
     metric: GraphValueFormat,
     selected_sample_time: Option<DateTime<Local>>,
     span_seconds: u32,
     offset_seconds: u32,
-    show_all_samples: bool,
     y_axis_zero_min: bool,
     comparison: Option<&AbComparison>,
     theme: Theme,
-    focused: bool,
-    slot_index: usize,
     y_label_width: usize,
 ) {
-    let block = panel_block_focused(format!("Graph#{}", slot_index + 1), theme, focused);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(8),
-            Constraint::Length(1),
-        ])
-        .split(inner);
+    let layout = details_graph_rows(area);
 
     let bounds = graph_bounds(span_seconds, offset_seconds);
     let data = chart_points(samples, bounds);
     let stats = graph_stats(samples, peak, &data);
     let (y_min, y_max) = graph_y_bounds(&stats, y_axis_zero_min);
     let plot_data = lift_floor_points_for_plot(&data, y_min, y_max);
-    let header = Paragraph::new(item_line).style(Style::default().fg(theme.text).bg(theme.panel));
-    frame.render_widget(header, layout[0]);
-    render_graph_all_samples_toggle(frame, layout[0], show_all_samples, theme);
-    render_graph_y_axis_toggle(frame, layout[0], y_axis_zero_min, theme);
-
     let selected_age_seconds =
         selected_sample_time.and_then(|time| sample_age_seconds_at_time(samples, time));
     let selected_line = selected_age_seconds
@@ -555,7 +577,7 @@ fn draw_graph_panel(
         .and_then(|index| samples.get(index))
         .map(|sample| format_metric_sample_value(sample, metric));
     let top_labels = Paragraph::new(graph_top_label_line(
-        layout[1].width as usize,
+        layout[0].width as usize,
         y_label_width,
         bounds,
         selected_age_seconds,
@@ -563,14 +585,14 @@ fn draw_graph_panel(
         theme,
     ))
     .style(Style::default().bg(theme.panel));
-    frame.render_widget(top_labels, layout[1]);
-    frame.render_widget(chart, layout[2]);
+    frame.render_widget(top_labels, layout[0]);
+    frame.render_widget(chart, layout[1]);
     frame.render_widget(
         ChartAxisOverlay {
             y_label_width,
             theme,
         },
-        layout[2],
+        layout[1],
     );
     frame.render_widget(
         GraphAbAxisLabels {
@@ -580,18 +602,58 @@ fn draw_graph_panel(
             comparison,
             theme,
         },
-        layout[2],
+        layout[1],
     );
 
     let x_axis = Paragraph::new(axis_tick_label_line(
-        layout[3].width as usize,
+        layout[2].width as usize,
         y_label_width,
         bounds,
         samples.last().map(|sample| sample.captured_at),
         theme,
     ))
     .style(Style::default().bg(theme.panel));
-    frame.render_widget(x_axis, layout[3]);
+    frame.render_widget(x_axis, layout[2]);
+}
+
+fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    let status_area = graph_shared_status_area(area);
+    let mut spans = vec![
+        Span::styled(
+            "Graphs",
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" · Span {}s", app.effective_graph_time_span_seconds()),
+            Style::default().fg(theme.muted),
+        ),
+    ];
+    if let Some(time) = app.selected_details_sample_time() {
+        spans.push(Span::styled(
+            format!(" · Cursor {}", time.format("%H:%M:%S")),
+            Style::default().fg(theme.accent),
+        ));
+    }
+    if let Some(comparison) = app.active_ab_comparison() {
+        if let Some(point) = comparison.a {
+            spans.push(Span::styled(
+                format!(" · A {}", point.captured_at.format("%H:%M:%S")),
+                Style::default().fg(theme.warning),
+            ));
+        }
+        if let Some(point) = comparison.b {
+            spans.push(Span::styled(
+                format!(" · B {}", point.captured_at.format("%H:%M:%S")),
+                Style::default().fg(theme.warning),
+            ));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.background)),
+        status_area,
+    );
+    render_graph_all_samples_toggle(frame, area, app.graph_show_all_samples, theme);
+    render_graph_y_axis_toggle(frame, area, app.graph_y_axis_zero_min, theme);
 }
 
 fn render_graph_y_axis_toggle(
@@ -600,15 +662,9 @@ fn render_graph_y_axis_toggle(
     y_axis_zero_min: bool,
     theme: Theme,
 ) {
-    if area.width < GRAPH_Y_AXIS_TOGGLE_WIDTH {
+    let Some(toggle_area) = graph_y_axis_toggle_area(area) else {
         return;
-    }
-    let toggle_area = Rect::new(
-        area.right().saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH),
-        area.y,
-        GRAPH_Y_AXIS_TOGGLE_WIDTH,
-        1,
-    );
+    };
     let mark = if y_axis_zero_min { "☑" } else { "☐" };
     let toggle = Paragraph::new(Line::from(vec![
         Span::styled(mark, Style::default().fg(theme.accent).bg(theme.panel)),
@@ -627,16 +683,9 @@ fn render_graph_all_samples_toggle(
     show_all_samples: bool,
     theme: Theme,
 ) {
-    let required = GRAPH_ALL_SAMPLES_TOGGLE_WIDTH.saturating_add(GRAPH_Y_AXIS_TOGGLE_WIDTH);
-    if area.width < required {
+    let Some(toggle_area) = graph_all_samples_toggle_area(area) else {
         return;
-    }
-    let toggle_area = Rect::new(
-        area.right().saturating_sub(required),
-        area.y,
-        GRAPH_ALL_SAMPLES_TOGGLE_WIDTH,
-        1,
-    );
+    };
     let mark = if show_all_samples { "☑" } else { "☐" };
     let toggle = Paragraph::new(Line::from(vec![
         Span::styled(mark, Style::default().fg(theme.accent).bg(theme.panel)),
@@ -971,15 +1020,30 @@ fn sample_ab_marker(
     }
 }
 
-fn graph_slot_item_line(slot: &GraphSlot, theme: Theme) -> Line<'static> {
+fn graph_slot_title_line(
+    slot: &GraphSlot,
+    slot_index: usize,
+    active: bool,
+    theme: Theme,
+) -> Line<'static> {
+    let main_style = if active {
+        Style::default().fg(theme.text)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+    let slot_style = if active {
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted)
+    };
     Line::from(vec![
-        Span::styled("Item: ", Style::default().fg(theme.text)),
-        Span::styled(
-            slot.item_label(),
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-        ),
+        Span::styled(format!("Graph#{}", slot_index + 1), slot_style),
+        Span::styled(" · ", Style::default().fg(theme.muted)),
+        Span::styled(slot.item_label(), main_style),
+        Span::styled(" · ", Style::default().fg(theme.muted)),
+        Span::styled(slot.metric_label(), main_style),
     ])
 }
 
@@ -2029,14 +2093,14 @@ mod tests {
     }
 
     #[test]
-    fn process_summary_uses_single_item_line_without_old_labels() {
+    fn graph_slot_title_combines_slot_item_and_metric() {
         let identity = crate::model::ProcessIdentity {
             pid: 42,
             name: "app.exe".to_string(),
             start_time: Some(1_700_000_000),
         };
         let slot = GraphSlot::process(identity, crate::app::DetailsMetric::Private);
-        let line = graph_slot_item_line(&slot, crate::ui::THEMES[0]);
+        let line = graph_slot_title_line(&slot, 0, true, crate::ui::THEMES[0]);
         let rendered = line
             .spans
             .iter()
@@ -2044,13 +2108,16 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert!(rendered.contains("Item: app.exe - Private"));
+        assert_eq!(rendered, "Graph#1 · app.exe · Private");
         assert!(
-            line.spans[1].style.fg == Some(crate::ui::THEMES[0].accent)
-                && line.spans[1]
-                    .style
-                    .add_modifier
-                    .contains(Modifier::UNDERLINED)
+            line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
+                && line.spans[0].style.add_modifier.contains(Modifier::BOLD)
+        );
+        assert!(
+            !line.spans[2]
+                .style
+                .add_modifier
+                .contains(Modifier::UNDERLINED)
         );
         assert!(!rendered.contains("Process Name:"));
         assert!(!rendered.contains("Target Metric:"));

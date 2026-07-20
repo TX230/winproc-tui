@@ -182,7 +182,10 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `x`                        | Clear the A/B comparison.                                                           |
 
 
-When multiple Graphs are shown, the visible time span and A/B points are shared across slots, while the Y-axis scale is independent per Graph.
+Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, `Fit all`, and `Min 0`. Each slot uses one frame titled `Graph#n · item · metric`, with its Graph and synchronized Samples table grouped inside that frame. The active slot title is emphasized and inactive slot titles are muted.
+The shared `f` and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
+
+When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph.
 If there is not enough display area, the message `Not enough display area.` is shown and the Graph is not added.
 
 ## Recording and Playback

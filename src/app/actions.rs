@@ -13,13 +13,16 @@ use crate::{
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
-        GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
-        column_picker_close_button_area_for_screen, column_picker_index_at,
+        THEMES, column_picker_close_button_area_for_screen, column_picker_index_at,
         column_picker_scrollbar_area, cpu_panel_area_for_screen, details_slot_areas_for_screen,
         display_area_warning_ok_button_area,
         format::format_integer,
         help_area, help_close_button_area, help_scrollbar_area,
-        layout::{details_graph_area, details_samples_area},
+        layout::{
+            details_graph_area, details_graph_chart_area, details_samples_area,
+            details_shared_controls_area_for_screen, details_slot_title_area,
+            graph_all_samples_toggle_area, graph_y_axis_toggle_area,
+        },
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
         process_info_close_button_area_for_screen, process_kill_button_at,
@@ -371,6 +374,30 @@ impl App {
             return Ok(());
         }
 
+        if matches!(
+            self.focused_panel,
+            FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+        ) && self.show_details
+        {
+            match key.code {
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'z')
+                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.toggle_graph_y_axis_zero_min();
+                    return Ok(());
+                }
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'f')
+                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.toggle_graph_all_samples();
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         if self.focused_panel == FocusedPanel::DetailsSamples && self.show_details {
             match key.code {
                 KeyCode::Up => {
@@ -413,20 +440,6 @@ impl App {
                 }
                 KeyCode::PageDown => {
                     self.zoom_graph_time_span(false);
-                    return Ok(());
-                }
-                KeyCode::Char(ch)
-                    if ch.eq_ignore_ascii_case(&'z')
-                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
-                    self.toggle_graph_y_axis_zero_min();
-                    return Ok(());
-                }
-                KeyCode::Char(ch)
-                    if ch.eq_ignore_ascii_case(&'f')
-                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
-                    self.toggle_graph_all_samples();
                     return Ok(());
                 }
                 KeyCode::Left => {
@@ -1313,23 +1326,20 @@ impl App {
     }
 
     fn toggle_graph_y_axis_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
-        let Some((slot_index, area)) = graph_y_axis_toggle_area_at(self, screen_area, x, y) else {
+        let Some(area) = graph_y_axis_toggle_area_at(self, screen_area, x, y) else {
             return false;
         };
         let _ = area;
-        self.active_graph_slot_index = slot_index;
         self.focused_panel = FocusedPanel::DetailsGraph;
         self.toggle_graph_y_axis_zero_min();
         true
     }
 
     fn toggle_graph_all_samples_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
-        let Some((slot_index, area)) = graph_all_samples_toggle_area_at(self, screen_area, x, y)
-        else {
+        let Some(area) = graph_all_samples_toggle_area_at(self, screen_area, x, y) else {
             return false;
         };
         let _ = area;
-        self.active_graph_slot_index = slot_index;
         self.focused_panel = FocusedPanel::DetailsGraph;
         self.toggle_graph_all_samples();
         true
@@ -1604,7 +1614,7 @@ impl App {
             .graph_slot(slot_index)
             .map(|slot| self.graph_slot_samples(slot).len())
             .unwrap_or(0);
-        let Some(index) = sample_row_index_at(area, y, view_state.offset, total) else {
+        let Some(index) = sample_row_index_at(area, y, view_state.offset, total, rows) else {
             return;
         };
         self.active_graph_slot_index = slot_index;
@@ -1697,12 +1707,7 @@ fn graph_item_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<us
     visible_slot_areas_for_app(app, screen_area)
         .into_iter()
         .find_map(|(index, slot)| {
-            let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let inner = shrink_rect(graph, 1);
-            let reserved = GRAPH_ALL_SAMPLES_TOGGLE_WIDTH.saturating_add(GRAPH_Y_AXIS_TOGGLE_WIDTH);
-            let item_width = inner.width.saturating_sub(reserved.min(inner.width));
-            let item = Rect::new(inner.x, inner.y, item_width, 1);
-            contains_point(item, x, y).then_some(index)
+            contains_point(details_slot_title_area(slot), x, y).then_some(index)
         })
 }
 
@@ -1725,15 +1730,14 @@ fn samples_scrollbar_area_for_screen(samples: Rect, total: usize, rows: usize) -
     if total <= rows.max(1) {
         return None;
     }
-    let inner = shrink_rect(samples, 1);
-    if inner.is_empty() {
+    if samples.is_empty() {
         return None;
     }
     Some(Rect::new(
-        inner.right().saturating_sub(1),
-        inner.y,
+        samples.right().saturating_sub(1),
+        samples.y,
         1,
-        inner.height,
+        samples.height,
     ))
 }
 
@@ -1773,23 +1777,12 @@ fn samples_scrollbar_area_at(
         })
 }
 
-fn graph_chart_area_for_graph(graph: Rect, left_padding: u16) -> Option<Rect> {
-    let inner = shrink_rect(graph, 1);
-    let x_padding = left_padding.min(inner.width.saturating_sub(1));
-    Some(Rect::new(
-        inner.x.saturating_add(x_padding),
-        inner.y.saturating_add(3),
-        inner.width.saturating_sub(x_padding),
-        inner.height.saturating_sub(4),
-    ))
-}
-
 fn graph_chart_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, Rect)> {
     visible_slot_areas_for_app(app, screen_area)
         .into_iter()
         .filter_map(|(index, slot)| {
             let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let area = graph_chart_area_for_graph(graph, app.graph_plot_left_padding())?;
+            let area = details_graph_chart_area(graph, app.graph_plot_left_padding())?;
             contains_point(area, x, y).then_some((index, area))
         })
         .next()
@@ -1801,68 +1794,21 @@ fn active_graph_chart_area_for_screen(app: &App, screen_area: Rect) -> Option<Re
         .find_map(|(index, slot)| {
             (index == app.active_graph_slot_index).then(|| {
                 let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-                graph_chart_area_for_graph(graph, app.graph_plot_left_padding())
+                details_graph_chart_area(graph, app.graph_plot_left_padding())
             })?
         })
 }
 
-fn graph_y_axis_toggle_area_for_graph(graph: Rect) -> Option<Rect> {
-    let inner = shrink_rect(graph, 1);
-    if inner.width < GRAPH_Y_AXIS_TOGGLE_WIDTH {
-        return None;
-    }
-    Some(Rect::new(
-        inner.right().saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH),
-        inner.y,
-        GRAPH_Y_AXIS_TOGGLE_WIDTH,
-        1,
-    ))
+fn graph_y_axis_toggle_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<Rect> {
+    let controls = details_shared_controls_area_for_screen(screen_area, app.show_details)?;
+    let area = graph_y_axis_toggle_area(controls)?;
+    contains_point(area, x, y).then_some(area)
 }
 
-fn graph_y_axis_toggle_area_at(
-    app: &App,
-    screen_area: Rect,
-    x: u16,
-    y: u16,
-) -> Option<(usize, Rect)> {
-    visible_slot_areas_for_app(app, screen_area)
-        .into_iter()
-        .filter_map(|(index, slot)| {
-            let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let area = graph_y_axis_toggle_area_for_graph(graph)?;
-            contains_point(area, x, y).then_some((index, area))
-        })
-        .next()
-}
-
-fn graph_all_samples_toggle_area_for_graph(graph: Rect) -> Option<Rect> {
-    let inner = shrink_rect(graph, 1);
-    let required = GRAPH_ALL_SAMPLES_TOGGLE_WIDTH.saturating_add(GRAPH_Y_AXIS_TOGGLE_WIDTH);
-    if inner.width < required {
-        return None;
-    }
-    Some(Rect::new(
-        inner.right().saturating_sub(required),
-        inner.y,
-        GRAPH_ALL_SAMPLES_TOGGLE_WIDTH,
-        1,
-    ))
-}
-
-fn graph_all_samples_toggle_area_at(
-    app: &App,
-    screen_area: Rect,
-    x: u16,
-    y: u16,
-) -> Option<(usize, Rect)> {
-    visible_slot_areas_for_app(app, screen_area)
-        .into_iter()
-        .filter_map(|(index, slot)| {
-            let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let area = graph_all_samples_toggle_area_for_graph(graph)?;
-            contains_point(area, x, y).then_some((index, area))
-        })
-        .next()
+fn graph_all_samples_toggle_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<Rect> {
+    let controls = details_shared_controls_area_for_screen(screen_area, app.show_details)?;
+    let area = graph_all_samples_toggle_area(controls)?;
+    contains_point(area, x, y).then_some(area)
 }
 
 fn details_sample_page_size_for_samples_area(
@@ -1870,12 +1816,8 @@ fn details_sample_page_size_for_samples_area(
     show_ab_summary: bool,
     show_base_summary: bool,
 ) -> usize {
-    let inner = samples.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
     crate::ui::layout::details_samples_row_capacity(
-        inner.height,
+        samples.height,
         show_ab_summary,
         show_base_summary,
     )
@@ -1894,25 +1836,21 @@ fn nice_axis_max(value: u64) -> u64 {
     value.div_ceil(step) * step
 }
 
-fn shrink_rect(area: Rect, margin: u16) -> Rect {
-    Rect::new(
-        area.x.saturating_add(margin),
-        area.y.saturating_add(margin),
-        area.width.saturating_sub(margin.saturating_mul(2)),
-        area.height.saturating_sub(margin.saturating_mul(2)),
-    )
-}
-
-fn sample_row_index_at(area: Rect, y: u16, offset: usize, total: usize) -> Option<usize> {
+fn sample_row_index_at(
+    area: Rect,
+    y: u16,
+    offset: usize,
+    total: usize,
+    rows: usize,
+) -> Option<usize> {
     if total == 0 {
         return None;
     }
-    let inner = shrink_rect(area, 1);
-    let first_row_y = inner.y.saturating_add(1);
-    if y < first_row_y || y >= inner.bottom() {
+    let first_row_y = area.y.saturating_add(1);
+    let last_row_y = first_row_y.saturating_add(rows as u16).min(area.bottom());
+    if y < first_row_y || y >= last_row_y {
         return None;
     }
-    let rows = inner.height.saturating_sub(3).max(1) as usize;
     let start = offset.min(total.saturating_sub(rows.min(total)));
     let index = start + usize::from(y - first_row_y);
     (index < total).then_some(index)

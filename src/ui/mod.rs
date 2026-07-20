@@ -45,13 +45,15 @@ pub(crate) use help::{
     help_area, help_close_button_area, help_page_size_for_screen, help_scroll_max_for_page_size,
     help_scrollbar_area,
 };
-pub(crate) use layout::{
-    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_slot_areas_for_screen,
-    details_slots_area_for_screen, process_table_area_for_screen, process_table_page_size,
-    screen_layout,
-};
 #[cfg(test)]
-pub(crate) use layout::{details_graph_area_for_screen, details_samples_area_for_screen};
+pub(crate) use layout::{
+    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_graph_area_for_screen,
+    details_samples_area_for_screen, details_shared_controls_area_for_screen,
+};
+pub(crate) use layout::{
+    details_slot_areas_for_screen, details_slots_area_for_screen, process_table_area_for_screen,
+    process_table_page_size, screen_layout,
+};
 use log_list::{draw_log_dir_dialog, draw_log_list};
 pub(crate) use log_list::{
     log_dir_button_at, log_list_index_at, log_list_page_size_for_screen,

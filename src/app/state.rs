@@ -222,8 +222,8 @@ impl GraphSlot {
 
     pub(crate) fn item_label(&self) -> String {
         match self {
-            Self::Process { identity, metric } => format!("{} - {}", identity.name, metric.label()),
-            Self::System { metric } => format!("{} - {}", metric.panel_label(), metric.label()),
+            Self::Process { identity, .. } => identity.name.clone(),
+            Self::System { metric } => metric.panel_label().to_string(),
         }
     }
 
@@ -1527,9 +1527,8 @@ impl App {
         if slot_count == 0 {
             return true;
         }
-        crate::ui::details_slots_area_for_screen(self.last_screen_area, true).is_some_and(|area| {
-            area.height >= GRAPH_SLOT_MIN_HEIGHT.saturating_mul(slot_count as u16)
-        })
+        crate::ui::details_slots_area_for_screen(self.last_screen_area, true)
+            .is_some_and(|area| !crate::ui::layout::details_slot_areas(area, slot_count).is_empty())
     }
 
     pub(crate) fn graph_slot(&self, index: usize) -> Option<&GraphSlot> {

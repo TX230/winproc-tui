@@ -260,12 +260,8 @@ fn details_samples_page_size_for_app(screen_area: Rect, app: &App) -> usize {
         return 1;
     };
     let samples = details_samples_area(slot, app.show_sample_delta);
-    let inner = samples.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
     details_samples_row_capacity(
-        inner.height,
+        samples.height,
         app.active_ab_comparison().is_some(),
         app.active_graph_slot_count() <= 1,
     )

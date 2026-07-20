@@ -65,6 +65,8 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             vec![
                 ("PgUp/PgDn", "Page"),
                 ("Home/End", "Edge"),
+                ("f", "Fit"),
+                ("z", "Min 0"),
                 ("a/b", "Set A/B"),
                 ("x", "Clear A/B"),
             ],
