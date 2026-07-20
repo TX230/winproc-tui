@@ -1,18 +1,18 @@
 use ratatui::{
     layout::Rect,
     prelude::{Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::{App, ui::Theme};
+use crate::{
+    App,
+    app::{AppActivity, FocusedPanel},
+    ui::Theme,
+};
 
 pub(crate) fn draw_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let footer = Paragraph::new(Text::from(vec![
-        Line::from(global_shortcuts(app, theme)),
-        Line::from(context_shortcuts(app, theme)),
-    ]))
-    .block(
+    let footer = Paragraph::new(Line::from(context_shortcuts(app, theme))).block(
         Block::default()
             .borders(Borders::TOP)
             .border_style(Style::default().fg(theme.border))
@@ -21,48 +21,74 @@ pub(crate) fn draw_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
     frame.render_widget(footer, area);
 }
 
-fn global_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    let pause_label = if app.is_display_paused() {
-        "Resume"
-    } else {
-        "Pause"
-    };
-    shortcut_spans(
-        &[
-            ("Tab", "Focus panel"),
-            ("1-4", "Show in graph"),
-            ("0", "Clear graphs"),
-            ("c", "Pick columns"),
-            ("t", "Tracked only"),
-            ("g", "Toggle graphs"),
-            ("f", "Open files"),
-            ("s", "Sort rows"),
-            ("Space", "Track"),
-            ("Ctrl+O", "Settings"),
-            ("Ctrl+P", pause_label),
-        ],
-        theme,
-    )
-}
-
 fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    let mut items = vec![
-        ("Ctrl+F", "Filter"),
-        ("Ctrl+I/J", "Jump"),
-        ("Enter", "Process info"),
-        ("i", "Info page"),
-        ("Ctrl+L", "Logs"),
-        ("Ctrl+R", "Record"),
-        ("a/b", "Set A/B"),
-        ("Shift+A/B", "Jump A/B"),
-        ("x", "Clear A/B"),
-        ("q", "Quit"),
-        ("?", "Help"),
-    ];
-    if app.activity() == crate::app::AppActivity::Playback {
+    let (focus_label, mut items) = match app.focused_panel {
+        FocusedPanel::System => (
+            "RAM/VRAM".to_string(),
+            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
+        ),
+        FocusedPanel::SystemActivity => (
+            "NW/DISK".to_string(),
+            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
+        ),
+        FocusedPanel::Cpu => (
+            "CPUs".to_string(),
+            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
+        ),
+        FocusedPanel::Processes => (
+            "Processes".to_string(),
+            vec![
+                ("c", "Columns"),
+                ("s", "Sort"),
+                ("g", "Graphs"),
+                ("Ctrl+I", "Jump"),
+                ("Shift+←/→", "Move column"),
+                ("1-4", "Graph"),
+                ("Enter", "Info"),
+                ("Space", "Track"),
+                ("d", "Kill"),
+                ("Ctrl+F", "Filter"),
+            ],
+        ),
+        FocusedPanel::DetailsGraph => (
+            format!("Graph#{}", app.active_graph_slot_index + 1),
+            vec![
+                ("Ctrl+Left/Right", "Pan"),
+                ("PgUp/PgDn", "Span"),
+                ("f", "Fit"),
+                ("z", "Min 0"),
+                ("a/b", "Set A/B"),
+            ],
+        ),
+        FocusedPanel::DetailsSamples => (
+            format!("Samples#{}", app.active_graph_slot_index + 1),
+            vec![
+                ("PgUp/PgDn", "Page"),
+                ("Home/End", "Edge"),
+                ("a/b", "Set A/B"),
+                ("x", "Clear A/B"),
+            ],
+        ),
+    };
+    if app.activity() == AppActivity::Playback {
         items.insert(0, ("Esc", "Live"));
+    } else {
+        items.push(("Esc", "Quit"));
     }
-    shortcut_spans(&items, theme)
+    items.push(("Tab", "Focus"));
+    items.push(("?", "Help"));
+
+    let mut spans = vec![Span::styled(
+        focus_label,
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if !items.is_empty() {
+        spans.push(Span::raw("  "));
+    }
+    spans.extend(shortcut_spans(&items, theme));
+    spans
 }
 
 fn shortcut_spans(items: &[(&'static str, &'static str)], theme: Theme) -> Vec<Span<'static>> {
@@ -71,12 +97,7 @@ fn shortcut_spans(items: &[(&'static str, &'static str)], theme: Theme) -> Vec<S
         if index > 0 {
             spans.push(Span::raw("  "));
         }
-        spans.push(Span::styled(
-            *key,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
+        spans.push(Span::styled(*key, Style::default().fg(theme.accent)));
         if !label.is_empty() {
             spans.push(Span::styled(
                 format!(" {label}"),

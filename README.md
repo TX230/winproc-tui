@@ -120,7 +120,7 @@ There are currently only two startup options.
 Only the main keys are listed in this README.
 **Press** `?` **while running to view the full key bindings in the Help dialog.**
 
-Some single-letter keys such as `f` map to different actions depending on which panel is focused. The tables below are grouped by panel, and the active panel is also shown in the footer.
+Some single-letter keys such as `f` map to different actions depending on which panel is focused. The one-line footer shows the active panel and its main actions. The tables below list the complete controls by panel.
 
 ### General
 
@@ -155,7 +155,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Ctrl+Space`        | Add or remove the current live process row from the multi-selection.                  |
 | `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
 | `Space`             | Add or remove the selected process name from the Tracked List.                        |
-| `Delete`            | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
+| `d` / `Delete`      | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
 | `t`                 | Toggle whether only tracked processes are shown.                                      |
 | `Enter`             | Open Process Info for the selected process.                                          |
 | `i`                 | Open the System Info dialog.                                                        |

@@ -85,7 +85,7 @@ use ui::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
     details_graph_area_for_screen, details_samples_area_for_screen, details_slot_areas_for_screen,
     process_kill_button_at, process_kill_dialog_area, process_table_area_for_screen,
-    process_table_page_size, process_table_visible_column_count,
+    process_table_page_size, process_table_visible_column_count, screen_layout,
 };
 #[cfg(test)]
 use ui::{
@@ -518,7 +518,7 @@ name = "legacy-watch.exe"
                 Rect::new(0, 0, 120, 40),
                 false,
             )),
-            26
+            27
         );
         assert_eq!(
             process_table_page_size(process_table_area_for_screen(
@@ -1507,13 +1507,25 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn d_does_not_toggle_details() {
+    fn d_on_live_process_opens_kill_confirm() {
         let mut app = make_test_app(3, 10);
 
         app.on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.show_details);
+        assert!(app.show_process_kill_confirmation);
+        assert_eq!(app.process_kill_targets.len(), 1);
+    }
+
+    #[test]
+    fn ctrl_d_does_not_open_process_kill_confirm() {
+        let mut app = make_test_app(3, 10);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert!(!app.show_process_kill_confirmation);
     }
 
     #[test]
@@ -2746,9 +2758,18 @@ name = "legacy-watch.exe"
             .unwrap();
 
         let after_left = render_app_to_text(&app, screen.width, screen.height);
-        assert_eq!(before, after_left);
+        let content_height = screen_layout(screen)[2].y as usize;
+        assert_eq!(
+            before.lines().take(content_height).collect::<Vec<_>>(),
+            after_left.lines().take(content_height).collect::<Vec<_>>()
+        );
         assert_eq!(app.selected_process_column_index, visible_count - 2);
         assert_eq!(app.process_metric_column_offset, 0);
+        assert!(
+            app.status.starts_with("Selected column: "),
+            "{}",
+            app.status
+        );
 
         app.selected_process_column_index = visible_count - 1;
         app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
@@ -3568,6 +3589,10 @@ name = "legacy-watch.exe"
         );
         assert!(!rendered.contains("F6"), "{rendered}");
         assert!(rendered.contains("[ Close ]"), "{rendered}");
+        assert!(
+            rendered.contains("Footer shows the focused panel and its main actions."),
+            "{rendered}"
+        );
         assert!(!rendered_lower.contains("baseline"), "{rendered}");
     }
 
@@ -3719,37 +3744,62 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn footer_shows_global_and_context_shortcuts_on_two_rows() {
-        let app = make_test_app(3, 10);
+    fn footer_shows_process_context_on_one_row() {
+        let mut app = make_test_app(3, 10);
+        app.status = "Copied row: proc-0".to_string();
 
         let rendered = render_app_to_text(&app, 170, 30);
 
-        assert!(rendered.contains("Tab Focus panel"), "{rendered}");
-        assert!(rendered.contains("1-4 Show in graph"), "{rendered}");
-        assert!(rendered.contains("c Pick columns"), "{rendered}");
-        assert!(rendered.contains("t Tracked only"), "{rendered}");
-        assert!(rendered.contains("g Toggle graphs"), "{rendered}");
-        assert!(rendered.contains("s Sort rows"), "{rendered}");
-        assert!(rendered.contains("f Open files"), "{rendered}");
-        assert!(rendered.contains("i Info page"), "{rendered}");
-        assert!(rendered.contains("Enter Process info"), "{rendered}");
-        assert!(rendered.contains("Ctrl+O Settings"), "{rendered}");
-        assert!(rendered.contains("Ctrl+P Pause"), "{rendered}");
+        assert!(rendered.contains("Processes"), "{rendered}");
+        assert!(rendered.contains("c Columns"), "{rendered}");
+        assert!(rendered.contains("s Sort"), "{rendered}");
+        assert!(rendered.contains("g Graphs"), "{rendered}");
+        assert!(rendered.contains("Ctrl+I Jump"), "{rendered}");
+        assert!(rendered.contains("Shift+←/→ Move column"), "{rendered}");
+        assert!(rendered.contains("1-4 Graph"), "{rendered}");
+        assert!(rendered.contains("Enter Info"), "{rendered}");
         assert!(rendered.contains("Space Track"), "{rendered}");
+        assert!(rendered.contains("d Kill"), "{rendered}");
         assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
-        assert!(rendered.contains("Ctrl+R Record"), "{rendered}");
-        assert!(rendered.contains("a/b Set A/B"), "{rendered}");
-        assert!(rendered.contains("Shift+A/B Jump A/B"), "{rendered}");
-        assert!(rendered.contains("x Clear A/B"), "{rendered}");
-        assert!(rendered.contains("q Quit"), "{rendered}");
+        assert!(rendered.contains("Esc Quit"), "{rendered}");
+        assert!(rendered.contains("Tab Focus"), "{rendered}");
         assert!(rendered.contains("? Help"), "{rendered}");
-        assert!(!rendered.contains("Left/Right Select column"), "{rendered}");
-        assert!(
-            !rendered.contains("Wheel/PgUp/PgDn Time span"),
-            "{rendered}"
-        );
-        assert!(!rendered.contains("z Toggle Min 0"), "{rendered}");
-        assert!(!rendered.contains("Ready"), "{rendered}");
+        assert!(!rendered.contains("Status  "), "{rendered}");
+        assert!(!rendered.contains("Copied row: proc-0"), "{rendered}");
+        assert!(!rendered.contains("Up/Down Row"), "{rendered}");
+        assert!(!rendered.contains("Left/Right Column"), "{rendered}");
+        assert!(!rendered.contains("Ctrl+R Record"), "{rendered}");
+        assert!(!rendered.contains("Ctrl+O Settings"), "{rendered}");
+    }
+
+    #[test]
+    fn footer_shortcuts_follow_the_focused_panel() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::System;
+        let system = render_app_to_text(&app, 170, 30);
+        assert!(system.contains("RAM/VRAM"), "{system}");
+        assert!(system.contains("i System info"), "{system}");
+        assert!(!system.contains("Up/Down Metric"), "{system}");
+        assert!(!system.contains("Left/Right Column"), "{system}");
+
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.active_graph_slot_index = 1;
+        let graph = render_app_to_text(&app, 170, 45);
+        assert!(graph.contains("Graph#2"), "{graph}");
+        assert!(graph.contains("Ctrl+Left/Right Pan"), "{graph}");
+        assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
+        assert!(graph.contains("f Fit"), "{graph}");
+        assert!(graph.contains("z Min 0"), "{graph}");
+        assert!(graph.contains("a/b Set A/B"), "{graph}");
+        assert!(!graph.contains("  Left/Right Sample"), "{graph}");
+
+        app.focused_panel = FocusedPanel::DetailsSamples;
+        let samples = render_app_to_text(&app, 170, 45);
+        assert!(samples.contains("Samples#2"), "{samples}");
+        assert!(samples.contains("PgUp/PgDn Page"), "{samples}");
+        assert!(samples.contains("Home/End Edge"), "{samples}");
+        assert!(samples.contains("x Clear A/B"), "{samples}");
+        assert!(!samples.contains("Up/Down Sample"), "{samples}");
     }
 
     #[test]
@@ -6022,13 +6072,16 @@ name = "legacy-watch.exe"
     fn sampling_request_is_not_sent_while_in_progress() {
         let (sampling_worker, request_rx, _result_tx) = SamplingWorker::test_pair();
         let mut app = make_test_app_with_worker(3, 10, sampling_worker);
+        app.status = "Copied row: proc-0".to_string();
 
         app.request_sample().unwrap();
         assert!(app.sampling_in_progress);
         assert_eq!(request_rx.try_recv(), Ok(SampleRequest::Sample));
+        assert_eq!(app.status, "Copied row: proc-0");
 
         app.request_sample().unwrap();
         assert_eq!(request_rx.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(app.status, "Copied row: proc-0");
     }
 
     #[test]
@@ -6037,6 +6090,7 @@ name = "legacy-watch.exe"
         let mut app = make_test_app_with_worker(5, 10, sampling_worker);
         app.select_last_row();
         app.sampling_in_progress = true;
+        app.status = "Selected column: Private".to_string();
 
         result_tx
             .send(CollectSnapshotResult {
@@ -6050,7 +6104,7 @@ name = "legacy-watch.exe"
         assert_eq!(app.snapshot.process_count, 2);
         assert_eq!(app.visible_process_count(), 2);
         assert_eq!(app.process_table_state.selected(), Some(1));
-        assert!(app.status.contains("Updated 2 process rows"));
+        assert_eq!(app.status, "Selected column: Private");
         assert_eq!(app.process_history.len(), 2);
     }
 

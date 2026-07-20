@@ -20,7 +20,7 @@ pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
             .constraints([
                 Constraint::Length(1),
                 Constraint::Min(18),
-                Constraint::Length(3),
+                Constraint::Length(2),
             ])
             .split(area),
     )
@@ -256,6 +256,13 @@ pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn footer_reserves_one_content_row() {
+        let layout = screen_layout(Rect::new(0, 0, 100, 45));
+
+        assert_eq!(layout[2].height, 2);
+    }
 
     #[test]
     fn process_table_area_matches_body_sections_without_details() {

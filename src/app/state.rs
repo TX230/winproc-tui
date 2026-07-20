@@ -4093,9 +4093,6 @@ impl App {
             return Ok(());
         }
         if self.sampling_in_progress {
-            if !self.is_display_paused() {
-                self.status = "Sampling...".to_string();
-            }
             return Ok(());
         }
 
@@ -4103,9 +4100,6 @@ impl App {
         self.sampling_in_progress = true;
         if self.recording_session.is_some() {
             self.recording_spinner_index = self.recording_spinner_index.wrapping_add(1);
-        }
-        if !self.is_display_paused() {
-            self.status = "Sampling...".to_string();
         }
         Ok(())
     }
@@ -4179,12 +4173,6 @@ impl App {
         }
 
         let mut status_parts = Vec::new();
-        status_parts.push(format!(
-            "Updated {} process rows at {}",
-            self.snapshot.process_count,
-            self.snapshot.captured_at.format("%H:%M:%S")
-        ));
-
         if let Some(warning) = collected.warning {
             status_parts.push(warning);
         }
@@ -4201,7 +4189,7 @@ impl App {
             }
         }
 
-        if !self.is_display_paused() || recording_stopped {
+        if (!self.is_display_paused() || recording_stopped) && !status_parts.is_empty() {
             self.status = status_parts.join(" | ");
         }
         Ok(!self.is_display_paused() || recording_stopped)

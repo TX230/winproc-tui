@@ -666,6 +666,16 @@ impl App {
                 }
             }
             KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'d')
+                    && key.modifiers.is_empty()
+                    && self.focused_panel == FocusedPanel::Processes =>
+            {
+                if !self.request_process_kill_confirmation() && !self.clear_selected_graph_metric()
+                {
+                    self.hide_selected_ghost_row();
+                }
+            }
+            KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'c')
                     && !key.modifiers.contains(KeyModifiers::CONTROL) =>
             {

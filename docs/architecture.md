@@ -217,7 +217,7 @@ There are two history types.
 - **A/B comparison**: `ab_comparison: Option<AbComparison>`. It is keyed by scope (process or system metric) plus metric, and is cleared when the target changes.
 - **Modals**: Flags and scroll/selection state for Help, column picker, log list, log directory input and validation, open files, Settings, quit confirmation, recording path input, overwrite confirmation, no-tracked warning, tracked removal confirmation, process-kill confirmation, and warning dialogs. `has_modal_focus()` returns whether any modal is open.
 - **Recording/replay**: `recording_session: Option<RecordingSession>`, `recording_last_dir`, `recording_spinner_index`, `playback_path`, `playback_display`, and log-list/load workers. `activity()` returns `Live` / `Recording` / `Playback`.
-- **Theme/status**: `theme_index`, `status` footer text.
+- **Theme/action feedback state**: `theme_index`, `status`.
 
 `App::new` takes one initial snapshot, normalizes tracking filters, finalizes column configuration, initializes sorting, builds the visible-row cache, clamps table state, and then returns `App`.
 
@@ -248,7 +248,7 @@ Representative operations:
 - `1` / `2` / `3` / `4` (Cpu): assign `CPU Usage` to the matching Graph slot.
 - `Space` (Processes): add/remove the selected process name in `watch_list`.
 - `t`: toggle `watch_enabled`.
-- `Delete`: for live rows, open process-kill confirmation and run `taskkill /f /im` per selected image name after confirmation; for Ghost Rows, delete an exited tracked row through the history-discard confirmation dialog.
+- `d` / `Delete`: for live rows, open process-kill confirmation and run `taskkill /f /im` per selected image name after confirmation; for Ghost Rows, delete an exited tracked row through the history-discard confirmation dialog.
 - `s` / `c`: toggle sorting / open the column picker.
 - `i`: open the System Info dialog.
 - `Ctrl+C`: copy the selected row text for RAM/VRAM, NW/DISK, CPUs, Processes, or Samples to the clipboard.
@@ -287,6 +287,7 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 
 ### 9.2 Major Panels
 
+- `footer`: Uses one content row to draw the focused panel name and its main contextual actions. It does not render `App::status`; complete key bindings remain in the Help dialog.
 - `system_panel`: Draws the top row as `RAM/VRAM`, `NW/DISK`, and `CPUs`. RAM/VRAM rows highlight the selected metric and Graph slot state. NW/DISK rows show System Activity metrics and can take focus, select a metric, and assign Graph slots with the same row/number behavior as RAM/VRAM. The System Info view is drawn as a top-level modal dialog when requested.
 - `cpu_panel`: Draws the compact `CPUs` panel in the top row. It shows average CPU usage, current P/E clock averages in integer MHz when PDH reports them, and a `Per-core Usage` row where P/E groups are labeled on the same line as their colored per-logical-CPU glyphs. The panel can take focus; `CPU Usage` uses `SystemHistory`, can be assigned to Graph slots, and reserves the first two content cells for the Graph slot number.
 - `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Ghost Rows (exited tracked processes) use a different color and appear after live rows. The cursor row and live multi-selected rows use separate highlights. Headers show `↑` / `↓` for the sorted column. Live metric cells compare their present raw value against `previous_snapshot` and use the success color for increases and the danger color for decreases. The `Full Path` column is rendered as left-aligned text, takes extra table width when visible, and is shortened from the start when needed. While the user is actively moving the process cursor, sample refreshes briefly preserve the current row order to avoid periodic cursor jumps from metric-driven resorting.
@@ -358,7 +359,7 @@ During Playback, `Esc` returns to Live. Closing the Log list while in Playback a
 - `watch_list` contains only **process names normalized to lowercase**, not PIDs. All processes with the same name are tracked.
 - When a tracked process existed in the previous snapshot but not in the current one, `record_exited_tracked_rows` saves the last observed `ProcessRow` in `exited_tracked_rows`, and the table keeps showing it as `VisibleProcessEntry::Ghost(identity)`.
 - History is also retained per `ProcessIdentity`, so values remain available in Details after exit.
-- `Delete` on a live row opens the process-kill confirmation dialog. After confirmation, `taskkill /f /im` runs once for each selected image name. `Delete` on a Ghost Row still discards that exited tracked row and its history.
+- `d` / `Delete` on a live row opens the process-kill confirmation dialog. After confirmation, `taskkill /f /im` runs once for each selected image name. The same keys on a Ghost Row still discard that exited tracked row and its history.
 
 ## 13. Tests
 
