@@ -58,6 +58,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("f", "Fit"),
                 ("z", "Min 0"),
                 ("a/b", "Set A/B"),
+                ("Shift+A/B", "Jump A/B"),
             ],
         ),
         FocusedPanel::DetailsSamples => (
@@ -68,6 +69,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("f", "Fit"),
                 ("z", "Min 0"),
                 ("a/b", "Set A/B"),
+                ("Shift+A/B", "Jump A/B"),
                 ("x", "Clear A/B"),
             ],
         ),

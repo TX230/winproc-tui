@@ -3935,6 +3935,7 @@ name = "legacy-watch.exe"
         assert!(graph.contains("f Fit"), "{graph}");
         assert!(graph.contains("z Min 0"), "{graph}");
         assert!(graph.contains("a/b Set A/B"), "{graph}");
+        assert!(graph.contains("Shift+A/B Jump A/B"), "{graph}");
         assert!(!graph.contains("  Left/Right Sample"), "{graph}");
 
         app.focused_panel = FocusedPanel::DetailsSamples;
@@ -3944,6 +3945,7 @@ name = "legacy-watch.exe"
         assert!(samples.contains("Home/End Edge"), "{samples}");
         assert!(samples.contains("f Fit"), "{samples}");
         assert!(samples.contains("z Min 0"), "{samples}");
+        assert!(samples.contains("Shift+A/B Jump A/B"), "{samples}");
         assert!(samples.contains("x Clear A/B"), "{samples}");
         assert!(!samples.contains("Up/Down Sample"), "{samples}");
     }
