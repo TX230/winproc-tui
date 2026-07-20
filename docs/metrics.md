@@ -16,37 +16,38 @@ Live sampling is requested once per second. The header derives freshness from th
 
 ## Process Table Columns
 
-The Process table can select the 15 columns included in `MetricColumn::ALL`.
+The Process table can select the 15 columns included in `MetricColumn::ALL`. All 15 are selected when no saved column selection exists.
 Most columns are numeric metrics that can be sorted, graphed, sampled, and recorded.
 `Full Path` is a text column for process identification; it can be displayed, sorted, copied, filtered, and recorded, but it is not a Graph metric.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
 | `CPU%` | `cpu_percent` | CPU usage for the target process, shown as a percentage of total logical CPU capacity. | PDH `\Process(*)\% Processor Time` | `%` with 1 decimal place |
-| `Private` | `private_bytes` | Committed memory owned by the process. This corresponds to Windows Commit size. | PDH `Private Bytes`; fallback is `sysinfo::virtual_memory()` | Byte integer with thousands separators |
-| `WS` | `workset_bytes` | Working Set currently resident in physical memory. | PDH `Working Set`; fallback is `sysinfo::memory()` | Byte integer with thousands separators |
-| `WS Priv` | `workset_private_bytes` | Private part of the Working Set that is not shared with other processes. | PDH `Working Set - Private` | Byte integer with thousands separators |
+| `Private` | `private_bytes` | Committed memory owned by the process. This corresponds to Windows Commit size. | PDH `Private Bytes`; fallback is `sysinfo::virtual_memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `WS` | `workset_bytes` | Working Set currently resident in physical memory. | PDH `Working Set`; fallback is `sysinfo::memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `WS Priv` | `workset_private_bytes` | Private part of the Working Set that is not shared with other processes. | PDH `Working Set - Private` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `Thrd` | `thread_count` | Thread count. Used to spot unexpected growth. | ToolHelp process snapshot | Integer |
 | `Hndl` | `handle_count` | Handle count. Used to spot leaked files, synchronization objects, and similar resources. | PDH `Handle Count`; fallback is `GetProcessHandleCount` | Integer |
 | `USER` | `user_object_count` | Count of USER objects such as windows, menus, cursors, and icons. | `GetGuiResources(GR_USEROBJECTS)` | Integer |
 | `GDI` | `gdi_object_count` | Count of GDI objects such as bitmaps, brushes, pens, and fonts. | `GetGuiResources(GR_GDIOBJECTS)` | Integer |
 | `GPU%` | `gpu_percent` | Per-process GPU engine utilization. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | `%` with 1 decimal place |
-| `.NET Heap` | `dotnet_heap_bytes` | Total .NET CLR managed heap size. | PDH `\.NET CLR Memory(*)\# Bytes in all Heaps` | Byte integer with thousands separators |
-| `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Byte integer with thousands separators |
-| `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Byte integer with thousands separators |
+| `.NET Heap` | `dotnet_heap_bytes` | Total .NET CLR managed heap size. | PDH `\.NET CLR Memory(*)\# Bytes in all Heaps` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | `Mbps` |
 | `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | `Mbps` |
 | `Full Path` | `path` | Executable path. Used to distinguish same-name processes from different build or working directories. | `sysinfo::Process::exe()` | Path text, shortened from the start when the cell is narrow |
 
 When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
 When it is not selected, filtering matches process name only.
+Compact byte formatting is limited to Process-table presentation. Sorting and Graph data continue to use the raw numeric values.
 
 ## Process Metrics Defined Internally Only
 
 | Display name | Log field | Description | Current behavior |
 |---|---|---|---|
-| `WS Shrbl` | `workset_shareable_bytes` | Shareable pages in the Working Set. | Normally not collected because `collect_ws_share=false`. |
-| `WS Shrd` | `workset_shared_bytes` | Shareable pages that are actually shared. | Normally not collected because `collect_ws_share=false`. |
+| `WS Shrbl` | `workset_shareable_bytes` | Shareable pages in the Working Set. | Normally not collected because `collect_ws_share=false`; uses compact decimal units if shown in Processes. |
+| `WS Shrd` | `workset_shared_bytes` | Shareable pages that are actually shared. | Normally not collected because `collect_ws_share=false`; uses compact decimal units if shown in Processes. |
 
 These metrics use the heavy `QueryWorkingSet` collection path, so they are currently excluded from normal monitoring.
 
@@ -182,7 +183,7 @@ When start time is available, it is included in the identity to avoid mixing his
 
 | Kind | Display |
 |---|---|
-| Byte-based process metric | Byte integer with thousands separators. |
+| Byte-based process metric | Processes uses adaptive decimal `B` / `KB` / `MB` / `GB` / `TB` / `PB` / `EB` values with one decimal above bytes. Samples, A/B comparison, clipboard output, and recording logs retain exact byte integers. |
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |

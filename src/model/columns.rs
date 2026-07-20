@@ -161,9 +161,16 @@ impl MetricColumn {
             | Self::HandleCount
             | Self::UserObjectCount
             | Self::GdiObjectCount => 8,
+            Self::PrivateBytes
+            | Self::WorksetBytes
+            | Self::WorksetPrivateBytes
+            | Self::WorksetShareableBytes
+            | Self::WorksetSharedBytes
+            | Self::DotNetHeapBytes
+            | Self::GpuDedicatedBytes
+            | Self::GpuSharedBytes => 13,
             Self::IoReadBytesPerSec | Self::IoWriteBytesPerSec => 12,
             Self::FullPath => 36,
-            _ => 16,
         }
     }
 
@@ -325,10 +332,7 @@ impl ColumnPreset {
 
     pub(crate) fn columns(self) -> &'static [MetricColumn] {
         match self {
-            Self::Default => &[
-                MetricColumn::PrivateBytes,
-                MetricColumn::WorksetPrivateBytes,
-            ],
+            Self::Default => &MetricColumn::ALL,
             Self::Memory => &[
                 MetricColumn::CpuPercent,
                 MetricColumn::PrivateBytes,
@@ -535,13 +539,10 @@ mod tests {
     }
 
     #[test]
-    fn default_preset_uses_private_and_ws_private() {
+    fn default_preset_selects_all_columns() {
         assert_eq!(
             ColumnPreset::Default.effective_columns(),
-            &[
-                MetricColumn::PrivateBytes,
-                MetricColumn::WorksetPrivateBytes
-            ]
+            &MetricColumn::ALL
         );
     }
 

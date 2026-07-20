@@ -187,6 +187,13 @@ mod tests {
     }
 
     #[test]
+    fn default_runtime_config_selects_all_process_columns() {
+        let runtime = build_runtime_config(AppConfig::default()).unwrap();
+
+        assert_eq!(runtime.process_columns, MetricColumn::ALL);
+    }
+
+    #[test]
     fn tracked_entries_do_not_enable_tracked_only_without_saved_state() {
         let mut config = AppConfig::default();
         config.tracked.push(config::TrackedConfig {
@@ -2885,7 +2892,13 @@ name = "legacy-watch.exe"
             .unwrap();
 
         assert_eq!(app.selected_process_column_index, visible_count);
-        assert_eq!(app.process_metric_column_offset, 1);
+        assert!(app.process_metric_column_offset > 0);
+        let visible_range = ui::process_table_visible_metric_range(
+            area.width,
+            &app.process_columns,
+            app.process_metric_column_offset,
+        );
+        assert!(visible_range.contains(&(visible_count - 2)));
     }
 
     #[test]
@@ -2909,7 +2922,7 @@ name = "legacy-watch.exe"
         app.snapshot.processes[0].private_bytes = Some(987_654_321);
 
         let buffer = render_app_to_buffer(&app, 100, 30);
-        let (x, y) = find_text_position(&buffer, "987,654,321")
+        let (x, y) = find_text_position(&buffer, "987.7 MB")
             .expect("selected private bytes should be rendered");
 
         assert_eq!(buffer[(x, y)].bg, ui::THEMES[0].accent_alt);
@@ -2923,7 +2936,7 @@ name = "legacy-watch.exe"
 
         let buffer = render_app_to_buffer(&app, 100, 30);
         let (x, y) =
-            find_text_position(&buffer, "987,654,321").expect("private bytes should be rendered");
+            find_text_position(&buffer, "987.7 MB").expect("private bytes should be rendered");
 
         assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].text);
         assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
@@ -2946,13 +2959,19 @@ name = "legacy-watch.exe"
         app.show_details = false;
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (value_x, value_y) = find_text_position(&buffer, "107,374,182,400")
+        let (value_x, value_y) = find_text_position(&buffer, "107.4 GB")
             .expect("graphed private bytes should be rendered");
         let (name_x, name_y) =
             find_text_position(&buffer, "target.exe").expect("tracked name should be rendered");
         let (tracked_x, tracked_y) =
             find_text_position(&buffer, "★").expect("tracked marker should be rendered");
-        let graph_number_cell = &buffer[(value_x - 1, value_y)];
+        let graph_number_x = (1..MetricColumn::PrivateBytes.width())
+            .find_map(|offset| {
+                let x = value_x.checked_sub(offset)?;
+                (buffer[(x, value_y)].symbol() == "1").then_some(x)
+            })
+            .expect("graph slot number should be rendered in the metric cell");
+        let graph_number_cell = &buffer[(graph_number_x, value_y)];
         let value_cell = &buffer[(value_x, value_y)];
         let tracked_cell = &buffer[(tracked_x, tracked_y)];
 
@@ -4840,20 +4859,23 @@ name = "legacy-watch.exe"
     #[test]
     fn number_keys_do_not_switch_column_presets() {
         let mut app = make_test_app(1, 10);
+        let columns_before = app.process_columns.clone();
 
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(app.column_preset, ColumnPreset::Default);
-        assert_eq!(
-            app.process_columns,
-            ColumnPreset::Default.columns().to_vec()
-        );
+        assert_eq!(app.process_columns, columns_before);
     }
 
     #[test]
     fn ctrl_c_copies_selected_process_row_text() {
         let mut app = make_test_app(1, 10);
+        app.process_columns = vec![
+            MetricColumn::PrivateBytes,
+            MetricColumn::WorksetPrivateBytes,
+        ];
+        app.snapshot.processes[0].private_bytes = Some(388_067_328);
 
         app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
             .unwrap();
@@ -4861,7 +4883,7 @@ name = "legacy-watch.exe"
         assert!(!app.show_column_picker);
         assert_eq!(
             app::clipboard::last_copied_text().as_deref(),
-            Some("0\tproc-0\t0\t--")
+            Some("0\tproc-0\t388,067,328\t--")
         );
         assert_eq!(app.status, "Copied row: proc-0");
     }
@@ -7271,7 +7293,10 @@ name = "legacy-watch.exe"
                 recording_last_dir: None,
                 initial_theme: "Dark".to_string(),
                 column_preset: ColumnPreset::Default,
-                process_columns: ColumnPreset::Default.columns().to_vec(),
+                process_columns: vec![
+                    MetricColumn::PrivateBytes,
+                    MetricColumn::WorksetPrivateBytes,
+                ],
                 sort: SortSpec::default(),
                 initial_tracked_only: false,
                 process_filters: Vec::new(),
@@ -7380,7 +7405,10 @@ name = "legacy-watch.exe"
             show_sample_delta: true,
             details_live: true,
             column_preset: ColumnPreset::Default,
-            process_columns: ColumnPreset::Default.columns().to_vec(),
+            process_columns: vec![
+                MetricColumn::PrivateBytes,
+                MetricColumn::WorksetPrivateBytes,
+            ],
             sort: SortSpec::default(),
             paused_display: None,
             log_view_display: None,

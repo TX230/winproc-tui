@@ -22,6 +22,28 @@ pub(crate) fn fmt_bytes(bytes: u64) -> String {
     }
 }
 
+pub(crate) fn format_compact_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+    let mut value = bytes as f64;
+    let mut unit_index = 0;
+
+    while value >= 1000.0 && unit_index + 1 < UNITS.len() {
+        value /= 1000.0;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{bytes} {}", UNITS[unit_index])
+    } else {
+        value = (value * 10.0).round() / 10.0;
+        if value >= 1000.0 && unit_index + 1 < UNITS.len() {
+            value /= 1000.0;
+            unit_index += 1;
+        }
+        format!("{value:.1} {}", UNITS[unit_index])
+    }
+}
+
 pub(crate) fn format_integer(value: u64) -> String {
     let digits = value.to_string();
     let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
@@ -82,4 +104,20 @@ pub(crate) fn format_mbps(bytes_per_sec: u64) -> String {
 
 pub(crate) fn format_mb_per_sec(bytes_per_sec: u64) -> String {
     format!("{:.1} MB/s", bytes_per_sec as f64 / 1_000_000.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_bytes_uses_adaptive_decimal_units() {
+        assert_eq!(format_compact_bytes(0), "0 B");
+        assert_eq!(format_compact_bytes(999), "999 B");
+        assert_eq!(format_compact_bytes(1_000), "1.0 KB");
+        assert_eq!(format_compact_bytes(388_067_328), "388.1 MB");
+        assert_eq!(format_compact_bytes(999_950_000), "1.0 GB");
+        assert_eq!(format_compact_bytes(1_500_000_000), "1.5 GB");
+        assert_eq!(format_compact_bytes(u64::MAX), "18.4 EB");
+    }
 }

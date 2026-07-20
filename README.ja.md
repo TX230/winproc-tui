@@ -26,6 +26,7 @@
 
 Processes テーブルでは、サンプルごとの増減を色分けせず、通常のメトリクス値と Tracked Total 行を中立色で表示します。青はフォーカスと選択を示します。追跡・Graph スロット・フィルター一致・警告は、背景を塗らずアンバーの文字や記号で示し、赤と緑は危険 / エラーと操作成功のフィードバックに限定します。
 Processes のタイトルには、表示行数、All processes / Tracked only、適用中のフィルターを簡潔に表示します。ソートカラムと方向はテーブルヘッダーだけに表示し、固定の履歴保持数はパネルタイトルには常時表示せず Help で確認できます。
+Processes のバイト値メモリカラムは、概要を見やすくするため `388.1 MB` のような 10 進単位で表示します。ソートと Graph は生の値を使用し、Samples、A/B 比較、クリップボード出力、記録ログでは正確なバイト値を維持します。
 
 通常、ヘッダーには `LIVE` または `REC` だけを表示します。正常なサンプル取得が 3 秒間なければ、次の取得成功まで `STALE Ns` を追加します。`DISPLAY PAUSED` は表示中のスナップショットだけを固定し、サンプリングと記録は継続します。保存ログ表示では `LOG` と表示し、ライブサンプリングの鮮度は表示しません。
 
@@ -208,7 +209,10 @@ theme = "Dark"
 
 [process_table]
 preset = "Default"
-columns = ["Private", "WS Priv"]
+columns = [
+    "CPU%", "Private", "WS", "WS Priv", "Thrd", "Hndl", "USER", "GDI",
+    "GPU%", ".NET Heap", "GPU D", "GPU S", "IO Read/s", "IO Write/s", "Full Path",
+]
 sort_by = "WS Priv"
 sort_order = "desc"
 tracked_only = false
@@ -216,6 +220,8 @@ tracked_only = false
 [[tracked]]
 name = "app.exe"
 ```
+
+保存済みのカラム選択がない場合は、Columns ダイアログの全カラムを既定で選択します。明示的に保存された `columns` の一覧は、これまでどおり優先されます。
 
 サンプリング間隔は現バージョンでは 1 秒固定で、設定ファイルからは変更できません。
 

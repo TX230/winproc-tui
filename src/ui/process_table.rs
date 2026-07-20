@@ -11,7 +11,7 @@ use crate::{
     model::{MetricColumn, ProcessRow, SortColumn, SortDirection},
     ui::{
         Theme,
-        format::{format_integer, format_mbps},
+        format::{format_compact_bytes, format_integer, format_mbps},
         graph_slot::graph_slot_marker_span,
         widgets::block::panel_block_focused,
     },
@@ -878,19 +878,29 @@ fn format_optional_integer(value: Option<u64>) -> String {
         .unwrap_or_else(|| "--".to_string())
 }
 
+fn format_optional_compact_bytes(value: Option<u64>) -> String {
+    value
+        .map(format_compact_bytes)
+        .unwrap_or_else(|| "--".to_string())
+}
+
 fn format_process_column(process: &ProcessRow, column: MetricColumn, column_width: u16) -> String {
     match column {
         MetricColumn::CpuPercent => process
             .cpu_percent
             .map(format_cpu_percent)
             .unwrap_or_else(|| "--".to_string()),
-        MetricColumn::PrivateBytes => format_optional_integer(process.private_bytes),
-        MetricColumn::WorksetBytes => format_optional_integer(process.workset_bytes),
-        MetricColumn::WorksetPrivateBytes => format_optional_integer(process.workset_private_bytes),
-        MetricColumn::WorksetShareableBytes => {
-            format_optional_integer(process.workset_shareable_bytes)
+        MetricColumn::PrivateBytes => format_optional_compact_bytes(process.private_bytes),
+        MetricColumn::WorksetBytes => format_optional_compact_bytes(process.workset_bytes),
+        MetricColumn::WorksetPrivateBytes => {
+            format_optional_compact_bytes(process.workset_private_bytes)
         }
-        MetricColumn::WorksetSharedBytes => format_optional_integer(process.workset_shared_bytes),
+        MetricColumn::WorksetShareableBytes => {
+            format_optional_compact_bytes(process.workset_shareable_bytes)
+        }
+        MetricColumn::WorksetSharedBytes => {
+            format_optional_compact_bytes(process.workset_shared_bytes)
+        }
         MetricColumn::ThreadCount => format_optional_integer(process.thread_count),
         MetricColumn::HandleCount => format_optional_integer(process.handle_count),
         MetricColumn::UserObjectCount => format_optional_integer(process.user_object_count),
@@ -899,9 +909,11 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn, column_widt
             .gpu_percent
             .map(|value| format!("{value:.1}%"))
             .unwrap_or_else(|| "--".to_string()),
-        MetricColumn::DotNetHeapBytes => format_optional_integer(process.dotnet_heap_bytes),
-        MetricColumn::GpuDedicatedBytes => format_optional_integer(process.gpu_dedicated_bytes),
-        MetricColumn::GpuSharedBytes => format_optional_integer(process.gpu_shared_bytes),
+        MetricColumn::DotNetHeapBytes => format_optional_compact_bytes(process.dotnet_heap_bytes),
+        MetricColumn::GpuDedicatedBytes => {
+            format_optional_compact_bytes(process.gpu_dedicated_bytes)
+        }
+        MetricColumn::GpuSharedBytes => format_optional_compact_bytes(process.gpu_shared_bytes),
         MetricColumn::IoReadBytesPerSec => process
             .io_read_bytes_per_sec
             .map(format_mbps)
@@ -1122,7 +1134,7 @@ mod tests {
         );
         assert_eq!(
             full_path_column_render_width(140, &visible),
-            Some(MetricColumn::FullPath.width() + 54)
+            Some(MetricColumn::FullPath.width() + 57)
         );
     }
 

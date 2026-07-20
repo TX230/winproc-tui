@@ -26,6 +26,7 @@ It runs in the terminal and shows current values and changes over time for memor
 
 The Processes table keeps live metric values and the Tracked Total row neutral instead of coloring every sample-to-sample increase or decrease. Blue indicates focus or selection, while amber foreground markers identify tracked rows, Graph slots, filter matches, and warnings without additional fills; red and green are reserved for danger/error and successful-action feedback.
 The Processes title summarizes the current view with the visible row count, All processes / Tracked only mode, and active filter. Sort column and direction remain in the table header, while fixed history capacities are shown in Help instead of occupying the panel title.
+Byte-valued memory columns use compact decimal units such as `388.1 MB` in the Processes overview. Sorting and Graph data continue to use raw values, while Samples, A/B comparison, clipboard output, and recording logs keep exact byte values.
 
 The header normally shows only `LIVE` or `REC`. If no successful sample arrives for 3 seconds, it appends `STALE Ns` until another sample succeeds. `DISPLAY PAUSED` freezes only the displayed snapshot—sampling and an active recording continue. Saved logs use the `LOG` label and do not show live sampling freshness.
 
@@ -223,7 +224,10 @@ theme = "Dark"
 
 [process_table]
 preset = "Default"
-columns = ["Private", "WS Priv"]
+columns = [
+    "CPU%", "Private", "WS", "WS Priv", "Thrd", "Hndl", "USER", "GDI",
+    "GPU%", ".NET Heap", "GPU D", "GPU S", "IO Read/s", "IO Write/s", "Full Path",
+]
 sort_by = "WS Priv"
 sort_order = "desc"
 tracked_only = false
@@ -231,6 +235,8 @@ tracked_only = false
 [[tracked]]
 name = "app.exe"
 ```
+
+When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority.
 
 The sampling interval is fixed to 1 second in the current version and is not user-configurable.
 
