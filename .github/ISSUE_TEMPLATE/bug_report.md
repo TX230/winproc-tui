@@ -7,17 +7,21 @@ assignees: ''
 
 ---
 
-## Current Behavior
+## Describe the Bug
 
-<!-- Concisely describe what you are experiencing. -->
+<!-- A clear and concise description of what the bug is. -->
+
+## Steps to Reproduce
+
+<!-- List the steps needed to reproduce the problem. -->
 
 ## Expected Behavior
 
 <!-- Describe what you expected to happen. -->
 
-## Steps to Reproduce
+## Screenshots
 
-<!-- Provide the minimum steps needed to reproduce the problem. If it is intermittent, describe the conditions and frequency. -->
+<!-- Add screenshots if applicable. -->
 
 ## Environment
 
@@ -27,6 +31,6 @@ assignees: ''
 - Terminal app and version:
 -->
 
-## Anything Else
+## Additional Context
 
-<!-- Add screenshots, relevant log excerpts, links, or related issues if useful. -->
+<!-- Add relevant logs, links, or other context if useful. -->
