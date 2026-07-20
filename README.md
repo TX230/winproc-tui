@@ -6,35 +6,77 @@
 
 Languages: [English](README.md) | [Japanese](README.ja.md)
 
-This is the original upstream repository for `winproc-tui`.
-Third-party copies, mirrors, or modified repositories are not official project repositories.
-
 `winproc-tui` is a **process monitoring TUI** for tracking per-process resource usage over time.
-It runs in the terminal and shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other process metrics. With up to four Graphs, A/B comparison, and JSON Lines recording with a saved-log view, it is built to quickly answer what resources the process you are watching uses, when, and how much. Rather than competing on breadth with Process Explorer or System Informer, `winproc-tui` focuses on targeted resource behavior checks during development, verification, and day-to-day troubleshooting. It is built with Rust/Ratatui.
+It shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other Windows process metrics. Up to four Graphs, A/B comparison, recording, and saved-log review support resource-behavior investigations during development and verification.
+Rather than providing the broad system inspection of Process Explorer or System Informer, it focuses on quickly following changes in a specific process. It is built with Rust/Ratatui.
 
-![winproc-tui main screen showing the process list, multiple Graphs, Samples, and A/B comparison](assets/screenshots/main-screen.png)
+![winproc-tui main screen showing the process list, GRAPH#1, Samples, and A/B comparison](assets/screenshots/main-screen.png)
+
+_Example investigation of a process's private memory using tracking, display pause, and A/B comparison._
+
+## Quick Start
+
+### 1. Launch the App
+
+Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No installer or additional runtime is required.
+
+The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
+
+RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracked List applies only to process names.
+
+### 2. Graph Process Metrics
+
+1. In `PROCESSES`, select the process you want to inspect.
+2. Use `Left` / `Right` to select the metric column you want to inspect. For example, `Private` is the process's private memory usage.
+3. Press `1` to show that metric in `GRAPH#1`.
+4. Use `2` – `4` in the same way to compare up to four metrics.
+
+Press the same number again to clear that Graph slot, or press `0` to clear all Graphs. You can also select a metric in the RAM / VRAM, NW/DISK, or CPUS panel and assign it to a Graph with `1` – `4`.
+
+### 3. Compare Two Points
+
+Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sample. Press `a` at the start point and `b` at the end point. The A/B display shows the value difference and elapsed time. Press `x` to clear the comparison.
+
+### 4. Track and Record a Process
+
+1. In `PROCESSES`, select a process. If there is no star beside its name, press `Space` to add the name to the Tracked List. `Space` toggles the registration.
+2. If needed, press `t` to switch between All processes and Tracked only. Tracked only view is not required for recording.
+3. Press `Ctrl+R`, choose a save path, and confirm to start recording.
+4. Press `Ctrl+R` again to stop recording and close the log.
+5. Press `Ctrl+L` to select and inspect a saved log.
+
+Recording requires at least one process name in the Tracked List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
+
+### Essential Keys
+
+| Key                 | Action                                      |
+| ------------------- | ------------------------------------------- |
+| `Tab` / `Shift+Tab` | Move between panels.                        |
+| Arrow keys          | Select a row, column, or sample.            |
+| `1` – `4`           | Assign the selected metric to a Graph.      |
+| `Space`             | Add/remove a process name in Tracked List.  |
+| `t`                 | Switch between All processes / Tracked only. |
+| `Ctrl+F`            | Filter the process list.                    |
+| `Ctrl+R`            | Start/stop recording.                       |
+| `Ctrl+L`            | Open a saved log.                           |
+| `?`                 | Show all key bindings.                      |
+| `q` / `Esc`         | Go back or open the quit confirmation.      |
 
 ## Features
 
 - **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
-- **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process, RAM / VRAM, and CPU average history keep about 7,200 seconds.
-- **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Their last collected values remain visible after the processes exit.
+- **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process and system-metric history (RAM / VRAM, System Activity, and CPU average) keeps about 7,200 seconds.
+- **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Their last collected values remain visible after the processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
 - **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Open files**: Lists the files a selected live process has open.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
 
-The Dark and Light themes use neutral-first palettes: generic focus and selection use quiet gray surfaces and explicit cursor / sort markers instead of a shared accent hue. The Processes table keeps live metric values and the Tracked Total row neutral instead of coloring every sample-to-sample increase or decrease. Underlined column names distinguish its header without bold styling or a full-row background band. The cursor row, selected column, and selected-column header share one grayscale surface, while their intersection uses a stronger grayscale surface. CPU utilization bars use the theme's neutral accent instead of a green-to-red severity gradient; bar length, glyph height, and numeric values show utilization. In Graphs, the cursor guide uses muted gray, ordinary Samples deltas stay neutral and show direction through their sign, and amber is reserved for the explicit A/B comparison markers. Green identifies `LIVE` and successful-action feedback; a subdued amber identifies `Tracked only` and tracked stars; the brighter warning amber identifies Graph slots, filter matches, A/B markers, `LOG`, paused/stale states, and warnings. Red is reserved for `REC`, danger, and errors. Shortcut keys remain neutral so semantic status colors stay easy to scan.
-The Processes title summarizes the current view with the visible row count, All processes / Tracked only mode, and active filter. Sort column and direction remain in the table header. Fixed history capacities are shown in Help instead of occupying persistent panel titles, while Log view may show the actual loaded sample count.
-Byte-valued memory columns use compact decimal units such as `388.1 MB` in the Processes overview. Sorting and Graph data continue to use raw values, while Samples, A/B comparison, clipboard output, and recording logs keep exact byte values.
-
-The header normally shows only `LIVE` or `REC`; the product name and version are available in Help and through `--version`. If no successful sample arrives for 3 seconds, it appends `STALE Ns` until another sample succeeds. `DISPLAY PAUSED` freezes only the displayed snapshot—sampling and an active recording continue. Saved logs use the `LOG` label and do not show live sampling freshness.
-
 ## When This Helps
 
-- You want to track an application's resource usage over time and watch for memory leaks.
-- You want to quantify how much a specific operation leaks (the difference between two points).
-- You want to detect missed file closes and see which files a process currently has open.
+- You want to investigate whether an application's memory usage keeps increasing.
+- You want to measure how memory or handle counts change before and after an operation.
+- You want to inspect currently open files for clues when investigating missed file closes.
 - You want to **record a background service over a long period** and review the area around an incident in Log view.
 - You want to compare resource usage before and after a refactor.
 
@@ -44,6 +86,8 @@ The header normally shows only `LIVE` or `REC`; the product name and version are
 
 This project is Windows-only. Linux, macOS, and other platforms are not supported.
 
+Administrator privileges are not required for normal monitoring. Some metrics and Open files may be unavailable for protected processes; unavailable values are displayed as `--` or a diagnostic state.
+
 ## Use a Prebuilt Binary
 
 Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it to any folder, and run `winproc-tui.exe`. No additional runtime or installer is required.
@@ -51,13 +95,14 @@ Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/rel
 Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases).
 Binaries from third-party copies, mirrors, or modified repositories are not official builds.
 
-Use this PowerShell command to calculate the zip file's SHA256 hash:
+Download both the zip and its corresponding `.zip.sha256` file from the Release. Use these PowerShell commands to calculate the zip's SHA256 hash and display the published value:
 
 ```powershell
 Get-FileHash .\winproc-tui-X.Y.Z-windows-x64.zip -Algorithm SHA256
+Get-Content .\winproc-tui-X.Y.Z-windows-x64.zip.sha256
 ```
 
-Compare the `Hash` value with the `sha256:` digest shown next to the `.zip` asset on the official GitHub Releases page.
+Confirm that the `Hash` value from `Get-FileHash` matches the leading hash value in `.zip.sha256`.
 
 ## Build From Source
 
@@ -121,12 +166,12 @@ There are currently only two startup options.
 | `-V, --version` | Show version. |
 
 
-## Controls
+## Controls Reference
 
-Only the main keys are listed in this README.
+Only the main controls are listed in this README.
 **Press** `?` **while running to view the full key bindings in the Help dialog.**
 
-Some single-letter keys such as `f` map to different actions depending on which panel is focused. Persistent panel headings and the Footer's active-panel label use uppercase names such as `PROCESSES`, `CPUS`, `GRAPHS`, and `GRAPH#n`. In Live and Recording, `Ctrl+P Pause` stays visible across panels; it is omitted in Log view, where display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the complete controls by panel.
+Some single-letter keys such as `f` map to different actions depending on which panel is focused. Persistent panel headings and the Footer's active-panel label use uppercase names such as `PROCESSES`, `CPUS`, `GRAPHS`, and `GRAPH#n`. In Live and Recording, `Ctrl+P Pause` stays visible across panels; it is omitted in Log view, where display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the main controls by panel.
 
 ### General
 
@@ -190,6 +235,14 @@ The shared `f` and `z` shortcuts work while either the Graph or Samples part of 
 
 When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph.
 If there is not enough display area, the message `Not enough display area.` is shown and the Graph is not added.
+
+## Display Conventions
+
+The header shows the current activity as `LIVE`, `REC`, or `LOG`. If no successful sample arrives for 3 seconds in Live or Recording, it adds `STALE Ns` until sampling succeeds again. `DISPLAY PAUSED` freezes only the displayed snapshot; sampling and recording continue.
+
+The Dark and Light themes use quiet grayscale surfaces for focus and selection. Green identifies `LIVE` and successful actions, amber identifies tracked items, Graph slots, A/B markers, `LOG`, and warnings, and red is reserved for `REC`, danger, and errors. CPU usage is shown by bar length and numeric values rather than a green-to-red severity gradient.
+
+The `PROCESSES` title shows the visible row count, All processes / Tracked only mode, and active filter. Sort direction remains in the table header. Memory values use compact decimal units such as `388.1 MB` in the table, while Samples, A/B comparison, clipboard output, and recording logs retain exact byte values.
 
 ## Recording and Log View
 
