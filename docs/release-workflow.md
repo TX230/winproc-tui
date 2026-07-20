@@ -133,22 +133,30 @@ target\release\winproc-tui.exe
 
 ### 6. Create the Distribution Package
 
-Create a `dist` directory and package the executable with the README and license files:
+After completing the test and build steps manually, use the packaging helper without rerunning them:
 
 ```powershell
-New-Item -ItemType Directory -Force dist
-Compress-Archive -Force `
-  -Path target\release\winproc-tui.exe,README.md,README.ja.md,LICENSE `
-  -DestinationPath $ZipPath
+.\scripts\package-release.ps1 -Version $Version -SkipTests -SkipBuild
 ```
 
-The package name should include:
+The helper preserves the repository-relative paths needed by links in the packaged README files. The zip contains:
+
+```text
+winproc-tui.exe
+README.md
+README.ja.md
+LICENSE
+assets/
+docs/
+```
+
+The package name includes:
 
 - Project name: `winproc-tui`
 - Version: the value of `$Version` without the `v` prefix (for example `0.1.0`)
 - Platform: `windows-x64`
 
-`LICENSE` is included in the archive so that the MIT license terms travel together with the binary distribution.
+`LICENSE` is included so that the MIT license terms travel with the binary distribution. `assets/` and `docs/` are included so local image and documentation links in both README files continue to work after extraction. The helper stops with an error if either packaged README contains a local link whose target is missing from the zip.
 
 ### 7. Create a Checksum File
 
@@ -219,7 +227,8 @@ Open the draft release in GitHub and confirm:
 - The `.zip` and `.sha256` files are attached.
 - The attached `.sha256` file matches the attached `.zip` file.
 - The GitHub-displayed `sha256:` digest for the `.zip` asset matches the generated checksum.
-- The `.zip` file contains the expected executable, README files, and `LICENSE`.
+- The `.zip` file contains the expected executable, README files, `LICENSE`, `assets/`, and `docs/`.
+- Relative image and documentation links in both packaged README files resolve inside the extracted package.
 - The release page does not point users to third-party binaries or mirrors as official builds.
 - The executable starts successfully on Windows 11 x64.
 

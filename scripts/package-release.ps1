@@ -33,6 +33,53 @@ function Invoke-CheckedNativeCommand {
     }
 }
 
+function Assert-PackagedReadmeLinks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArchivePath
+    )
+
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
+    try {
+        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+        $brokenLinks = @()
+
+        foreach ($readmeName in @("README.md", "README.ja.md")) {
+            $readmeEntry = $archive.GetEntry($readmeName)
+            if (-not $readmeEntry) {
+                throw "Packaged README was not found: $readmeName"
+            }
+
+            $reader = [System.IO.StreamReader]::new($readmeEntry.Open())
+            try {
+                $content = $reader.ReadToEnd()
+            }
+            finally {
+                $reader.Dispose()
+            }
+
+            foreach ($match in [regex]::Matches($content, '\]\(([^)]+)\)')) {
+                $target = $match.Groups[1].Value.Split("#")[0]
+                if (-not $target -or $target -match '^(https?://|mailto:)') {
+                    continue
+                }
+
+                $normalizedTarget = $target.Replace("\", "/")
+                if ($entryNames -notcontains $normalizedTarget) {
+                    $brokenLinks += "$readmeName -> $target"
+                }
+            }
+        }
+
+        if ($brokenLinks.Count -gt 0) {
+            throw "Packaged README contains broken local links:`n$($brokenLinks -join "`n")"
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = Get-CargoVersion
 }
@@ -41,12 +88,22 @@ $ZipName = "winproc-tui-$Version-windows-x64.zip"
 $ZipPath = Join-Path $RepoRoot "dist\$ZipName"
 $Sha256Path = "$ZipPath.sha256"
 $ExePath = Join-Path $RepoRoot "target\release\winproc-tui.exe"
-$PackageFiles = @(
-    $ExePath,
-    (Join-Path $RepoRoot "README.md"),
-    (Join-Path $RepoRoot "README.ja.md"),
-    (Join-Path $RepoRoot "LICENSE")
+$PackageEntries = @(
+    [pscustomobject]@{ Source = $ExePath; Destination = "winproc-tui.exe" }
+    [pscustomobject]@{ Source = (Join-Path $RepoRoot "README.md"); Destination = "README.md" }
+    [pscustomobject]@{ Source = (Join-Path $RepoRoot "README.ja.md"); Destination = "README.ja.md" }
+    [pscustomobject]@{ Source = (Join-Path $RepoRoot "LICENSE"); Destination = "LICENSE" }
 )
+
+foreach ($relativeDirectory in @("assets", "docs")) {
+    $directory = Join-Path $RepoRoot $relativeDirectory
+    $PackageEntries += Get-ChildItem -LiteralPath $directory -Recurse -File | ForEach-Object {
+        [pscustomobject]@{
+            Source = $_.FullName
+            Destination = [System.IO.Path]::GetRelativePath($RepoRoot, $_.FullName).Replace("\", "/")
+        }
+    }
+}
 
 Push-Location $RepoRoot
 try {
@@ -64,7 +121,29 @@ try {
 
     New-Item -ItemType Directory -Force (Join-Path $RepoRoot "dist") | Out-Null
 
-    Compress-Archive -Force -Path $PackageFiles -DestinationPath $ZipPath
+    if (Test-Path $ZipPath) {
+        Remove-Item -LiteralPath $ZipPath -Force
+    }
+
+    $archive = [System.IO.Compression.ZipFile]::Open(
+        $ZipPath,
+        [System.IO.Compression.ZipArchiveMode]::Create
+    )
+    try {
+        foreach ($entry in $PackageEntries) {
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $entry.Source,
+                $entry.Destination,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            ) | Out-Null
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+
+    Assert-PackagedReadmeLinks -ArchivePath $ZipPath
 
     $hash = Get-FileHash $ZipPath -Algorithm SHA256
     $checksumText = "$($hash.Hash)  $ZipName`n"
