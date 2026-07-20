@@ -471,7 +471,6 @@ pub(crate) struct App {
     pub(crate) open_files_worker: OpenFilesWorker,
     pub(crate) sampling_in_progress: bool,
     pub(crate) snapshot: Snapshot,
-    pub(crate) previous_snapshot: Option<Snapshot>,
     pub(crate) process_table_state: TableState,
     pub(crate) process_page_size: usize,
     pub(crate) selected_process_identity: Option<ProcessIdentity>,
@@ -635,7 +634,6 @@ impl App {
             open_files_worker,
             sampling_in_progress: false,
             snapshot: initial.snapshot,
-            previous_snapshot: None,
             process_table_state,
             process_page_size: 1,
             selected_process_identity,
@@ -992,17 +990,6 @@ impl App {
             .or(self.paused_display.as_ref())
             .map(|display| &display.snapshot)
             .unwrap_or(&self.snapshot)
-    }
-
-    pub(crate) fn previous_live_process(&self, identity: &ProcessIdentity) -> Option<&ProcessRow> {
-        if self.activity() == AppActivity::Playback || self.is_display_paused() {
-            return None;
-        }
-        self.previous_snapshot
-            .as_ref()?
-            .processes
-            .iter()
-            .find(|process| ProcessIdentity::from_row(process) == *identity)
     }
 
     pub(crate) fn display_process_history(&self) -> &ProcessHistory {
@@ -3980,7 +3967,6 @@ impl App {
             self.status = "Playback is unavailable during recording".to_string();
             return;
         }
-        self.previous_snapshot = None;
         self.playback_path = Some(loaded.path.clone());
         self.playback_watch_list = loaded.tracked_names.clone();
         self.playback_normalized_watch_names = normalized_process_names(&self.playback_watch_list);
@@ -4015,7 +4001,6 @@ impl App {
     pub(crate) fn exit_playback(&mut self) {
         self.playback_path = None;
         self.playback_display = None;
-        self.previous_snapshot = None;
         self.playback_watch_list.clear();
         self.playback_normalized_watch_names.clear();
         self.graph_slots = std::array::from_fn(|_| None);
@@ -4147,7 +4132,7 @@ impl App {
             self.clear_process_order_hold();
             sort_process_rows(&mut next_snapshot.processes, self.sort);
         }
-        self.previous_snapshot = Some(std::mem::replace(&mut self.snapshot, next_snapshot));
+        self.snapshot = next_snapshot;
         self.process_history.record_snapshot(
             self.snapshot.captured_at,
             &self.snapshot.processes,

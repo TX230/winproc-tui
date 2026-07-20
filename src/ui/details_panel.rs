@@ -833,10 +833,8 @@ fn delta_style(value: Option<f64>, previous: Option<f64>, theme: Theme) -> Style
         return Style::default().fg(theme.muted);
     };
     let delta = value - previous;
-    if delta > 0.0 {
+    if delta != 0.0 {
         Style::default().fg(theme.warning)
-    } else if delta < 0.0 {
-        Style::default().fg(theme.success)
     } else {
         Style::default().fg(theme.muted)
     }
@@ -1776,6 +1774,24 @@ mod tests {
         assert_eq!(
             format_sample_delta(Some(70.0), None, GraphValueFormat::Integer),
             "--"
+        );
+    }
+
+    #[test]
+    fn sample_delta_uses_marker_color_for_both_directions() {
+        let theme = crate::ui::theme::THEMES[0];
+
+        assert_eq!(
+            delta_style(Some(2.0), Some(1.0), theme).fg,
+            Some(theme.warning)
+        );
+        assert_eq!(
+            delta_style(Some(1.0), Some(2.0), theme).fg,
+            Some(theme.warning)
+        );
+        assert_eq!(
+            delta_style(Some(1.0), Some(1.0), theme).fg,
+            Some(theme.muted)
         );
     }
 

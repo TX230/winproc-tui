@@ -1,8 +1,6 @@
-use std::cmp::Ordering;
-
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Margin, Rect},
-    prelude::{Color, Modifier, Style},
+    prelude::{Modifier, Style},
     text::{Line, Span},
     widgets::{Cell, Row, Table},
 };
@@ -17,6 +15,7 @@ use crate::{
     ui::{
         Theme,
         format::{format_integer, format_mbps},
+        graph_slot::graph_slot_marker_span,
         widgets::block::panel_block_focused,
     },
 };
@@ -436,9 +435,6 @@ fn process_table_row(
         } else {
             graph_slot_numbers_for_cell(app, process, *column)
         };
-        let change = (!row.is_tracked_total && matches!(row.lifecycle, ProcessLifecycle::Live))
-            .then(|| process_metric_change(app, process, *column))
-            .flatten();
         let column_width = if *column == MetricColumn::FullPath {
             full_path_width.unwrap_or_else(|| column.width())
         } else {
@@ -452,7 +448,6 @@ fn process_table_row(
             selected_column,
             selected_cell,
             graph_slot_numbers.as_deref(),
-            change,
             text_style,
             theme,
         ));
@@ -473,7 +468,6 @@ fn process_metric_cell(
     selected: bool,
     selected_cell: bool,
     graph_slot_numbers: Option<&str>,
-    change: Option<Ordering>,
     text_style: Style,
     theme: Theme,
 ) -> Cell<'static> {
@@ -484,8 +478,7 @@ fn process_metric_cell(
             column_width,
             graph_slot_numbers,
             theme,
-            selected_cell,
-            change,
+            text_style,
         ));
         if selected_cell {
             cell = cell.style(
@@ -498,15 +491,12 @@ fn process_metric_cell(
         }
         return cell;
     }
-    let value_style = process_metric_change_color(change, theme)
-        .map(|color| text_style.fg(color).add_modifier(Modifier::BOLD))
-        .unwrap_or(text_style);
     let mut cell = Cell::from(process_metric_line(
         process,
         column,
         column_width,
         app,
-        value_style,
+        text_style,
         theme,
     ));
     if selected_cell {
@@ -544,25 +534,6 @@ fn graph_slot_numbers_for_cell(
     (!numbers.is_empty()).then_some(numbers)
 }
 
-fn process_metric_change(
-    app: &App,
-    process: &ProcessRow,
-    column: MetricColumn,
-) -> Option<Ordering> {
-    let identity = crate::model::ProcessIdentity::from_row(process);
-    app.previous_live_process(&identity)
-        .and_then(|previous| column.compare_present_values(process, previous))
-        .filter(|ordering| *ordering != Ordering::Equal)
-}
-
-fn process_metric_change_color(change: Option<Ordering>, theme: Theme) -> Option<Color> {
-    match change {
-        Some(Ordering::Greater) => Some(theme.success),
-        Some(Ordering::Less) => Some(theme.danger),
-        _ => None,
-    }
-}
-
 fn process_row_style(
     selected: bool,
     multi_selected: bool,
@@ -597,7 +568,10 @@ fn process_metric_line(
     let value = format_process_column(process, column, column_width);
     let line = if column == MetricColumn::FullPath {
         match active_filter_query(app) {
-            Some(query) => highlighted_match_line(value, query, text_style, theme),
+            Some(query) if !process_name_matches_query(process, query) => {
+                highlighted_match_line(value, query, text_style, theme)
+            }
+            Some(_) => Line::from(Span::styled(value, text_style)),
             None => Line::from(Span::styled(value, text_style)),
         }
     } else {
@@ -612,32 +586,17 @@ fn process_metric_line_with_graph_slots(
     column_width: u16,
     graph_slot_numbers: &str,
     theme: Theme,
-    selected_cell: bool,
-    change: Option<Ordering>,
+    text_style: Style,
 ) -> Line<'static> {
     let value = format_process_column(process, column, column_width);
     let column_width = column_width as usize;
     let number_width = graph_slot_numbers.chars().count().min(column_width);
     let value_width = value.chars().count();
     let spacing = column_width.saturating_sub(number_width + value_width);
-    let value_color = process_metric_change_color(change, theme).unwrap_or(theme.warning);
-    let value_style = if selected_cell {
-        Style::default()
-            .fg(value_color)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(value_color)
-    };
     Line::from(vec![
-        Span::styled(
-            graph_slot_numbers.to_string(),
-            Style::default()
-                .fg(Color::Rgb(112, 74, 0))
-                .bg(theme.warning)
-                .add_modifier(Modifier::BOLD),
-        ),
+        graph_slot_marker_span(graph_slot_numbers, number_width, theme),
         Span::raw(" ".repeat(spacing)),
-        Span::styled(value, value_style),
+        Span::styled(value, text_style),
     ])
 }
 
@@ -684,6 +643,13 @@ fn process_name_line(row: &VisibleProcessRow<'_>, app: &App, theme: Theme) -> Li
 fn active_filter_query(app: &App) -> Option<&str> {
     let query = app.active_filter_text().trim();
     (!query.is_empty()).then_some(query)
+}
+
+fn process_name_matches_query(process: &ProcessRow, query: &str) -> bool {
+    process
+        .name
+        .to_ascii_lowercase()
+        .contains(&query.to_ascii_lowercase())
 }
 
 fn highlighted_process_name_line(
@@ -734,9 +700,7 @@ fn highlighted_match_line_at(
         Span::styled(value[..start].to_string(), base_style),
         Span::styled(
             value[start..end].to_string(),
-            Style::default()
-                .fg(theme.warning)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.warning),
         ),
         Span::styled(value[end..].to_string(), base_style),
     ])

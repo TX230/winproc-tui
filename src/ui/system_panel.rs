@@ -13,6 +13,7 @@ use crate::{
         Theme,
         cpu_panel::draw_cpu_panel,
         format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
+        graph_slot::graph_slot_marker_span,
         layout::system_panel_area_for_screen,
         widgets::block::panel_block_focused,
     },
@@ -275,17 +276,7 @@ fn render_summary_graph_slot_value_line(
 
 fn graph_slot_prefix_span(graph_slot_numbers: Option<String>, theme: Theme) -> Span<'static> {
     let label = graph_slot_numbers.unwrap_or_default();
-    Span::styled(
-        format!("{label:<2}"),
-        if label.is_empty() {
-            Style::default().fg(theme.muted)
-        } else {
-            Style::default()
-                .fg(ratatui::prelude::Color::Rgb(112, 74, 0))
-                .bg(theme.warning)
-                .add_modifier(ratatui::style::Modifier::BOLD)
-        },
-    )
+    graph_slot_marker_span(&label, 2, theme)
 }
 
 pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
@@ -627,17 +618,7 @@ fn render_summary_graph_slot_line(
     theme: Theme,
 ) -> Line<'static> {
     let label = graph_slot_numbers.unwrap_or_default();
-    let mut spans = vec![Span::styled(
-        format!("{label:<2}"),
-        if label.is_empty() {
-            Style::default().fg(theme.muted)
-        } else {
-            Style::default()
-                .fg(ratatui::prelude::Color::Rgb(112, 74, 0))
-                .bg(theme.warning)
-                .add_modifier(ratatui::style::Modifier::BOLD)
-        },
-    )];
+    let mut spans = vec![graph_slot_marker_span(&label, 2, theme)];
     spans.extend(render_summary_line(title, used, total, suffix, theme).spans);
     Line::from(spans)
 }

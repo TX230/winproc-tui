@@ -3,6 +3,7 @@ mod cpu_panel;
 pub(crate) mod details_panel;
 pub(crate) mod footer;
 pub(crate) mod format;
+pub(crate) mod graph_slot;
 pub(crate) mod header;
 pub(crate) mod help;
 pub(crate) mod layout;

@@ -12,6 +12,7 @@ pub(crate) struct Theme {
     pub(crate) accent: Color,
     pub(crate) accent_alt: Color,
     pub(crate) graph_line: Color,
+    #[allow(dead_code)]
     pub(crate) success: Color,
     pub(crate) warning: Color,
     #[allow(dead_code)]
@@ -39,8 +40,8 @@ pub(crate) const THEMES: [Theme; 2] = [
         danger: Color::Rgb(218, 92, 99),
         tracked: Color::Rgb(231, 184, 69),
         exited: Color::Rgb(92, 98, 108),
-        highlight: Color::Rgb(37, 43, 50),
-        selection: Color::Rgb(36, 30, 22),
+        highlight: Color::Rgb(27, 43, 60),
+        selection: Color::Rgb(20, 34, 48),
     },
     Theme {
         name: "Light",
@@ -58,8 +59,8 @@ pub(crate) const THEMES: [Theme; 2] = [
         danger: Color::Rgb(220, 38, 38),
         tracked: Color::Rgb(180, 83, 9),
         exited: Color::Rgb(100, 116, 139),
-        highlight: Color::Rgb(203, 213, 225),
-        selection: Color::Rgb(255, 237, 213),
+        highlight: Color::Rgb(219, 234, 254),
+        selection: Color::Rgb(239, 246, 255),
     },
 ];
 

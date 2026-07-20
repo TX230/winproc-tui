@@ -17,6 +17,8 @@ use crossterm::{
 };
 #[cfg(test)]
 use ratatui::layout::Position;
+#[cfg(test)]
+use ratatui::style::Modifier;
 use ratatui::{Terminal, backend::CrosstermBackend};
 #[cfg(test)]
 use ratatui::{backend::TestBackend, layout::Rect, widgets::TableState};
@@ -655,7 +657,6 @@ name = "legacy-watch.exe"
             let mut app = make_test_app(row_count, page_size);
             app.focused_panel = FocusedPanel::Processes;
             app.set_screen_area(screen);
-            app.previous_snapshot = Some(app.snapshot.clone());
             let backend = TestBackend::new(screen.width, screen.height);
             let mut terminal = Terminal::new(backend).expect("test terminal should be created");
             terminal
@@ -690,7 +691,6 @@ name = "legacy-watch.exe"
             let mut app = make_test_app_with_worker(row_count, page_size, sampling_worker);
             app.focused_panel = FocusedPanel::Processes;
             app.set_screen_area(screen);
-            app.previous_snapshot = Some(app.snapshot.clone());
             let backend = TestBackend::new(screen.width, screen.height);
             let mut terminal = Terminal::new(backend).expect("test terminal should be created");
             terminal
@@ -1201,6 +1201,7 @@ name = "legacy-watch.exe"
             app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
                 .unwrap();
         }
+        app.process_table_state.select(None);
 
         let buffer = render_app_to_buffer(&app, 100, 45);
         let (x, y) = find_text_position(&buffer, "winproc-tui.exe")
@@ -1209,6 +1210,7 @@ name = "legacy-watch.exe"
         assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].warning);
         assert_eq!(buffer[(x + 1, y)].fg, ui::THEMES[0].warning);
         assert_eq!(buffer[(x + 2, y)].fg, ui::THEMES[0].warning);
+        assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
         assert_eq!(buffer[(x + 3, y)].fg, ui::THEMES[0].text);
     }
 
@@ -1239,6 +1241,32 @@ name = "legacy-watch.exe"
         assert_eq!(buffer[(beta_x + 2, y)].fg, ui::THEMES[0].warning);
         assert_eq!(buffer[(beta_x + 3, y)].fg, ui::THEMES[0].warning);
         assert_eq!(buffer[(beta_x + 4, y)].fg, ui::THEMES[0].text);
+    }
+
+    #[test]
+    fn process_filter_does_not_duplicate_name_match_in_full_path() {
+        let mut app = make_test_app(1, 10);
+        app.process_columns = vec![MetricColumn::FullPath];
+        app.snapshot.processes[0].name = "app.exe".to_string();
+        app.snapshot.processes[0].executable_path = Some(r"C:\work\app.exe".to_string());
+
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+            .unwrap();
+        for ch in "app".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
+                .unwrap();
+        }
+
+        let buffer = render_app_to_buffer(&app, 160, 45);
+        let (name_x, name_y) =
+            find_text_position(&buffer, "app.exe").expect("process name should be rendered");
+        let path = r"C:\work\app.exe";
+        let (path_x, path_y) =
+            find_text_position(&buffer, path).expect("full path should be rendered");
+        let path_match_x = path_x + r"C:\work\".chars().count() as u16;
+
+        assert_eq!(buffer[(name_x, name_y)].fg, ui::THEMES[0].warning);
+        assert_eq!(buffer[(path_match_x, path_y)].fg, ui::THEMES[0].text);
     }
 
     #[test]
@@ -2807,33 +2835,17 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn process_table_colors_metric_value_increased_from_previous_sample() {
+    fn process_table_renders_live_metric_values_neutrally() {
         let mut app = make_test_app(1, 10);
-        let mut previous = app.snapshot.clone();
-        previous.processes[0].private_bytes = Some(987_654_320);
-        app.previous_snapshot = Some(previous);
         app.snapshot.processes[0].private_bytes = Some(987_654_321);
+        app.process_table_state.select(None);
 
         let buffer = render_app_to_buffer(&app, 100, 30);
-        let (x, y) = find_text_position(&buffer, "987,654,321")
-            .expect("changed private bytes should be rendered");
+        let (x, y) =
+            find_text_position(&buffer, "987,654,321").expect("private bytes should be rendered");
 
-        assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].success);
-    }
-
-    #[test]
-    fn process_table_colors_metric_value_decreased_from_previous_sample() {
-        let mut app = make_test_app(1, 10);
-        let mut previous = app.snapshot.clone();
-        previous.processes[0].private_bytes = Some(987_654_322);
-        app.previous_snapshot = Some(previous);
-        app.snapshot.processes[0].private_bytes = Some(987_654_321);
-
-        let buffer = render_app_to_buffer(&app, 100, 30);
-        let (x, y) = find_text_position(&buffer, "987,654,321")
-            .expect("decreased private bytes should be rendered");
-
-        assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].danger);
+        assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].text);
+        assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -2857,14 +2869,22 @@ name = "legacy-watch.exe"
             .expect("graphed private bytes should be rendered");
         let (name_x, name_y) =
             find_text_position(&buffer, "target.exe").expect("tracked name should be rendered");
+        let (tracked_x, tracked_y) =
+            find_text_position(&buffer, "★").expect("tracked marker should be rendered");
         let graph_number_cell = &buffer[(value_x - 1, value_y)];
         let value_cell = &buffer[(value_x, value_y)];
+        let tracked_cell = &buffer[(tracked_x, tracked_y)];
 
         assert_eq!(graph_number_cell.symbol(), "1");
-        assert_eq!(graph_number_cell.bg, ui::THEMES[0].warning);
-        assert_eq!(value_cell.fg, ui::THEMES[0].warning);
+        assert_eq!(graph_number_cell.fg, ui::THEMES[0].warning);
+        assert_ne!(graph_number_cell.bg, ui::THEMES[0].warning);
+        assert!(!graph_number_cell.modifier.contains(Modifier::BOLD));
+        assert_eq!(value_cell.fg, ui::THEMES[0].text);
         assert_ne!(value_cell.bg, ui::THEMES[0].warning);
         assert_eq!(buffer[(name_x, name_y)].fg, ui::THEMES[0].text);
+        assert_eq!(tracked_cell.fg, ui::THEMES[0].tracked);
+        assert_ne!(tracked_cell.bg, ui::THEMES[0].tracked);
+        assert!(!tracked_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -3027,6 +3047,14 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("1 Committed"), "{rendered}");
         assert!(!rendered.contains("★"), "{rendered}");
+
+        let buffer = render_app_to_buffer(&app, 120, 45);
+        let (x, y) =
+            find_text_position(&buffer, "1 Committed").expect("RAM graph marker should render");
+        let marker = &buffer[(x, y)];
+        assert_eq!(marker.fg, ui::THEMES[0].warning);
+        assert_ne!(marker.bg, ui::THEMES[0].warning);
+        assert!(!marker.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -3110,6 +3138,14 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("2 Disk Q"), "{rendered}");
         assert!(rendered.contains("System Activity - Disk Q"), "{rendered}");
+
+        let buffer = render_app_to_buffer(&app, 120, 45);
+        let (x, y) =
+            find_text_position(&buffer, "2 Disk Q").expect("NW/DISK graph marker should render");
+        let marker = &buffer[(x, y)];
+        assert_eq!(marker.fg, ui::THEMES[0].warning);
+        assert_ne!(marker.bg, ui::THEMES[0].warning);
+        assert!(!marker.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -3590,7 +3626,9 @@ name = "legacy-watch.exe"
         assert!(!rendered.contains("F6"), "{rendered}");
         assert!(rendered.contains("[ Close ]"), "{rendered}");
         assert!(
-            rendered.contains("Footer shows the focused panel and its main actions."),
+            rendered.contains(
+                "Footer: focused actions. Processes: blue selection; amber markers/filter; changes neutral."
+            ),
             "{rendered}"
         );
         assert!(!rendered_lower.contains("baseline"), "{rendered}");
@@ -3864,6 +3902,14 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("1 CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
         assert!(rendered.contains("CPUs - CPU Usage"), "{rendered}");
+
+        let buffer = render_app_to_buffer(&app, 120, 45);
+        let (x, y) =
+            find_text_position(&buffer, "1 CPU Usage [").expect("CPU graph marker should render");
+        let marker = &buffer[(x, y)];
+        assert_eq!(marker.fg, ui::THEMES[0].warning);
+        assert_ne!(marker.bg, ui::THEMES[0].warning);
+        assert!(!marker.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -7068,7 +7114,6 @@ name = "legacy-watch.exe"
             open_files_worker,
             sampling_in_progress: false,
             snapshot,
-            previous_snapshot: None,
             process_table_state: table_state,
             process_page_size: page_size,
             selected_process_identity,

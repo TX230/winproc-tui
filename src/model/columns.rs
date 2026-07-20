@@ -241,52 +241,6 @@ impl MetricColumn {
         }
     }
 
-    pub(crate) fn compare_present_values(
-        self,
-        left: &ProcessRow,
-        right: &ProcessRow,
-    ) -> Option<Ordering> {
-        match self {
-            Self::CpuPercent => compare_present_f64(left.cpu_percent, right.cpu_percent),
-            Self::PrivateBytes => compare_present_u64(left.private_bytes, right.private_bytes),
-            Self::WorksetBytes => compare_present_u64(left.workset_bytes, right.workset_bytes),
-            Self::WorksetPrivateBytes => {
-                compare_present_u64(left.workset_private_bytes, right.workset_private_bytes)
-            }
-            Self::WorksetShareableBytes => {
-                compare_present_u64(left.workset_shareable_bytes, right.workset_shareable_bytes)
-            }
-            Self::WorksetSharedBytes => {
-                compare_present_u64(left.workset_shared_bytes, right.workset_shared_bytes)
-            }
-            Self::ThreadCount => compare_present_u64(left.thread_count, right.thread_count),
-            Self::HandleCount => compare_present_u64(left.handle_count, right.handle_count),
-            Self::UserObjectCount => {
-                compare_present_u64(left.user_object_count, right.user_object_count)
-            }
-            Self::GdiObjectCount => {
-                compare_present_u64(left.gdi_object_count, right.gdi_object_count)
-            }
-            Self::GpuPercent => compare_present_f64(left.gpu_percent, right.gpu_percent),
-            Self::DotNetHeapBytes => {
-                compare_present_u64(left.dotnet_heap_bytes, right.dotnet_heap_bytes)
-            }
-            Self::GpuDedicatedBytes => {
-                compare_present_u64(left.gpu_dedicated_bytes, right.gpu_dedicated_bytes)
-            }
-            Self::GpuSharedBytes => {
-                compare_present_u64(left.gpu_shared_bytes, right.gpu_shared_bytes)
-            }
-            Self::IoReadBytesPerSec => {
-                compare_present_u64(left.io_read_bytes_per_sec, right.io_read_bytes_per_sec)
-            }
-            Self::IoWriteBytesPerSec => {
-                compare_present_u64(left.io_write_bytes_per_sec, right.io_write_bytes_per_sec)
-            }
-            Self::FullPath => None,
-        }
-    }
-
     fn has_value(self, row: &ProcessRow) -> bool {
         match self {
             Self::CpuPercent => row.cpu_percent.is_some(),
@@ -544,14 +498,6 @@ fn compare_optional_strings(left: Option<&str>, right: Option<&str>) -> Ordering
         (None, Some(_)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
     }
-}
-
-fn compare_present_u64(left: Option<u64>, right: Option<u64>) -> Option<Ordering> {
-    Some(left?.cmp(&right?))
-}
-
-fn compare_present_f64(left: Option<f64>, right: Option<f64>) -> Option<Ordering> {
-    left?.partial_cmp(&right?)
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use crate::{
     App,
     app::{FocusedPanel, GraphSlot},
     model::{CpuCoreKind, CpuLogicalProcessorSample, Snapshot, SystemMetric},
-    ui::{Theme, widgets::block::panel_block_focused},
+    ui::{Theme, graph_slot::graph_slot_marker_span, widgets::block::panel_block_focused},
 };
 
 pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
@@ -260,13 +260,7 @@ fn cpu_core_grouped_bar_line(cores: &[CpuLogicalProcessorSample], theme: Theme) 
 }
 
 fn cpu_average_graph_slot_span(numbers: &str, theme: Theme) -> Span<'static> {
-    let label = format!("{numbers:<2}");
-    let style = if numbers.is_empty() {
-        Style::default().fg(theme.muted)
-    } else {
-        Style::default().fg(theme.text).bg(theme.warning)
-    };
-    Span::styled(label, style)
+    graph_slot_marker_span(numbers, 2, theme)
 }
 
 fn cpu_average_graph_slot_numbers(app: &App) -> String {

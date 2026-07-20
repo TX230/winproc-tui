@@ -24,6 +24,8 @@ It runs in the terminal and shows current values and changes over time for memor
 - **Open files**: Lists the files a selected live process has open.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
 
+The Processes table keeps live metric values neutral instead of coloring every sample-to-sample increase or decrease. Blue indicates focus or selection, while amber foreground markers identify tracked rows, Graph slots, filter matches, and warnings without additional fills; red and green are reserved for danger/error and successful-action feedback.
+
 ## When This Helps
 
 - You want to track an application's resource usage over time and watch for memory leaks.

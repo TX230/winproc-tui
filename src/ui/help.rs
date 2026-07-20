@@ -11,7 +11,8 @@ use crate::{
 };
 
 const HELP_TITLE: &str = "Keyboard shortcuts";
-const FOOTER_HINT: &str = "Footer shows the focused panel and its main actions.";
+const HELP_HINT: &str =
+    "Footer: focused actions. Processes: blue selection; amber markers/filter; changes neutral.";
 const CLOSE_BUTTON: &str = "[ Close ]";
 const COLUMN_SEPARATOR: &str = "  │  ";
 const KEY_LABEL_GAP: usize = 2;
@@ -432,7 +433,7 @@ fn help_lines(theme: Theme) -> Vec<Line<'static>> {
             HELP_TITLE,
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         )),
-        Line::from(Span::styled(FOOTER_HINT, Style::default().fg(theme.muted))),
+        Line::from(Span::styled(HELP_HINT, Style::default().fg(theme.muted))),
         Line::from(""),
     ];
 
@@ -531,7 +532,7 @@ fn help_content_width() -> u16 {
     let title_width = HELP_TITLE
         .chars()
         .count()
-        .max(FOOTER_HINT.chars().count())
+        .max(HELP_HINT.chars().count())
         .max(CLOSE_BUTTON.chars().count());
     let body_width = left + COLUMN_SEPARATOR.chars().count() + right;
     body_width.max(title_width) as u16
