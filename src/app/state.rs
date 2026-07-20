@@ -775,7 +775,7 @@ impl App {
     }
 
     pub(crate) fn tick_interval(&self) -> Duration {
-        Duration::from_secs(1)
+        Duration::from_secs(super::SAMPLING_INTERVAL_SECONDS)
     }
 
     pub(crate) fn theme(&self) -> Theme {

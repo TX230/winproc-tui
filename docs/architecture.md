@@ -308,7 +308,7 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 ## 10. Configuration I/O (`config`)
 
 - Input: Deserialize `winproc-tui.toml` with `serde` into `AppConfig` (`general` / `process_table` / `recording` / `[[tracked]]`). On failure, continue with defaults without deleting user settings.
-- `build_runtime_config` resolves string column names and preset names into enums, builds `SamplingOptions`, and returns `RuntimeConfig`. `interval_seconds` is read, but currently only the fixed 1-second runtime interval is used.
+- `build_runtime_config` resolves string column names and preset names into enums, builds `SamplingOptions`, and returns `RuntimeConfig`. The sampling interval is not part of the configuration because the runtime interval is fixed at 1 second.
 - Output: Immediately before exit, `write_app_config(&path, &app)` writes back the current theme, column order, sort, `tracked_only`, last recording directory, and tracked list. Filter input is not persisted.
 
 ## 11. Recording (`app::export`)
@@ -372,7 +372,7 @@ The codebase supports unit testing for both the TUI and the asynchronous sampler
 ## 14. Known Constraints and Non-Goals
 
 - **Windows 11 x64 only**. `platform.rs` and `samplers/` depend on Windows APIs through `winapi`; builds on other OSes are not expected.
-- The sampling interval is internally fixed at 1 second. `interval_seconds` is saved in TOML but is not applied.
+- The sampling interval is internally fixed at 1 second and is not written to TOML. Legacy `interval_seconds` keys are accepted as unknown fields and omitted the next time the configuration is saved.
 - Metrics that require administrator privileges, such as WS breakdown for protected processes, may be unavailable. In that case, the UI displays states such as `InfoValue::AccessDenied`.
 - This is not a long-term time-series database. Tracked history is capped at 7,200 samples, equal to 2 hours at a 1-second interval.
 

@@ -36,7 +36,6 @@ impl Default for AppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct GeneralConfig {
-    pub(crate) interval_seconds: u64,
     pub(crate) mouse: bool,
     pub(crate) theme: String,
 }
@@ -44,7 +43,6 @@ pub(crate) struct GeneralConfig {
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
-            interval_seconds: 1,
             mouse: true,
             theme: "Dark".to_string(),
         }
@@ -90,8 +88,6 @@ pub(crate) struct TrackedConfig {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeConfig {
-    #[allow(dead_code)]
-    pub(crate) interval_seconds: u64,
     pub(crate) mouse: bool,
     pub(crate) recording_last_dir: Option<PathBuf>,
     pub(crate) initial_theme: String,
@@ -141,7 +137,6 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
     let process_filters = config.tracked.into_iter().map(|item| item.name).collect();
 
     Ok(RuntimeConfig {
-        interval_seconds: 1,
         mouse: config.general.mouse,
         recording_last_dir: config.recording.last_dir,
         initial_theme: config.general.theme,
@@ -177,7 +172,6 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
 
     let config = AppConfig {
         general: GeneralConfig {
-            interval_seconds: 1,
             mouse: app.runtime.mouse,
             theme: app.theme().name.to_string(),
         },

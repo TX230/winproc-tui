@@ -412,7 +412,7 @@ fn recording_session_line(session: &RecordingSession, app: &App) -> Result<Strin
         "winproc_tui_version": env!("CARGO_PKG_VERSION"),
         "host": session.host,
         "started_at": session.started_at.to_rfc3339(),
-        "interval_seconds": app.runtime.interval_seconds,
+        "interval_seconds": super::SAMPLING_INTERVAL_SECONDS,
         "tracked_names": &app.watch_list,
         "columns": columns,
         "sort": {

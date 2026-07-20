@@ -156,7 +156,7 @@ Examples:
 
 ## Sampling Frequency
 
-The base screen update interval is fixed at 1 second. `interval_seconds` exists in the config file, but the runtime is fixed to 1 second.
+The base screen update interval is fixed at 1 second and is not configurable.
 
 Heavy metrics are not collected every second.
 
@@ -218,7 +218,7 @@ Session record fields:
 | `winproc_tui_version` | string | Package version. |
 | `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
 | `started_at` | string | RFC 3339 timestamp. |
-| `interval_seconds` | number | Currently `1`. |
+| `interval_seconds` | number | Fixed sampling interval metadata. Currently `1`. This is a recording-log field, not a user setting. |
 | `tracked_names` | string array | Tracked List at session start. |
 | `columns` | string array | Process metric columns currently displayed. |
 | `sort` | object | Sort column / direction. |

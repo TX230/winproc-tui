@@ -25,6 +25,7 @@ use crate::ui::{
 };
 
 const EVENT_POLL_SLICE: Duration = Duration::from_millis(50);
+pub(crate) const SAMPLING_INTERVAL_SECONDS: u64 = 1;
 
 pub(crate) use state::AbComparison;
 pub(crate) use state::AbComparisonPoint;

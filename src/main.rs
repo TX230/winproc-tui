@@ -267,12 +267,28 @@ mod tests {
 
     #[test]
     fn sampling_interval_is_fixed_to_one_second() {
-        let mut config = AppConfig::default();
-        config.general.interval_seconds = 30;
+        let app = make_test_app(1, 10);
 
-        let runtime = build_runtime_config(config).unwrap();
+        assert_eq!(app.tick_interval(), Duration::from_secs(1));
+    }
 
-        assert_eq!(runtime.interval_seconds, 1);
+    #[test]
+    fn app_config_accepts_and_omits_legacy_interval_seconds() {
+        let config: AppConfig = toml::from_str(
+            r#"
+[general]
+interval_seconds = 30
+mouse = false
+theme = "Light"
+"#,
+        )
+        .unwrap();
+
+        assert!(!config.general.mouse);
+        assert_eq!(config.general.theme, "Light");
+
+        let rendered = toml::to_string(&config).unwrap();
+        assert!(!rendered.contains("interval_seconds"), "{rendered}");
     }
 
     #[test]
@@ -7251,7 +7267,6 @@ name = "legacy-watch.exe"
 
         App {
             runtime: RuntimeConfig {
-                interval_seconds: 1,
                 mouse: true,
                 recording_last_dir: None,
                 initial_theme: "Dark".to_string(),
