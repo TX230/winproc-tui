@@ -3009,7 +3009,8 @@ name = "legacy-watch.exe"
             let theme = ui::THEMES[theme_index];
             let buffer = render_app_to_buffer(&app, 100, 30);
 
-            assert!(find_text_position(&buffer, "winproc-tui 0.3.0").is_none());
+            let product_and_version = format!("winproc-tui {}", env!("CARGO_PKG_VERSION"));
+            assert!(find_text_position(&buffer, &product_and_version).is_none());
 
             let (live_x, live_y) =
                 find_text_position(&buffer, "LIVE").expect("live badge should be rendered");

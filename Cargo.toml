@@ -1,6 +1,6 @@
 [package]
 name = "winproc-tui"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.95"
 description = "TUI process investigation tool for Windows 11 x64: per-process memory, handles, GUI/GPU resources, I/O, A/B comparison, and JSON Lines recording with Playback."
