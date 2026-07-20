@@ -143,7 +143,7 @@ fn ram_vram_title(app: &App, theme: Theme) -> Line<'static> {
 }
 
 fn ram_vram_samples_label(app: &App) -> String {
-    if app.activity() == AppActivity::Playback {
+    if app.activity() == AppActivity::LogView {
         format!(
             "[Samples: {}]",
             format_integer(app.display_system_history().len() as u64)

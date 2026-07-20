@@ -564,8 +564,8 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Esc if self.activity() == AppActivity::Playback => {
-                self.exit_playback();
+            KeyCode::Esc if self.activity() == AppActivity::LogView => {
+                self.exit_log_view();
             }
             KeyCode::Char('q') | KeyCode::Esc => {
                 self.request_quit_confirmation();

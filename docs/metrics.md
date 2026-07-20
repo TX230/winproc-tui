@@ -3,6 +3,17 @@
 This document describes the metrics handled by `winproc-tui`, including display names, data sources, and display formats.
 In the current implementation, unavailable values are displayed as `--` in the UI and are omitted from recording logs rather than written as `null`.
 
+## Sampling Freshness
+
+Live sampling is requested once per second. The header derives freshness from the `captured_at` time of the latest successfully applied live `Snapshot`.
+
+- Less than 3 seconds old: no freshness text is shown.
+- 3 seconds old or older: `STALE Ns`, where `N` is the whole-second age.
+- A successful live sample immediately removes the stale warning.
+- Log view does not display sampling freshness because it reads a saved log instead of live sampling.
+
+`DISPLAY PAUSED` freezes the displayed snapshot only. The current live snapshot, process/system histories, sampling freshness, and an active recording continue to update.
+
 ## Process Table Columns
 
 The Process table can select the 15 columns included in `MetricColumn::ALL`.
@@ -74,7 +85,7 @@ The per-logical-CPU cells are intended for quick visual pressure checks, not rec
 
 The middle of the top panel shows `NW/DISK`, a compact System Activity view for network and disk counters.
 Pressing `i` opens `System Info` as a dialog instead of replacing this panel.
-These values are sampled once per screen update and are stored in recording frames so Playback can show the recorded values.
+These values are sampled once per screen update and are stored in recording frames so Log view can show the recorded values.
 When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `1` / `2` / `3` / `4` assign it to the corresponding Graph slot, matching the `RAM/VRAM` panel behavior.
 
 | Display name | Log field | Description | Primary source | Display format |

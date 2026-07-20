@@ -38,8 +38,8 @@ use app::run_tui;
 #[cfg(test)]
 use app::{
     AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphSlot, GraphValueFormat,
-    PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SettingsSelection, TrackedRemoveSelection,
-    VisibleProcessEntry,
+    PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SAMPLE_STALE_AFTER_SECONDS, SampleFreshness,
+    SettingsSelection, TrackedRemoveSelection, VisibleProcessEntry,
 };
 use cli::Cli;
 #[cfg(test)]
@@ -273,6 +273,30 @@ mod tests {
         let runtime = build_runtime_config(config).unwrap();
 
         assert_eq!(runtime.interval_seconds, 1);
+    }
+
+    #[test]
+    fn sample_freshness_turns_stale_at_defined_threshold() {
+        let mut app = make_test_app(1, 10);
+        let captured_at = app.snapshot.captured_at;
+
+        assert_eq!(
+            app.sample_freshness_at(
+                captured_at + chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64 - 1)
+            ),
+            Some(SampleFreshness::Fresh)
+        );
+        assert_eq!(
+            app.sample_freshness_at(
+                captured_at + chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64)
+            ),
+            Some(SampleFreshness::Stale {
+                age_seconds: SAMPLE_STALE_AFTER_SECONDS
+            })
+        );
+
+        app.log_view_path = Some(std::path::PathBuf::from("session.log"));
+        assert_eq!(app.sample_freshness_at(captured_at), None);
     }
 
     #[test]
@@ -2289,10 +2313,10 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn playback_all_samples_span_can_exceed_live_history_cap() {
+    fn log_view_all_samples_span_can_exceed_live_history_cap() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
-        app.playback_path = Some(std::path::PathBuf::from("long.log"));
+        app.log_view_path = Some(std::path::PathBuf::from("long.log"));
         app.process_history = ProcessHistory::default();
         for offset in [0, 7_201] {
             app.process_history.record_snapshot_unbounded(
@@ -2308,9 +2332,9 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn playback_process_title_omits_history_counts() {
+    fn log_view_process_title_omits_history_counts() {
         let mut app = make_test_app(1, 10);
-        app.playback_path = Some(std::path::PathBuf::from("long.log"));
+        app.log_view_path = Some(std::path::PathBuf::from("long.log"));
         app.process_history = ProcessHistory::default();
         app.system_history = SystemHistory::default();
         for offset in 0..=7_200 {
@@ -3454,7 +3478,7 @@ name = "legacy-watch.exe"
 
         assert_eq!(app.visible_process_at(0).unwrap().private_bytes, Some(99));
         assert!(!app.is_display_paused());
-        assert_eq!(app.status, "Screen resumed");
+        assert_eq!(app.status, "Display resumed");
     }
 
     #[test]
@@ -3466,13 +3490,13 @@ name = "legacy-watch.exe"
             .unwrap();
 
         assert!(app.is_display_paused());
-        assert_eq!(app.status, "Screen paused");
+        assert_eq!(app.status, "Display paused");
 
         app.on_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL))
             .unwrap();
 
         assert!(!app.is_display_paused());
-        assert_eq!(app.status, "Screen resumed");
+        assert_eq!(app.status, "Display resumed");
     }
 
     #[test]
@@ -4570,6 +4594,30 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn live_header_omits_freshness_when_current() {
+        let app = make_test_app(1, 10);
+
+        let rendered = render_app_to_text(&app, 120, 45);
+
+        assert!(rendered.contains("LIVE"), "{rendered}");
+        assert!(!rendered.contains("fresh"), "{rendered}");
+        assert!(!rendered.contains("STALE"), "{rendered}");
+    }
+
+    #[test]
+    fn live_header_shows_visible_stale_state() {
+        let mut app = make_test_app(1, 10);
+        app.snapshot.captured_at =
+            Local::now() - chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64 + 2);
+
+        let rendered = render_app_to_text(&app, 120, 45);
+
+        assert!(rendered.contains("LIVE"), "{rendered}");
+        assert!(rendered.contains("STALE "), "{rendered}");
+        assert!(!rendered.contains("fresh"), "{rendered}");
+    }
+
+    #[test]
     fn recording_header_shows_rec_spinner_and_path() {
         let mut app = make_test_app(1, 10);
         track_process_name(&mut app, "proc-0");
@@ -4583,7 +4631,15 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("REC"), "{rendered}");
+        assert!(!rendered.contains("fresh"), "{rendered}");
+        assert!(!rendered.contains("STALE"), "{rendered}");
         assert!(rendered.contains("winproc-tui-test-header"), "{rendered}");
+
+        app.toggle_display_pause();
+        let paused = render_app_to_text(&app, 120, 45);
+        assert!(paused.contains("REC"), "{paused}");
+        assert!(paused.contains("DISPLAY PAUSED"), "{paused}");
+        assert!(paused.contains("winproc-tui-test-header"), "{paused}");
 
         app.stop_recording().unwrap();
         let _ = std::fs::remove_file(path);
@@ -6212,6 +6268,29 @@ name = "legacy-watch.exe"
     }
 
     #[test]
+    fn successful_sample_returns_fresh_after_stale_state() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        app.snapshot.captured_at =
+            Local::now() - chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64 + 2);
+        assert!(matches!(
+            app.sample_freshness(),
+            Some(SampleFreshness::Stale { .. })
+        ));
+
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: test_snapshot(1),
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.sample_freshness(), Some(SampleFreshness::Fresh));
+    }
+
+    #[test]
     fn sampling_worker_disconnect_keeps_existing_snapshot() {
         let (request_tx, _request_rx) = mpsc::channel::<SampleRequest>();
         let (result_tx, result_rx) = mpsc::channel::<CollectSnapshotResult>();
@@ -6885,45 +6964,58 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn playback_header_shows_play_badge_and_path() {
+    fn log_view_header_shows_log_badge_and_path_without_freshness() {
         let mut app = make_test_app(1, 10);
-        app.playback_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
+        app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
 
         let rendered = render_app_to_text(&app, 100, 20);
 
-        assert!(rendered.contains("PLAY"), "{rendered}");
+        assert!(rendered.contains("LOG"), "{rendered}");
+        assert!(!rendered.contains("fresh"), "{rendered}");
+        assert!(!rendered.contains("STALE"), "{rendered}");
         assert!(rendered.contains("winproc-tui-demo.log"), "{rendered}");
     }
 
     #[test]
-    fn playback_esc_returns_to_live_without_quit_confirmation() {
+    fn display_pause_is_unavailable_in_log_view() {
         let mut app = make_test_app(1, 10);
-        app.playback_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
+        app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
+
+        app.toggle_display_pause();
+
+        assert!(!app.is_display_paused());
+        assert_eq!(app.status, "Display pause is unavailable in Log view");
+    }
+
+    #[test]
+    fn log_view_esc_returns_to_live_without_quit_confirmation() {
+        let mut app = make_test_app(1, 10);
+        app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
 
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(app.activity(), AppActivity::Live);
-        assert!(app.playback_path.is_none());
+        assert!(app.log_view_path.is_none());
         assert!(!app.show_quit_confirmation);
-        assert_eq!(app.status, "Playback closed");
+        assert_eq!(app.status, "Log view closed");
     }
 
     #[test]
-    fn ctrl_r_is_rejected_during_playback() {
+    fn ctrl_r_is_rejected_in_log_view() {
         let mut app = make_test_app(1, 10);
-        app.playback_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
+        app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
 
         app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
             .unwrap();
 
-        assert_eq!(app.activity(), AppActivity::Playback);
-        assert_eq!(app.status, "Recording is unavailable during playback");
+        assert_eq!(app.activity(), AppActivity::LogView);
+        assert_eq!(app.status, "Recording is unavailable in Log view");
     }
 
     #[test]
     fn ctrl_l_is_rejected_during_recording() {
-        let path = unique_recording_path("deny-playback");
+        let path = unique_recording_path("deny-log-view");
         let mut app = make_test_app(1, 10);
         track_process_name(&mut app, "proc-0");
         app.recording_path_draft = path.display().to_string();
@@ -6936,7 +7028,7 @@ name = "legacy-watch.exe"
 
         assert_eq!(app.activity(), AppActivity::Recording);
         assert!(!app.show_log_list);
-        assert_eq!(app.status, "Playback is unavailable during recording");
+        assert_eq!(app.status, "Log view is unavailable during recording");
 
         app.stop_recording().unwrap();
         let _ = std::fs::remove_file(path);
@@ -6944,13 +7036,13 @@ name = "legacy-watch.exe"
 
     #[test]
     fn loaded_log_is_ignored_if_recording_started_before_worker_returns() {
-        let replay_path = std::env::temp_dir().join(format!(
-            "winproc-tui-replay-race-test-{}-{}.log",
+        let log_view_path = std::env::temp_dir().join(format!(
+            "winproc-tui-log-view-race-test-{}-{}.log",
             std::process::id(),
             Local::now().timestamp_nanos_opt().unwrap_or_default()
         ));
         std::fs::write(
-            &replay_path,
+            &log_view_path,
             [
                 r#"{"schema_version":2,"record_type":"session","session_id":"s1","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"]}"#,
                 r#"{"schema_version":2,"record_type":"frame","session_id":"s1","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":1024}}]}"#,
@@ -6958,8 +7050,8 @@ name = "legacy-watch.exe"
             .join("\n"),
         )
         .unwrap();
-        let loaded = app::logs::load_log(&replay_path, SortSpec::default()).unwrap();
-        let recording_path = unique_recording_path("deny-loaded-playback");
+        let loaded = app::logs::load_log(&log_view_path, SortSpec::default()).unwrap();
+        let recording_path = unique_recording_path("deny-loaded-log-view");
         let mut app = make_test_app(1, 10);
         track_process_name(&mut app, "proc-0");
         app.recording_path_draft = recording_path.display().to_string();
@@ -6970,18 +7062,18 @@ name = "legacy-watch.exe"
         app.apply_loaded_log(loaded);
 
         assert_eq!(app.activity(), AppActivity::Recording);
-        assert!(app.playback_path.is_none());
-        assert_eq!(app.status, "Playback is unavailable during recording");
+        assert!(app.log_view_path.is_none());
+        assert_eq!(app.status, "Log view is unavailable during recording");
 
         app.stop_recording().unwrap();
         let _ = std::fs::remove_file(recording_path);
-        let _ = std::fs::remove_file(replay_path);
+        let _ = std::fs::remove_file(log_view_path);
     }
 
     #[test]
-    fn replay_log_feeds_graph_samples_without_turning_missing_values_to_zero() {
+    fn loaded_log_feeds_graph_samples_without_turning_missing_values_to_zero() {
         let path = std::env::temp_dir().join(format!(
-            "winproc-tui-replay-test-{}-{}.log",
+            "winproc-tui-log-view-test-{}-{}.log",
             std::process::id(),
             Local::now().timestamp_nanos_opt().unwrap_or_default()
         ));
@@ -7215,7 +7307,7 @@ name = "legacy-watch.exe"
             recording_session: None,
             recording_last_dir: None,
             recording_spinner_index: 0,
-            playback_path: None,
+            log_view_path: None,
             should_quit: false,
             column_picker_index: 0,
             column_picker_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
@@ -7250,8 +7342,8 @@ name = "legacy-watch.exe"
             log_list_worker: None,
             log_list_last_click: None,
             log_load_worker: None,
-            playback_watch_list: Vec::new(),
-            playback_normalized_watch_names: std::collections::HashSet::new(),
+            log_view_watch_list: Vec::new(),
+            log_view_normalized_watch_names: std::collections::HashSet::new(),
             focused_panel: FocusedPanel::Processes,
             show_details: false,
             graph_slots: std::array::from_fn(|_| None),
@@ -7276,7 +7368,7 @@ name = "legacy-watch.exe"
             process_columns: ColumnPreset::Default.columns().to_vec(),
             sort: SortSpec::default(),
             paused_display: None,
-            playback_display: None,
+            log_view_display: None,
             filter_text: String::new(),
             filter_draft: String::new(),
             filter_editing: false,

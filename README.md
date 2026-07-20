@@ -10,7 +10,7 @@ This is the original upstream repository for `winproc-tui`.
 Third-party copies, mirrors, or modified repositories are not official project repositories.
 
 `winproc-tui` is a **process monitoring TUI** for tracking per-process resource usage over time.
-It runs in the terminal and shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other process metrics. With up to four Graphs, A/B comparison, and JSON Lines recording with Playback, it is built to quickly answer what resources the process you are watching uses, when, and how much. Rather than competing on breadth with Process Explorer or System Informer, `winproc-tui` focuses on targeted resource behavior checks during development, verification, and day-to-day troubleshooting. It is built with Rust/Ratatui.
+It runs in the terminal and shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other process metrics. With up to four Graphs, A/B comparison, and JSON Lines recording with a saved-log view, it is built to quickly answer what resources the process you are watching uses, when, and how much. Rather than competing on breadth with Process Explorer or System Informer, `winproc-tui` focuses on targeted resource behavior checks during development, verification, and day-to-day troubleshooting. It is built with Rust/Ratatui.
 
 ![winproc-tui main screen showing the process list, multiple Graphs, Samples, and A/B comparison](assets/screenshots/main-screen.png)
 
@@ -19,7 +19,7 @@ It runs in the terminal and shows current values and changes over time for memor
 - **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process, RAM / VRAM, and CPU average history keep about 7,200 seconds.
 - **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Their last collected values remain visible after the processes exit.
-- **Recording and Playback**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and replays them later in the same Processes / Graph / Samples / A/B view layout.
+- **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Open files**: Lists the files a selected live process has open.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
@@ -27,12 +27,14 @@ It runs in the terminal and shows current values and changes over time for memor
 The Processes table keeps live metric values and the Tracked Total row neutral instead of coloring every sample-to-sample increase or decrease. Blue indicates focus or selection, while amber foreground markers identify tracked rows, Graph slots, filter matches, and warnings without additional fills; red and green are reserved for danger/error and successful-action feedback.
 The Processes title summarizes the current view with the visible row count, All processes / Tracked only mode, and active filter. Sort column and direction remain in the table header, while fixed history capacities are shown in Help instead of occupying the panel title.
 
+The header normally shows only `LIVE` or `REC`. If no successful sample arrives for 3 seconds, it appends `STALE Ns` until another sample succeeds. `DISPLAY PAUSED` freezes only the displayed snapshot—sampling and an active recording continue. Saved logs use the `LOG` label and do not show live sampling freshness.
+
 ## When This Helps
 
 - You want to track an application's resource usage over time and watch for memory leaks.
 - You want to quantify how much a specific operation leaks (the difference between two points).
 - You want to detect missed file closes and see which files a process currently has open.
-- You want to **record a background service over a long period** and review the area around an incident with Playback.
+- You want to **record a background service over a long period** and review the area around an incident in Log view.
 - You want to compare resource usage before and after a refactor.
 
 ## Requirements
@@ -131,12 +133,12 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | Key                 | Action                                                              |
 | ------------------- | ------------------------------------------------------------------- |
 | `?`                 | Show / hide Help.                                                   |
-| `q` / `Esc`         | Open the quit confirmation (returns to live display during Playback). |
+| `q` / `Esc`         | Open the quit confirmation (returns to live display from Log view). |
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
 | `Ctrl+L`            | Open the log list.                                                  |
 | `Ctrl+R`            | Start / stop recording.                                             |
-| `Ctrl+P`            | Pause / resume screen updates.                                      |
+| `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
 | `Ctrl+O`            | Open the Settings dialog.                                           |
 | `Ctrl+Wheel`        | Change the Windows Terminal zoom level.                             |
 | `F2`                | Switch theme.                                                       |
@@ -188,20 +190,20 @@ The shared `f` and `z` shortcuts work while either the Graph or Samples part of 
 When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph.
 If there is not enough display area, the message `Not enough display area.` is shown and the Graph is not added.
 
-## Recording and Playback
+## Recording and Log View
 
 Press `Ctrl+R` to start or stop recording.
 Recording requires at least one Tracked List entry and saves logs as JSON Lines (with the `.log` extension).
 Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracked List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
 When recording starts, a save-path input dialog opens, and `Tab` completes directory names there.
-Playback cannot start during recording, and recording cannot start during Playback.
+Log view cannot open during recording, and recording cannot start while Log view is open.
 
 Press `Ctrl+L` to open the log list.
 The list shows `*.log` files from the previous recording directory if available, otherwise from the current directory.
 The `Dir` row shows the directory currently being searched, and `d` lets you choose another directory.
-Press `Enter` on a selected log to switch to the `PLAY` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
-Playback is a viewer for saved sessions, not real-time replay. Press `Esc` to return to the live display.
+Press `Enter` on a selected log to switch to the `LOG` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
+Log view is not a player: Processes keeps showing the last recorded values, while Graph and Samples expose the recorded metric history. Press `Esc` to return to the live display.
 
 The recording log format and the meaning of each field are described in [docs/metrics.md](docs/metrics.md).
 

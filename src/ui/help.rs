@@ -36,7 +36,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Esc",
-        label: "Quit / Live in PLAY",
+        label: "Quit / Live in LOG",
     },
     HelpItem {
         key: "?",
@@ -64,7 +64,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+P",
-        label: "Pause / Resume",
+        label: "Pause / Resume display",
     },
     HelpItem {
         key: "Ctrl+O",

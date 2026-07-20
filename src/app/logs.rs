@@ -637,8 +637,8 @@ mod tests {
     }
 
     #[test]
-    fn replay_load_keeps_all_log_frames_without_history_pruning() {
-        let path = unique_log_path("long-replay");
+    fn log_view_load_keeps_all_log_frames_without_history_pruning() {
+        let path = unique_log_path("long-log-view");
         let mut lines = vec![
             r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"]}"#.to_string(),
         ];

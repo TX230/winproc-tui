@@ -41,6 +41,7 @@ pub(crate) const PROCESS_INFO_DEBOUNCE: Duration = Duration::from_millis(200);
 const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PROCESS_NAVIGATION_ORDER_HOLD: Duration = Duration::from_millis(750);
+pub(crate) const SAMPLE_STALE_AFTER_SECONDS: u64 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessLifecycle {
@@ -461,7 +462,13 @@ pub(crate) struct ProcessKillTarget {
 pub(crate) enum AppActivity {
     Live,
     Recording,
-    Playback,
+    LogView,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SampleFreshness {
+    Fresh,
+    Stale { age_seconds: u64 },
 }
 
 pub(crate) struct App {
@@ -508,7 +515,7 @@ pub(crate) struct App {
     pub(crate) recording_session: Option<RecordingSession>,
     pub(crate) recording_last_dir: Option<PathBuf>,
     pub(crate) recording_spinner_index: usize,
-    pub(crate) playback_path: Option<PathBuf>,
+    pub(crate) log_view_path: Option<PathBuf>,
     pub(crate) should_quit: bool,
     pub(crate) column_picker_index: usize,
     pub(crate) column_picker_scroll: ScrollableModalState,
@@ -534,8 +541,8 @@ pub(crate) struct App {
     pub(crate) log_list_worker: Option<LogListWorker>,
     pub(crate) log_list_last_click: Option<LogListClick>,
     pub(crate) log_load_worker: Option<LogLoadWorker>,
-    pub(crate) playback_watch_list: Vec<String>,
-    pub(crate) playback_normalized_watch_names: HashSet<String>,
+    pub(crate) log_view_watch_list: Vec<String>,
+    pub(crate) log_view_normalized_watch_names: HashSet<String>,
     pub(crate) focused_panel: FocusedPanel,
     pub(crate) show_details: bool,
     pub(crate) graph_slots: [Option<GraphSlot>; GRAPH_SLOT_COUNT],
@@ -560,7 +567,7 @@ pub(crate) struct App {
     pub(crate) process_columns: Vec<MetricColumn>,
     pub(crate) sort: SortSpec,
     pub(crate) paused_display: Option<PausedDisplay>,
-    pub(crate) playback_display: Option<PausedDisplay>,
+    pub(crate) log_view_display: Option<PausedDisplay>,
     pub(crate) filter_text: String,
     pub(crate) filter_draft: String,
     pub(crate) filter_editing: bool,
@@ -674,7 +681,7 @@ impl App {
             recording_session: None,
             recording_last_dir,
             recording_spinner_index: 0,
-            playback_path: None,
+            log_view_path: None,
             should_quit: false,
             column_picker_index: 0,
             column_picker_scroll: ScrollableModalState {
@@ -709,8 +716,8 @@ impl App {
             log_list_worker: None,
             log_list_last_click: None,
             log_load_worker: None,
-            playback_watch_list: Vec::new(),
-            playback_normalized_watch_names: HashSet::new(),
+            log_view_watch_list: Vec::new(),
+            log_view_normalized_watch_names: HashSet::new(),
             focused_panel: FocusedPanel::Processes,
             show_details: false,
             graph_slots: std::array::from_fn(|_| None),
@@ -735,7 +742,7 @@ impl App {
             process_columns,
             sort,
             paused_display: None,
-            playback_display: None,
+            log_view_display: None,
             filter_text: String::new(),
             filter_draft: String::new(),
             filter_editing: false,
@@ -779,10 +786,29 @@ impl App {
         if self.recording_session.is_some() {
             return AppActivity::Recording;
         }
-        if self.playback_path.is_some() {
-            AppActivity::Playback
+        if self.log_view_path.is_some() {
+            AppActivity::LogView
         } else {
             AppActivity::Live
+        }
+    }
+
+    pub(crate) fn sample_freshness(&self) -> Option<SampleFreshness> {
+        self.sample_freshness_at(Local::now())
+    }
+
+    pub(crate) fn sample_freshness_at(&self, now: DateTime<Local>) -> Option<SampleFreshness> {
+        if self.activity() == AppActivity::LogView {
+            return None;
+        }
+        let age_seconds = now
+            .signed_duration_since(self.snapshot.captured_at)
+            .num_seconds()
+            .max(0) as u64;
+        if age_seconds >= SAMPLE_STALE_AFTER_SECONDS {
+            Some(SampleFreshness::Stale { age_seconds })
+        } else {
+            Some(SampleFreshness::Fresh)
         }
     }
 
@@ -790,7 +816,7 @@ impl App {
         self.recording_session
             .as_ref()
             .map(|session| &session.path)
-            .or(self.playback_path.as_ref())
+            .or(self.log_view_path.as_ref())
     }
 
     pub(crate) fn set_process_page_size(&mut self, page_size: usize) {
@@ -985,7 +1011,7 @@ impl App {
     }
 
     pub(crate) fn display_snapshot(&self) -> &Snapshot {
-        self.playback_display
+        self.log_view_display
             .as_ref()
             .or(self.paused_display.as_ref())
             .map(|display| &display.snapshot)
@@ -993,7 +1019,7 @@ impl App {
     }
 
     pub(crate) fn display_process_history(&self) -> &ProcessHistory {
-        self.playback_display
+        self.log_view_display
             .as_ref()
             .or(self.paused_display.as_ref())
             .map(|display| &display.process_history)
@@ -1001,7 +1027,7 @@ impl App {
     }
 
     pub(crate) fn display_system_history(&self) -> &SystemHistory {
-        self.playback_display
+        self.log_view_display
             .as_ref()
             .or(self.paused_display.as_ref())
             .map(|display| &display.system_history)
@@ -1009,7 +1035,7 @@ impl App {
     }
 
     fn display_exited_tracked_rows(&self) -> &HashMap<ProcessIdentity, ExitedTrackedRow> {
-        self.playback_display
+        self.log_view_display
             .as_ref()
             .or(self.paused_display.as_ref())
             .map(|display| &display.exited_tracked_rows)
@@ -1017,7 +1043,7 @@ impl App {
     }
 
     fn display_process_info_cache(&self) -> &HashMap<ProcessIdentity, ProcessInfo> {
-        self.playback_display
+        self.log_view_display
             .as_ref()
             .or(self.paused_display.as_ref())
             .map(|display| &display.process_info_cache)
@@ -1026,7 +1052,7 @@ impl App {
 
     fn display_process_info_identity(&self) -> Option<&ProcessIdentity> {
         match self
-            .playback_display
+            .log_view_display
             .as_ref()
             .or(self.paused_display.as_ref())
         {
@@ -1119,8 +1145,8 @@ impl App {
     }
 
     fn active_normalized_watch_names(&self) -> &HashSet<String> {
-        if self.playback_path.is_some() {
-            &self.playback_normalized_watch_names
+        if self.log_view_path.is_some() {
+            &self.log_view_normalized_watch_names
         } else {
             &self.normalized_watch_names
         }
@@ -2754,7 +2780,7 @@ impl App {
     }
 
     fn graph_time_max_seconds(&self) -> u32 {
-        if self.activity() == AppActivity::Playback {
+        if self.activity() == AppActivity::LogView {
             self.selected_sample_time_span_seconds()
                 .max(LIVE_GRAPH_TIME_MAX_SECONDS)
         } else {
@@ -2922,8 +2948,8 @@ impl App {
     }
 
     pub(crate) fn request_process_kill_confirmation(&mut self) -> bool {
-        if self.activity() == AppActivity::Playback {
-            self.status = "Process kill is unavailable during playback".to_string();
+        if self.activity() == AppActivity::LogView {
+            self.status = "Process kill is unavailable in Log view".to_string();
             return false;
         }
         if self.is_display_paused() {
@@ -3073,7 +3099,7 @@ impl App {
     }
 
     fn schedule_selected_process_info(&mut self, force_refresh: bool) {
-        if self.activity() == AppActivity::Playback {
+        if self.activity() == AppActivity::LogView {
             self.pending_process_info = None;
             return;
         }
@@ -3193,8 +3219,8 @@ impl App {
     }
 
     pub(crate) fn open_selected_process_info_dialog(&mut self) -> Result<()> {
-        if self.activity() == AppActivity::Playback {
-            self.status = "Process Info is unavailable during playback".to_string();
+        if self.activity() == AppActivity::LogView {
+            self.status = "Process Info is unavailable in Log view".to_string();
             return Ok(());
         }
         let Some(process) = self.selected_visible_process() else {
@@ -3227,8 +3253,8 @@ impl App {
         clear_previous_result: bool,
         status_prefix: &str,
     ) -> Result<()> {
-        if self.activity() == AppActivity::Playback {
-            self.status = "Open files are unavailable during playback".to_string();
+        if self.activity() == AppActivity::LogView {
+            self.status = "Open files are unavailable in Log view".to_string();
             return Ok(());
         }
         let Some(identity) = self.selected_visible_process_identity() else {
@@ -3621,7 +3647,7 @@ impl App {
 
     pub(crate) fn open_log_list(&mut self) -> Result<()> {
         if self.recording_session.is_some() {
-            self.status = "Playback is unavailable during recording".to_string();
+            self.status = "Log view is unavailable during recording".to_string();
             return Ok(());
         }
         self.show_log_list = true;
@@ -3638,8 +3664,8 @@ impl App {
         self.show_log_dir_dialog = false;
         self.log_list_last_click = None;
         self.log_list_scroll.stop_drag();
-        if self.activity() == AppActivity::Playback {
-            self.exit_playback();
+        if self.activity() == AppActivity::LogView {
+            self.exit_log_view();
         } else {
             self.ensure_visible_panel_focus();
             self.status = "Log list closed".to_string();
@@ -3875,7 +3901,7 @@ impl App {
 
     pub(crate) fn load_selected_log(&mut self) {
         if self.recording_session.is_some() {
-            self.status = "Playback is unavailable during recording".to_string();
+            self.status = "Log view is unavailable during recording".to_string();
             return;
         }
         let Some(summary) = self.log_summaries.get(self.log_list_index) else {
@@ -3963,13 +3989,13 @@ impl App {
 
     pub(crate) fn apply_loaded_log(&mut self, loaded: LoadedLog) {
         if self.recording_session.is_some() {
-            self.status = "Playback is unavailable during recording".to_string();
+            self.status = "Log view is unavailable during recording".to_string();
             return;
         }
-        self.playback_path = Some(loaded.path.clone());
-        self.playback_watch_list = loaded.tracked_names.clone();
-        self.playback_normalized_watch_names = normalized_process_names(&self.playback_watch_list);
-        self.playback_display = Some(PausedDisplay {
+        self.log_view_path = Some(loaded.path.clone());
+        self.log_view_watch_list = loaded.tracked_names.clone();
+        self.log_view_normalized_watch_names = normalized_process_names(&self.log_view_watch_list);
+        self.log_view_display = Some(PausedDisplay {
             snapshot: loaded.snapshot,
             exited_tracked_rows: HashMap::new(),
             process_history: loaded.process_history,
@@ -3997,17 +4023,17 @@ impl App {
         );
     }
 
-    pub(crate) fn exit_playback(&mut self) {
-        self.playback_path = None;
-        self.playback_display = None;
-        self.playback_watch_list.clear();
-        self.playback_normalized_watch_names.clear();
+    pub(crate) fn exit_log_view(&mut self) {
+        self.log_view_path = None;
+        self.log_view_display = None;
+        self.log_view_watch_list.clear();
+        self.log_view_normalized_watch_names.clear();
         self.graph_slots = std::array::from_fn(|_| None);
         self.show_details = false;
         self.ab_comparison = None;
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
-        self.status = "Playback closed".to_string();
+        self.status = "Log view closed".to_string();
     }
 
     pub(crate) fn log_list_total_rows(&self) -> usize {
@@ -4051,11 +4077,15 @@ impl App {
     }
 
     pub(crate) fn toggle_display_pause(&mut self) {
+        if self.activity() == AppActivity::LogView {
+            self.status = "Display pause is unavailable in Log view".to_string();
+            return;
+        }
         if self.paused_display.is_some() {
             self.paused_display = None;
             self.rebuild_visible_process_cache();
             self.clamp_process_table_state();
-            self.status = "Screen resumed".to_string();
+            self.status = "Display resumed".to_string();
             return;
         }
 
@@ -4069,11 +4099,11 @@ impl App {
         });
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
-        self.status = "Screen paused".to_string();
+        self.status = "Display paused".to_string();
     }
 
     pub(crate) fn request_sample(&mut self) -> Result<()> {
-        if self.activity() == AppActivity::Playback {
+        if self.activity() == AppActivity::LogView {
             return Ok(());
         }
         if self.sampling_in_progress {
@@ -4107,7 +4137,7 @@ impl App {
 
     fn apply_sample_result(&mut self, collected: CollectSnapshotResult) -> Result<bool> {
         self.sampling_in_progress = false;
-        if self.activity() == AppActivity::Playback {
+        if self.activity() == AppActivity::LogView {
             return Ok(false);
         }
         if self.details_live && !self.graph_visible_range_includes_latest_sample() {

@@ -50,6 +50,9 @@ pub(crate) use state::ProcessLifecycle;
 pub(crate) use state::QuitConfirmSelection;
 pub(crate) use state::RecordingOverwriteSelection;
 pub(crate) use state::RecordingPathSelection;
+#[cfg(test)]
+pub(crate) use state::SAMPLE_STALE_AFTER_SECONDS;
+pub(crate) use state::SampleFreshness;
 pub(crate) use state::SettingsSelection;
 pub(crate) use state::TrackedRemoveSelection;
 #[cfg(test)]
@@ -65,6 +68,7 @@ pub(crate) fn run_tui(
     let mut screen_size = terminal.size()?;
     let mut dirty = true;
     let mut loop_trace = LoopTrace::from_env();
+    let mut last_sample_freshness = app.sample_freshness();
 
     loop {
         if crate::platform::termination_requested() {
@@ -90,6 +94,11 @@ pub(crate) fn run_tui(
         dirty |= app.poll_open_files_results()?;
         dirty |= app.poll_log_workers();
         dirty |= app.request_due_process_info()?;
+        let sample_freshness = app.sample_freshness();
+        if sample_freshness != last_sample_freshness {
+            last_sample_freshness = sample_freshness;
+            dirty = true;
+        }
 
         if dirty {
             screen_size = terminal.size()?;

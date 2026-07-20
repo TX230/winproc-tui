@@ -5,7 +5,11 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::{App, app::AppActivity, ui::Theme};
+use crate::{
+    App,
+    app::{AppActivity, SampleFreshness},
+    ui::Theme,
+};
 
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
@@ -21,7 +25,8 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         Span::raw("  "),
     ];
 
-    match app.activity() {
+    let activity = app.activity();
+    match activity {
         AppActivity::Live => spans.push(mode_span("LIVE", theme.accent, theme)),
         AppActivity::Recording => {
             spans.push(mode_span("REC", theme.danger, theme));
@@ -34,28 +39,30 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
                         .add_modifier(Modifier::BOLD),
                 ));
             }
-            if let Some(path) = app.active_log_path() {
-                spans.push(Span::raw("  "));
-                spans.push(Span::styled(
-                    truncate_middle(&path.display().to_string(), area.width.saturating_sub(22)),
-                    Style::default().fg(theme.warning),
-                ));
-            }
         }
-        AppActivity::Playback => {
-            spans.push(mode_span("PLAY", theme.warning, theme));
-            if let Some(path) = app.active_log_path() {
-                spans.push(Span::raw("  "));
-                spans.push(Span::styled(
-                    truncate_middle(&path.display().to_string(), area.width.saturating_sub(23)),
-                    Style::default().fg(theme.text),
-                ));
-            }
+        AppActivity::LogView => {
+            spans.push(mode_span("LOG", theme.warning, theme));
         }
     }
-    if app.is_display_paused() {
+
+    if let Some(SampleFreshness::Stale { age_seconds }) = app.sample_freshness() {
+        spans.push(stale_span(age_seconds, theme));
+    }
+    if app.is_display_paused() && activity != AppActivity::LogView {
         spans.push(Span::raw("  "));
-        spans.push(mode_span("PAUSED", theme.warning, theme));
+        spans.push(mode_span("DISPLAY PAUSED", theme.warning, theme));
+    }
+    if let Some(path) = app.active_log_path() {
+        append_log_path(
+            &mut spans,
+            area,
+            &path.display().to_string(),
+            if activity == AppActivity::Recording {
+                theme.warning
+            } else {
+                theme.text
+            },
+        );
     }
 
     let header = Line::from(spans);
@@ -64,6 +71,36 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         .style(Style::default().bg(theme.panel))
         .alignment(Alignment::Left);
     frame.render_widget(header_widget, area);
+}
+
+fn stale_span(age_seconds: u64, theme: Theme) -> Span<'static> {
+    Span::styled(
+        format!(" · STALE {age_seconds}s"),
+        Style::default()
+            .fg(theme.warning)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn append_log_path(
+    spans: &mut Vec<Span<'static>>,
+    area: Rect,
+    path: &str,
+    color: ratatui::prelude::Color,
+) {
+    let used_width = spans
+        .iter()
+        .map(|span| span.content.chars().count())
+        .sum::<usize>();
+    let path_width = usize::from(area.width).saturating_sub(used_width.saturating_add(2));
+    if path_width == 0 {
+        return;
+    }
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(
+        truncate_middle(path, path_width.min(usize::from(u16::MAX)) as u16),
+        Style::default().fg(color),
+    ));
 }
 
 fn mode_span(label: &'static str, color: ratatui::prelude::Color, theme: Theme) -> Span<'static> {

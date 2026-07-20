@@ -72,7 +72,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             ],
         ),
     };
-    if app.activity() == AppActivity::Playback {
+    if app.activity() == AppActivity::LogView {
         items.insert(0, ("Esc", "Live"));
     } else {
         items.push(("Esc", "Quit"));

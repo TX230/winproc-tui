@@ -108,17 +108,20 @@ git commit -m "<message> (#n)" -m "Closes #n"
 
 ## User-Facing Behavior Rules
 
-- The app has three user-visible activities: `Live`, `Recording`, and `Playback`.
+- The app has three user-visible activities: `Live`, `Recording`, and `Log view`.
 - `Live` displays live snapshots from the sampling worker.
 - `Recording` displays live snapshots and appends them to a JSON Lines recording session.
-- `Playback` loads snapshots and history from a recording log.
-- `Recording` and `Playback` are mutually exclusive.
+- `Log view` shows the last process snapshot and recorded metric histories from a saved log; it does not play frames over time.
+- The header labels these activities as `LIVE`, `REC`, and `LOG`.
+- Live and Recording show no normal freshness text. At 3 seconds without a successfully applied sample, the header adds `STALE Ns` until another sample succeeds.
+- `DISPLAY PAUSED` freezes only the displayed snapshot. Sampling and Recording continue, and display pause is unavailable in Log view.
+- `Recording` and `Log view` are mutually exclusive.
 - Starting recording requires at least one configured Tracked List entry.
 - Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array until a matching process appears.
-- Recording is unavailable during Playback, and Playback is unavailable during Recording.
+- Recording is unavailable in Log view, and Log view is unavailable during Recording.
 - Stopping recording must flush and close the recording log.
 - Quitting during recording must flush the recording log before exit.
-- In Playback, returning to Live must not be confused with quitting the app.
+- In Log view, returning to Live must not be confused with quitting the app.
 - The header should make the active activity visible without adding noisy explanatory text.
 - Open Files is an explicit per-process investigation action. It lists disk files currently open by the selected live process.
 - Open Files is not a general handle explorer for pipes, sockets, registry keys, events, mutexes, or every possible Windows handle type.

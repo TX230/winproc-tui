@@ -10,7 +10,7 @@ The implementation uses Rust 2024 edition, with [ratatui](https://github.com/rat
 
 1. **Sampling layer (`samplers`)**: Collects system and process measurements as `Snapshot` values using Windows APIs such as PDH, psapi, tlhelp32, DXGI, and `sysinfo`. It runs on a dedicated worker thread.
 2. **Model layer (`model`)**: Provides snapshot structs, metric column definitions, sorting, and history buffers (`ProcessHistory` / `SystemHistory`). This is a pure data layer that does not depend on the UI or samplers.
-3. **Application layer (`app`)**: Owns state (`App`), event handling for keys and mouse input, tracked-list management, A/B comparison, recording/replay, clipboard support, and navigation. `run_tui` drives the main loop.
+3. **Application layer (`app`)**: Owns state (`App`), event handling for keys and mouse input, tracked-list management, A/B comparison, recording/log-view behavior, clipboard support, and navigation. `run_tui` drives the main loop.
 
 Additional layers:
 
@@ -59,7 +59,7 @@ src/
     navigation.rs      process-table selection movement
     path_completion.rs reusable directory path completion for modal text inputs
     clipboard.rs       Ctrl+C copy behavior
-    export.rs          recording (JSON Lines) and replay
+    export.rs          recording (JSON Lines) and Log view
   model/
     mod.rs             public symbol definitions
     snapshot.rs        Snapshot
@@ -209,14 +209,14 @@ There are two history types.
 
 `App` is a single large struct that holds all state shared by UI drawing and event handling. Main groups:
 
-- **Runtime/sampler**: `runtime: RuntimeConfig`, `sampling_worker: SamplingWorker`, `sampling_in_progress: bool`, and the current `snapshot: Snapshot`.
+- **Runtime/sampler**: `runtime: RuntimeConfig`, `sampling_worker: SamplingWorker`, `sampling_in_progress: bool`, and the current `snapshot: Snapshot`. `sample_freshness()` compares the latest successfully applied live `Snapshot::captured_at` with the current time; it returns `Fresh` below the 3-second threshold, `Stale { age_seconds }` at or above it, and no live freshness in Log view. The UI intentionally renders only the exceptional stale state.
 - **Process table**: `process_table_state: TableState`, `process_page_size`, `selected_process_identity`, multi-selection anchor / live identity set, `selected_process_column_index`, short navigation order hold, `process_columns`, `column_preset`, `sort: SortSpec`, `filter_text` / `filter_draft` / `filter_editing`.
 - **Visible-row cache**: `visible_process_entries: Vec<VisibleProcessEntry>` (`Live(index)` or `Ghost(identity)`) plus exited tracked rows in `exited_tracked_rows`. `rebuild_visible_process_cache` filters by text filter, tracked state, and exited state. The text filter matches process names, and also matches executable paths when the `Full Path` column is selected.
 - **Tracking**: `watch_list`, `normalized_watch_names`, `watch_enabled`, `last_tracked_live_identities`.
 - **Details / Graph**: `show_details`, graph slots for Process metrics or system metrics, graph span/offset/Y-min lock, sample-list selection/offset, scrollbar drag state, and `details_live` for auto-scroll.
 - **A/B comparison**: `ab_comparison: Option<AbComparison>`. It is keyed by scope (process or system metric) plus metric, and is cleared when the target changes.
 - **Modals**: Flags and scroll/selection state for Help, column picker, log list, log directory input and validation, open files, Settings, quit confirmation, recording path input, overwrite confirmation, no-tracked warning, tracked removal confirmation, process-kill confirmation, and warning dialogs. `has_modal_focus()` returns whether any modal is open.
-- **Recording/replay**: `recording_session: Option<RecordingSession>`, `recording_last_dir`, `recording_spinner_index`, `playback_path`, `playback_display`, and log-list/load workers. `activity()` returns `Live` / `Recording` / `Playback`.
+- **Recording/log view**: `recording_session: Option<RecordingSession>`, `recording_last_dir`, `recording_spinner_index`, `log_view_path`, `log_view_display`, and log-list/load workers. `activity()` returns `Live` / `Recording` / `LogView`.
 - **Theme/action feedback state**: `theme_index`, `status`.
 
 `App::new` takes one initial snapshot, normalizes tracking filters, finalizes column configuration, initializes sorting, builds the visible-row cache, clamps table state, and then returns `App`.
@@ -257,8 +257,8 @@ Representative operations:
 - `Ctrl+O`: open the Settings dialog.
 - `Ctrl+P`: pause/resume display updates.
 - `Ctrl+R`: start/stop recording.
-- `Ctrl+L`: open the log list; rejected while Recording because Replay cannot start during recording.
-- `Esc`: normally opens quit confirmation; during Playback it returns to Live.
+- `Ctrl+L`: open the log list; rejected while Recording because Log view cannot open during recording.
+- `Esc`: normally opens quit confirmation; in Log view it returns to Live.
 - `F2`: switch theme.
 - `?`: open Help.
 
@@ -288,6 +288,7 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 ### 9.2 Major Panels
 
 - `footer`: Uses one content row to draw the focused panel name and its main contextual actions. It does not render `App::status`; complete key bindings remain in the Help dialog.
+- `header`: Shows `LIVE`, `REC`, or `LOG` as the active activity. Live and Recording append only the exceptional age-bearing `STALE Ns` warning; the normal fresh state has no text. `DISPLAY PAUSED` is a separate badge placed before any log path so a long path cannot hide it. The event loop redraws when the freshness state changes, including while display updates are paused.
 - `system_panel`: Draws the top row as `RAM/VRAM`, `NW/DISK`, and `CPUs`. RAM/VRAM rows highlight the selected metric and Graph slot state. NW/DISK rows show System Activity metrics and can take focus, select a metric, and assign Graph slots with the same row/number behavior as RAM/VRAM. Graph-slot numbers use the shared amber-foreground marker style without a background fill or bold text. The System Info view is drawn as a top-level modal dialog when requested.
 - `cpu_panel`: Draws the compact `CPUs` panel in the top row. It shows average CPU usage, current P/E clock averages in integer MHz when PDH reports them, and a `Per-core Usage` row where P/E groups are labeled on the same line as their colored per-logical-CPU glyphs. The panel can take focus; `CPU Usage` uses `SystemHistory`, can be assigned to Graph slots, reserves the first two content cells for the Graph slot number, and uses the same shared marker style as the other panels.
 - `process_table`: Uses `App::visible_process_row_window(offset, rows)` to build a ratatui `Table`. Its title reports the visible row count, All processes / Tracked only state, and active filter as plain separated text; sort state stays in the table header and fixed history capacities live in Help instead. The Tracked-only mouse target is derived from the same title-segment helper used for drawing. Ghost Rows (exited tracked processes) use a muted color and appear after live rows. Blue-family backgrounds identify the cursor row, selected cell, and live multi-selected rows. Ordinary live metric changes and the Tracked Total row remain neutral instead of using semantic or selection colors. Tracked stars and Graph-slot numbers use amber foreground only, without bold or background fills. Filter matches use amber foreground, and Full Path suppresses duplicate highlighting when the process name already matches. Headers show `↑` / `↓` for the sorted column. The `Full Path` column is rendered as left-aligned text, takes extra table width when visible, and is shortened from the start when needed. While the user is actively moving the process cursor, sample refreshes briefly preserve the current row order to avoid periodic cursor jumps from metric-driven resorting.
@@ -314,7 +315,7 @@ Each modal (Help, column picker, recording dialog, quit confirmation, and others
 
 The `Ctrl+R` start flow is:
 
-1. `toggle_recording` checks `activity()` to decide start / stop / reject during Playback.
+1. `toggle_recording` checks `activity()` to decide start / stop / reject in Log view.
 2. If the configured Tracked List is empty, set `show_recording_no_tracked_warning` and stop.
 3. Open the path-input modal with the default path: previous `recording_last_dir` or cwd plus `winproc-tui-YYYYMMDDhhmmss.log`. The modal uses `app::path_completion` for `Tab` directory completion.
 4. On confirmation, if the file already exists, go through `RecordingOverwriteSelection` for overwrite confirmation.
@@ -328,15 +329,17 @@ See `docs/metrics.md` for the log value specification.
 
 ### 11.1 Activity Transition Policy
 
-The transition rules for `Live` / `Recording` / `Playback` are agent-facing invariants in `AGENTS.md`.
-Implementation-wise, `App::activity()` gives `recording_session` priority over `playback_path`.
+The transition rules for `Live` / `Recording` / `LogView` are agent-facing invariants in `AGENTS.md`.
+Implementation-wise, `App::activity()` gives `recording_session` priority over `log_view_path`.
 
-`Recording` and `Playback` are mutually exclusive.
-`Ctrl+R` does not start recording during Playback, and `Ctrl+L` does not open the Log list during Recording.
-Additionally, if the log-list loading worker completes after Recording has started, `apply_loaded_log` still rejects the transition to Playback.
-This double check prevents `REC` and `PLAY` from mixing when UI operations and worker completion timing overlap.
+The header labels are `LIVE`, `REC`, and `LOG`. Live and Recording expose stale sampling only when the 3-second threshold is crossed. `DISPLAY PAUSED` can accompany Live or Recording and freezes only the display snapshot; it is unavailable in Log view. Sampling and recording continue while the display is paused.
 
-### 11.2 Log List / Replay
+`Recording` and Log view are mutually exclusive.
+`Ctrl+R` does not start recording in Log view, and `Ctrl+L` does not open the Log list during Recording.
+Additionally, if the log-list loading worker completes after Recording has started, `apply_loaded_log` still rejects the transition to Log view.
+This double check prevents `REC` and `LOG` from mixing when UI operations and worker completion timing overlap.
+
+### 11.2 Log List / Log View
 
 `Ctrl+L` opens the log list.
 The log list scans `*.log` files in `recording_last_dir` if present, otherwise in the current directory, using a background worker.
@@ -348,11 +351,11 @@ This fast path derives schema, start time, and duration; full frame parsing is d
 Only logs identified as `schema_version: 2` are displayed; old schemas are not displayed.
 Broken v2 logs are shown as errors in the list and do not crash the UI thread.
 
-Opening a log sets `playback_path` and `playback_display`.
-`playback_display` contains the loaded `Snapshot` / `ProcessHistory` / `SystemHistory`, and the existing Processes / Graph / Samples UI reads replay data through `display_*` accessors.
-During Replay, live sampling results are not reflected in the display, and `Ctrl+R` reports a rejection status instead of starting recording.
-During Recording, both `Ctrl+L` and `apply_loaded_log` reject transitions to Replay.
-During Playback, `Esc` returns to Live. Closing the Log list while in Playback also returns to Live.
+Opening a log sets `log_view_path` and `log_view_display`.
+`log_view_display` contains the loaded `Snapshot` / `ProcessHistory` / `SystemHistory`, and the existing Processes / Graph / Samples UI reads loaded-log data through `display_*` accessors.
+In Log view, Processes uses the last snapshot from the loaded log, while Graph and Samples use its recorded histories; frames do not advance over time. Live sampling results are not reflected in the display, and `Ctrl+R` reports a rejection status instead of starting recording.
+During Recording, both `Ctrl+L` and `apply_loaded_log` reject transitions to Log view.
+In Log view, `Esc` returns to Live. Closing the Log list while Log view is active also returns to Live.
 
 ## 12. Tracking (Watch) and Ghost Rows
 

@@ -27,8 +27,8 @@ impl App {
     pub(crate) fn toggle_recording(&mut self) -> Result<()> {
         match self.activity() {
             AppActivity::Recording => self.stop_recording(),
-            AppActivity::Playback => {
-                self.status = "Recording is unavailable during playback".to_string();
+            AppActivity::LogView => {
+                self.status = "Recording is unavailable in Log view".to_string();
                 Ok(())
             }
             AppActivity::Live => {
