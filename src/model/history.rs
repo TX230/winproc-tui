@@ -250,10 +250,6 @@ impl ProcessHistory {
         self.peaks.get(identity)
     }
 
-    pub(crate) fn max_sample_count(&self) -> usize {
-        self.samples.values().map(VecDeque::len).max().unwrap_or(0)
-    }
-
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.samples.values().map(VecDeque::len).sum()

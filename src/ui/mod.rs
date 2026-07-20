@@ -73,7 +73,7 @@ use process_table::draw_process_table;
 pub(crate) use process_table::process_table_visible_column_count;
 pub(crate) use process_table::{
     process_metric_column_index_at, process_table_visible_metric_range,
-    process_tracked_only_checkbox_area,
+    process_tracked_only_control_area,
 };
 use quit_confirm::draw_quit_confirm;
 pub(crate) use quit_confirm::quit_confirm_button_at;

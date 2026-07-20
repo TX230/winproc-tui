@@ -2283,7 +2283,7 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn playback_titles_show_loaded_sample_counts_instead_of_live_caps() {
+    fn playback_process_title_omits_history_counts() {
         let mut app = make_test_app(1, 10);
         app.playback_path = Some(std::path::PathBuf::from("long.log"));
         app.process_history = ProcessHistory::default();
@@ -2298,8 +2298,12 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 30);
 
-        assert!(rendered.contains("[Samples: tracked 7,201]"), "{rendered}");
         assert!(rendered.contains("[Samples: 7,201]"), "{rendered}");
+        assert!(
+            rendered.contains("Processes · 1 visible · All processes"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("Samples: tracked"), "{rendered}");
         assert!(
             !rendered.contains("[Max samples: normal 120 / tracked 7200]"),
             "{rendered}"
@@ -2931,8 +2935,8 @@ name = "legacy-watch.exe"
 
         let screen = Rect::new(0, 0, 120, 45);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ ] Tracked-only")
-            .expect("tracked-only checkbox should be rendered in the process title");
+        let (x, y) = find_text_position(&buffer, "All processes")
+            .expect("all-processes control should be rendered in the process title");
 
         app.on_mouse(
             MouseEvent {
@@ -2953,8 +2957,8 @@ name = "legacy-watch.exe"
         );
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[x] Tracked-only")
-            .expect("checked tracked-only checkbox should be rendered in the process title");
+        let (x, y) = find_text_position(&buffer, "Tracked only")
+            .expect("tracked-only control should be rendered in the process title");
 
         app.on_mouse(
             MouseEvent {
@@ -3578,6 +3582,10 @@ name = "legacy-watch.exe"
         let rendered_lower = rendered.to_ascii_lowercase();
 
         assert!(rendered.contains("Keyboard shortcuts"), "{rendered}");
+        assert!(
+            rendered.contains("History: 120/7,200 normal/tracked"),
+            "{rendered}"
+        );
         assert!(rendered.contains("Global  (any focus)"), "{rendered}");
         assert!(rendered.contains("Processes"), "{rendered}");
         assert!(rendered.contains("RAM/VRAM"), "{rendered}");
@@ -3625,10 +3633,9 @@ name = "legacy-watch.exe"
         );
         assert!(!rendered.contains("F6"), "{rendered}");
         assert!(rendered.contains("[ Close ]"), "{rendered}");
+        assert!(rendered.contains("Footer: focused actions."), "{rendered}");
         assert!(
-            rendered.contains(
-                "Footer: focused actions. Processes: blue selection; amber markers/filter; changes neutral."
-            ),
+            rendered.contains("Blue selects; amber marks."),
             "{rendered}"
         );
         assert!(!rendered_lower.contains("baseline"), "{rendered}");
@@ -5661,17 +5668,13 @@ name = "legacy-watch.exe"
         assert_eq!(app.visible_tracked_process_count(), 0);
         assert!(app.status.contains("0 visible"));
         assert!(
-            rendered.contains("[x] Tracked-only: 0 visible"),
-            "{rendered}"
-        );
-        assert!(
-            !rendered.contains("[x] Tracked-only: 2 visible"),
+            rendered.contains("Processes · 0 visible · Tracked only"),
             "{rendered}"
         );
     }
 
     #[test]
-    fn process_table_title_shows_active_view_badges() {
+    fn process_table_title_shows_concise_active_view_state() {
         let mut app = make_test_app(3, 10);
         app.snapshot.processes[0].name = "target.exe".to_string();
         app.snapshot.processes[1].name = "other.exe".to_string();
@@ -5683,18 +5686,27 @@ name = "legacy-watch.exe"
         app.column_preset = ColumnPreset::Custom;
         app.rebuild_visible_process_cache();
 
-        let rendered = render_app_to_text(&app, 130, 30);
+        let buffer = render_app_to_buffer(&app, 130, 30);
+        let rendered = buffer_to_text(&buffer);
 
         assert!(
-            rendered.contains("[Max samples: normal 120 / tracked 7200]"),
+            rendered.contains("Processes · 1 visible · Tracked only · Filter \"target\""),
             "{rendered}"
         );
         assert!(
-            rendered.contains("[x] Tracked-only: 1 visible"),
+            !rendered.contains("Filter \"target\" · WS Priv"),
             "{rendered}"
         );
-        assert!(rendered.contains("[Filter: \"target\"]"), "{rendered}");
+        assert!(!rendered.contains("Max samples: normal"), "{rendered}");
+        assert!(!rendered.contains("[x]"), "{rendered}");
         assert!(!rendered.contains("Custom"), "{rendered}");
+
+        let (state_x, state_y) = find_text_position(&buffer, "Tracked only")
+            .expect("tracked-only state should be rendered");
+        let state_cell = &buffer[(state_x, state_y)];
+        assert_eq!(state_cell.fg, ui::THEMES[0].warning);
+        assert_eq!(state_cell.bg, ui::THEMES[0].panel);
+        assert!(!state_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]

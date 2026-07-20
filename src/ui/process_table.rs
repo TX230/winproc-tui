@@ -7,11 +7,8 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{AppActivity, FocusedPanel, ProcessLifecycle, VisibleProcessRow},
-    model::{
-        GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessRow, SortColumn,
-        SortDirection, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
-    },
+    app::{FocusedPanel, ProcessLifecycle, VisibleProcessRow},
+    model::{MetricColumn, ProcessRow, SortColumn, SortDirection},
     ui::{
         Theme,
         format::{format_integer, format_mbps},
@@ -28,7 +25,19 @@ const TABLE_BORDER_WIDTH: u16 = 2;
 const HIGHLIGHT_SYMBOL_WIDTH: u16 = 3;
 const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
 const PROCESS_TITLE: &str = "Processes";
-const TITLE_SEPARATOR: &str = " | ";
+const TITLE_SEPARATOR: &str = " · ";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProcessTitleSegmentKind {
+    VisibleCount,
+    TrackedOnly,
+    Filter,
+}
+
+struct ProcessTitleSegment {
+    kind: ProcessTitleSegmentKind,
+    label: String,
+}
 
 pub(crate) fn draw_process_table(
     frame: &mut ratatui::Frame<'_>,
@@ -452,12 +461,7 @@ fn process_table_row(
             theme,
         ));
     }
-    Row::new(cells).style(process_row_style(
-        row_selected,
-        row.multi_selected,
-        row.is_tracked_total,
-        theme,
-    ))
+    Row::new(cells).style(process_row_style(row_selected, row.multi_selected, theme))
 }
 
 fn process_metric_cell(
@@ -534,17 +538,8 @@ fn graph_slot_numbers_for_cell(
     (!numbers.is_empty()).then_some(numbers)
 }
 
-fn process_row_style(
-    selected: bool,
-    multi_selected: bool,
-    tracked_total: bool,
-    theme: Theme,
-) -> Style {
-    let fg = if tracked_total {
-        theme.accent
-    } else {
-        theme.text
-    };
+fn process_row_style(selected: bool, multi_selected: bool, theme: Theme) -> Style {
+    let fg = theme.text;
     if selected {
         Style::default()
             .fg(fg)
@@ -707,9 +702,7 @@ fn highlighted_match_line_at(
 }
 
 fn process_text_style(row: &VisibleProcessRow<'_>, theme: Theme) -> Style {
-    if row.is_tracked_total {
-        Style::default().fg(theme.accent)
-    } else if matches!(row.lifecycle, ProcessLifecycle::Exited { .. }) {
+    if matches!(row.lifecycle, ProcessLifecycle::Exited { .. }) {
         Style::default().fg(theme.exited)
     } else {
         Style::default().fg(theme.text)
@@ -729,45 +722,53 @@ fn process_table_title(app: &App, theme: Theme) -> Line<'static> {
         spans.push(title_separator(theme));
         spans.extend(jump_title_spans(app.process_jump_draft(), theme));
     } else {
-        spans.push(title_separator(theme));
-        spans.push(status_badge(
-            process_samples_label(app),
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.panel_alt)
-                .add_modifier(Modifier::BOLD),
-        ));
-    }
-    if app.watch_enabled {
-        spans.push(title_separator(theme));
-        spans.push(status_badge(
-            process_tracked_only_label(app),
-            Style::default()
-                .fg(theme.background)
-                .bg(theme.tracked)
-                .add_modifier(Modifier::BOLD),
-        ));
-    } else {
-        spans.push(title_separator(theme));
-        spans.push(status_badge(
-            process_tracked_only_label(app),
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.panel_alt)
-                .add_modifier(Modifier::BOLD),
-        ));
-    }
-    if !app.is_filter_editing() && !app.is_process_jump_editing() && !filter.is_empty() {
-        spans.push(title_separator(theme));
-        spans.push(status_badge(
-            format!("[Filter: \"{filter}\"]"),
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.panel_alt)
-                .add_modifier(Modifier::BOLD),
-        ));
+        for segment in process_table_state_segments(app) {
+            spans.push(title_separator(theme));
+            spans.push(Span::styled(
+                segment.label,
+                process_title_segment_style(segment.kind, app, theme),
+            ));
+        }
     }
     Line::from(spans)
+}
+
+fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
+    let mut segments = vec![
+        ProcessTitleSegment {
+            kind: ProcessTitleSegmentKind::VisibleCount,
+            label: format!("{} visible", app.visible_process_count()),
+        },
+        ProcessTitleSegment {
+            kind: ProcessTitleSegmentKind::TrackedOnly,
+            label: process_tracked_only_label(app).to_string(),
+        },
+    ];
+    let filter = app.active_filter_text();
+    if !filter.is_empty() {
+        segments.push(ProcessTitleSegment {
+            kind: ProcessTitleSegmentKind::Filter,
+            label: format!("Filter \"{filter}\""),
+        });
+    }
+    segments
+}
+
+fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: Theme) -> Style {
+    match kind {
+        ProcessTitleSegmentKind::VisibleCount => Style::default()
+            .fg(theme.muted)
+            .remove_modifier(Modifier::BOLD),
+        ProcessTitleSegmentKind::TrackedOnly if app.watch_enabled => Style::default()
+            .fg(theme.warning)
+            .remove_modifier(Modifier::BOLD),
+        ProcessTitleSegmentKind::TrackedOnly => Style::default()
+            .fg(theme.muted)
+            .remove_modifier(Modifier::BOLD),
+        ProcessTitleSegmentKind::Filter => Style::default()
+            .fg(theme.warning)
+            .remove_modifier(Modifier::BOLD),
+    }
 }
 
 fn filter_title_spans(filter: &str, theme: Theme) -> Vec<Span<'static>> {
@@ -830,57 +831,44 @@ fn jump_title_spans(query: &str, theme: Theme) -> Vec<Span<'static>> {
 }
 
 fn title_separator(theme: Theme) -> Span<'static> {
-    Span::styled(TITLE_SEPARATOR, Style::default().fg(theme.muted))
+    Span::styled(
+        TITLE_SEPARATOR,
+        Style::default()
+            .fg(theme.muted)
+            .remove_modifier(Modifier::BOLD),
+    )
 }
 
-fn status_badge(content: impl Into<String>, style: Style) -> Span<'static> {
-    Span::styled(content.into(), style)
-}
-
-pub(crate) fn process_tracked_only_checkbox_area(area: Rect, app: &App) -> Option<Rect> {
+pub(crate) fn process_tracked_only_control_area(area: Rect, app: &App) -> Option<Rect> {
     if app.is_filter_editing() || app.is_process_jump_editing() {
         return None;
     }
-    let label = process_tracked_only_label(app);
-    let prefix_width = PROCESS_TITLE
-        .len()
-        .saturating_add(TITLE_SEPARATOR.len())
-        .saturating_add(process_samples_label(app).len())
-        .saturating_add(TITLE_SEPARATOR.len());
-    let title_x = area.x.saturating_add(1).saturating_add(prefix_width as u16);
-    if title_x >= area.right() {
-        return None;
+
+    let mut prefix_width = PROCESS_TITLE.chars().count();
+    for segment in process_table_state_segments(app) {
+        prefix_width = prefix_width.saturating_add(TITLE_SEPARATOR.chars().count());
+        if segment.kind == ProcessTitleSegmentKind::TrackedOnly {
+            let title_x = area.x.saturating_add(1).saturating_add(prefix_width as u16);
+            if title_x >= area.right() {
+                return None;
+            }
+            return Some(Rect::new(
+                title_x,
+                area.y,
+                (segment.label.chars().count() as u16).min(area.right().saturating_sub(title_x)),
+                1,
+            ));
+        }
+        prefix_width = prefix_width.saturating_add(segment.label.chars().count());
     }
-    Some(Rect::new(
-        title_x,
-        area.y,
-        (label.len() as u16).min(area.right().saturating_sub(title_x)),
-        1,
-    ))
+    None
 }
 
-fn process_samples_label(app: &App) -> String {
-    if app.activity() == AppActivity::Playback {
-        format!(
-            "[Samples: tracked {}]",
-            format_integer(app.display_process_history().max_sample_count() as u64)
-        )
-    } else {
-        format!(
-            "[Max samples: normal {} / tracked {}]",
-            GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY
-        )
-    }
-}
-
-fn process_tracked_only_label(app: &App) -> String {
+fn process_tracked_only_label(app: &App) -> &'static str {
     if app.watch_enabled {
-        format!(
-            "[x] Tracked-only: {} visible",
-            app.visible_tracked_process_count()
-        )
+        "Tracked only"
     } else {
-        "[ ] Tracked-only".to_string()
+        "All processes"
     }
 }
 
@@ -1046,7 +1034,7 @@ mod tests {
     }
 
     #[test]
-    fn tracked_total_text_style_uses_accent_color() {
+    fn tracked_total_text_style_uses_neutral_text_color() {
         let theme = crate::ui::theme::THEMES[0];
         let process = ProcessRow {
             pid: 0,
@@ -1078,15 +1066,9 @@ mod tests {
             is_tracked_total: true,
         };
 
-        assert_eq!(process_text_style(&row, theme).fg, Some(theme.accent));
-        assert_eq!(
-            process_row_style(false, false, row.is_tracked_total, theme).fg,
-            Some(theme.accent)
-        );
-        assert_eq!(
-            process_row_style(true, false, row.is_tracked_total, theme).fg,
-            Some(theme.accent)
-        );
+        assert_eq!(process_text_style(&row, theme).fg, Some(theme.text));
+        assert_eq!(process_row_style(false, false, theme).fg, Some(theme.text));
+        assert_eq!(process_row_style(true, false, theme).fg, Some(theme.text));
     }
 
     #[test]
@@ -1094,11 +1076,11 @@ mod tests {
         let theme = crate::ui::theme::THEMES[0];
 
         assert_eq!(
-            process_row_style(false, true, false, theme).bg,
+            process_row_style(false, true, theme).bg,
             Some(theme.selection)
         );
         assert!(
-            !process_row_style(false, true, false, theme)
+            !process_row_style(false, true, theme)
                 .add_modifier
                 .contains(Modifier::BOLD)
         );

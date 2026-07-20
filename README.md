@@ -24,7 +24,8 @@ It runs in the terminal and shows current values and changes over time for memor
 - **Open files**: Lists the files a selected live process has open.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
 
-The Processes table keeps live metric values neutral instead of coloring every sample-to-sample increase or decrease. Blue indicates focus or selection, while amber foreground markers identify tracked rows, Graph slots, filter matches, and warnings without additional fills; red and green are reserved for danger/error and successful-action feedback.
+The Processes table keeps live metric values and the Tracked Total row neutral instead of coloring every sample-to-sample increase or decrease. Blue indicates focus or selection, while amber foreground markers identify tracked rows, Graph slots, filter matches, and warnings without additional fills; red and green are reserved for danger/error and successful-action feedback.
+The Processes title summarizes the current view with the visible row count, All processes / Tracked only mode, and active filter. Sort column and direction remain in the table header, while fixed history capacities are shown in Help instead of occupying the panel title.
 
 ## When This Helps
 

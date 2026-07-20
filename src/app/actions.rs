@@ -24,7 +24,7 @@ use crate::{
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
         process_info_close_button_area_for_screen, process_kill_button_at,
         process_metric_column_index_at, process_table_area_for_screen, process_table_page_size,
-        process_tracked_only_checkbox_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
+        process_tracked_only_control_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
         recording_no_tracked_ok_button_area, recording_overwrite_button_at,
         recording_path_button_at, settings_ok_button_area, settings_selection_at,
         system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
@@ -1128,7 +1128,7 @@ impl App {
                     }
                     return;
                 }
-                if process_tracked_only_checkbox_area_for_screen(screen_area, self)
+                if process_tracked_only_control_area_for_screen(screen_area, self)
                     .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
                 {
                     self.focused_panel = FocusedPanel::Processes;
@@ -1706,9 +1706,9 @@ fn graph_item_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<us
         })
 }
 
-fn process_tracked_only_checkbox_area_for_screen(screen_area: Rect, app: &App) -> Option<Rect> {
+fn process_tracked_only_control_area_for_screen(screen_area: Rect, app: &App) -> Option<Rect> {
     let area = process_table_area_for_screen(screen_area, app.show_details);
-    process_tracked_only_checkbox_area(area, app)
+    process_tracked_only_control_area(area, app)
 }
 
 fn active_samples_area_for_screen(app: &App, screen_area: Rect) -> Option<Rect> {
