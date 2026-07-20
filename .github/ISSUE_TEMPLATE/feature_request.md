@@ -7,14 +7,18 @@ assignees: ''
 
 ---
 
-## Summary
+## Problem
 
-<!-- Briefly describe the feature request. -->
+<!-- Describe the problem or limitation this feature request would address. -->
 
-## Motivation
+## Proposed Solution
 
-<!-- Explain why this change is useful or what problem it solves. -->
+<!-- Describe the solution or behavior you would like. -->
 
-## Proposed Behavior
+## Alternatives Considered
 
-<!-- Describe the expected behavior after the change. -->
+<!-- Describe any alternative solutions or workarounds you have considered. -->
+
+## Additional Context
+
+<!-- Add screenshots, mockups, examples, or related issues if useful. -->

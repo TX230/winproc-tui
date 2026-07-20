@@ -1,32 +1,32 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report unexpected behavior in winproc-tui
 title: ''
 labels: bug
 assignees: ''
 
 ---
 
-## Summary
+## Current Behavior
 
-<!-- Briefly describe the bug. -->
-
-## Steps to Reproduce
-
-<!-- List the steps needed to reproduce the problem. -->
+<!-- Concisely describe what you are experiencing. -->
 
 ## Expected Behavior
 
 <!-- Describe what you expected to happen. -->
 
-## Actual Behavior
+## Steps to Reproduce
 
-<!-- Describe what actually happened. -->
+<!-- Provide the minimum steps needed to reproduce the problem. If it is intermittent, describe the conditions and frequency. -->
 
 ## Environment
 
-<!-- Include OS, terminal app, and any other relevant environment details. -->
+<!--
+- winproc-tui version or commit:
+- Windows version/build:
+- Terminal app and version:
+-->
 
-## Additional Context
+## Anything Else
 
-<!-- Add screenshots, logs, or other context if useful. -->
+<!-- Add screenshots, relevant log excerpts, links, or related issues if useful. -->
