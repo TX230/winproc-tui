@@ -166,9 +166,9 @@ impl MetricColumn {
             | Self::WorksetPrivateBytes
             | Self::WorksetShareableBytes
             | Self::WorksetSharedBytes
-            | Self::DotNetHeapBytes
             | Self::GpuDedicatedBytes
-            | Self::GpuSharedBytes => 13,
+            | Self::GpuSharedBytes => 10,
+            Self::DotNetHeapBytes => 11,
             Self::IoReadBytesPerSec | Self::IoWriteBytesPerSec => 12,
             Self::FullPath => 36,
         }
@@ -683,6 +683,28 @@ mod tests {
         let row = row(1, "app.exe", Some(10), None);
 
         assert_eq!(MetricColumn::WorksetPrivateBytes.raw_value(&row), None);
+    }
+
+    #[test]
+    fn compact_byte_columns_use_dense_header_safe_widths() {
+        for column in [
+            MetricColumn::PrivateBytes,
+            MetricColumn::WorksetBytes,
+            MetricColumn::WorksetPrivateBytes,
+            MetricColumn::WorksetShareableBytes,
+            MetricColumn::WorksetSharedBytes,
+            MetricColumn::GpuDedicatedBytes,
+            MetricColumn::GpuSharedBytes,
+        ] {
+            assert_eq!(column.width(), 10);
+            assert!(column.label().chars().count() + 2 <= column.width() as usize);
+        }
+
+        assert_eq!(MetricColumn::DotNetHeapBytes.width(), 11);
+        assert_eq!(
+            MetricColumn::DotNetHeapBytes.label().chars().count() + 2,
+            MetricColumn::DotNetHeapBytes.width() as usize
+        );
     }
 
     #[test]

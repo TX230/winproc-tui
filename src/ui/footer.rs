@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    prelude::{Modifier, Style},
+    prelude::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -32,11 +32,11 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
         ),
         FocusedPanel::Cpu => (
-            "CPUs".to_string(),
+            "CPUS".to_string(),
             vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
         ),
         FocusedPanel::Processes => (
-            "Processes".to_string(),
+            "PROCESSES".to_string(),
             vec![
                 ("c", "Columns"),
                 ("s", "Sort"),
@@ -51,7 +51,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             ],
         ),
         FocusedPanel::DetailsGraph => (
-            format!("Graph#{}", app.active_graph_slot_index + 1),
+            format!("GRAPH#{}", app.active_graph_slot_index + 1),
             vec![
                 ("Ctrl+Left/Right", "Pan"),
                 ("PgUp/PgDn", "Span"),
@@ -62,7 +62,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             ],
         ),
         FocusedPanel::DetailsSamples => (
-            format!("Samples#{}", app.active_graph_slot_index + 1),
+            format!("SAMPLES#{}", app.active_graph_slot_index + 1),
             vec![
                 ("PgUp/PgDn", "Page"),
                 ("Home/End", "Edge"),
@@ -77,17 +77,12 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
     if app.activity() == AppActivity::LogView {
         items.insert(0, ("Esc", "Live"));
     } else {
+        items.insert(0, ("Ctrl+P", "Pause"));
         items.push(("Esc", "Quit"));
     }
-    items.push(("Tab", "Focus"));
     items.push(("?", "Help"));
 
-    let mut spans = vec![Span::styled(
-        focus_label,
-        Style::default()
-            .fg(theme.accent)
-            .add_modifier(Modifier::BOLD),
-    )];
+    let mut spans = vec![Span::styled(focus_label, Style::default().fg(theme.accent))];
     if !items.is_empty() {
         spans.push(Span::raw("  "));
     }
@@ -101,7 +96,7 @@ fn shortcut_spans(items: &[(&'static str, &'static str)], theme: Theme) -> Vec<S
         if index > 0 {
             spans.push(Span::raw("  "));
         }
-        spans.push(Span::styled(*key, Style::default().fg(theme.accent)));
+        spans.push(Span::styled(*key, Style::default().fg(theme.muted)));
         if !label.is_empty() {
             spans.push(Span::styled(
                 format!(" {label}"),

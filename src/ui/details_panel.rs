@@ -272,15 +272,12 @@ fn draw_samples_subpanel(
         let sample_selected =
             view_state.selected_exact && sample_index == view_state.selected_index;
         let style = if sample_selected {
-            Style::default()
-                .fg(theme.background)
-                .bg(theme.accent_alt)
-                .add_modifier(Modifier::BOLD)
+            Style::default().fg(theme.text).bg(theme.focus_surface)
         } else {
             Style::default().fg(theme.text)
         };
         let row_bg = if sample_selected {
-            theme.accent_alt
+            theme.focus_surface
         } else {
             theme.panel
         };
@@ -316,7 +313,7 @@ fn draw_samples_subpanel(
                         "{:>SAMPLE_DELTA_WIDTH$}",
                         format_sample_delta(delta_value, previous_value, metric)
                     ),
-                    delta_style(delta_value, previous_value, theme).bg(row_bg),
+                    delta_style(delta_value, previous_value, sample_selected, theme).bg(row_bg),
                 )
             } else {
                 Span::raw("")
@@ -474,7 +471,7 @@ fn render_samples_scrollbar(
         .thumb_symbol("█")
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
-        .thumb_style(Style::default().fg(theme.accent_alt).bg(theme.panel));
+        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
     frame.render_stateful_widget(scrollbar, area, &mut state);
 }
 
@@ -512,15 +509,15 @@ fn draw_graph_content(
     let selected_age_seconds =
         selected_sample_time.and_then(|time| sample_age_seconds_at_time(samples, time));
     let selected_line = selected_age_seconds
-        .map(|age| selected_age_line_points(age, y_min, y_max, bounds))
+        .map(|age| selected_age_line_points(age, y_min, y_max, bounds, layout[1].height))
         .unwrap_or_default();
     let a_line = comparison
         .and_then(|comparison| comparison.a)
-        .map(|point| ab_line_points(samples, point, y_min, y_max, bounds))
+        .map(|point| ab_line_points(samples, point, y_min, y_max, bounds, layout[1].height))
         .unwrap_or_default();
     let b_line = comparison
         .and_then(|comparison| comparison.b)
-        .map(|point| ab_line_points(samples, point, y_min, y_max, bounds))
+        .map(|point| ab_line_points(samples, point, y_min, y_max, bounds, layout[1].height))
         .unwrap_or_default();
     let mut datasets = Vec::new();
     if !selected_line.is_empty() {
@@ -528,7 +525,7 @@ fn draw_graph_content(
             Dataset::default()
                 .marker(Marker::Braille)
                 .graph_type(GraphType::Line)
-                .style(Style::default().fg(theme.accent_alt))
+                .style(selected_cursor_line_style(theme))
                 .data(&selected_line),
         );
     }
@@ -620,7 +617,7 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
     let status_area = graph_shared_status_area(area);
     let mut spans = vec![
         Span::styled(
-            "Graphs",
+            "GRAPHS",
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
@@ -874,16 +871,16 @@ fn format_sample_delta(
     format_ab_delta(value - previous, metric)
 }
 
-fn delta_style(value: Option<f64>, previous: Option<f64>, theme: Theme) -> Style {
-    let Some(value) = value else {
+fn selected_cursor_line_style(theme: Theme) -> Style {
+    Style::default().fg(theme.cursor_guide)
+}
+
+fn delta_style(value: Option<f64>, previous: Option<f64>, selected: bool, theme: Theme) -> Style {
+    if value.is_none() || previous.is_none() {
         return Style::default().fg(theme.muted);
-    };
-    let Some(previous) = previous else {
-        return Style::default().fg(theme.muted);
-    };
-    let delta = value - previous;
-    if delta != 0.0 {
-        Style::default().fg(theme.warning)
+    }
+    if selected {
+        Style::default().fg(theme.text)
     } else {
         Style::default().fg(theme.muted)
     }
@@ -1039,7 +1036,7 @@ fn graph_slot_title_line(
         Style::default().fg(theme.muted)
     };
     Line::from(vec![
-        Span::styled(format!("Graph#{}", slot_index + 1), slot_style),
+        Span::styled(format!("GRAPH#{}", slot_index + 1), slot_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(slot.item_label(), main_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
@@ -1494,12 +1491,16 @@ fn selected_age_line_points(
     y_min: f64,
     y_max: f64,
     bounds: (i64, i64),
+    plot_height: u16,
 ) -> Vec<(f64, f64)> {
     let x = -(age_seconds.max(0) as f64);
     if x < bounds.0 as f64 || x > bounds.1 as f64 {
         return Vec::new();
     }
-    vec![(x, y_min), (x, y_max)]
+    vec![
+        (x, graph_guide_bottom_value(y_min, y_max, plot_height)),
+        (x, y_max),
+    ]
 }
 
 fn ab_line_points(
@@ -1508,6 +1509,7 @@ fn ab_line_points(
     y_min: f64,
     y_max: f64,
     bounds: (i64, i64),
+    plot_height: u16,
 ) -> Vec<(f64, f64)> {
     let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
         return Vec::new();
@@ -1520,7 +1522,21 @@ fn ab_line_points(
     if x < bounds.0 as f64 || x > bounds.1 as f64 {
         return Vec::new();
     }
-    vec![(x, y_min), (x, y_max)]
+    vec![
+        (x, graph_guide_bottom_value(y_min, y_max, plot_height)),
+        (x, y_max),
+    ]
+}
+
+fn graph_guide_bottom_value(y_min: f64, y_max: f64, plot_height: u16) -> f64 {
+    const BRAILLE_DOTS_PER_CELL_Y: f64 = 4.0;
+
+    if plot_height <= 1 || y_max <= y_min {
+        return y_min;
+    }
+    let vertical_resolution = f64::from(plot_height) * BRAILLE_DOTS_PER_CELL_Y;
+    let one_cell = (y_max - y_min) * BRAILLE_DOTS_PER_CELL_Y / (vertical_resolution - 1.0);
+    (y_min + one_cell).min(y_max)
 }
 
 #[cfg(test)]
@@ -1822,6 +1838,37 @@ mod tests {
     }
 
     #[test]
+    fn graph_ab_line_stops_one_terminal_row_above_axis_label() {
+        let latest = chrono::Local
+            .with_ymd_and_hms(2026, 1, 1, 10, 1, 0)
+            .unwrap();
+        let samples = [sample(latest, Some(100), None)];
+        let line = ab_line_points(
+            &samples,
+            AbComparisonPoint {
+                captured_at: latest,
+            },
+            0.0,
+            100.0,
+            (-60, 0),
+            10,
+        );
+
+        assert_eq!(line.len(), 2);
+        assert!((line[0].1 - (400.0 / 39.0)).abs() < f64::EPSILON);
+        assert_eq!(line[1].1, 100.0);
+    }
+
+    #[test]
+    fn graph_cursor_line_stops_one_terminal_row_above_axis() {
+        let line = selected_age_line_points(0, 0.0, 100.0, (-60, 0), 10);
+
+        assert_eq!(line.len(), 2);
+        assert!((line[0].1 - (400.0 / 39.0)).abs() < f64::EPSILON);
+        assert_eq!(line[1].1, 100.0);
+    }
+
+    #[test]
     fn sample_delta_uses_previous_sample_value() {
         assert_eq!(
             format_sample_delta(Some(130.0), Some(100.0), GraphValueFormat::Integer),
@@ -1842,21 +1889,33 @@ mod tests {
     }
 
     #[test]
-    fn sample_delta_uses_marker_color_for_both_directions() {
-        let theme = crate::ui::theme::THEMES[0];
-
-        assert_eq!(
-            delta_style(Some(2.0), Some(1.0), theme).fg,
-            Some(theme.warning)
-        );
-        assert_eq!(
-            delta_style(Some(1.0), Some(2.0), theme).fg,
-            Some(theme.warning)
-        );
-        assert_eq!(
-            delta_style(Some(1.0), Some(1.0), theme).fg,
-            Some(theme.muted)
-        );
+    fn graph_cursor_and_sample_delta_use_neutral_theme_colors() {
+        for theme in crate::ui::theme::THEMES {
+            assert_eq!(
+                selected_cursor_line_style(theme).fg,
+                Some(theme.cursor_guide)
+            );
+            assert_eq!(
+                delta_style(Some(2.0), Some(1.0), false, theme).fg,
+                Some(theme.muted)
+            );
+            assert_eq!(
+                delta_style(Some(1.0), Some(2.0), false, theme).fg,
+                Some(theme.muted)
+            );
+            assert_eq!(
+                delta_style(Some(1.0), Some(1.0), false, theme).fg,
+                Some(theme.muted)
+            );
+            assert_eq!(
+                delta_style(Some(1.0), Some(2.0), true, theme).fg,
+                Some(theme.text)
+            );
+            assert_eq!(
+                delta_style(Some(1.0), None, true, theme).fg,
+                Some(theme.muted)
+            );
+        }
     }
 
     #[test]
@@ -2108,7 +2167,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "Graph#1 · app.exe · Private");
+        assert_eq!(rendered, "GRAPH#1 · app.exe · Private");
         assert!(
             line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
                 && line.spans[0].style.add_modifier.contains(Modifier::BOLD)

@@ -14,20 +14,11 @@ use crate::{
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
 pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let mut spans = vec![
-        Span::styled(
-            format!(" winproc-tui {} ", env!("CARGO_PKG_VERSION")),
-            Style::default()
-                .fg(theme.background)
-                .bg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
-    ];
+    let mut spans = Vec::new();
 
     let activity = app.activity();
     match activity {
-        AppActivity::Live => spans.push(mode_span("LIVE", theme.accent, theme)),
+        AppActivity::Live => spans.push(mode_span("LIVE", theme.success, theme)),
         AppActivity::Recording => {
             spans.push(mode_span("REC", theme.danger, theme));
             if !app.is_display_paused() {

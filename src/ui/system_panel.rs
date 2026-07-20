@@ -8,7 +8,7 @@ use ratatui::{
 use crate::{
     App,
     app::{AppActivity, FocusedPanel},
-    model::{DiskUsageSample, SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY},
+    model::{DiskUsageSample, SystemMetric},
     ui::{
         Theme,
         cpu_panel::draw_cpu_panel,
@@ -124,33 +124,26 @@ fn system_info_ok_button_area_in_popup(popup: Rect) -> Option<Rect> {
 }
 
 fn ram_vram_title(app: &App, theme: Theme) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            "RAM/VRAM",
-            Style::default()
-                .fg(theme.text)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ),
-        Span::styled(" | ", Style::default().fg(theme.muted)),
-        Span::styled(
-            ram_vram_samples_label(app),
+    let mut spans = vec![Span::styled(
+        "RAM/VRAM",
+        Style::default()
+            .fg(theme.text)
+            .add_modifier(ratatui::style::Modifier::BOLD),
+    )];
+    if app.activity() == AppActivity::LogView {
+        spans.push(Span::styled(" | ", Style::default().fg(theme.muted)));
+        spans.push(Span::styled(
+            format!(
+                "[Samples: {}]",
+                format_integer(app.display_system_history().len() as u64)
+            ),
             Style::default()
                 .fg(theme.text)
                 .bg(theme.panel_alt)
                 .add_modifier(ratatui::style::Modifier::BOLD),
-        ),
-    ])
-}
-
-fn ram_vram_samples_label(app: &App) -> String {
-    if app.activity() == AppActivity::LogView {
-        format!(
-            "[Samples: {}]",
-            format_integer(app.display_system_history().len() as u64)
-        )
-    } else {
-        format!("[Max samples: {TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY}]")
+        ));
     }
+    Line::from(spans)
 }
 
 fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {

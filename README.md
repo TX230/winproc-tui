@@ -24,11 +24,11 @@ It runs in the terminal and shows current values and changes over time for memor
 - **Open files**: Lists the files a selected live process has open.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
 
-The Processes table keeps live metric values and the Tracked Total row neutral instead of coloring every sample-to-sample increase or decrease. Blue indicates focus or selection, while amber foreground markers identify tracked rows, Graph slots, filter matches, and warnings without additional fills; red and green are reserved for danger/error and successful-action feedback.
-The Processes title summarizes the current view with the visible row count, All processes / Tracked only mode, and active filter. Sort column and direction remain in the table header, while fixed history capacities are shown in Help instead of occupying the panel title.
+The Dark and Light themes use neutral-first palettes: generic focus and selection use quiet gray surfaces and explicit cursor / sort markers instead of a shared accent hue. The Processes table keeps live metric values and the Tracked Total row neutral instead of coloring every sample-to-sample increase or decrease. Underlined column names distinguish its header without bold styling or a full-row background band. The cursor row, selected column, and selected-column header share one grayscale surface, while their intersection uses a stronger grayscale surface. CPU utilization bars use the theme's neutral accent instead of a green-to-red severity gradient; bar length, glyph height, and numeric values show utilization. In Graphs, the cursor guide uses muted gray, ordinary Samples deltas stay neutral and show direction through their sign, and amber is reserved for the explicit A/B comparison markers. Green identifies `LIVE` and successful-action feedback; a subdued amber identifies `Tracked only` and tracked stars; the brighter warning amber identifies Graph slots, filter matches, A/B markers, `LOG`, paused/stale states, and warnings. Red is reserved for `REC`, danger, and errors. Shortcut keys remain neutral so semantic status colors stay easy to scan.
+The Processes title summarizes the current view with the visible row count, All processes / Tracked only mode, and active filter. Sort column and direction remain in the table header. Fixed history capacities are shown in Help instead of occupying persistent panel titles, while Log view may show the actual loaded sample count.
 Byte-valued memory columns use compact decimal units such as `388.1 MB` in the Processes overview. Sorting and Graph data continue to use raw values, while Samples, A/B comparison, clipboard output, and recording logs keep exact byte values.
 
-The header normally shows only `LIVE` or `REC`. If no successful sample arrives for 3 seconds, it appends `STALE Ns` until another sample succeeds. `DISPLAY PAUSED` freezes only the displayed snapshot—sampling and an active recording continue. Saved logs use the `LOG` label and do not show live sampling freshness.
+The header normally shows only `LIVE` or `REC`; the product name and version are available in Help and through `--version`. If no successful sample arrives for 3 seconds, it appends `STALE Ns` until another sample succeeds. `DISPLAY PAUSED` freezes only the displayed snapshot—sampling and an active recording continue. Saved logs use the `LOG` label and do not show live sampling freshness.
 
 ## When This Helps
 
@@ -126,7 +126,7 @@ There are currently only two startup options.
 Only the main keys are listed in this README.
 **Press** `?` **while running to view the full key bindings in the Help dialog.**
 
-Some single-letter keys such as `f` map to different actions depending on which panel is focused. The one-line footer shows the active panel and its main actions. The tables below list the complete controls by panel.
+Some single-letter keys such as `f` map to different actions depending on which panel is focused. Persistent panel headings and the Footer's active-panel label use uppercase names such as `PROCESSES`, `CPUS`, `GRAPHS`, and `GRAPH#n`. In Live and Recording, `Ctrl+P Pause` stays visible across panels; it is omitted in Log view, where display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the complete controls by panel.
 
 ### General
 
@@ -185,7 +185,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `x`                        | Clear the A/B comparison.                                                           |
 
 
-Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, `Fit all`, and `Min 0`. Each slot uses one frame titled `Graph#n · item · metric`, with its Graph and synchronized Samples table grouped inside that frame. The active slot title is emphasized and inactive slot titles are muted.
+Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, `Fit all`, and `Min 0`. Each slot uses one frame titled `GRAPH#n · item · metric`, with its Graph and synchronized Samples table grouped inside that frame. The active slot title is emphasized and inactive slot titles are muted.
 The shared `f` and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
 
 When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph.

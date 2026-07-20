@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    prelude::{Modifier, Style},
+    prelude::Style,
     text::{Line, Span},
     widgets::{Clear, Paragraph},
 };
@@ -114,10 +114,7 @@ fn setting_row(
     theme: Theme,
 ) -> Paragraph<'static> {
     let style = if selected {
-        Style::default()
-            .fg(theme.background)
-            .bg(theme.accent_alt)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(theme.text).bg(theme.focus_surface)
     } else {
         Style::default().fg(theme.text)
     };

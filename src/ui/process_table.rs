@@ -24,7 +24,7 @@ const TABLE_COLUMN_SPACING: u16 = 1;
 const TABLE_BORDER_WIDTH: u16 = 2;
 const HIGHLIGHT_SYMBOL_WIDTH: u16 = 3;
 const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
-const PROCESS_TITLE: &str = "Processes";
+const PROCESS_TITLE: &str = "PROCESSES";
 const TITLE_SEPARATOR: &str = " · ";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -130,14 +130,14 @@ pub(crate) fn draw_process_table(
             theme,
         ));
     }
-    let header = Row::new(header_cells).style(Style::default().add_modifier(Modifier::BOLD));
+    let header = Row::new(header_cells);
 
     let constraints = process_table_constraints(&visible_columns);
 
     let table = Table::new(rows, constraints)
         .header(header)
         .column_spacing(TABLE_COLUMN_SPACING)
-        .row_highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .row_highlight_style(Style::default())
         .highlight_symbol(">> ");
 
     let mut state = app.process_table_state.clone();
@@ -339,11 +339,7 @@ fn process_table_block<'a>(
         app.panel_has_focus(FocusedPanel::Processes) || input_active,
     );
     if input_active {
-        block.border_style(
-            Style::default()
-                .fg(theme.accent_alt)
-                .add_modifier(Modifier::BOLD),
-        )
+        block.border_style(Style::default().fg(theme.accent))
     } else {
         block
     }
@@ -371,13 +367,9 @@ fn process_fixed_cell<'a>(
 ) -> Cell<'a> {
     let mut cell = aligned_styled_cell(content, alignment, content_style);
     if selected_cell {
-        cell = cell.style(
-            Style::default()
-                .bg(theme.accent_alt)
-                .add_modifier(Modifier::BOLD),
-        );
+        cell = cell.style(Style::default().bg(theme.table_intersection_surface));
     } else if selected {
-        cell = cell.style(Style::default().bg(theme.panel_alt));
+        cell = cell.style(Style::default().bg(theme.table_selection_surface));
     }
     cell
 }
@@ -389,20 +381,29 @@ fn header_cell<'a>(
     theme: Theme,
 ) -> Cell<'a> {
     let style = if selected {
-        Style::default().fg(theme.background).bg(theme.accent)
+        Style::default()
+            .fg(theme.text)
+            .bg(theme.table_selection_surface)
     } else {
-        Style::default().fg(theme.text).bg(theme.panel_alt)
+        Style::default().fg(theme.text).bg(theme.panel)
     };
-    let style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
     Cell::from(content.into().alignment(alignment)).style(style)
 }
 
-fn header_label(label: &str, direction: Option<SortDirection>) -> String {
-    match direction {
-        Some(SortDirection::Asc) => format!("{label} ↑"),
-        Some(SortDirection::Desc) => format!("{label} ↓"),
-        None => label.to_string(),
+fn header_label(label: &str, direction: Option<SortDirection>) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        label.to_string(),
+        Style::default().add_modifier(Modifier::UNDERLINED),
+    )];
+    if let Some(symbol) = match direction {
+        Some(SortDirection::Asc) => Some("↑"),
+        Some(SortDirection::Desc) => Some("↓"),
+        None => None,
+    } {
+        spans.push(Span::raw(" "));
+        spans.push(Span::raw(symbol));
     }
+    Line::from(spans)
 }
 
 fn process_table_row(
@@ -485,13 +486,9 @@ fn process_metric_cell(
             text_style,
         ));
         if selected_cell {
-            cell = cell.style(
-                Style::default()
-                    .bg(theme.accent_alt)
-                    .add_modifier(Modifier::BOLD),
-            );
+            cell = cell.style(Style::default().bg(theme.table_intersection_surface));
         } else if selected {
-            cell = cell.style(Style::default().bg(theme.panel_alt));
+            cell = cell.style(Style::default().bg(theme.table_selection_surface));
         }
         return cell;
     }
@@ -504,13 +501,9 @@ fn process_metric_cell(
         theme,
     ));
     if selected_cell {
-        cell = cell.style(
-            Style::default()
-                .bg(theme.accent_alt)
-                .add_modifier(Modifier::BOLD),
-        );
+        cell = cell.style(Style::default().bg(theme.table_intersection_surface));
     } else if selected {
-        cell = cell.style(Style::default().bg(theme.panel_alt));
+        cell = cell.style(Style::default().bg(theme.table_selection_surface));
     }
     cell
 }
@@ -541,10 +534,7 @@ fn graph_slot_numbers_for_cell(
 fn process_row_style(selected: bool, multi_selected: bool, theme: Theme) -> Style {
     let fg = theme.text;
     if selected {
-        Style::default()
-            .fg(fg)
-            .bg(theme.highlight)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(fg).bg(theme.table_selection_surface)
     } else if multi_selected {
         Style::default().fg(fg).bg(theme.selection)
     } else {
@@ -760,7 +750,7 @@ fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: 
             .fg(theme.muted)
             .remove_modifier(Modifier::BOLD),
         ProcessTitleSegmentKind::TrackedOnly if app.watch_enabled => Style::default()
-            .fg(theme.warning)
+            .fg(theme.tracked)
             .remove_modifier(Modifier::BOLD),
         ProcessTitleSegmentKind::TrackedOnly => Style::default()
             .fg(theme.muted)
@@ -810,13 +800,13 @@ fn jump_title_spans(query: &str, theme: Theme) -> Vec<Span<'static>> {
             "Jump ",
             Style::default()
                 .fg(theme.background)
-                .bg(theme.accent_alt)
+                .bg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             query.to_string(),
             Style::default()
-                .fg(theme.accent_alt)
+                .fg(theme.accent)
                 .bg(theme.panel_alt)
                 .add_modifier(Modifier::BOLD),
         ),
@@ -824,7 +814,7 @@ fn jump_title_spans(query: &str, theme: Theme) -> Vec<Span<'static>> {
             "_",
             Style::default()
                 .fg(theme.background)
-                .bg(theme.accent_alt)
+                .bg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
     ]
@@ -1016,21 +1006,59 @@ mod tests {
     }
 
     #[test]
-    fn header_label_shows_sort_direction() {
-        assert_eq!(header_label("CPU%", Some(SortDirection::Asc)), "CPU% ↑");
-        assert_eq!(header_label("CPU%", Some(SortDirection::Desc)), "CPU% ↓");
-        assert_eq!(header_label("CPU%", None), "CPU%");
+    fn header_label_underlines_name_but_not_sort_direction() {
+        for (direction, expected) in [
+            (Some(SortDirection::Asc), "CPU% ↑"),
+            (Some(SortDirection::Desc), "CPU% ↓"),
+            (None, "CPU%"),
+        ] {
+            let line = header_label("CPU%", direction);
+            let rendered = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>();
+
+            assert_eq!(rendered, expected);
+            assert!(
+                line.spans[0]
+                    .style
+                    .add_modifier
+                    .contains(Modifier::UNDERLINED)
+            );
+            assert!(
+                line.spans[1..]
+                    .iter()
+                    .all(|span| !span.style.add_modifier.contains(Modifier::UNDERLINED))
+            );
+        }
     }
 
     #[test]
-    fn header_cells_are_underlined() {
+    fn header_cells_use_quiet_neutral_surfaces() {
         let theme = crate::ui::theme::THEMES[0];
-        let cell = header_cell("Private", Alignment::Right, false, theme);
+        let ordinary = header_cell("Private", Alignment::Right, false, theme);
+        let focused = header_cell("Private", Alignment::Right, true, theme);
 
-        let style = Styled::style(&cell);
+        let ordinary_style = Styled::style(&ordinary);
+        let focused_style = Styled::style(&focused);
 
-        assert!(style.add_modifier.contains(Modifier::UNDERLINED));
-        assert!(style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(ordinary_style.bg, Some(theme.panel));
+        assert_eq!(focused_style.bg, Some(theme.table_selection_surface));
+        assert!(!ordinary_style.add_modifier.contains(Modifier::UNDERLINED));
+        assert!(!ordinary_style.add_modifier.contains(Modifier::BOLD));
+        assert!(!focused_style.add_modifier.contains(Modifier::UNDERLINED));
+        assert!(!focused_style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn compact_byte_column_width_keeps_graph_marker_separate_from_max_value() {
+        let value = format_compact_bytes(999_900_000);
+        let marker_width = 1usize;
+        let spacing = MetricColumn::PrivateBytes.width() as usize - marker_width - value.len();
+
+        assert_eq!(value, "999.9 MB");
+        assert_eq!(spacing, 1);
     }
 
     #[test]
@@ -1099,6 +1127,15 @@ mod tests {
     }
 
     #[test]
+    fn cursor_row_uses_table_selection_surface_without_bold() {
+        let theme = crate::ui::theme::THEMES[0];
+        let style = process_row_style(true, false, theme);
+
+        assert_eq!(style.bg, Some(theme.table_selection_surface));
+        assert!(!style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
     fn visible_metric_columns_keep_pid_and_process_width_reserved() {
         let columns = MetricColumn::ALL.to_vec();
 
@@ -1134,7 +1171,7 @@ mod tests {
         );
         assert_eq!(
             full_path_column_render_width(140, &visible),
-            Some(MetricColumn::FullPath.width() + 57)
+            Some(MetricColumn::FullPath.width() + 60)
         );
     }
 

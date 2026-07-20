@@ -2372,7 +2372,7 @@ name = "legacy-watch.exe"
 
         assert!(rendered.contains("[Samples: 7,201]"), "{rendered}");
         assert!(
-            rendered.contains("Processes · 1 visible · All processes"),
+            rendered.contains("PROCESSES · 1 visible · All processes"),
             "{rendered}"
         );
         assert!(!rendered.contains("Samples: tracked"), "{rendered}");
@@ -2687,9 +2687,9 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("Graphs · Span 60s"), "{rendered}");
+        assert!(rendered.contains("GRAPHS · Span 60s"), "{rendered}");
         assert!(
-            rendered.contains("Graph#1 · proc-0 · Private"),
+            rendered.contains("GRAPH#1 · proc-0 · Private"),
             "{rendered}"
         );
         assert!(!rendered.contains("Samples#1"), "{rendered}");
@@ -2721,10 +2721,10 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 140, 80);
 
         assert!(
-            rendered.contains("Graph#1 · proc-0 · Private"),
+            rendered.contains("GRAPH#1 · proc-0 · Private"),
             "{rendered}"
         );
-        assert!(rendered.contains("Graph#2 · proc-0 · WS"), "{rendered}");
+        assert!(rendered.contains("GRAPH#2 · proc-0 · WS"), "{rendered}");
         assert_eq!(rendered.matches("f: Fit all").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("z: Min 0").count(), 1, "{rendered}");
         assert!(!rendered.contains("Samples#1"), "{rendered}");
@@ -2734,9 +2734,9 @@ name = "legacy-watch.exe"
 
         let buffer = render_app_to_buffer(&app, 140, 80);
         let (active_x, active_y) =
-            find_text_position(&buffer, "Graph#1").expect("active slot title should render");
+            find_text_position(&buffer, "GRAPH#1").expect("active slot title should render");
         let (inactive_x, inactive_y) =
-            find_text_position(&buffer, "Graph#2").expect("inactive slot title should render");
+            find_text_position(&buffer, "GRAPH#2").expect("inactive slot title should render");
         assert_eq!(buffer[(active_x, active_y)].fg, THEMES[0].accent);
         assert_eq!(buffer[(inactive_x, inactive_y)].fg, THEMES[0].muted);
     }
@@ -2917,15 +2917,110 @@ name = "legacy-watch.exe"
     }
 
     #[test]
-    fn process_table_highlights_selected_metric_cell() {
+    fn process_table_unifies_row_column_and_header_selection_surfaces() {
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(2, 10);
+            app.theme_index = theme_index;
+            app.snapshot.processes[0].private_bytes = Some(987_654_321);
+            app.snapshot.processes[1].private_bytes = Some(123_456_789);
+
+            let buffer = render_app_to_buffer(&app, 100, 30);
+            let (row_x, row_y) = find_text_position(&buffer, "proc-0")
+                .expect("selected process row should be rendered");
+            let (column_x, column_y) = find_text_position(&buffer, "123.5 MB")
+                .expect("selected process column should be rendered");
+            let (intersection_x, intersection_y) = find_text_position(&buffer, "987.7 MB")
+                .expect("selected row and column intersection should be rendered");
+            let (header_x, header_y) =
+                find_text_position(&buffer, "Private").expect("selected header should render");
+
+            assert_eq!(buffer[(row_x, row_y)].bg, theme.table_selection_surface);
+            assert_eq!(
+                buffer[(column_x, column_y)].bg,
+                theme.table_selection_surface
+            );
+            assert_eq!(
+                buffer[(header_x, header_y)].bg,
+                theme.table_selection_surface
+            );
+            assert_eq!(
+                buffer[(intersection_x, intersection_y)].bg,
+                theme.table_intersection_surface
+            );
+            assert_ne!(
+                theme.table_intersection_surface,
+                theme.table_selection_surface
+            );
+        }
+    }
+
+    #[test]
+    fn process_table_underlines_header_name_without_underlining_sort_arrow() {
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            app.sort = SortSpec {
+                column: SortColumn::Metric(MetricColumn::PrivateBytes),
+                direction: SortDirection::Desc,
+            };
+            let buffer = render_app_to_buffer(&app, 100, 30);
+            let (x, y) = find_text_position(&buffer, "Private ↓")
+                .expect("sorted process header should be rendered");
+            let (pid_x, pid_y) =
+                find_text_position(&buffer, "PID").expect("ordinary process header should render");
+
+            assert_eq!(buffer[(pid_x, pid_y)].bg, theme.panel);
+            assert_eq!(buffer[(x, y)].bg, theme.table_selection_surface);
+
+            for offset in 0.."Private".len() as u16 {
+                assert!(
+                    buffer[(x + offset, y)]
+                        .modifier
+                        .contains(ratatui::style::Modifier::UNDERLINED)
+                );
+            }
+            assert!(
+                !buffer[(x + "Private ".len() as u16, y)]
+                    .modifier
+                    .contains(ratatui::style::Modifier::UNDERLINED)
+            );
+        }
+    }
+
+    #[test]
+    fn process_table_dotnet_header_keeps_sort_arrow_at_compact_width() {
         let mut app = make_test_app(1, 10);
-        app.snapshot.processes[0].private_bytes = Some(987_654_321);
+        app.process_columns = vec![MetricColumn::DotNetHeapBytes];
+        app.sort = SortSpec {
+            column: SortColumn::Metric(MetricColumn::DotNetHeapBytes),
+            direction: SortDirection::Desc,
+        };
 
         let buffer = render_app_to_buffer(&app, 100, 30);
-        let (x, y) = find_text_position(&buffer, "987.7 MB")
-            .expect("selected private bytes should be rendered");
 
-        assert_eq!(buffer[(x, y)].bg, ui::THEMES[0].accent_alt);
+        assert!(find_text_position(&buffer, ".NET Heap ↓").is_some());
+    }
+
+    #[test]
+    fn neutral_first_header_and_footer_roles_apply_to_both_themes() {
+        for theme_index in 0..ui::THEMES.len() {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            let theme = ui::THEMES[theme_index];
+            let buffer = render_app_to_buffer(&app, 100, 30);
+
+            assert!(find_text_position(&buffer, "winproc-tui 0.3.0").is_none());
+
+            let (live_x, live_y) =
+                find_text_position(&buffer, "LIVE").expect("live badge should be rendered");
+            assert_eq!(live_y, 0);
+            assert_eq!(buffer[(live_x, live_y)].fg, theme.background);
+            assert_eq!(buffer[(live_x, live_y)].bg, theme.success);
+
+            let (shortcut_x, shortcut_y) = find_text_position(&buffer, "c Columns")
+                .expect("process shortcut should be rendered");
+            assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, theme.muted);
+        }
     }
 
     #[test]
@@ -3164,7 +3259,7 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 30);
 
         assert!(rendered.contains("RAM/VRAM"), "{rendered}");
-        assert!(rendered.contains("[Max samples: 7200]"), "{rendered}");
+        assert!(!rendered.contains("[Max samples: 7200]"), "{rendered}");
         assert!(rendered.contains("Physical Memory"), "{rendered}");
         assert!(rendered.contains("Committed"), "{rendered}");
         assert!(rendered.contains("GPU Dedicated"), "{rendered}");
@@ -3190,7 +3285,7 @@ name = "legacy-watch.exe"
             "{rendered}"
         );
         assert!(
-            rendered.find("NW/DISK").unwrap() < rendered.find("CPUs").unwrap(),
+            rendered.find("NW/DISK").unwrap() < rendered.find("CPUS").unwrap(),
             "{rendered}"
         );
         assert!(rendered.contains("Net Rx   240 Mbps"), "{rendered}");
@@ -3238,7 +3333,7 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("2 Disk Q"), "{rendered}");
         assert!(
-            rendered.contains("Graph#2 · System Activity · Disk Q"),
+            rendered.contains("GRAPH#2 · System Activity · Disk Q"),
             "{rendered}"
         );
 
@@ -3680,6 +3775,13 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 120, 50);
         let rendered_lower = rendered.to_ascii_lowercase();
 
+        assert!(
+            rendered.contains(&format!(
+                "winproc-tui {} · Keyboard shortcuts",
+                env!("CARGO_PKG_VERSION")
+            )),
+            "{rendered}"
+        );
         assert!(rendered.contains("Keyboard shortcuts"), "{rendered}");
         assert!(
             rendered.contains("History: 120/7,200 normal/tracked"),
@@ -3734,7 +3836,7 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("[ Close ]"), "{rendered}");
         assert!(rendered.contains("Footer: focused actions."), "{rendered}");
         assert!(
-            rendered.contains("Blue selects; amber marks."),
+            rendered.contains("Neutral selects; amber marks."),
             "{rendered}"
         );
         assert!(!rendered_lower.contains("baseline"), "{rendered}");
@@ -3748,8 +3850,12 @@ name = "legacy-watch.exe"
         let buffer = render_app_to_buffer(&app, 100, 45);
         let theme = ui::THEMES[0];
 
-        let (title_x, title_y) = find_text_position(&buffer, "Keyboard shortcuts")
-            .expect("help dialog title should be rendered");
+        let title = format!(
+            "winproc-tui {} · Keyboard shortcuts",
+            env!("CARGO_PKG_VERSION")
+        );
+        let (title_x, title_y) =
+            find_text_position(&buffer, &title).expect("help dialog title should be rendered");
         assert_eq!(title_x, help_area(Rect::new(0, 0, 100, 45)).x + 2);
         let title_cell = &buffer[(title_x, title_y)];
         assert_eq!(title_cell.fg, theme.text);
@@ -3894,7 +4000,8 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 170, 30);
 
-        assert!(rendered.contains("Processes"), "{rendered}");
+        assert!(rendered.contains("PROCESSES"), "{rendered}");
+        assert!(rendered.contains("Ctrl+P Pause"), "{rendered}");
         assert!(rendered.contains("c Columns"), "{rendered}");
         assert!(rendered.contains("s Sort"), "{rendered}");
         assert!(rendered.contains("g Graphs"), "{rendered}");
@@ -3906,7 +4013,7 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("d Kill"), "{rendered}");
         assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
         assert!(rendered.contains("Esc Quit"), "{rendered}");
-        assert!(rendered.contains("Tab Focus"), "{rendered}");
+        assert!(!rendered.contains("Tab Focus"), "{rendered}");
         assert!(rendered.contains("? Help"), "{rendered}");
         assert!(!rendered.contains("Status  "), "{rendered}");
         assert!(!rendered.contains("Copied row: proc-0"), "{rendered}");
@@ -3929,7 +4036,7 @@ name = "legacy-watch.exe"
         app.focused_panel = FocusedPanel::DetailsGraph;
         app.active_graph_slot_index = 1;
         let graph = render_app_to_text(&app, 170, 45);
-        assert!(graph.contains("Graph#2"), "{graph}");
+        assert!(graph.contains("GRAPH#2"), "{graph}");
         assert!(graph.contains("Ctrl+Left/Right Pan"), "{graph}");
         assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
         assert!(graph.contains("f Fit"), "{graph}");
@@ -3940,7 +4047,7 @@ name = "legacy-watch.exe"
 
         app.focused_panel = FocusedPanel::DetailsSamples;
         let samples = render_app_to_text(&app, 170, 45);
-        assert!(samples.contains("Samples#2"), "{samples}");
+        assert!(samples.contains("SAMPLES#2"), "{samples}");
         assert!(samples.contains("PgUp/PgDn Page"), "{samples}");
         assert!(samples.contains("Home/End Edge"), "{samples}");
         assert!(samples.contains("f Fit"), "{samples}");
@@ -3948,6 +4055,31 @@ name = "legacy-watch.exe"
         assert!(samples.contains("Shift+A/B Jump A/B"), "{samples}");
         assert!(samples.contains("x Clear A/B"), "{samples}");
         assert!(!samples.contains("Up/Down Sample"), "{samples}");
+    }
+
+    #[test]
+    fn footer_shows_pause_and_omits_tab_for_every_focused_panel() {
+        let mut app = make_test_app(3, 10);
+
+        for focused_panel in [
+            FocusedPanel::System,
+            FocusedPanel::SystemActivity,
+            FocusedPanel::Cpu,
+            FocusedPanel::Processes,
+            FocusedPanel::DetailsGraph,
+            FocusedPanel::DetailsSamples,
+        ] {
+            app.focused_panel = focused_panel;
+            let rendered = render_app_to_text(&app, 180, 45);
+            assert!(
+                rendered.contains("Ctrl+P Pause"),
+                "{focused_panel:?}: {rendered}"
+            );
+            assert!(
+                !rendered.contains("Tab Focus"),
+                "{focused_panel:?}: {rendered}"
+            );
+        }
     }
 
     #[test]
@@ -3973,7 +4105,7 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("CPUs"), "{rendered}");
+        assert!(rendered.contains("CPUS"), "{rendered}");
         assert!(rendered.contains("CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
         assert!(rendered.contains("P-core 3200 MHz"), "{rendered}");
@@ -4012,7 +4144,7 @@ name = "legacy-watch.exe"
         assert!(rendered.contains("1 CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
         assert!(
-            rendered.contains("Graph#1 · CPUs · CPU Usage"),
+            rendered.contains("GRAPH#1 · CPUs · CPU Usage"),
             "{rendered}"
         );
 
@@ -4982,7 +5114,7 @@ name = "legacy-watch.exe"
         let rendered = render_app_to_text(&app, 100, 20);
         assert_eq!(rendered.matches("System Info").count(), 1, "{rendered}");
         assert!(!rendered.contains("System Activity"), "{rendered}");
-        assert!(!rendered.contains("CPUs"), "{rendered}");
+        assert!(!rendered.contains("CPUS"), "{rendered}");
         assert!(!rendered.contains("CPU Usage ["), "{rendered}");
         assert!(!rendered.contains("Net Rx"), "{rendered}");
         assert!(!rendered.contains("Disk Q"), "{rendered}");
@@ -5809,7 +5941,7 @@ name = "legacy-watch.exe"
         assert_eq!(app.visible_tracked_process_count(), 0);
         assert!(app.status.contains("0 visible"));
         assert!(
-            rendered.contains("Processes · 0 visible · Tracked only"),
+            rendered.contains("PROCESSES · 0 visible · Tracked only"),
             "{rendered}"
         );
     }
@@ -5831,7 +5963,7 @@ name = "legacy-watch.exe"
         let rendered = buffer_to_text(&buffer);
 
         assert!(
-            rendered.contains("Processes · 1 visible · Tracked only · Filter \"target\""),
+            rendered.contains("PROCESSES · 1 visible · Tracked only · Filter \"target\""),
             "{rendered}"
         );
         assert!(
@@ -5845,9 +5977,16 @@ name = "legacy-watch.exe"
         let (state_x, state_y) = find_text_position(&buffer, "Tracked only")
             .expect("tracked-only state should be rendered");
         let state_cell = &buffer[(state_x, state_y)];
-        assert_eq!(state_cell.fg, ui::THEMES[0].warning);
+        assert_eq!(state_cell.fg, ui::THEMES[0].tracked);
+        assert_ne!(state_cell.fg, ui::THEMES[0].warning);
         assert_eq!(state_cell.bg, ui::THEMES[0].panel);
         assert!(!state_cell.modifier.contains(Modifier::BOLD));
+
+        let (filter_x, filter_y) = find_text_position(&buffer, "Filter \"target\"")
+            .expect("filter state should be rendered");
+        let filter_cell = &buffer[(filter_x, filter_y)];
+        assert_eq!(filter_cell.fg, ui::THEMES[0].warning);
+        assert_ne!(filter_cell.fg, ui::THEMES[0].tracked);
     }
 
     #[test]
@@ -7009,8 +7148,11 @@ name = "legacy-watch.exe"
         app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
 
         let rendered = render_app_to_text(&app, 100, 20);
+        let buffer = render_app_to_buffer(&app, 100, 20);
+        let (_, log_y) = find_text_position(&buffer, "LOG").expect("log badge should be rendered");
 
         assert!(rendered.contains("LOG"), "{rendered}");
+        assert_eq!(log_y, 0);
         assert!(!rendered.contains("fresh"), "{rendered}");
         assert!(!rendered.contains("STALE"), "{rendered}");
         assert!(rendered.contains("winproc-tui-demo.log"), "{rendered}");
@@ -7020,6 +7162,10 @@ name = "legacy-watch.exe"
     fn display_pause_is_unavailable_in_log_view() {
         let mut app = make_test_app(1, 10);
         app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
+
+        let rendered = render_app_to_text(&app, 120, 30);
+        assert!(!rendered.contains("Ctrl+P Pause"), "{rendered}");
+        assert!(rendered.contains("Esc Live"), "{rendered}");
 
         app.toggle_display_pause();
 
@@ -7143,7 +7289,7 @@ name = "legacy-watch.exe"
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(
-            rendered.contains("Graph#1 · app.exe · Private"),
+            rendered.contains("GRAPH#1 · app.exe · Private"),
             "{rendered}"
         );
         assert!(rendered.contains("M  Time      Private"), "{rendered}");

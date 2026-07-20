@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    prelude::{Color, Style},
+    prelude::Style,
     text::{Line, Span, Text},
     widgets::Paragraph,
 };
@@ -13,7 +13,7 @@ use crate::{
 };
 
 pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let block = panel_block_focused("CPUs", theme, app.panel_has_focus(FocusedPanel::Cpu));
+    let block = panel_block_focused("CPUS", theme, app.panel_has_focus(FocusedPanel::Cpu));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -207,7 +207,7 @@ fn cpu_core_compact_bar_line(cores: &[CpuLogicalProcessorSample], theme: Theme) 
         }
         spans.push(Span::styled(
             format_cpu_core_bar(core.usage_percent),
-            cpu_usage_style(core.usage_percent),
+            cpu_usage_style(theme),
         ));
         previous_kind = core.kind;
     }
@@ -231,7 +231,7 @@ fn cpu_core_grouped_bar_line(cores: &[CpuLogicalProcessorSample], theme: Theme) 
         for core in cores {
             spans.push(Span::styled(
                 format_cpu_core_bar(core.usage_percent),
-                cpu_usage_style(core.usage_percent),
+                cpu_usage_style(theme),
             ));
         }
         return Line::from(spans);
@@ -252,7 +252,7 @@ fn cpu_core_grouped_bar_line(cores: &[CpuLogicalProcessorSample], theme: Theme) 
         }
         spans.push(Span::styled(
             format_cpu_core_bar(core.usage_percent),
-            cpu_usage_style(core.usage_percent),
+            cpu_usage_style(theme),
         ));
         previous_kind = core.kind;
     }
@@ -323,7 +323,7 @@ fn cpu_core_spans(cores: &[CpuLogicalProcessorSample], theme: Theme) -> Vec<Span
         }
         spans.push(Span::styled(
             format_cpu_core_bar(core.usage_percent),
-            cpu_usage_style(core.usage_percent),
+            cpu_usage_style(theme),
         ));
         previous_kind = core.kind;
     }
@@ -354,7 +354,7 @@ fn cpu_average_bar_spans(value: Option<u8>, theme: Theme) -> Vec<Span<'static>> 
                 (usize::from(value) * WIDTH).div_ceil(100)
             };
             vec![
-                Span::styled("▋".repeat(filled), cpu_usage_style(value)),
+                Span::styled("▋".repeat(filled), cpu_usage_style(theme)),
                 Span::styled(" ".repeat(WIDTH - filled), Style::default().fg(theme.muted)),
             ]
         }
@@ -379,15 +379,8 @@ fn cpu_core_marker(kind: Option<CpuCoreKind>) -> &'static str {
     }
 }
 
-fn cpu_usage_color(value: u8) -> Color {
-    let value = value.min(99) as u16;
-    let red = 56 + (184 * value / 99);
-    let green = 196 - (136 * value / 99);
-    Color::Rgb(red as u8, green as u8, 80)
-}
-
-fn cpu_usage_style(value: u8) -> Style {
-    Style::default().fg(cpu_usage_color(value))
+fn cpu_usage_style(theme: Theme) -> Style {
+    Style::default().fg(theme.accent)
 }
 
 #[cfg(test)]
@@ -455,12 +448,14 @@ mod tests {
     }
 
     #[test]
-    fn cpu_average_bar_uses_colored_fill_and_fixed_width() {
-        let spans = cpu_average_bar_spans(Some(42), crate::ui::THEMES[0]);
+    fn cpu_average_bar_uses_theme_accent_fill_and_fixed_width() {
+        for theme in crate::ui::THEMES {
+            let spans = cpu_average_bar_spans(Some(42), theme);
 
-        assert_eq!(spans[0].content.as_ref(), "▋▋▋▋▋▋▋");
-        assert_eq!(spans[0].style.fg, Some(cpu_usage_color(42)));
-        assert_eq!(spans[1].content.as_ref(), "         ");
+            assert_eq!(spans[0].content.as_ref(), "▋▋▋▋▋▋▋");
+            assert_eq!(spans[0].style.fg, Some(theme.accent));
+            assert_eq!(spans[1].content.as_ref(), "         ");
+        }
     }
 
     #[test]
@@ -523,21 +518,23 @@ mod tests {
     }
 
     #[test]
-    fn cpu_core_spans_use_foreground_color_for_usage_cells() {
+    fn cpu_core_spans_use_theme_accent_for_usage_cells() {
         let snapshot = snapshot_with_cores(vec![CpuLogicalProcessorSample {
             usage_percent: 77,
             kind: None,
         }]);
 
-        let line = cpu_panel_line("", &snapshot, crate::ui::THEMES[0]);
-        let usage_span = line
-            .spans
-            .iter()
-            .find(|span| span.content.as_ref() == "▇")
-            .expect("usage span");
+        for theme in crate::ui::THEMES {
+            let line = cpu_panel_line("", &snapshot, theme);
+            let usage_span = line
+                .spans
+                .iter()
+                .find(|span| span.content.as_ref() == "▇")
+                .expect("usage span");
 
-        assert_eq!(usage_span.style.bg, None);
-        assert_eq!(usage_span.style.fg, Some(cpu_usage_color(77)));
+            assert_eq!(usage_span.style.bg, None);
+            assert_eq!(usage_span.style.fg, Some(theme.accent));
+        }
     }
 
     #[test]

@@ -11,7 +11,6 @@ use crate::{
     ui::{Theme, format::format_integer, widgets::scrollable_modal::ScrollableModal},
 };
 
-const HELP_TITLE: &str = "Keyboard shortcuts";
 const CLOSE_BUTTON: &str = "[ Close ]";
 const COLUMN_SEPARATOR: &str = "  │  ";
 const KEY_LABEL_GAP: usize = 2;
@@ -427,9 +426,10 @@ impl ColumnRow {
 }
 
 fn help_lines(theme: Theme) -> Vec<Line<'static>> {
+    let title = help_title();
     let mut lines = vec![
         Line::from(Span::styled(
-            HELP_TITLE,
+            title,
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(help_hint(), Style::default().fg(theme.muted))),
@@ -462,9 +462,16 @@ fn help_lines(theme: Theme) -> Vec<Line<'static>> {
 
 fn help_hint() -> String {
     format!(
-        "Footer: focused actions. History: {}/{} normal/tracked. Blue selects; amber marks.",
+        "Footer: focused actions. History: {}/{} normal/tracked. Neutral selects; amber marks.",
         format_integer(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as u64),
         format_integer(TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u64)
+    )
+}
+
+fn help_title() -> String {
+    format!(
+        "winproc-tui {} · Keyboard shortcuts",
+        env!("CARGO_PKG_VERSION")
     )
 }
 
@@ -536,7 +543,7 @@ fn column_max_width(rows: &[ColumnRow]) -> usize {
 fn help_content_width() -> u16 {
     let left = render_column_widths(LEFT_SECTIONS);
     let right = render_column_widths(RIGHT_SECTIONS);
-    let title_width = HELP_TITLE
+    let title_width = help_title()
         .chars()
         .count()
         .max(help_hint().chars().count())
