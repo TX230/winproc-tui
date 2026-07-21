@@ -10,7 +10,7 @@ This repository is the development repository for `winproc-tui`.
 This repository has specifications under `docs/`. Before changing implementation or explanations, read the documents relevant to the requested work.
 
 - `docs/metrics.md`: Metrics, data sources, display formats, CPU% semantics, sampling frequency, and recording logs.
-- `docs/architecture.md`: Architecture, responsibility boundaries, data flow, major types, and testing policy.
+- `docs/architecture.md`: Responsibility boundaries, runtime data flow, design decisions, major state, invariants, and testing approach.
 - `docs/release-workflow.md`: Release tagging, packaging, and GitHub Release procedure.
 - `README.ja.md`: Japanese user-facing overview.
 - `README.md`: English user-facing overview for GitHub. Keep it synchronized with `README.ja.md`.
@@ -31,14 +31,18 @@ If the specifications and implementation conflict, inspect the implementation fi
 - Keep maintained specifications under `docs/` in English.
 - Keep Japanese documentation limited to `README.ja.md` unless the user explicitly asks otherwise.
 - In `README.ja.md`, prefer natural, readable Japanese over literal translation or unnecessary English mixing.
+- The GitHub Release zip is runtime-only. Package `winproc-tui.exe` and the `LICENSE` distribution notice, but do not package README files, `assets/`, `docs/`, or a preset `winproc-tui.toml`. The application creates or updates its user-specific config next to the executable after a successful run.
 
 ## Documentation Workflow
 
 - In general, work on the change requested by the user. If the user selects a GitHub Issue, work on exactly that one issue.
 - Before implementing, read the target issue or request and related specifications. Do not mix requirements, design, and implementation instructions.
 - If metrics, data sources, display formats, or recording log values change, update `docs/metrics.md`.
-- If internal structure, responsibility boundaries, data flow, major types, or testing policy change, update `docs/architecture.md`.
+- If responsibility boundaries, runtime data flow, design decisions, major state, invariants, or the testing approach change, update `docs/architecture.md`.
 - If user-facing behavior changes, update Help, Footer, README, tests, and source as appropriate.
+- Keep exact key lists, colors, emphasis, cell widths, marker shapes, and drawing positions in implementation and tests rather than expanding `docs/architecture.md` with rendering details.
+- If release contents, packaging checks, tagging, or publishing steps change, update `scripts/package-release.ps1` and `docs/release-workflow.md` together.
+- After implementation, perform a documentation-impact check and update only the canonical owners affected by the change in the same work item.
 - If a technical choice needs durable context, keep it in the related specification, architecture document, or GitHub Issue.
 - Do not create or update repository-local backlog files under `docs/backlog/`; use GitHub Issues for backlog tracking.
 
@@ -48,7 +52,7 @@ If the specifications and implementation conflict, inspect the implementation fi
 - Keep commits scoped. Do not include unrelated dirty files or local-only artifacts.
 - When a coherent unit of AI work is complete, commit it promptly.
 - Do not commit ignored local-only files such as `notes/` or `logs/` unless the user explicitly asks to track them.
-- When committing implementation work, include the related specification, metric, and architecture updates in the same commit if they describe the same behavioral change.
+- When committing implementation work, include updates to the affected canonical documentation in the same commit. Do not change `docs/architecture.md` mechanically when its design-level content is unaffected.
 - Reference the relevant GitHub Issue in the commit message or maintainer-requested pull request when useful.
 
 ## Branch Workflow Rules
@@ -132,7 +136,7 @@ git commit -m "<message> (#n)" -m "Closes #n"
 - Keep the TUI compact and low-noise. Do not add unnecessary borders, spacing, explanatory text, or decoration.
 - Keep clipboard output raw and minimal so it can be pasted as-is. Do not add unnecessary headers or explanations.
 - Buttons such as OK / Cancel at the bottom of dialogs must be operable by mouse click as well as keyboard.
-- Detailed user-facing controls and UI behavior belong in README, Help, tests, and docs, not duplicated here.
+- Detailed user-facing controls and UI behavior belong in README, Help, Footer, tests, and implementation. Metric definitions belong in `docs/metrics.md`; design-level boundaries and invariants belong in `docs/architecture.md`.
 - When changing controls or UI behavior, update the canonical user-facing documentation and tests together. Help, Footer, README, tests, and actual key handling must stay aligned.
 
 ## Implementation Review Points

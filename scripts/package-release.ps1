@@ -33,46 +33,44 @@ function Invoke-CheckedNativeCommand {
     }
 }
 
-function Assert-PackagedReadmeLinks {
+function Assert-PackageEntries {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ArchivePath
+        [string]$ArchivePath,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$ExpectedEntries
     )
 
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
     try {
-        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName })
-        $brokenLinks = @()
+        $actualEntries = @(
+            $archive.Entries |
+                Where-Object { -not $_.FullName.EndsWith("/") } |
+                ForEach-Object { $_.FullName.Replace("\", "/") } |
+                Sort-Object -Unique
+        )
+        $normalizedExpectedEntries = @(
+            $ExpectedEntries |
+                ForEach-Object { $_.Replace("\", "/") } |
+                Sort-Object -Unique
+        )
+        $missingEntries = @(
+            $normalizedExpectedEntries | Where-Object { $actualEntries -notcontains $_ }
+        )
+        $unexpectedEntries = @(
+            $actualEntries | Where-Object { $normalizedExpectedEntries -notcontains $_ }
+        )
 
-        foreach ($readmeName in @("README.md", "README.ja.md")) {
-            $readmeEntry = $archive.GetEntry($readmeName)
-            if (-not $readmeEntry) {
-                throw "Packaged README was not found: $readmeName"
+        if ($missingEntries.Count -gt 0 -or $unexpectedEntries.Count -gt 0) {
+            $details = @()
+            if ($missingEntries.Count -gt 0) {
+                $details += "Missing entries: $($missingEntries -join ', ')"
             }
-
-            $reader = [System.IO.StreamReader]::new($readmeEntry.Open())
-            try {
-                $content = $reader.ReadToEnd()
+            if ($unexpectedEntries.Count -gt 0) {
+                $details += "Unexpected entries: $($unexpectedEntries -join ', ')"
             }
-            finally {
-                $reader.Dispose()
-            }
-
-            foreach ($match in [regex]::Matches($content, '\]\(([^)]+)\)')) {
-                $target = $match.Groups[1].Value.Split("#")[0]
-                if (-not $target -or $target -match '^(https?://|mailto:)') {
-                    continue
-                }
-
-                $normalizedTarget = $target.Replace("\", "/")
-                if ($entryNames -notcontains $normalizedTarget) {
-                    $brokenLinks += "$readmeName -> $target"
-                }
-            }
-        }
-
-        if ($brokenLinks.Count -gt 0) {
-            throw "Packaged README contains broken local links:`n$($brokenLinks -join "`n")"
+            throw "Release package contents do not match the runtime-only policy:`n$($details -join "`n")"
         }
     }
     finally {
@@ -90,20 +88,12 @@ $Sha256Path = "$ZipPath.sha256"
 $ExePath = Join-Path $RepoRoot "target\release\winproc-tui.exe"
 $PackageEntries = @(
     [pscustomobject]@{ Source = $ExePath; Destination = "winproc-tui.exe" }
-    [pscustomobject]@{ Source = (Join-Path $RepoRoot "README.md"); Destination = "README.md" }
-    [pscustomobject]@{ Source = (Join-Path $RepoRoot "README.ja.md"); Destination = "README.ja.md" }
     [pscustomobject]@{ Source = (Join-Path $RepoRoot "LICENSE"); Destination = "LICENSE" }
 )
 
-foreach ($relativeDirectory in @("assets", "docs")) {
-    $directory = Join-Path $RepoRoot $relativeDirectory
-    $PackageEntries += Get-ChildItem -LiteralPath $directory -Recurse -File | ForEach-Object {
-        [pscustomobject]@{
-            Source = $_.FullName
-            Destination = [System.IO.Path]::GetRelativePath($RepoRoot, $_.FullName).Replace("\", "/")
-        }
-    }
-}
+# winproc-tui.toml is user-specific session state. The application creates or
+# updates it next to the executable after a successful run, so no preset config
+# is included in the release archive.
 
 Push-Location $RepoRoot
 try {
@@ -143,7 +133,9 @@ try {
         $archive.Dispose()
     }
 
-    Assert-PackagedReadmeLinks -ArchivePath $ZipPath
+    Assert-PackageEntries `
+        -ArchivePath $ZipPath `
+        -ExpectedEntries @($PackageEntries.Destination)
 
     $hash = Get-FileHash $ZipPath -Algorithm SHA256
     $checksumText = "$($hash.Hash)  $ZipName`n"

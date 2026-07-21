@@ -139,15 +139,11 @@ After completing the test and build steps manually, use the packaging helper wit
 .\scripts\package-release.ps1 -Version $Version -SkipTests -SkipBuild
 ```
 
-The helper preserves the repository-relative paths needed by links in the packaged README files. The zip contains:
+The release archive is intentionally runtime-only. Documentation remains on GitHub and is not copied into the zip. The zip contains:
 
 ```text
 winproc-tui.exe
-README.md
-README.ja.md
 LICENSE
-assets/
-docs/
 ```
 
 The package name includes:
@@ -156,7 +152,9 @@ The package name includes:
 - Version: the value of `$Version` without the `v` prefix (for example `0.1.0`)
 - Platform: `windows-x64`
 
-`LICENSE` is included so that the MIT license terms travel with the binary distribution. `assets/` and `docs/` are included so local image and documentation links in both README files continue to work after extraction. The helper stops with an error if either packaged README contains a local link whose target is missing from the zip.
+`LICENSE` is a distribution notice rather than product documentation and remains beside the binary. `README.md`, `README.ja.md`, `assets/`, and `docs/` are not packaged.
+
+`winproc-tui.toml` is also not prepackaged. It is user-specific session state: the application starts with defaults when the file is absent, then creates or updates it next to `winproc-tui.exe` after a successful run. The helper stops with an error unless the archive contains exactly the executable and `LICENSE`.
 
 ### 7. Create a Checksum File
 
@@ -227,8 +225,9 @@ Open the draft release in GitHub and confirm:
 - The `.zip` and `.sha256` files are attached.
 - The attached `.sha256` file matches the attached `.zip` file.
 - The GitHub-displayed `sha256:` digest for the `.zip` asset matches the generated checksum.
-- The `.zip` file contains the expected executable, README files, `LICENSE`, `assets/`, and `docs/`.
-- Relative image and documentation links in both packaged README files resolve inside the extracted package.
+- The `.zip` file contains exactly `winproc-tui.exe` and `LICENSE`.
+- The `.zip` file does not contain README files, `assets/`, `docs/`, or a preset `winproc-tui.toml`.
+- A clean extraction starts with default settings; after a successful run, `winproc-tui.toml` is created next to the executable.
 - The release page does not point users to third-party binaries or mirrors as official builds.
 - The executable starts successfully on Windows 11 x64.
 

@@ -91,6 +91,8 @@ Administrator privileges are not required for normal monitoring. Some metrics an
 ## Use a Prebuilt Binary
 
 Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it to any folder, and run `winproc-tui.exe`. No additional runtime or installer is required.
+The zip contains only `winproc-tui.exe` and `LICENSE`. Documentation such as the README remains on GitHub and is not included in the distribution archive.
+`winproc-tui.toml` is not prepackaged. The application starts with defaults when the file is absent and creates it next to the executable after a successful run.
 
 Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases).
 Binaries from third-party copies, mirrors, or modified repositories are not official builds.
@@ -296,7 +298,7 @@ The sampling interval is fixed to 1 second in the current version and is not use
 ## Developer Docs
 
 - [docs/metrics.md](docs/metrics.md): Metrics, data sources, and display formats.
-- [docs/architecture.md](docs/architecture.md): Architecture, responsibility boundaries, and data flow.
+- [docs/architecture.md](docs/architecture.md): Architecture, runtime data flow, design decisions, and invariants.
 
 ## Non-Goals
 
