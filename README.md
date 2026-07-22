@@ -18,7 +18,14 @@ _Example investigation of a process's private memory using tracking, display pau
 
 ### 1. Launch the App
 
-Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No installer or additional runtime is required.
+If winget is available, install and launch the app with:
+
+```powershell
+winget install --id TX230.winproc-tui -e
+winproc-tui
+```
+
+Alternatively, download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No additional runtime is required.
 
 The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
 
@@ -90,11 +97,30 @@ Administrator privileges are not required for normal monitoring. Some metrics an
 
 ## Use a Prebuilt Binary
 
+### Install with winget
+
+```powershell
+winget install --id TX230.winproc-tui -e
+```
+
+After installation, run `winproc-tui` from any directory. Use these commands to upgrade or uninstall it:
+
+```powershell
+winget upgrade --id TX230.winproc-tui -e
+winget uninstall --id TX230.winproc-tui -e
+```
+
+To remove the entire portable package directory, including its configuration, add `--purge` when uninstalling.
+
+winget downloads the zip from the official GitHub Release and registers the `winproc-tui` command. No additional runtime is required.
+
+### Extract the zip manually
+
 Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it to any folder, and run `winproc-tui.exe`. No additional runtime or installer is required.
 The zip contains only `winproc-tui.exe` and `LICENSE`. Documentation such as the README remains on GitHub and is not included in the distribution archive.
 `winproc-tui.toml` is not prepackaged. The application starts with defaults when the file is absent and creates it next to the executable after a successful run.
 
-Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases).
+Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). winget uses the same Release binaries.
 Binaries from third-party copies, mirrors, or modified repositories are not official builds.
 
 Download both the zip and its corresponding `.zip.sha256` file from the Release. Use these PowerShell commands to calculate the zip's SHA256 hash and display the published value:

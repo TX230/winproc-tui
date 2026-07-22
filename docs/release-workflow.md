@@ -232,3 +232,54 @@ Open the draft release in GitHub and confirm:
 - The executable starts successfully on Windows 11 x64.
 
 After confirming the draft, publish it from the GitHub Releases page.
+
+## Windows Package Manager Publication
+
+The winget package identifier is `TX230.winproc-tui`. Its portable manifest downloads the versioned Windows x64 zip directly from this repository's GitHub Release and registers the `winproc-tui` command.
+
+Publish the GitHub Release before submitting its winget manifest. Never use a `latest` download URL: the manifest must point to the version-specific asset URL and contain the SHA-256 of that exact asset. Once a manifest refers to a published asset, do not replace the asset at the same URL. Publish a new version instead.
+
+For the first package submission, create and test a multi-file manifest using the schema version currently recommended by `microsoft/winget-pkgs`. The installer manifest uses:
+
+```yaml
+InstallerType: zip
+NestedInstallerType: portable
+Commands:
+- winproc-tui
+Installers:
+- Architecture: x64
+  NestedInstallerFiles:
+  - RelativeFilePath: winproc-tui.exe
+    PortableCommandAlias: winproc-tui
+```
+
+Do not set `Scope` in the manifest; winget does not support that field for a portable installer. The default portable installation is per-user.
+
+Validate and test the manifest before submission:
+
+```powershell
+winget validate <manifest-directory>
+.\Tools\SandboxTest.ps1 <manifest-directory>
+```
+
+`SandboxTest.ps1` is provided by the `microsoft/winget-pkgs` repository. Confirm at least:
+
+- The manifest validates without warnings.
+- A standard user can install the package.
+- The `winproc-tui` command is registered and the application starts.
+- Upgrading from the previous version preserves `winproc-tui.toml`.
+- A standard user can uninstall the package and the command alias is removed.
+
+After the first version is available in the winget catalog, generate later version updates with WinGetCreate:
+
+```powershell
+$ReleaseZipUrl = "https://github.com/TX230/winproc-tui/releases/download/$Tag/$ZipName"
+wingetcreate update TX230.winproc-tui `
+  --urls $ReleaseZipUrl `
+  --version $Version `
+  --release-notes-url "https://github.com/TX230/winproc-tui/releases/tag/$Tag" `
+  --release-date (Get-Date -Format yyyy-MM-dd) `
+  --out <output-directory>
+```
+
+Review the generated locale metadata as well as the installer URL and hash, then validate it and submit one package version per pull request to `microsoft/winget-pkgs`. Update the README install instructions only after the first manifest is available from the public winget source.
