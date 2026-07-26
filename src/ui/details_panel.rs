@@ -23,7 +23,7 @@ use crate::{
             DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, details_graph_area, details_graph_rows,
             details_samples_area, details_samples_divider_area, details_samples_row_capacity,
             details_samples_summary_height, details_shared_controls_area, details_slot_areas,
-            graph_all_samples_toggle_area, graph_shared_status_area, graph_y_axis_toggle_area,
+            graph_shared_control_areas,
         },
         widgets::block::panel_block_focused,
     },
@@ -72,7 +72,7 @@ pub(crate) fn draw_details_panel(
         .max()
         .unwrap_or(1);
     let selected_sample_time = app.selected_details_sample_time();
-    let slot_areas = details_slot_areas(area, slots.len());
+    let slot_areas = details_slot_areas(area, slots.len(), app.graph_slot_layout);
     for ((slot_index, slot), slot_area) in slots.into_iter().zip(slot_areas) {
         let samples = app.graph_slot_samples(slot);
         let peak = app.graph_slot_peak(slot);
@@ -614,7 +614,7 @@ fn draw_graph_content(
 }
 
 fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let status_area = graph_shared_status_area(area);
+    let controls = graph_shared_control_areas(area, app.show_samples_panel);
     let mut spans = vec![
         Span::styled(
             "GRAPHS",
@@ -647,49 +647,59 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
     }
     frame.render_widget(
         Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.background)),
-        status_area,
+        controls.status,
     );
-    render_graph_all_samples_toggle(frame, area, app.graph_show_all_samples, theme);
-    render_graph_y_axis_toggle(frame, area, app.graph_y_axis_zero_min, theme);
+    render_graph_toggle(
+        frame,
+        controls.samples,
+        app.show_samples_panel,
+        "  v: Samples",
+        theme,
+    );
+    render_graph_toggle(
+        frame,
+        controls.delta,
+        app.show_sample_delta,
+        "  d: Delta",
+        theme,
+    );
+    render_graph_toggle(
+        frame,
+        controls.two_columns,
+        app.graph_slot_layout.is_two_columns(),
+        "  l: 2 cols",
+        theme,
+    );
+    render_graph_toggle(
+        frame,
+        controls.all_samples,
+        app.graph_show_all_samples,
+        "  f: Fit all",
+        theme,
+    );
+    render_graph_toggle(
+        frame,
+        controls.y_axis,
+        app.graph_y_axis_zero_min,
+        "  z: Min 0",
+        theme,
+    );
 }
 
-fn render_graph_y_axis_toggle(
+fn render_graph_toggle(
     frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    y_axis_zero_min: bool,
+    area: Option<Rect>,
+    checked: bool,
+    label: &'static str,
     theme: Theme,
 ) {
-    let Some(toggle_area) = graph_y_axis_toggle_area(area) else {
+    let Some(toggle_area) = area else {
         return;
     };
-    let mark = if y_axis_zero_min { "☑" } else { "☐" };
+    let mark = if checked { "☑" } else { "☐" };
     let toggle = Paragraph::new(Line::from(vec![
         Span::styled(mark, Style::default().fg(theme.accent).bg(theme.panel)),
-        Span::styled(
-            "  z: Min 0",
-            Style::default().fg(theme.muted).bg(theme.panel),
-        ),
-    ]))
-    .style(Style::default().bg(theme.panel));
-    frame.render_widget(toggle, toggle_area);
-}
-
-fn render_graph_all_samples_toggle(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    show_all_samples: bool,
-    theme: Theme,
-) {
-    let Some(toggle_area) = graph_all_samples_toggle_area(area) else {
-        return;
-    };
-    let mark = if show_all_samples { "☑" } else { "☐" };
-    let toggle = Paragraph::new(Line::from(vec![
-        Span::styled(mark, Style::default().fg(theme.accent).bg(theme.panel)),
-        Span::styled(
-            "  f: Fit all",
-            Style::default().fg(theme.muted).bg(theme.panel),
-        ),
+        Span::styled(label, Style::default().fg(theme.muted).bg(theme.panel)),
     ]))
     .style(Style::default().bg(theme.panel));
     frame.render_widget(toggle, toggle_area);

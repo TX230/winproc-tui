@@ -69,10 +69,6 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         key: "Ctrl+P",
         label: "Pause / Resume display",
     },
-    HelpItem {
-        key: "Ctrl+O",
-        label: "Open Settings",
-    },
 ];
 
 const PROCESSES_ROWS: &[HelpItem] = &[
@@ -219,12 +215,12 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Change time span",
     },
     HelpItem {
-        key: "z",
-        label: "Toggle Y-axis Min 0",
+        key: "f/z",
+        label: "Fit all / toggle Min 0",
     },
     HelpItem {
-        key: "f",
-        label: "Fit all samples",
+        key: "v/d/l",
+        label: "Samples/Delta/2c",
     },
 ];
 

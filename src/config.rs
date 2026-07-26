@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::app::App;
+use crate::app::{App, GraphSlotLayout};
 use crate::model::{ColumnPreset, MetricColumn, SortColumn, SortDirection, SortSpec};
 use crate::samplers::SamplingOptions;
 
@@ -16,6 +16,7 @@ const CONFIG_FILE_NAME: &str = "winproc-tui.toml";
 #[serde(default)]
 pub(crate) struct AppConfig {
     pub(crate) general: GeneralConfig,
+    pub(crate) graphs: GraphConfig,
     pub(crate) process_table: ProcessTableConfig,
     pub(crate) recording: RecordingConfig,
     pub(crate) tracking: TrackingConfig,
@@ -36,6 +37,24 @@ impl Default for GeneralConfig {
         Self {
             mouse: true,
             theme: "Dark".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct GraphConfig {
+    pub(crate) columns: u8,
+    pub(crate) samples: bool,
+    pub(crate) delta: bool,
+}
+
+impl Default for GraphConfig {
+    fn default() -> Self {
+        Self {
+            columns: 1,
+            samples: true,
+            delta: true,
         }
     }
 }
@@ -132,6 +151,9 @@ pub(crate) struct RuntimeConfig {
     pub(crate) config_path: Option<PathBuf>,
     pub(crate) recording_last_dir: Option<PathBuf>,
     pub(crate) initial_theme: String,
+    pub(crate) initial_graph_slot_layout: GraphSlotLayout,
+    pub(crate) initial_show_samples_panel: bool,
+    pub(crate) initial_show_sample_delta: bool,
     pub(crate) column_preset: ColumnPreset,
     pub(crate) process_columns: Vec<MetricColumn>,
     pub(crate) sort: SortSpec,
@@ -194,6 +216,13 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         config_path: None,
         recording_last_dir: config.recording.last_dir,
         initial_theme: config.general.theme,
+        initial_graph_slot_layout: if config.graphs.columns == 2 {
+            GraphSlotLayout::TwoColumns
+        } else {
+            GraphSlotLayout::OneColumn
+        },
+        initial_show_samples_panel: config.graphs.samples,
+        initial_show_sample_delta: config.graphs.delta,
         column_preset,
         process_columns,
         sort: SortSpec {
@@ -231,6 +260,11 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
         general: GeneralConfig {
             mouse: app.runtime.mouse,
             theme: app.theme().name.to_string(),
+        },
+        graphs: GraphConfig {
+            columns: app.graph_slot_layout.columns(),
+            samples: app.samples_panel_before_two_columns,
+            delta: app.show_sample_delta,
         },
         process_table: ProcessTableConfig {
             preset: app.column_preset.label().to_string(),

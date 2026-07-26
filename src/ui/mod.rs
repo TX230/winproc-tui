@@ -14,7 +14,6 @@ pub(crate) mod process_kill_confirm;
 pub(crate) mod process_table;
 pub(crate) mod quit_confirm;
 pub(crate) mod recording_dialog;
-pub(crate) mod settings_dialog;
 pub(crate) mod system_panel;
 pub(crate) mod theme;
 pub(crate) mod tracked_lists;
@@ -86,8 +85,6 @@ use recording_dialog::{
 pub(crate) use recording_dialog::{
     recording_no_tracked_ok_button_area, recording_overwrite_button_at, recording_path_button_at,
 };
-use settings_dialog::draw_settings_dialog;
-pub(crate) use settings_dialog::{settings_ok_button_area, settings_selection_at};
 #[cfg(test)]
 pub(crate) use system_panel::{
     SummaryInfoStyle, optional_value_color, render_summary_info_line,
@@ -102,7 +99,8 @@ pub(crate) use theme::{THEMES, Theme, theme_index_by_name};
 use tracked_lists::draw_tracked_lists;
 pub(crate) use tracked_lists::{
     TrackedListNameButton, tracked_list_confirm_button_at, tracked_list_index_at,
-    tracked_list_name_button_at, tracked_list_save_name_area_for_screen, tracked_lists_button_at,
+    tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
+    tracked_list_startup_area_for_screen, tracked_lists_button_at,
     tracked_lists_page_size_for_screen,
 };
 use tracked_remove_confirm::draw_tracked_remove_confirm;
@@ -158,9 +156,6 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_process_kill_confirmation {
         draw_process_kill_confirm(frame, area, app, theme);
-    }
-    if app.show_settings_dialog {
-        draw_settings_dialog(frame, area, app, theme);
     }
     if app.tracked_lists_dialog.is_some() {
         draw_tracked_lists(frame, area, app, theme);

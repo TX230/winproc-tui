@@ -29,6 +29,7 @@ const SAVE_AREA_HEIGHT: u16 = 6;
 const SAVE_SUMMARY_ROW: u16 = 0;
 const SAVE_INPUT_ROW: u16 = 1;
 const SAVE_ERROR_ROW: u16 = 2;
+const STARTUP_ROW: u16 = 17;
 const FOOTER_BUTTON_ROW: u16 = 18;
 const SAVE_NAME_LABEL: &str = "List name: ";
 const SAVE_BUTTON_WIDTH: u16 = 8;
@@ -183,6 +184,26 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     );
 
     draw_save_name_input(frame, save_content, app, theme);
+
+    let startup_style = if app.tracked_lists_startup_focused() {
+        Style::default()
+            .fg(theme.text)
+            .bg(theme.focus_surface)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.text).bg(theme.panel_alt)
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Tracked List startup  ", Style::default().fg(theme.muted)),
+            Span::styled(
+                format!("< {} >", app.runtime.tracked_list_startup.label()),
+                startup_style,
+            ),
+        ]))
+        .alignment(Alignment::Center),
+        row(content, STARTUP_ROW),
+    );
 
     frame.render_widget(
         Paragraph::new(tracked_lists_button_line(FOOTER_BUTTONS, app, theme))
@@ -561,6 +582,16 @@ pub(crate) fn tracked_list_save_name_area_for_screen(area: Rect) -> Option<Rect>
     });
     let (_, input, _) = save_name_row_areas(save);
     (input.width > 0).then_some(input)
+}
+
+pub(crate) fn tracked_list_startup_area_for_screen(area: Rect) -> Option<Rect> {
+    let popup = tracked_lists_dialog_area(area);
+    let content = popup.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let startup = row(content, STARTUP_ROW);
+    (startup.width > 0 && startup.height > 0).then_some(startup)
 }
 
 pub(crate) fn tracked_list_name_button_at(

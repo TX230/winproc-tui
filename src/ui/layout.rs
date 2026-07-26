@@ -1,10 +1,13 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
-use crate::app::GRAPH_SLOT_MIN_HEIGHT;
+use crate::app::{GRAPH_SLOT_MIN_HEIGHT, GRAPH_SLOT_MIN_WIDTH, GraphSlotLayout};
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
-pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 17;
-pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 12;
+pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 15;
+pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 13;
+pub(crate) const GRAPH_TWO_COLUMNS_TOGGLE_WIDTH: u16 = 15;
+pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 15;
+pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 13;
 pub(crate) const DETAILS_SHARED_CONTROLS_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_HEADER_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT: u16 = 1;
@@ -68,29 +71,56 @@ pub(crate) fn details_slot_areas_for_screen(
     area: Rect,
     show_details: bool,
     slot_count: usize,
+    slot_layout: GraphSlotLayout,
 ) -> Vec<Rect> {
     let Some(content) = details_slots_area_for_screen(area, show_details) else {
         return Vec::new();
     };
-    details_slot_areas(content, slot_count)
+    details_slot_areas(content, slot_count, slot_layout)
 }
 
-pub(crate) fn details_slot_areas(area: Rect, slot_count: usize) -> Vec<Rect> {
+pub(crate) fn details_slot_areas(
+    area: Rect,
+    slot_count: usize,
+    slot_layout: GraphSlotLayout,
+) -> Vec<Rect> {
     let slots_area = details_slots_content_area(area);
-    if slot_count == 0
-        || slots_area.height < GRAPH_SLOT_MIN_HEIGHT.saturating_mul(slot_count as u16)
+    if slot_count == 0 {
+        return Vec::new();
+    }
+
+    let column_count = match slot_layout {
+        GraphSlotLayout::OneColumn => 1,
+        GraphSlotLayout::TwoColumns => slot_count.min(2),
+    };
+    let row_count = slot_count.div_ceil(column_count);
+    if slots_area.height < GRAPH_SLOT_MIN_HEIGHT.saturating_mul(row_count as u16)
+        || (column_count > 1
+            && slots_area.width < GRAPH_SLOT_MIN_WIDTH.saturating_mul(column_count as u16))
     {
         return Vec::new();
     }
-    let base_height = slots_area.height / slot_count as u16;
-    let extra = slots_area.height % slot_count as u16;
-    let mut y = slots_area.y;
+
+    let base_height = slots_area.height / row_count as u16;
+    let extra_height = slots_area.height % row_count as u16;
+    let base_width = slots_area.width / column_count as u16;
+    let extra_width = slots_area.width % column_count as u16;
     (0..slot_count)
         .map(|index| {
-            let height = base_height + u16::from(index < extra as usize);
-            let rect = Rect::new(slots_area.x, y, slots_area.width, height);
-            y = y.saturating_add(height);
-            rect
+            let row = index / column_count;
+            let column = index % column_count;
+            let y = slots_area.y
+                + base_height.saturating_mul(row as u16)
+                + extra_height.min(row as u16);
+            let x = slots_area.x
+                + base_width.saturating_mul(column as u16)
+                + extra_width.min(column as u16);
+            Rect::new(
+                x,
+                y,
+                base_width + u16::from(column < extra_width as usize),
+                base_height + u16::from(row < extra_height as usize),
+            )
         })
         .collect()
 }
@@ -215,37 +245,48 @@ pub(crate) fn details_graph_chart_area(area: Rect, left_padding: u16) -> Option<
     ))
 }
 
-pub(crate) fn graph_shared_status_area(area: Rect) -> Rect {
-    let reserved = GRAPH_ALL_SAMPLES_TOGGLE_WIDTH.saturating_add(GRAPH_Y_AXIS_TOGGLE_WIDTH);
-    Rect::new(
-        area.x,
-        area.y,
-        area.width.saturating_sub(reserved.min(area.width)),
-        area.height,
-    )
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct GraphSharedControlAreas {
+    pub(crate) status: Rect,
+    pub(crate) samples: Option<Rect>,
+    pub(crate) delta: Option<Rect>,
+    pub(crate) two_columns: Option<Rect>,
+    pub(crate) all_samples: Option<Rect>,
+    pub(crate) y_axis: Option<Rect>,
 }
 
-pub(crate) fn graph_y_axis_toggle_area(area: Rect) -> Option<Rect> {
-    (area.width >= GRAPH_Y_AXIS_TOGGLE_WIDTH).then(|| {
-        Rect::new(
-            area.right().saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH),
-            area.y,
-            GRAPH_Y_AXIS_TOGGLE_WIDTH,
-            area.height.min(1),
-        )
-    })
-}
+pub(crate) fn graph_shared_control_areas(
+    area: Rect,
+    show_samples_panel: bool,
+) -> GraphSharedControlAreas {
+    let mut right = area.right();
+    let mut remaining = area.width;
+    let mut reserve = |width: u16| {
+        if remaining < width {
+            return None;
+        }
+        right = right.saturating_sub(width);
+        remaining = remaining.saturating_sub(width);
+        Some(Rect::new(right, area.y, width, area.height.min(1)))
+    };
 
-pub(crate) fn graph_all_samples_toggle_area(area: Rect) -> Option<Rect> {
-    let required = GRAPH_ALL_SAMPLES_TOGGLE_WIDTH.saturating_add(GRAPH_Y_AXIS_TOGGLE_WIDTH);
-    (area.width >= required).then(|| {
-        Rect::new(
-            area.right().saturating_sub(required),
-            area.y,
-            GRAPH_ALL_SAMPLES_TOGGLE_WIDTH,
-            area.height.min(1),
-        )
-    })
+    let y_axis = reserve(GRAPH_Y_AXIS_TOGGLE_WIDTH);
+    let all_samples = reserve(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH);
+    let two_columns = reserve(GRAPH_TWO_COLUMNS_TOGGLE_WIDTH);
+    let delta = show_samples_panel
+        .then(|| reserve(GRAPH_DELTA_TOGGLE_WIDTH))
+        .flatten();
+    let samples = reserve(GRAPH_SAMPLES_TOGGLE_WIDTH);
+    let status = Rect::new(area.x, area.y, remaining, area.height);
+
+    GraphSharedControlAreas {
+        status,
+        samples,
+        delta,
+        two_columns,
+        all_samples,
+        y_axis,
+    }
 }
 
 pub(crate) fn details_samples_max_width(show_sample_delta: bool) -> u16 {
@@ -270,7 +311,7 @@ pub(crate) fn details_samples_page_size_for_screen(
 
 #[cfg(test)]
 pub(crate) fn details_graph_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
-    let slot = details_slot_areas_for_screen(area, show_details, 1)
+    let slot = details_slot_areas_for_screen(area, show_details, 1, GraphSlotLayout::OneColumn)
         .into_iter()
         .next()?;
     Some(details_graph_area(slot, true, true))
@@ -278,7 +319,7 @@ pub(crate) fn details_graph_area_for_screen(area: Rect, show_details: bool) -> O
 
 #[cfg(test)]
 pub(crate) fn details_samples_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
-    let slot = details_slot_areas_for_screen(area, show_details, 1)
+    let slot = details_slot_areas_for_screen(area, show_details, 1, GraphSlotLayout::OneColumn)
         .into_iter()
         .next()?;
     Some(details_samples_area(slot, true))
@@ -290,7 +331,7 @@ pub(crate) fn details_samples_area_for_screen_with_delta(
     show_details: bool,
     show_sample_delta: bool,
 ) -> Option<Rect> {
-    let slot = details_slot_areas_for_screen(area, show_details, 1)
+    let slot = details_slot_areas_for_screen(area, show_details, 1, GraphSlotLayout::OneColumn)
         .into_iter()
         .next()?;
     Some(details_samples_area(slot, show_sample_delta))
@@ -400,7 +441,7 @@ mod tests {
         let screen = Rect::new(0, 0, 100, 45);
         let details = details_panel_area_for_screen(screen, true).unwrap();
         let controls = details_shared_controls_area_for_screen(screen, true).unwrap();
-        let slot = details_slot_areas_for_screen(screen, true, 1)[0];
+        let slot = details_slot_areas_for_screen(screen, true, 1, GraphSlotLayout::OneColumn)[0];
         let graph = details_graph_area_for_screen(screen, true).unwrap();
         let samples = details_samples_area_for_screen(screen, true).unwrap();
 
@@ -413,6 +454,46 @@ mod tests {
         assert_eq!(samples.height, graph.height);
         assert_eq!(samples.right(), slot.right() - 1);
         assert!(samples.width <= DETAILS_SAMPLES_MAX_WIDTH);
+    }
+
+    #[test]
+    fn two_column_graph_layout_is_row_major_and_uses_full_width_for_one_slot() {
+        let area = Rect::new(0, 0, 101, 53);
+
+        let one = details_slot_areas(area, 1, GraphSlotLayout::TwoColumns);
+        assert_eq!(one, vec![Rect::new(0, 1, 101, 52)]);
+
+        let three = details_slot_areas(area, 3, GraphSlotLayout::TwoColumns);
+        assert_eq!(
+            three,
+            vec![
+                Rect::new(0, 1, 51, 26),
+                Rect::new(51, 1, 50, 26),
+                Rect::new(0, 27, 51, 26),
+            ]
+        );
+    }
+
+    #[test]
+    fn two_column_graph_layout_rejects_insufficient_width() {
+        let area = Rect::new(0, 0, GRAPH_SLOT_MIN_WIDTH * 2 - 1, 53);
+
+        assert!(details_slot_areas(area, 2, GraphSlotLayout::TwoColumns).is_empty());
+        assert!(!details_slot_areas(area, 1, GraphSlotLayout::TwoColumns).is_empty());
+    }
+
+    #[test]
+    fn shared_graph_controls_use_the_same_order_with_or_without_delta() {
+        let area = Rect::new(0, 0, 120, 1);
+        let with_delta = graph_shared_control_areas(area, true);
+        let without_delta = graph_shared_control_areas(area, false);
+
+        assert!(with_delta.samples.unwrap().x < with_delta.delta.unwrap().x);
+        assert!(with_delta.delta.unwrap().x < with_delta.two_columns.unwrap().x);
+        assert!(with_delta.two_columns.unwrap().x < with_delta.all_samples.unwrap().x);
+        assert!(with_delta.all_samples.unwrap().x < with_delta.y_axis.unwrap().x);
+        assert!(without_delta.delta.is_none());
+        assert!(without_delta.samples.unwrap().x > with_delta.samples.unwrap().x);
     }
 
     #[test]

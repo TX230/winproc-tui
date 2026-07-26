@@ -87,7 +87,7 @@ The record types, fields, units, and missing-value rules are specified in [metri
 2. Startup mode either resumes the previous working Tracked List, clears it, or opens a chooser for the previous session, an empty list, or a saved named list. The chooser completes before `RuntimeConfig` is built and before any sample is collected.
 3. `App::new` performs one synchronous initial collection so the first screen has data, initializes histories and selection state, and then spawns `SamplingWorker` for subsequent samples.
 4. `main` enters raw mode and the alternate screen, then calls `run_tui`.
-5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Explicit Save, Save As, Rename, and Delete actions for named Tracked Lists persist immediately.
+5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Tracked List startup changes and explicit Save, Save As, Rename, and Delete actions for named Tracked Lists persist immediately.
 
 Interactive quit goes through application cleanup. If recording is active, the end record is attempted and the writer is flushed and closed before exit. Windows console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` set a termination request that enters the same cleanup path; close-class events wait for a bounded period so the main loop and workers can finish. Dropping `SamplingWorker` sends `Stop` and joins its thread.
 
@@ -140,6 +140,10 @@ The working Tracked List is separate from saved named definitions. `Space` edits
 Multiple Graph slots share the visible time span, cursor time, and A/B points. Y-axis scale, sample availability, target, metric, and displayed value remain slot-specific.
 
 Navigation may choose the nearest useful timestamp, but a Graph displays a value only when that series has a sample at the selected captured time. This prevents one slot from presenting another slot's nearby sample as a synchronized value.
+
+`GraphSlotLayout` selects either a one-column stack or a row-major two-column grid. A single visible slot always uses the full width. Two-column mode and the Samples panel are mutually exclusive: entering two-column mode remembers and hides Samples, returning to one column restores that preference, and enabling Samples from two-column mode requests a one-column layout. The layout and Samples / Delta preferences are persisted in `winproc-tui.toml`.
+
+Entering two-column mode and adding a Graph require every active slot to meet the shared minimum slot dimensions; rejected operations preserve the existing slots and layout. Entering one-column mode always applies the layout change, then uses the same cleanup as a terminal resize to remove the highest-numbered Graph slots until the remainder fits. Rendering, focus navigation, chart selection, Samples selection, and mouse hit testing all consume the same ordered slot rectangles.
 
 ## 6. Input and UI Boundaries
 
@@ -196,6 +200,8 @@ The most important implementation invariants are:
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
 - the working Tracked List must not overwrite a saved named definition without an explicit save action;
 - drawing and hit testing must use the same layout geometry;
+- terminal resizes and one-column transitions may remove only the highest-numbered Graph slots required to restore a valid layout;
+- two-column Graph layout must not display the Samples panel;
 - Graph shared state must not replace per-slot sample-availability checks;
 - unavailable metrics must remain explicit rather than being converted to plausible values.
 

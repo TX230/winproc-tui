@@ -37,6 +37,7 @@ const LIVE_GRAPH_TIME_MAX_SECONDS: u32 = TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY
 const FIXED_PROCESS_COLUMN_COUNT: usize = 2;
 pub(crate) const GRAPH_SLOT_COUNT: usize = 4;
 pub(crate) const GRAPH_SLOT_MIN_HEIGHT: u16 = 13;
+pub(crate) const GRAPH_SLOT_MIN_WIDTH: u16 = 50;
 pub(crate) const PROCESS_INFO_DEBOUNCE: Duration = Duration::from_millis(200);
 const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -373,28 +374,23 @@ impl QuitConfirmSelection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SettingsSelection {
-    SamplesPanel,
-    Delta,
-    TrackedListStartup,
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum GraphSlotLayout {
+    #[default]
+    OneColumn,
+    TwoColumns,
 }
 
-impl SettingsSelection {
-    fn next(self) -> Self {
+impl GraphSlotLayout {
+    pub(crate) const fn columns(self) -> u8 {
         match self {
-            Self::SamplesPanel => Self::Delta,
-            Self::Delta => Self::TrackedListStartup,
-            Self::TrackedListStartup => Self::SamplesPanel,
+            Self::OneColumn => 1,
+            Self::TwoColumns => 2,
         }
     }
 
-    fn previous(self) -> Self {
-        match self {
-            Self::SamplesPanel => Self::TrackedListStartup,
-            Self::Delta => Self::SamplesPanel,
-            Self::TrackedListStartup => Self::Delta,
-        }
+    pub(crate) const fn is_two_columns(self) -> bool {
+        matches!(self, Self::TwoColumns)
     }
 }
 
@@ -520,6 +516,7 @@ pub(crate) struct TrackedListsDialog {
     pub(crate) view: TrackedListsView,
     pub(crate) focused_button: Option<TrackedListsButton>,
     pub(crate) save_name_focused: bool,
+    pub(crate) startup_focused: bool,
     pub(crate) save_name_draft: String,
     pub(crate) save_name_cursor: usize,
     pub(crate) save_name_error: Option<String>,
@@ -580,8 +577,6 @@ pub(crate) struct App {
     pub(crate) show_help: bool,
     pub(crate) help_scroll: ScrollableModalState,
     pub(crate) show_column_picker: bool,
-    pub(crate) show_settings_dialog: bool,
-    pub(crate) settings_selection: SettingsSelection,
     pub(crate) tracked_lists_dialog: Option<TrackedListsDialog>,
     pub(crate) show_quit_confirmation: bool,
     pub(crate) quit_confirm_selection: QuitConfirmSelection,
@@ -652,7 +647,9 @@ pub(crate) struct App {
     pub(crate) graph_time_window_right_at: Option<DateTime<Local>>,
     pub(crate) graph_show_all_samples: bool,
     pub(crate) graph_y_axis_zero_min: bool,
+    pub(crate) graph_slot_layout: GraphSlotLayout,
     pub(crate) show_samples_panel: bool,
+    pub(crate) samples_panel_before_two_columns: bool,
     pub(crate) show_sample_delta: bool,
     pub(crate) details_live: bool,
     pub(crate) column_preset: ColumnPreset,
@@ -725,6 +722,11 @@ impl App {
             .map(ProcessIdentity::from_row);
         let last_tracked_live_identities =
             tracked_live_identities(&initial.snapshot.processes, &normalized_watch_names);
+        let graph_slot_layout = runtime.initial_graph_slot_layout;
+        let show_samples_panel =
+            runtime.initial_show_samples_panel && graph_slot_layout == GraphSlotLayout::OneColumn;
+        let samples_panel_before_two_columns = runtime.initial_show_samples_panel;
+        let show_sample_delta = runtime.initial_show_sample_delta;
         let mut app = Self {
             theme_index: theme_index_by_name(&runtime.initial_theme),
             runtime,
@@ -747,8 +749,6 @@ impl App {
                 ..ScrollableModalState::default()
             },
             show_column_picker: false,
-            show_settings_dialog: false,
-            settings_selection: SettingsSelection::SamplesPanel,
             tracked_lists_dialog: None,
             show_quit_confirmation: false,
             quit_confirm_selection: QuitConfirmSelection::Cancel,
@@ -828,8 +828,10 @@ impl App {
             graph_time_window_right_at: None,
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
-            show_samples_panel: true,
-            show_sample_delta: true,
+            graph_slot_layout,
+            show_samples_panel,
+            samples_panel_before_two_columns,
+            show_sample_delta,
             details_live: true,
             column_preset,
             process_columns,
@@ -969,7 +971,6 @@ impl App {
             || self.show_display_area_warning
             || self.show_metric_column_warning
             || self.show_no_graph_metrics_warning
-            || self.show_settings_dialog
             || self.tracked_lists_dialog.is_some()
     }
 
@@ -1590,69 +1591,65 @@ impl App {
         }
     }
 
-    pub(crate) fn open_settings_dialog(&mut self) {
-        self.show_settings_dialog = true;
-        self.status = "Settings".to_string();
-    }
-
-    pub(crate) fn close_settings_dialog(&mut self) {
-        self.show_settings_dialog = false;
-        if !self.show_samples_panel && self.focused_panel == FocusedPanel::DetailsSamples {
-            self.focused_panel = FocusedPanel::DetailsGraph;
+    pub(crate) fn toggle_samples_panel(&mut self) {
+        if self.show_samples_panel {
+            self.show_samples_panel = false;
+            self.samples_panel_before_two_columns = false;
+            if self.focused_panel == FocusedPanel::DetailsSamples {
+                self.focused_panel = FocusedPanel::DetailsGraph;
+            }
+            self.status = "Samples panel hidden".to_string();
+            return;
         }
-        self.ensure_visible_panel_focus();
-        self.status = "Ready".to_string();
+
+        self.graph_slot_layout = GraphSlotLayout::OneColumn;
+        self.show_samples_panel = true;
+        self.samples_panel_before_two_columns = true;
+        self.status = "Samples panel shown".to_string();
+        self.close_graph_slots_that_do_not_fit();
     }
 
-    pub(crate) fn select_next_setting(&mut self) {
-        self.settings_selection = self.settings_selection.next();
+    pub(crate) fn toggle_sample_delta(&mut self) {
+        if !self.show_samples_panel {
+            self.status = "Delta is unavailable while Samples are hidden".to_string();
+            return;
+        }
+        self.show_sample_delta = !self.show_sample_delta;
+        self.status = if self.show_sample_delta {
+            "Delta shown".to_string()
+        } else {
+            "Delta hidden".to_string()
+        };
     }
 
-    pub(crate) fn select_previous_setting(&mut self) {
-        self.settings_selection = self.settings_selection.previous();
-    }
-
-    pub(crate) fn toggle_selected_setting(&mut self) {
-        match self.settings_selection {
-            SettingsSelection::SamplesPanel => {
-                self.show_samples_panel = !self.show_samples_panel;
-                if !self.show_samples_panel && self.focused_panel == FocusedPanel::DetailsSamples {
+    pub(crate) fn toggle_graph_slot_layout(&mut self) {
+        let next = if self.graph_slot_layout == GraphSlotLayout::OneColumn {
+            GraphSlotLayout::TwoColumns
+        } else {
+            GraphSlotLayout::OneColumn
+        };
+        match next {
+            GraphSlotLayout::OneColumn => {
+                self.graph_slot_layout = next;
+                self.show_samples_panel = self.samples_panel_before_two_columns;
+                self.status = "Graph layout: 1 column".to_string();
+                self.close_graph_slots_that_do_not_fit();
+            }
+            GraphSlotLayout::TwoColumns => {
+                if !self.graph_slots_fit_for_layout(self.active_graph_slot_count(), next) {
+                    self.show_display_area_warning = true;
+                    self.status = "Not enough display area for 2-column Graph layout.".to_string();
+                    return;
+                }
+                self.samples_panel_before_two_columns = self.show_samples_panel;
+                self.show_samples_panel = false;
+                if self.focused_panel == FocusedPanel::DetailsSamples {
                     self.focused_panel = FocusedPanel::DetailsGraph;
                 }
-                self.status = if self.show_samples_panel {
-                    "Samples panel shown".to_string()
-                } else {
-                    "Samples panel hidden".to_string()
-                };
-            }
-            SettingsSelection::Delta => {
-                self.show_sample_delta = !self.show_sample_delta;
-                self.status = if self.show_sample_delta {
-                    "Delta shown".to_string()
-                } else {
-                    "Delta hidden".to_string()
-                };
-            }
-            SettingsSelection::TrackedListStartup => {
-                self.runtime.tracked_list_startup = self.runtime.tracked_list_startup.next();
-                self.status = format!(
-                    "Tracked List startup: {}",
-                    self.runtime.tracked_list_startup.label()
-                );
+                self.graph_slot_layout = next;
+                self.status = "Graph layout: 2 columns".to_string();
             }
         }
-    }
-
-    pub(crate) fn select_previous_tracked_list_startup(&mut self) {
-        self.runtime.tracked_list_startup = self.runtime.tracked_list_startup.previous();
-        self.status = format!(
-            "Tracked List startup: {}",
-            self.runtime.tracked_list_startup.label()
-        );
-    }
-
-    pub(crate) fn selected_tracked_list_startup(&self) -> TrackedListStartup {
-        self.runtime.tracked_list_startup
     }
 
     pub(crate) fn active_graph_slot_count(&self) -> usize {
@@ -1663,11 +1660,16 @@ impl App {
     }
 
     pub(crate) fn graph_slots_fit(&self, slot_count: usize) -> bool {
+        self.graph_slots_fit_for_layout(slot_count, self.graph_slot_layout)
+    }
+
+    fn graph_slots_fit_for_layout(&self, slot_count: usize, layout: GraphSlotLayout) -> bool {
         if slot_count == 0 {
             return true;
         }
-        crate::ui::details_slots_area_for_screen(self.last_screen_area, true)
-            .is_some_and(|area| !crate::ui::layout::details_slot_areas(area, slot_count).is_empty())
+        crate::ui::details_slots_area_for_screen(self.last_screen_area, true).is_some_and(|area| {
+            !crate::ui::layout::details_slot_areas(area, slot_count, layout).is_empty()
+        })
     }
 
     pub(crate) fn graph_slot(&self, index: usize) -> Option<&GraphSlot> {
@@ -1952,14 +1954,22 @@ impl App {
             FocusedPanel::SystemActivity => (FocusedPanel::Cpu, None),
             FocusedPanel::Cpu => (FocusedPanel::Processes, None),
             FocusedPanel::Processes => (FocusedPanel::DetailsGraph, slots.first().copied()),
-            FocusedPanel::DetailsGraph => (
+            FocusedPanel::DetailsGraph => {
                 if self.show_samples_panel {
-                    FocusedPanel::DetailsSamples
+                    (
+                        FocusedPanel::DetailsSamples,
+                        Some(self.active_graph_slot_index),
+                    )
                 } else {
-                    FocusedPanel::System
-                },
-                Some(self.active_graph_slot_index),
-            ),
+                    let next_slot = slots
+                        .iter()
+                        .copied()
+                        .find(|index| *index > self.active_graph_slot_index);
+                    next_slot
+                        .map(|index| (FocusedPanel::DetailsGraph, Some(index)))
+                        .unwrap_or((FocusedPanel::System, None))
+                }
+            }
             FocusedPanel::DetailsSamples => {
                 let next_slot = slots
                     .iter()
@@ -3070,6 +3080,7 @@ impl App {
             view: TrackedListsView::Browse,
             focused_button: None,
             save_name_focused: false,
+            startup_focused: false,
             save_name_draft,
             save_name_cursor,
             save_name_error: None,
@@ -3123,6 +3134,12 @@ impl App {
             .is_some_and(|dialog| dialog.save_name_focused)
     }
 
+    pub(crate) fn tracked_lists_startup_focused(&self) -> bool {
+        self.tracked_lists_dialog
+            .as_ref()
+            .is_some_and(|dialog| dialog.startup_focused)
+    }
+
     pub(crate) fn tracked_lists_save_name(&self) -> Option<(&str, usize, Option<&str>)> {
         self.tracked_lists_dialog.as_ref().map(|dialog| {
             (
@@ -3146,9 +3163,18 @@ impl App {
                 dialog.focused_button = Some(TrackedListsButton::Save);
                 return;
             }
+            if dialog.startup_focused {
+                dialog.startup_focused = false;
+                dialog.focused_button = Some(TrackedListsButton::NewEmpty);
+                return;
+            }
             dialog.focused_button = match dialog.focused_button {
                 None => {
                     dialog.save_name_focused = true;
+                    None
+                }
+                Some(TrackedListsButton::Save) => {
+                    dialog.startup_focused = true;
                     None
                 }
                 Some(button) => button.next(),
@@ -3163,10 +3189,19 @@ impl App {
                 dialog.focused_button = None;
                 return;
             }
+            if dialog.startup_focused {
+                dialog.startup_focused = false;
+                dialog.focused_button = Some(TrackedListsButton::Save);
+                return;
+            }
             dialog.focused_button = match dialog.focused_button {
                 None => Some(TrackedListsButton::Close),
                 Some(TrackedListsButton::Save) => {
                     dialog.save_name_focused = true;
+                    None
+                }
+                Some(TrackedListsButton::NewEmpty) => {
+                    dialog.startup_focused = true;
                     None
                 }
                 Some(button) => button.previous(),
@@ -3178,6 +3213,7 @@ impl App {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.focused_button = Some(button);
             dialog.save_name_focused = false;
+            dialog.startup_focused = false;
         }
     }
 
@@ -3185,6 +3221,7 @@ impl App {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.focused_button = None;
             dialog.save_name_focused = false;
+            dialog.startup_focused = false;
         }
     }
 
@@ -3192,7 +3229,34 @@ impl App {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.focused_button = None;
             dialog.save_name_focused = true;
+            dialog.startup_focused = false;
             dialog.save_name_cursor = dialog.save_name_draft.len();
+        }
+    }
+
+    pub(crate) fn focus_tracked_lists_startup(&mut self) {
+        if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
+            dialog.focused_button = None;
+            dialog.save_name_focused = false;
+            dialog.startup_focused = true;
+        }
+    }
+
+    pub(crate) fn select_next_tracked_list_startup(&mut self) {
+        self.set_tracked_list_startup(self.runtime.tracked_list_startup.next());
+    }
+
+    pub(crate) fn select_previous_tracked_list_startup(&mut self) {
+        self.set_tracked_list_startup(self.runtime.tracked_list_startup.previous());
+    }
+
+    fn set_tracked_list_startup(&mut self, startup: TrackedListStartup) {
+        let previous = self.runtime.tracked_list_startup;
+        self.runtime.tracked_list_startup = startup;
+        if self.persist_tracked_list_changes() {
+            self.status = format!("Tracked List startup: {}", startup.label());
+        } else {
+            self.runtime.tracked_list_startup = previous;
         }
     }
 

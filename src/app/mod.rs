@@ -39,10 +39,12 @@ pub(crate) use state::DetailsSampleViewState;
 pub(crate) use state::DetailsTarget;
 pub(crate) use state::FocusedPanel;
 pub(crate) use state::GRAPH_SLOT_MIN_HEIGHT;
+pub(crate) use state::GRAPH_SLOT_MIN_WIDTH;
 pub(crate) use state::GraphPanDrag;
 pub(crate) use state::GraphPanDragButton;
 pub(crate) use state::GraphSample;
 pub(crate) use state::GraphSlot;
+pub(crate) use state::GraphSlotLayout;
 pub(crate) use state::GraphValueFormat;
 pub(crate) use state::LogDirSelection;
 #[cfg(test)]
@@ -55,7 +57,6 @@ pub(crate) use state::RecordingPathSelection;
 #[cfg(test)]
 pub(crate) use state::SAMPLE_STALE_AFTER_SECONDS;
 pub(crate) use state::SampleFreshness;
-pub(crate) use state::SettingsSelection;
 pub(crate) use state::TrackedRemoveSelection;
 #[cfg(test)]
 pub(crate) use state::VisibleProcessEntry;
@@ -268,7 +269,12 @@ fn details_samples_page_size_for_app(screen_area: Rect, app: &App) -> usize {
         return 1;
     }
     let slot_count = app.active_graph_slot_count().max(1);
-    let slot_areas = details_slot_areas_for_screen(screen_area, app.show_details, slot_count);
+    let slot_areas = details_slot_areas_for_screen(
+        screen_area,
+        app.show_details,
+        slot_count,
+        app.graph_slot_layout,
+    );
     let Some(slot) = slot_areas.get(app.active_graph_visible_index()).copied() else {
         return 1;
     };

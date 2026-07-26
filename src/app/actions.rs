@@ -22,7 +22,7 @@ use crate::{
         layout::{
             details_graph_area, details_graph_chart_area, details_samples_area,
             details_shared_controls_area_for_screen, details_slot_title_area,
-            graph_all_samples_toggle_area, graph_y_axis_toggle_area,
+            graph_shared_control_areas,
         },
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
@@ -30,10 +30,10 @@ use crate::{
         process_metric_column_index_at, process_table_area_for_screen, process_table_page_size,
         process_tracked_only_control_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
         recording_no_tracked_ok_button_area, recording_overwrite_button_at,
-        recording_path_button_at, settings_ok_button_area, settings_selection_at,
-        system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
-        tracked_list_confirm_button_at, tracked_list_index_at, tracked_list_name_button_at,
-        tracked_list_save_name_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
+        recording_path_button_at, system_activity_panel_area_for_screen,
+        system_info_ok_button_area_for_screen, tracked_list_confirm_button_at,
+        tracked_list_index_at, tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
+        tracked_list_startup_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
     },
 };
 
@@ -90,6 +90,12 @@ impl App {
                     KeyCode::Right if self.tracked_lists_save_name_focused() => {
                         self.move_tracked_list_save_name_cursor_right();
                     }
+                    KeyCode::Left if self.tracked_lists_startup_focused() => {
+                        self.select_previous_tracked_list_startup();
+                    }
+                    KeyCode::Right | KeyCode::Char(' ') if self.tracked_lists_startup_focused() => {
+                        self.select_next_tracked_list_startup();
+                    }
                     KeyCode::Home if self.tracked_lists_save_name_focused() => {
                         self.move_tracked_list_save_name_cursor_home();
                     }
@@ -99,6 +105,8 @@ impl App {
                     KeyCode::Enter => {
                         if self.tracked_lists_save_name_focused() {
                             self.save_current_tracked_list();
+                        } else if self.tracked_lists_startup_focused() {
+                            self.select_next_tracked_list_startup();
                         } else if let Some(button) = self.tracked_lists_focused_button() {
                             self.activate_tracked_lists_button(button);
                         } else {
@@ -113,19 +121,22 @@ impl App {
                     }
                     KeyCode::Up
                         if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused() =>
+                            && !self.tracked_lists_save_name_focused()
+                            && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_up(1);
                     }
                     KeyCode::Down
                         if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused() =>
+                            && !self.tracked_lists_save_name_focused()
+                            && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_down(1);
                     }
                     KeyCode::PageUp
                         if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused() =>
+                            && !self.tracked_lists_save_name_focused()
+                            && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_up(
                             self.tracked_lists_dialog
@@ -136,7 +147,8 @@ impl App {
                     }
                     KeyCode::PageDown
                         if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused() =>
+                            && !self.tracked_lists_save_name_focused()
+                            && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_down(
                             self.tracked_lists_dialog
@@ -147,13 +159,15 @@ impl App {
                     }
                     KeyCode::Home
                         if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused() =>
+                            && !self.tracked_lists_save_name_focused()
+                            && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_home();
                     }
                     KeyCode::End
                         if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused() =>
+                            && !self.tracked_lists_save_name_focused()
+                            && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_end();
                     }
@@ -212,25 +226,6 @@ impl App {
                         _ => {}
                     }
                 }
-            }
-            return Ok(());
-        }
-
-        if self.show_settings_dialog {
-            match key.code {
-                KeyCode::Esc | KeyCode::Enter => self.close_settings_dialog(),
-                KeyCode::Up => self.select_previous_setting(),
-                KeyCode::Down | KeyCode::Tab => self.select_next_setting(),
-                KeyCode::Left
-                    if self.settings_selection
-                        == crate::app::SettingsSelection::TrackedListStartup =>
-                {
-                    self.select_previous_tracked_list_startup();
-                }
-                KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') => {
-                    self.toggle_selected_setting();
-                }
-                _ => {}
             }
             return Ok(());
         }
@@ -546,6 +541,27 @@ impl App {
                         && !key.modifiers.contains(KeyModifiers::CONTROL) =>
                 {
                     self.toggle_graph_all_samples();
+                    return Ok(());
+                }
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'v')
+                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.toggle_samples_panel();
+                    return Ok(());
+                }
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'d')
+                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.toggle_sample_delta();
+                    return Ok(());
+                }
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'l')
+                        && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.toggle_graph_slot_layout();
                     return Ok(());
                 }
                 _ => {}
@@ -959,13 +975,6 @@ impl App {
                 self.open_log_list()?;
             }
             KeyCode::Char(ch)
-                if ch.eq_ignore_ascii_case(&'o')
-                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                self.open_settings_dialog();
-            }
-            KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'c')
                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
@@ -1026,6 +1035,14 @@ impl App {
                     {
                         self.focus_tracked_lists_save_name();
                         self.set_tracked_lists_hovered_button(None);
+                        return;
+                    }
+                    if tracked_list_startup_area_for_screen(screen_area)
+                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+                    {
+                        self.focus_tracked_lists_startup();
+                        self.set_tracked_lists_hovered_button(None);
+                        self.select_next_tracked_list_startup();
                         return;
                     }
                     if let Some(button) =
@@ -1237,27 +1254,6 @@ impl App {
             return;
         }
 
-        if self.show_settings_dialog {
-            match mouse.kind {
-                MouseEventKind::Down(MouseButton::Left)
-                    if settings_ok_button_area(screen_area)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
-                {
-                    self.close_settings_dialog();
-                }
-                MouseEventKind::Down(MouseButton::Left) => {
-                    if let Some(selection) =
-                        settings_selection_at(screen_area, mouse.column, mouse.row)
-                    {
-                        self.settings_selection = selection;
-                        self.toggle_selected_setting();
-                    }
-                }
-                _ => {}
-            }
-            return;
-        }
-
         if self.show_quit_confirmation {
             if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
                 match quit_confirm_button_at(
@@ -1395,6 +1391,15 @@ impl App {
                     return;
                 }
                 if self.toggle_graph_y_axis_at(mouse.column, mouse.row, screen_area) {
+                    return;
+                }
+                if self.toggle_samples_panel_at(mouse.column, mouse.row, screen_area) {
+                    return;
+                }
+                if self.toggle_sample_delta_at(mouse.column, mouse.row, screen_area) {
+                    return;
+                }
+                if self.toggle_graph_slot_layout_at(mouse.column, mouse.row, screen_area) {
                     return;
                 }
                 self.focus_panel_at(mouse.column, mouse.row, screen_area);
@@ -1564,22 +1569,62 @@ impl App {
     }
 
     fn toggle_graph_y_axis_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
-        let Some(area) = graph_y_axis_toggle_area_at(self, screen_area, x, y) else {
+        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).y_axis else {
             return false;
         };
-        let _ = area;
+        if !contains_point(area, x, y) {
+            return false;
+        }
         self.focused_panel = FocusedPanel::DetailsGraph;
         self.toggle_graph_y_axis_zero_min();
         true
     }
 
     fn toggle_graph_all_samples_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
-        let Some(area) = graph_all_samples_toggle_area_at(self, screen_area, x, y) else {
+        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).all_samples else {
             return false;
         };
-        let _ = area;
+        if !contains_point(area, x, y) {
+            return false;
+        }
         self.focused_panel = FocusedPanel::DetailsGraph;
         self.toggle_graph_all_samples();
+        true
+    }
+
+    fn toggle_samples_panel_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
+        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).samples else {
+            return false;
+        };
+        if !contains_point(area, x, y) {
+            return false;
+        }
+        self.focused_panel = FocusedPanel::DetailsGraph;
+        self.toggle_samples_panel();
+        true
+    }
+
+    fn toggle_sample_delta_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
+        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).delta else {
+            return false;
+        };
+        if !contains_point(area, x, y) {
+            return false;
+        }
+        self.focused_panel = FocusedPanel::DetailsGraph;
+        self.toggle_sample_delta();
+        true
+    }
+
+    fn toggle_graph_slot_layout_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
+        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).two_columns else {
+            return false;
+        };
+        if !contains_point(area, x, y) {
+            return false;
+        }
+        self.focused_panel = FocusedPanel::DetailsGraph;
+        self.toggle_graph_slot_layout();
         true
     }
 
@@ -1912,11 +1957,16 @@ fn process_row_index_at(
 
 fn visible_slot_areas_for_app(app: &App, screen_area: Rect) -> Vec<(usize, Rect)> {
     let indices = app.visible_graph_slot_indices();
-    details_slot_areas_for_screen(screen_area, app.show_details, indices.len())
-        .into_iter()
-        .zip(indices)
-        .map(|(area, index)| (index, area))
-        .collect()
+    details_slot_areas_for_screen(
+        screen_area,
+        app.show_details,
+        indices.len(),
+        app.graph_slot_layout,
+    )
+    .into_iter()
+    .zip(indices)
+    .map(|(area, index)| (index, area))
+    .collect()
 }
 
 fn graph_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, Rect)> {
@@ -2037,16 +2087,13 @@ fn active_graph_chart_area_for_screen(app: &App, screen_area: Rect) -> Option<Re
         })
 }
 
-fn graph_y_axis_toggle_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<Rect> {
-    let controls = details_shared_controls_area_for_screen(screen_area, app.show_details)?;
-    let area = graph_y_axis_toggle_area(controls)?;
-    contains_point(area, x, y).then_some(area)
-}
-
-fn graph_all_samples_toggle_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<Rect> {
-    let controls = details_shared_controls_area_for_screen(screen_area, app.show_details)?;
-    let area = graph_all_samples_toggle_area(controls)?;
-    contains_point(area, x, y).then_some(area)
+fn graph_shared_control_areas_for_app(
+    app: &App,
+    screen_area: Rect,
+) -> crate::ui::layout::GraphSharedControlAreas {
+    let controls =
+        details_shared_controls_area_for_screen(screen_area, app.show_details).unwrap_or_default();
+    graph_shared_control_areas(controls, app.show_samples_panel)
 }
 
 fn details_sample_page_size_for_samples_area(

@@ -222,10 +222,9 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
 | `Ctrl+L`            | Open the log list.                                                  |
-| `Ctrl+T`            | Open Tracked Lists to save or load named lists.                    |
+| `Ctrl+T`            | Open Tracked Lists to save or load named lists and set startup behavior. |
 | `Ctrl+R`            | Start / stop recording.                                             |
 | `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
-| `Ctrl+O`            | Open the Settings dialog.                                           |
 | `Ctrl+Wheel`        | Change the Windows Terminal zoom level.                             |
 | `F2`                | Switch theme.                                                       |
 
@@ -265,16 +264,20 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `PageUp` / `PageDown`      | Change the visible time span.                                                       |
 | `f`                        | Switch to a time span that fits all samples.                                        |
 | `z`                        | Toggle the Y-axis lower bound between fixed at 0 and following the visible minimum. |
+| `v`                        | Show or hide the Samples table.                                                     |
+| `d`                        | Show or hide the Delta column in Samples.                                           |
+| `l`                        | Switch Graph slots between one and two columns.                                     |
 | `a` / `b`                  | Mark the selected sample as point A or point B.                                     |
 | `Shift+A` / `Shift+B`      | Jump to point A or point B.                                                         |
 | `x`                        | Clear the A/B comparison.                                                           |
 
 
-Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, `Fit all`, and `Min 0`. Each slot uses one frame titled `GRAPH#n · item · metric`, with its Graph and synchronized Samples table grouped inside that frame. The active slot title is emphasized and inactive slot titles are muted.
-The shared `f` and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
+Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, plus the `v: Samples`, `d: Delta`, `l: 2 cols`, `f: Fit all`, and `z: Min 0` checkboxes. The checkboxes can also be clicked. Each slot uses one frame titled `GRAPH#n · item · metric`, with its Graph and synchronized Samples table grouped inside that frame. The active slot title is emphasized and inactive slot titles are muted.
+The shared `v`, `d`, `l`, `f`, and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
 
-When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph.
-If there is not enough display area, the message `Not enough display area.` is shown and the Graph is not added.
+In two-column mode, slots use row-major order: upper left, upper right, lower left, then lower right. A single Graph uses the full width, and three Graphs leave the lower-right cell empty. Two-column mode hides Samples and restores its previous visibility when returning to one column. Enabling Samples with `v` while in two-column mode also switches to one column.
+
+When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph. Switching from one to two columns and adding a Graph are rejected with `Not enough display area.` when the available area is insufficient. Switching from two columns to one removes the highest-numbered Graph slots until the remaining slots fit, using the same behavior as a terminal resize. The same cleanup applies when `v` enables Samples from two-column mode.
 
 ## Display Conventions
 
@@ -305,8 +308,8 @@ The recording log format and the meaning of each field are described in [docs/me
 
 The configuration file is `winproc-tui.toml`, placed next to the executable.
 If the file does not exist, defaults are used.
-On exit, the current theme, process-table columns, sort, Tracked Only state, working Tracked List, and saved named lists are saved.
-Explicit Save, Rename, and Delete actions in Tracked Lists are written immediately without waiting for exit.
+On exit, the current theme, Graph columns and Samples / Delta visibility, process-table columns, sort, Tracked Only state, working Tracked List, and saved named lists are saved.
+Changing startup behavior or using explicit Save, Rename, and Delete actions in Tracked Lists writes the configuration immediately without waiting for exit.
 Filter input state is not carried over to the next launch.
 
 Example:
@@ -315,6 +318,11 @@ Example:
 [general]
 mouse = true
 theme = "Dark"
+
+[graphs]
+columns = 1
+samples = true
+delta = true
 
 [process_table]
 preset = "Default"
@@ -338,7 +346,9 @@ name = "My app"
 processes = ["app.exe", "worker.exe"]
 ```
 
-`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; an unsaved difference adds `*` to the list name in the `PROCESSES` title.
+`graphs.columns` accepts `1` or `2`. `samples` stores the Samples visibility used in one-column mode, and `delta` stores the Delta-column visibility.
+
+`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; an unsaved difference adds `*` to the list name in the `PROCESSES` title.
 
 When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority.
 
