@@ -24,7 +24,7 @@ flowchart LR
     App --> UI["UI<br/>ratatui rendering"]
     Model --> UI
     UI --> Terminal["Windows terminal"]
-    App -->|save after successful run| Config
+    App -->|explicit list save / successful exit| Config
 ```
 
 The diagram shows runtime data flow rather than a strict Rust module dependency graph. In particular, `ui` reads application state for rendering, while `app` also uses geometry helpers from `ui::layout` so drawing and mouse hit testing share the same rectangles.
@@ -83,10 +83,11 @@ The record types, fields, units, and missing-value rules are specified in [metri
 
 ### 4.1 Startup and shutdown
 
-1. `main` parses the CLI, installs the Windows console control handler, resolves `winproc-tui.toml`, and builds `RuntimeConfig`.
-2. `App::new` performs one synchronous initial collection so the first screen has data, initializes histories and selection state, and then spawns `SamplingWorker` for subsequent samples.
-3. `main` enters raw mode and the alternate screen, then calls `run_tui`.
-4. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure.
+1. `main` parses the CLI, installs the Windows console control handler, and resolves and loads `winproc-tui.toml`.
+2. Startup mode either resumes the previous working Tracked List, clears it, or opens a chooser for the previous session, an empty list, or a saved named list. The chooser completes before `RuntimeConfig` is built and before any sample is collected.
+3. `App::new` performs one synchronous initial collection so the first screen has data, initializes histories and selection state, and then spawns `SamplingWorker` for subsequent samples.
+4. `main` enters raw mode and the alternate screen, then calls `run_tui`.
+5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Explicit Save, Save As, Rename, and Delete actions for named Tracked Lists persist immediately.
 
 Interactive quit goes through application cleanup. If recording is active, the end record is attempted and the writer is flushed and closed before exit. Windows console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` set a termination request that enters the same cleanup path; close-class events wait for a bounded period so the main loop and workers can finish. Dropping `SamplingWorker` sends `Stop` and joins its thread.
 
@@ -124,13 +125,15 @@ Column selection and sorting are modeled separately through `MetricColumn`, `Sor
 
 - sampling progress, the current live snapshot, freshness, and warning state;
 - process-table selection, filtering, sorting, columns, and visible-row caches;
-- tracking, process/system histories, and exited tracked rows;
+- the working Tracked List, saved named lists, startup mode, process/system histories, and exited tracked rows;
 - Graph slots, shared time/cursor/A/B state, and slot-specific display state;
 - modal and asynchronous investigation state;
 - display-pause, recording, Log list, and Log view state;
 - runtime settings, theme, and transient action feedback.
 
 Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracked List is empty.
+
+The working Tracked List is separate from saved named definitions. `Space` edits only the working copy. Loading a saved list replaces the working copy, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
 
 ### 5.3 Graph and Samples state
 
@@ -191,6 +194,7 @@ The most important implementation invariants are:
 - Recording and Log view must never be active together;
 - stopping or quitting Recording must flush and close the log;
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
+- the working Tracked List must not overwrite a saved named definition without an explicit save action;
 - drawing and hit testing must use the same layout geometry;
 - Graph shared state must not replace per-slot sample-availability checks;
 - unavailable metrics must remain explicit rather than being converted to plausible values.

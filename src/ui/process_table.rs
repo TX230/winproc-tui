@@ -29,6 +29,7 @@ const TITLE_SEPARATOR: &str = " · ";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ProcessTitleSegmentKind {
+    TrackedList,
     VisibleCount,
     TrackedOnly,
     Filter,
@@ -724,7 +725,14 @@ fn process_table_title(app: &App, theme: Theme) -> Line<'static> {
 }
 
 fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
-    let mut segments = vec![
+    let mut segments = Vec::new();
+    if let Some(label) = app.active_tracked_list_title() {
+        segments.push(ProcessTitleSegment {
+            kind: ProcessTitleSegmentKind::TrackedList,
+            label,
+        });
+    }
+    segments.extend([
         ProcessTitleSegment {
             kind: ProcessTitleSegmentKind::VisibleCount,
             label: format!("{} visible", app.visible_process_count()),
@@ -733,7 +741,7 @@ fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
             kind: ProcessTitleSegmentKind::TrackedOnly,
             label: process_tracked_only_label(app).to_string(),
         },
-    ];
+    ]);
     let filter = app.active_filter_text();
     if !filter.is_empty() {
         segments.push(ProcessTitleSegment {
@@ -746,6 +754,13 @@ fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
 
 fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: Theme) -> Style {
     match kind {
+        ProcessTitleSegmentKind::TrackedList => Style::default()
+            .fg(if app.active_tracked_list_dirty() {
+                theme.warning
+            } else {
+                theme.tracked
+            })
+            .remove_modifier(Modifier::BOLD),
         ProcessTitleSegmentKind::VisibleCount => Style::default()
             .fg(theme.muted)
             .remove_modifier(Modifier::BOLD),

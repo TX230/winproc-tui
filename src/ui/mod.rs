@@ -17,6 +17,7 @@ pub(crate) mod recording_dialog;
 pub(crate) mod settings_dialog;
 pub(crate) mod system_panel;
 pub(crate) mod theme;
+pub(crate) mod tracked_lists;
 pub(crate) mod tracked_remove_confirm;
 pub(crate) mod widgets;
 
@@ -98,6 +99,12 @@ pub(crate) use system_panel::{
 };
 use system_panel::{draw_system_info_dialog, draw_system_panel};
 pub(crate) use theme::{THEMES, Theme, theme_index_by_name};
+use tracked_lists::draw_tracked_lists;
+pub(crate) use tracked_lists::{
+    TrackedListNameButton, tracked_list_confirm_button_at, tracked_list_index_at,
+    tracked_list_name_button_at, tracked_list_save_name_area_for_screen, tracked_lists_button_at,
+    tracked_lists_page_size_for_screen,
+};
 use tracked_remove_confirm::draw_tracked_remove_confirm;
 pub(crate) use tracked_remove_confirm::tracked_remove_button_at;
 
@@ -154,6 +161,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_settings_dialog {
         draw_settings_dialog(frame, area, app, theme);
+    }
+    if app.tracked_lists_dialog.is_some() {
+        draw_tracked_lists(frame, area, app, theme);
     }
     if app.show_display_area_warning {
         draw_display_area_warning(frame, area, theme);

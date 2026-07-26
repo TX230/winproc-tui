@@ -17,8 +17,8 @@ use crate::{
 };
 
 const SETTINGS_WIDTH: u16 = 44;
-const SETTINGS_HEIGHT: u16 = 8;
-const OK_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 5;
+const SETTINGS_HEIGHT: u16 = 9;
+const OK_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 6;
 
 pub(crate) fn draw_settings_dialog(
     frame: &mut ratatui::Frame<'_>,
@@ -35,6 +35,7 @@ pub(crate) fn draw_settings_dialog(
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
@@ -62,16 +63,25 @@ pub(crate) fn draw_settings_dialog(
         rows[1],
     );
     frame.render_widget(
+        choice_row(
+            "Tracked List startup",
+            app.selected_tracked_list_startup().label(),
+            app.settings_selection == SettingsSelection::TrackedListStartup,
+            theme,
+        ),
+        rows[2],
+    );
+    frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "Space toggles. Enter closes.",
+            "Left/Right or Space changes. Enter closes.",
             Style::default().fg(theme.muted),
         ))),
-        rows[2],
+        rows[3],
     );
     frame.render_widget(
         Paragraph::new(button_line(&[(" OK ", true)], theme))
             .alignment(ratatui::layout::Alignment::Center),
-        rows[4],
+        rows[5],
     );
 }
 
@@ -94,13 +104,33 @@ pub(crate) fn settings_selection_at(area: Rect, x: u16, y: u16) -> Option<Settin
     });
     let samples_row = Rect::new(inner.x, inner.y, inner.width, 1);
     let delta_row = Rect::new(inner.x, inner.y.saturating_add(1), inner.width, 1);
+    let startup_row = Rect::new(inner.x, inner.y.saturating_add(2), inner.width, 1);
     if contains_point(samples_row, x, y) {
         Some(SettingsSelection::SamplesPanel)
     } else if contains_point(delta_row, x, y) {
         Some(SettingsSelection::Delta)
+    } else if contains_point(startup_row, x, y) {
+        Some(SettingsSelection::TrackedListStartup)
     } else {
         None
     }
+}
+
+fn choice_row(
+    label: &'static str,
+    value: &'static str,
+    selected: bool,
+    theme: Theme,
+) -> Paragraph<'static> {
+    let style = if selected {
+        Style::default().fg(theme.text).bg(theme.focus_surface)
+    } else {
+        Style::default().fg(theme.text)
+    };
+    Paragraph::new(Line::from(vec![
+        Span::styled(format!("{label:<22}"), style),
+        Span::styled(format!("< {value} >"), style),
+    ]))
 }
 
 fn contains_point(area: Rect, x: u16, y: u16) -> bool {

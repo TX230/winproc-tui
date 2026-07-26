@@ -22,6 +22,7 @@ use crate::ui::{
     help_page_size_for_screen,
     layout::{details_samples_area, details_samples_row_capacity},
     open_files_page_size_for_screen, process_table_area_for_screen, process_table_page_size,
+    tracked_lists_page_size_for_screen,
 };
 
 const EVENT_POLL_SLICE: Duration = Duration::from_millis(50);
@@ -60,6 +61,7 @@ pub(crate) use state::TrackedRemoveSelection;
 pub(crate) use state::VisibleProcessEntry;
 pub(crate) use state::VisibleProcessRow;
 pub(crate) use state::distinct_process_kill_image_names;
+pub(crate) use state::{TrackedListConfirmSelection, TrackedListsButton, TrackedListsView};
 
 pub(crate) fn run_tui(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -256,6 +258,7 @@ fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.set_column_picker_page_size(column_picker_page_size_for_screen(screen_area));
     app.set_log_list_page_size(crate::ui::log_list_page_size_for_screen(screen_area));
     app.set_open_files_page_size(open_files_page_size_for_screen(screen_area, app));
+    app.set_tracked_lists_page_size(tracked_lists_page_size_for_screen(screen_area));
     app.ensure_visible_panel_focus();
     app.clamp_process_table_state();
 }

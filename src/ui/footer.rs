@@ -38,11 +38,11 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
         FocusedPanel::Processes => (
             "PROCESSES".to_string(),
             vec![
+                ("Ctrl+T", "Lists"),
                 ("c", "Columns"),
                 ("s", "Sort"),
                 ("g", "Graphs"),
                 ("Ctrl+I", "Jump"),
-                ("Shift+←/→", "Move column"),
                 ("1-4", "Graph"),
                 ("Enter", "Info"),
                 ("Space", "Track"),

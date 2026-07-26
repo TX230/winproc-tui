@@ -12,25 +12,16 @@ use crate::samplers::SamplingOptions;
 
 const CONFIG_FILE_NAME: &str = "winproc-tui.toml";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct AppConfig {
     pub(crate) general: GeneralConfig,
     pub(crate) process_table: ProcessTableConfig,
     pub(crate) recording: RecordingConfig,
+    pub(crate) tracking: TrackingConfig,
     #[serde(alias = "watch", alias = "process")]
     pub(crate) tracked: Vec<TrackedConfig>,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            process_table: ProcessTableConfig::default(),
-            recording: RecordingConfig::default(),
-            tracked: Vec::new(),
-        }
-    }
+    pub(crate) tracked_lists: Vec<SavedTrackedList>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,14 +72,64 @@ pub(crate) struct RecordingConfig {
     pub(crate) last_dir: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct TrackingConfig {
+    pub(crate) startup: TrackedListStartup,
+    pub(crate) active_list: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TrackedListStartup {
+    #[default]
+    ResumeLast,
+    ChooseList,
+    StartEmpty,
+}
+
+impl TrackedListStartup {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::ResumeLast => "Resume last",
+            Self::ChooseList => "Choose list",
+            Self::StartEmpty => "Start empty",
+        }
+    }
+
+    pub(crate) const fn next(self) -> Self {
+        match self {
+            Self::ResumeLast => Self::ChooseList,
+            Self::ChooseList => Self::StartEmpty,
+            Self::StartEmpty => Self::ResumeLast,
+        }
+    }
+
+    pub(crate) const fn previous(self) -> Self {
+        match self {
+            Self::ResumeLast => Self::StartEmpty,
+            Self::ChooseList => Self::ResumeLast,
+            Self::StartEmpty => Self::ChooseList,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct TrackedConfig {
     pub(crate) name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SavedTrackedList {
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) processes: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeConfig {
     pub(crate) mouse: bool,
+    pub(crate) config_path: Option<PathBuf>,
     pub(crate) recording_last_dir: Option<PathBuf>,
     pub(crate) initial_theme: String,
     pub(crate) column_preset: ColumnPreset,
@@ -96,6 +137,9 @@ pub(crate) struct RuntimeConfig {
     pub(crate) sort: SortSpec,
     pub(crate) initial_tracked_only: bool,
     pub(crate) process_filters: Vec<String>,
+    pub(crate) tracked_list_startup: TrackedListStartup,
+    pub(crate) active_tracked_list: Option<String>,
+    pub(crate) saved_tracked_lists: Vec<SavedTrackedList>,
     pub(crate) sampling_options: SamplingOptions,
 }
 
@@ -134,10 +178,20 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         .unwrap_or(ColumnPreset::Default);
     let process_columns = parse_columns(&config.process_table.columns)
         .unwrap_or_else(|| column_preset.effective_columns().to_vec());
-    let process_filters = config.tracked.into_iter().map(|item| item.name).collect();
+    let process_filters = if config.tracking.startup == TrackedListStartup::StartEmpty {
+        Vec::new()
+    } else {
+        config.tracked.into_iter().map(|item| item.name).collect()
+    };
+    let active_tracked_list = if config.tracking.startup == TrackedListStartup::StartEmpty {
+        None
+    } else {
+        config.tracking.active_list
+    };
 
     Ok(RuntimeConfig {
         mouse: config.general.mouse,
+        config_path: None,
         recording_last_dir: config.recording.last_dir,
         initial_theme: config.general.theme,
         column_preset,
@@ -156,6 +210,9 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         },
         initial_tracked_only: config.process_table.tracked_only,
         process_filters,
+        tracked_list_startup: config.tracking.startup,
+        active_tracked_list,
+        saved_tracked_lists: normalize_saved_tracked_lists(config.tracked_lists),
         sampling_options: SamplingOptions {
             collect_ws_share: false,
             collect_gpu: true,
@@ -189,14 +246,51 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
         recording: RecordingConfig {
             last_dir: app.recording_last_dir.clone(),
         },
+        tracking: TrackingConfig {
+            startup: app.runtime.tracked_list_startup,
+            active_list: app.runtime.active_tracked_list.clone(),
+        },
         tracked: app
             .watch_list
             .iter()
             .map(|name| TrackedConfig { name: name.clone() })
             .collect(),
+        tracked_lists: app.runtime.saved_tracked_lists.clone(),
     };
     let content = toml::to_string_pretty(&config)?;
     fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn normalize_saved_tracked_lists(lists: Vec<SavedTrackedList>) -> Vec<SavedTrackedList> {
+    let mut normalized = Vec::<SavedTrackedList>::new();
+    for mut list in lists {
+        list.name = list.name.trim().to_string();
+        if list.name.is_empty()
+            || normalized
+                .iter()
+                .any(|saved| saved.name.eq_ignore_ascii_case(&list.name))
+        {
+            continue;
+        }
+        list.processes = dedupe_process_names(list.processes);
+        normalized.push(list);
+    }
+    normalized
+}
+
+fn dedupe_process_names(names: Vec<String>) -> Vec<String> {
+    let mut deduped = Vec::<String>::new();
+    for name in names {
+        let name = name.trim().to_string();
+        if !name.is_empty()
+            && !deduped
+                .iter()
+                .any(|saved| saved.eq_ignore_ascii_case(&name))
+        {
+            deduped.push(name);
+        }
+    }
+    deduped
 }
 
 fn parse_columns(columns: &[String]) -> Option<Vec<MetricColumn>> {

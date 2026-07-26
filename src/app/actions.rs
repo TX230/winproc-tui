@@ -9,13 +9,14 @@ use ratatui::layout::Rect;
 use crate::{
     app::{
         App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, ProcessKillSelection,
-        QuitConfirmSelection, RecordingOverwriteSelection, TrackedRemoveSelection,
+        QuitConfirmSelection, RecordingOverwriteSelection, TrackedListConfirmSelection,
+        TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
-        THEMES, column_picker_close_button_area_for_screen, column_picker_index_at,
-        column_picker_scrollbar_area, cpu_panel_area_for_screen, details_slot_areas_for_screen,
-        display_area_warning_ok_button_area,
+        THEMES, TrackedListNameButton, column_picker_close_button_area_for_screen,
+        column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
+        details_slot_areas_for_screen, display_area_warning_ok_button_area,
         format::format_integer,
         help_area, help_close_button_area, help_scrollbar_area,
         layout::{
@@ -31,7 +32,8 @@ use crate::{
         recording_no_tracked_ok_button_area, recording_overwrite_button_at,
         recording_path_button_at, settings_ok_button_area, settings_selection_at,
         system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
-        tracked_remove_button_at,
+        tracked_list_confirm_button_at, tracked_list_index_at, tracked_list_name_button_at,
+        tracked_list_save_name_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
     },
 };
 
@@ -68,11 +70,163 @@ impl App {
             return Ok(());
         }
 
+        if let Some(view) = self.tracked_lists_view().cloned() {
+            match view {
+                TrackedListsView::Browse => match key.code {
+                    KeyCode::Esc => self.close_tracked_lists(),
+                    KeyCode::Tab => self.focus_next_tracked_lists_control(),
+                    KeyCode::BackTab => self.focus_previous_tracked_lists_control(),
+                    KeyCode::Backspace if self.tracked_lists_save_name_focused() => {
+                        self.pop_tracked_list_save_name_char();
+                    }
+                    KeyCode::Delete if self.tracked_lists_save_name_focused() => {
+                        self.delete_tracked_list_save_name_char();
+                    }
+                    KeyCode::Delete => self.request_delete_selected_tracked_list(),
+                    KeyCode::F(2) => self.begin_tracked_list_rename(),
+                    KeyCode::Left if self.tracked_lists_save_name_focused() => {
+                        self.move_tracked_list_save_name_cursor_left();
+                    }
+                    KeyCode::Right if self.tracked_lists_save_name_focused() => {
+                        self.move_tracked_list_save_name_cursor_right();
+                    }
+                    KeyCode::Home if self.tracked_lists_save_name_focused() => {
+                        self.move_tracked_list_save_name_cursor_home();
+                    }
+                    KeyCode::End if self.tracked_lists_save_name_focused() => {
+                        self.move_tracked_list_save_name_cursor_end();
+                    }
+                    KeyCode::Enter => {
+                        if self.tracked_lists_save_name_focused() {
+                            self.save_current_tracked_list();
+                        } else if let Some(button) = self.tracked_lists_focused_button() {
+                            self.activate_tracked_lists_button(button);
+                        } else {
+                            self.load_selected_tracked_list();
+                        }
+                    }
+                    KeyCode::Left if self.tracked_lists_focused_button().is_some() => {
+                        self.focus_previous_tracked_lists_control();
+                    }
+                    KeyCode::Right if self.tracked_lists_focused_button().is_some() => {
+                        self.focus_next_tracked_lists_control();
+                    }
+                    KeyCode::Up
+                        if self.tracked_lists_focused_button().is_none()
+                            && !self.tracked_lists_save_name_focused() =>
+                    {
+                        self.move_tracked_list_selection_up(1);
+                    }
+                    KeyCode::Down
+                        if self.tracked_lists_focused_button().is_none()
+                            && !self.tracked_lists_save_name_focused() =>
+                    {
+                        self.move_tracked_list_selection_down(1);
+                    }
+                    KeyCode::PageUp
+                        if self.tracked_lists_focused_button().is_none()
+                            && !self.tracked_lists_save_name_focused() =>
+                    {
+                        self.move_tracked_list_selection_up(
+                            self.tracked_lists_dialog
+                                .as_ref()
+                                .map(|dialog| dialog.scroll.page_size)
+                                .unwrap_or(1),
+                        );
+                    }
+                    KeyCode::PageDown
+                        if self.tracked_lists_focused_button().is_none()
+                            && !self.tracked_lists_save_name_focused() =>
+                    {
+                        self.move_tracked_list_selection_down(
+                            self.tracked_lists_dialog
+                                .as_ref()
+                                .map(|dialog| dialog.scroll.page_size)
+                                .unwrap_or(1),
+                        );
+                    }
+                    KeyCode::Home
+                        if self.tracked_lists_focused_button().is_none()
+                            && !self.tracked_lists_save_name_focused() =>
+                    {
+                        self.move_tracked_list_selection_home();
+                    }
+                    KeyCode::End
+                        if self.tracked_lists_focused_button().is_none()
+                            && !self.tracked_lists_save_name_focused() =>
+                    {
+                        self.move_tracked_list_selection_end();
+                    }
+                    KeyCode::Char(ch)
+                        if self.tracked_lists_save_name_focused()
+                            && !key.modifiers.contains(KeyModifiers::CONTROL)
+                            && !key.modifiers.contains(KeyModifiers::ALT) =>
+                    {
+                        self.push_tracked_list_save_name_char(ch);
+                    }
+                    KeyCode::Char(ch)
+                        if ch.eq_ignore_ascii_case(&'s') && key.modifiers.is_empty() =>
+                    {
+                        self.save_current_tracked_list();
+                    }
+                    KeyCode::Char(ch)
+                        if ch.eq_ignore_ascii_case(&'n') && key.modifiers.is_empty() =>
+                    {
+                        self.start_empty_tracked_list();
+                    }
+                    _ => {}
+                },
+                TrackedListsView::NameInput { .. } => match key.code {
+                    KeyCode::Esc => self.cancel_tracked_list_subdialog(),
+                    KeyCode::Enter => self.commit_tracked_list_name_input(),
+                    KeyCode::Backspace => self.pop_tracked_list_name_char(),
+                    KeyCode::Delete => self.delete_tracked_list_name_char(),
+                    KeyCode::Left => self.move_tracked_list_name_cursor_left(),
+                    KeyCode::Right => self.move_tracked_list_name_cursor_right(),
+                    KeyCode::Home => self.move_tracked_list_name_cursor_home(),
+                    KeyCode::End => self.move_tracked_list_name_cursor_end(),
+                    KeyCode::Char(ch)
+                        if !key.modifiers.contains(KeyModifiers::CONTROL)
+                            && !key.modifiers.contains(KeyModifiers::ALT) =>
+                    {
+                        self.push_tracked_list_name_char(ch);
+                    }
+                    _ => {}
+                },
+                TrackedListsView::ConfirmDelete { .. } | TrackedListsView::ConfirmSwitch { .. } => {
+                    match key.code {
+                        KeyCode::Esc => self.cancel_tracked_list_subdialog(),
+                        KeyCode::Enter => self.activate_tracked_list_confirmation(),
+                        KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
+                            self.set_tracked_list_confirmation_selection(
+                                TrackedListConfirmSelection::Apply,
+                            );
+                            self.activate_tracked_list_confirmation();
+                        }
+                        KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
+                            self.cancel_tracked_list_subdialog();
+                        }
+                        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+                            self.toggle_tracked_list_confirmation_selection();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return Ok(());
+        }
+
         if self.show_settings_dialog {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_settings_dialog(),
                 KeyCode::Up => self.select_previous_setting(),
                 KeyCode::Down | KeyCode::Tab => self.select_next_setting(),
+                KeyCode::Left
+                    if self.settings_selection
+                        == crate::app::SettingsSelection::TrackedListStartup =>
+                {
+                    self.select_previous_tracked_list_startup();
+                }
                 KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') => {
                     self.toggle_selected_setting();
                 }
@@ -745,7 +899,9 @@ impl App {
                     self.toggle_selected_process_tracking();
                 }
             }
-            KeyCode::Char('t') if self.focused_panel == FocusedPanel::Processes => {
+            KeyCode::Char('t')
+                if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() =>
+            {
                 self.toggle_watch_list();
             }
             KeyCode::Char(ch)
@@ -787,6 +943,13 @@ impl App {
                     && !key.modifiers.contains(KeyModifiers::ALT) =>
             {
                 self.toggle_display_pause();
+            }
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'t')
+                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.open_tracked_lists();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'l')
@@ -831,6 +994,73 @@ impl App {
         if let Some(zoom_in) = terminal_zoom_direction(&mouse) {
             if let Err(error) = send_terminal_zoom_shortcut(zoom_in) {
                 self.status = format!("Terminal zoom failed: {error}");
+            }
+            return;
+        }
+
+        if let Some(view) = self.tracked_lists_view().cloned() {
+            if matches!(&view, TrackedListsView::Browse) && mouse.kind == MouseEventKind::Moved {
+                let hovered = tracked_lists_button_at(screen_area, mouse.column, mouse.row);
+                self.set_tracked_lists_hovered_button(hovered);
+                return;
+            }
+            if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+                return;
+            }
+            match view {
+                TrackedListsView::Browse => {
+                    if let Some(index) = tracked_list_index_at(
+                        screen_area,
+                        mouse.column,
+                        mouse.row,
+                        self.tracked_lists_scroll_offset(),
+                        self.runtime.saved_tracked_lists.len(),
+                    ) {
+                        self.focus_tracked_lists_list();
+                        self.set_tracked_lists_hovered_button(None);
+                        self.select_tracked_list_index(index);
+                        return;
+                    }
+                    if tracked_list_save_name_area_for_screen(screen_area)
+                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+                    {
+                        self.focus_tracked_lists_save_name();
+                        self.set_tracked_lists_hovered_button(None);
+                        return;
+                    }
+                    if let Some(button) =
+                        tracked_lists_button_at(screen_area, mouse.column, mouse.row)
+                    {
+                        self.focus_tracked_lists_button(button);
+                        self.set_tracked_lists_hovered_button(Some(button));
+                        self.activate_tracked_lists_button(button);
+                    }
+                }
+                TrackedListsView::NameInput { .. } => {
+                    match tracked_list_name_button_at(screen_area, mouse.column, mouse.row) {
+                        Some(TrackedListNameButton::Apply) => self.commit_tracked_list_name_input(),
+                        Some(TrackedListNameButton::Cancel) => self.cancel_tracked_list_subdialog(),
+                        None => {}
+                    }
+                }
+                confirm_view @ TrackedListsView::ConfirmDelete { .. }
+                | confirm_view @ TrackedListsView::ConfirmSwitch { .. } => {
+                    let apply_label =
+                        if matches!(confirm_view, TrackedListsView::ConfirmDelete { .. }) {
+                            " Delete "
+                        } else {
+                            " Load "
+                        };
+                    if let Some(selection) = tracked_list_confirm_button_at(
+                        screen_area,
+                        mouse.column,
+                        mouse.row,
+                        apply_label,
+                    ) {
+                        self.set_tracked_list_confirmation_selection(selection);
+                        self.activate_tracked_list_confirmation();
+                    }
+                }
             }
             return;
         }
@@ -1246,6 +1476,14 @@ impl App {
                 self.drag_graph_time_window(mouse.column, screen_area, GraphPanDragButton::Right);
             }
             _ => {}
+        }
+    }
+
+    fn activate_tracked_lists_button(&mut self, button: TrackedListsButton) {
+        match button {
+            TrackedListsButton::Save => self.save_current_tracked_list(),
+            TrackedListsButton::NewEmpty => self.start_empty_tracked_list(),
+            TrackedListsButton::Close => self.close_tracked_lists(),
         }
     }
 

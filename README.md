@@ -48,12 +48,15 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 ### 4. Track and Record a Process
 
 1. In `PROCESSES`, select a process. If there is no star beside its name, press `Space` to add the name to the Tracked List. `Space` toggles the registration.
-2. If needed, press `t` to switch between All processes and Tracked only. Tracked only view is not required for recording.
-3. Press `Ctrl+R`, choose a save path, and confirm to start recording.
-4. Press `Ctrl+R` again to stop recording and close the log.
-5. Press `Ctrl+L` to select and inspect a saved log.
+2. For targets you use repeatedly, press `Ctrl+T` and save the Tracked List with a name.
+3. If needed, press `t` to switch between All processes and Tracked only. Tracked only view is not required for recording.
+4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
+5. Press `Ctrl+R` again to stop recording and close the log.
+6. Press `Ctrl+L` to select and inspect a saved log.
 
 Recording requires at least one process name in the Tracked List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
+
+The Tracked Lists dialog is split into an upper area for loading a saved list and a lower area for saving the current Tracked List. In the upper area, select a saved list and press `Enter` to load it. The active list name has a `(*)` suffix, and each row previews its process names on the right; when they do not fit, the preview keeps leading names and shows the remaining count. In the lower area, the list-name field is prefilled with the current Tracked List name. `Save` stores the currently tracked processes under that name, creating a new list or updating an existing one. The save result appears directly below the name field. Use `Tab` / `Shift+Tab` to move focus between the list, name field, and buttons. Moving the mouse over a button also highlights that target.
 
 ### Essential Keys
 
@@ -64,6 +67,7 @@ Recording requires at least one process name in the Tracked List. It can still s
 | `1` – `4`           | Assign the selected metric to a Graph.      |
 | `Space`             | Add/remove a process name in Tracked List.  |
 | `t`                 | Switch between All processes / Tracked only. |
+| `Ctrl+T`            | Open named Tracked Lists.                   |
 | `Ctrl+F`            | Filter the process list.                    |
 | `Ctrl+R`            | Start/stop recording.                       |
 | `Ctrl+L`            | Open a saved log.                           |
@@ -74,7 +78,7 @@ Recording requires at least one process name in the Tracked List. It can still s
 
 - **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process and system-metric history (RAM / VRAM, System Activity, and CPU average) keeps about 7,200 seconds.
-- **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Their last collected values remain visible after the processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
+- **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
 - **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Open files**: Lists the files a selected live process has open.
@@ -218,6 +222,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
 | `Ctrl+L`            | Open the log list.                                                  |
+| `Ctrl+T`            | Open Tracked Lists to save or load named lists.                    |
 | `Ctrl+R`            | Start / stop recording.                                             |
 | `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
 | `Ctrl+O`            | Open the Settings dialog.                                           |
@@ -300,7 +305,8 @@ The recording log format and the meaning of each field are described in [docs/me
 
 The configuration file is `winproc-tui.toml`, placed next to the executable.
 If the file does not exist, defaults are used.
-On exit, the current theme, process-table columns, sort, Tracked Only state, and tracked list are saved.
+On exit, the current theme, process-table columns, sort, Tracked Only state, working Tracked List, and saved named lists are saved.
+Explicit Save, Rename, and Delete actions in Tracked Lists are written immediately without waiting for exit.
 Filter input state is not carried over to the next launch.
 
 Example:
@@ -320,9 +326,19 @@ sort_by = "WS Priv"
 sort_order = "desc"
 tracked_only = false
 
+[tracking]
+startup = "resume_last"
+active_list = "My app"
+
 [[tracked]]
 name = "app.exe"
+
+[[tracked_lists]]
+name = "My app"
+processes = ["app.exe", "worker.exe"]
 ```
+
+`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; an unsaved difference adds `*` to the list name in the `PROCESSES` title.
 
 When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority.
 

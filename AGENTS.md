@@ -110,6 +110,8 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - The config file is `winproc-tui.toml`. It saves session state on exit and restores it on the next launch.
 - Do not save Filter input state to the config file.
 - Treat `tracked_only` as an independent state. Do not infer it from whether the tracked list is non-empty.
+- Treat the working Tracked List and saved named Tracked Lists as separate state. `Space` changes only the working list; saved definitions change only through explicit Save, Save As, Rename, or Delete actions.
+- When startup mode requires a Tracked List choice, resolve it before the initial sample so tracked-history retention applies from the first capture.
 
 ## User-Facing Behavior Rules
 
@@ -131,6 +133,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Open Files is an explicit per-process investigation action. It lists disk files currently open by the selected live process.
 - Open Files is not a general handle explorer for pipes, sockets, registry keys, events, mutexes, or every possible Windows handle type.
 - Open-file collection must not block the UI thread. Refreshing the list should be explicit and should not queue redundant refresh work for the same modal session.
+- Loading a named Tracked List may prune older retained history for names removed from the working list. Confirm before discarding those older samples.
 
 ## UI / UX Guide
 
