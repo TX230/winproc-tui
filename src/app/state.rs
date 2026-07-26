@@ -2243,6 +2243,7 @@ impl App {
         self.details_sample_selected = self.details_sample_selected.saturating_sub(amount);
         self.ensure_details_sample_visible();
         self.details_live = false;
+        self.ensure_selected_sample_in_graph_window();
         self.status = "Samples selection moved older".to_string();
     }
 
@@ -2251,6 +2252,7 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
+        self.ensure_selected_sample_in_graph_window();
         self.status = "Samples selection moved newer".to_string();
     }
 
@@ -2271,6 +2273,7 @@ impl App {
             .details_sample_selected
             .clamp(self.details_sample_offset, visible_end);
         self.details_live = self.details_sample_selected + 1 == sample_count;
+        self.ensure_selected_sample_in_graph_window();
         self.status = "Samples scrolled".to_string();
     }
 
@@ -2278,6 +2281,7 @@ impl App {
         self.details_sample_selected = 0;
         self.details_sample_offset = 0;
         self.details_live = false;
+        self.ensure_selected_sample_in_graph_window();
         self.status = "Samples selection: oldest".to_string();
     }
 
@@ -2285,6 +2289,7 @@ impl App {
         self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
         self.scroll_details_samples_to_latest();
         self.details_live = true;
+        self.ensure_selected_sample_in_graph_window();
         self.status = "Samples selection: latest".to_string();
     }
 
@@ -2293,6 +2298,7 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
+        self.ensure_selected_sample_in_graph_window();
         self.status = format!("Samples selection: {}", self.details_sample_selected + 1);
     }
 
@@ -2301,6 +2307,7 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = false;
+        self.ensure_selected_sample_in_graph_window();
         self.status = format!("Samples selection: {}", self.details_sample_selected + 1);
     }
 
@@ -2336,6 +2343,39 @@ impl App {
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
         self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
+        self.ensure_selected_sample_in_graph_window();
+    }
+
+    fn ensure_selected_sample_in_graph_window(&mut self) {
+        if self.graph_show_all_samples {
+            return;
+        }
+        let Some(slot) = self.active_graph_slot() else {
+            return;
+        };
+        let samples = self.graph_slot_samples(slot);
+        let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
+            return;
+        };
+        let Some(selected) = samples.get(self.details_sample_selected) else {
+            return;
+        };
+        let selected_age = latest
+            .signed_duration_since(selected.captured_at)
+            .num_seconds()
+            .clamp(0, i64::from(u32::MAX)) as u32;
+        let span = self.graph_time_span_seconds.max(1);
+        let current_offset = self.graph_time_offset_seconds;
+        let next_offset = if selected_age < current_offset {
+            selected_age
+        } else if selected_age > current_offset.saturating_add(span) {
+            selected_age.saturating_sub(span)
+        } else {
+            return;
+        };
+        let max_offset = self.graph_time_max_seconds().saturating_sub(span);
+        self.graph_time_offset_seconds = next_offset.min(max_offset);
+        self.update_graph_time_window_right_edge();
     }
 
     pub(crate) fn select_process_details_target(&mut self) {

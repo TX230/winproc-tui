@@ -84,6 +84,9 @@ pub(crate) fn draw_details_panel(
             graph_slot_title_line(
                 slot,
                 slot_index,
+                samples.as_slice(),
+                metric,
+                app.active_ab_comparison(),
                 app.active_graph_slot_index == slot_index,
                 theme,
             ),
@@ -971,7 +974,23 @@ fn format_ab_delta_with_elapsed(
     samples: &[GraphSample],
     metric: GraphValueFormat,
 ) -> String {
-    let delta = samples
+    let delta = ab_delta_value(a, b, samples, metric)
+        .map(|delta| format_ab_delta(delta, metric))
+        .unwrap_or_else(|| "--".to_string());
+    format!(
+        "{} ({})",
+        delta,
+        format_elapsed_delta(b.captured_at.signed_duration_since(a.captured_at))
+    )
+}
+
+fn ab_delta_value(
+    a: AbComparisonPoint,
+    b: AbComparisonPoint,
+    samples: &[GraphSample],
+    metric: GraphValueFormat,
+) -> Option<f64> {
+    samples
         .iter()
         .find(|sample| sample.captured_at == a.captured_at)
         .and_then(|sample| metric_value(sample, metric))
@@ -981,13 +1000,19 @@ fn format_ab_delta_with_elapsed(
                 .find(|sample| sample.captured_at == b.captured_at)
                 .and_then(|sample| metric_value(sample, metric)),
         )
-        .map(|(a_value, b_value)| format_ab_delta(b_value - a_value, metric))
-        .unwrap_or_else(|| "--".to_string());
-    format!(
-        "{} ({})",
-        delta,
-        format_elapsed_delta(b.captured_at.signed_duration_since(a.captured_at))
-    )
+        .map(|(a_value, b_value)| b_value - a_value)
+}
+
+fn format_graph_title_ab_delta(
+    comparison: Option<&AbComparison>,
+    samples: &[GraphSample],
+    metric: GraphValueFormat,
+) -> String {
+    comparison
+        .and_then(|comparison| comparison.a.zip(comparison.b))
+        .and_then(|(a, b)| ab_delta_value(a, b, samples, metric))
+        .map(|delta| format_ab_delta(delta, metric))
+        .unwrap_or_else(|| "--".to_string())
 }
 
 fn format_elapsed_delta(delta: chrono::Duration) -> String {
@@ -1030,6 +1055,9 @@ fn sample_ab_marker(
 fn graph_slot_title_line(
     slot: &GraphSlot,
     slot_index: usize,
+    samples: &[GraphSample],
+    metric: GraphValueFormat,
+    comparison: Option<&AbComparison>,
     active: bool,
     theme: Theme,
 ) -> Line<'static> {
@@ -1045,12 +1073,22 @@ fn graph_slot_title_line(
     } else {
         Style::default().fg(theme.muted)
     };
+    let comparison_style = if active {
+        Style::default().fg(theme.warning)
+    } else {
+        Style::default().fg(theme.muted)
+    };
     Line::from(vec![
         Span::styled(format!("GRAPH#{}", slot_index + 1), slot_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(slot.item_label(), main_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(slot.metric_label(), main_style),
+        Span::styled(" · B-A: ", comparison_style),
+        Span::styled(
+            format_graph_title_ab_delta(comparison, samples, metric),
+            main_style,
+        ),
     ])
 }
 
@@ -2162,14 +2200,22 @@ mod tests {
     }
 
     #[test]
-    fn graph_slot_title_combines_slot_item_and_metric() {
+    fn graph_slot_title_combines_slot_item_metric_and_missing_ab_delta() {
         let identity = crate::model::ProcessIdentity {
             pid: 42,
             name: "app.exe".to_string(),
             start_time: Some(1_700_000_000),
         };
         let slot = GraphSlot::process(identity, crate::app::DetailsMetric::Private);
-        let line = graph_slot_title_line(&slot, 0, true, crate::ui::THEMES[0]);
+        let line = graph_slot_title_line(
+            &slot,
+            0,
+            &[],
+            GraphValueFormat::Integer,
+            None,
+            true,
+            crate::ui::THEMES[0],
+        );
         let rendered = line
             .spans
             .iter()
@@ -2177,7 +2223,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "GRAPH#1 · app.exe · Private");
+        assert_eq!(rendered, "GRAPH#1 · app.exe · Private · B-A: --");
         assert!(
             line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
                 && line.spans[0].style.add_modifier.contains(Modifier::BOLD)
@@ -2194,5 +2240,45 @@ mod tests {
         assert!(!rendered.contains("F7 Save CSV"));
         assert!(!rendered.contains("Samples:"));
         assert!(!rendered.contains("Start Time:"));
+    }
+
+    #[test]
+    fn graph_slot_title_formats_ab_delta_for_its_own_samples() {
+        let identity = crate::model::ProcessIdentity {
+            pid: 42,
+            name: "DeepL.exe".to_string(),
+            start_time: Some(1_700_000_000),
+        };
+        let slot = GraphSlot::process(identity, crate::app::DetailsMetric::HandleCount);
+        let first = Local.with_ymd_and_hms(2026, 7, 26, 20, 50, 56).unwrap();
+        let second = first + chrono::Duration::seconds(5);
+        let samples = [
+            sample(first, Some(2_080), None),
+            sample(second, Some(2_082), None),
+        ];
+        let comparison = AbComparison {
+            a: Some(AbComparisonPoint { captured_at: first }),
+            b: Some(AbComparisonPoint {
+                captured_at: second,
+            }),
+        };
+
+        let line = graph_slot_title_line(
+            &slot,
+            0,
+            &samples,
+            GraphValueFormat::Integer,
+            Some(&comparison),
+            true,
+            crate::ui::THEMES[0],
+        );
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>()
+            .join("");
+
+        assert_eq!(rendered, "GRAPH#1 · DeepL.exe · Hndl · B-A: +2");
     }
 }

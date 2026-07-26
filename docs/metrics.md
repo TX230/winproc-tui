@@ -193,6 +193,7 @@ When start time is available, it is included in the identity to avoid mixing his
 | Missing value | `--`. |
 
 `GB`, `MB`, and `Mbps` are rounded using a base of 1,000.
+The `B-A` value in each Graph slot title uses the same metric-specific format as the A/B comparison. It is `--` unless both points are set and that Graph has values at both exact captured times.
 
 ## Metrics in Recording Logs
 

@@ -1821,6 +1821,34 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn sample_selection_moves_graph_window_only_when_selected_value_is_outside_it() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.graph_time_span_seconds = 60;
+        for offset in [0, 60, 120] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+
+        app.select_details_sample_latest();
+        assert_eq!(app.graph_time_offset_seconds, 0);
+
+        app.select_details_sample_oldest();
+        assert_eq!(app.graph_time_offset_seconds, 60);
+        assert!(app.graph_time_window_right_at.is_some());
+
+        app.set_details_sample_selected(1);
+        assert_eq!(app.graph_time_offset_seconds, 60);
+
+        app.select_details_sample_latest();
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert!(app.graph_time_window_right_at.is_none());
+    }
+
+    #[test]
     fn samples_mouse_wheel_moves_cursor_row() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
@@ -2153,8 +2181,9 @@ processes = ["api.exe", "worker.exe"]
                 &app.normalized_watch_names,
             );
         }
-        app.select_details_sample_oldest();
+        app.set_details_sample_selected_manual(5);
         let selected = app.details_sample_selected;
+        assert_eq!(app.graph_time_offset_seconds, 60);
         let screen = Rect::new(0, 0, 120, 45);
         let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
         let start_x = graph.x.saturating_add(30);
@@ -3208,7 +3237,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("GRAPHS · Span 60s"), "{rendered}");
         assert!(
-            rendered.contains("GRAPH#1 · proc-0 · Private"),
+            rendered.contains("GRAPH#1 · proc-0 · Private · B-A: --"),
             "{rendered}"
         );
         assert!(!rendered.contains("Samples#1"), "{rendered}");
@@ -3244,6 +3273,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(rendered.contains("GRAPH#2 · proc-0 · WS"), "{rendered}");
+        assert_eq!(rendered.matches("B-A: --").count(), 2, "{rendered}");
         assert_eq!(rendered.matches("f: Fit all").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("z: Min 0").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("v: Samples").count(), 1, "{rendered}");
