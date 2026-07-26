@@ -18,14 +18,15 @@ _追跡、表示の一時停止、A/B 比較を使用してプロセスのプラ
 
 ### 1. 起動する
 
-winget を使用できる環境では、次のコマンドでインストールして起動できます。
+Scoop を使用できる環境では、TX230 Bucket からインストールして起動できます。
 
 ```powershell
-winget install --id TX230.winproc-tui -e
+scoop bucket add tx230 https://github.com/TX230/scoop-bucket
+scoop install tx230/winproc-tui
 winproc-tui
 ```
 
-または、[GitHub Releases](https://github.com/TX230/winproc-tui/releases) から zip をダウンロードして展開し、`winproc-tui.exe` を実行します。追加のランタイムは不要です。
+winget は現在申請中であり、まだ `TX230.winproc-tui` をインストールできません。または、[GitHub Releases](https://github.com/TX230/winproc-tui/releases) から zip をダウンロードして展開し、`winproc-tui.exe` を実行します。追加のランタイムは不要です。
 
 画面上部にはシステム全体の RAM / VRAM、ネットワーク / ディスク、CPU 使用率が表示され、`PROCESSES` パネルには実行中のプロセスが並びます。`Tab` / `Shift+Tab` でパネルを移動し、方向キーで行やカラムを選択します。
 
@@ -97,22 +98,9 @@ Windows 専用です。Linux / macOS など他のプラットフォームには�
 
 ## ビルド済みバイナリを使う
 
-### winget でインストールする
+### winget（申請中・現在はインストール不可）
 
-```powershell
-winget install --id TX230.winproc-tui -e
-```
-
-インストール後は、任意のディレクトリから `winproc-tui` で起動できます。更新とアンインストールは次のコマンドで行います。
-
-```powershell
-winget upgrade --id TX230.winproc-tui -e
-winget uninstall --id TX230.winproc-tui -e
-```
-
-設定を含む portable パッケージのディレクトリをすべて削除する場合は、アンインストール時に `--purge` を追加します。
-
-winget は公式 GitHub Release の zip をダウンロードし、`winproc-tui` コマンドを登録します。追加のランタイムは不要です。
+winget は現在 [winget-pkgs への登録を申請中](https://github.com/microsoft/winget-pkgs/pull/406136) です。申請はまだ審査・マージされていないため、`TX230.winproc-tui` を winget からダウンロードまたはインストールすることはできません。現時点では、以下の Scoop または GitHub Releases を使用してください。
 
 ### Scoop（TX230 Bucket）でインストールする
 
@@ -140,7 +128,7 @@ TX230 Bucket は公式 GitHub Release の zip をダウンロードし、SHA256 
 現行のパッケージ作成手順では、zip に `winproc-tui.exe` と `LICENSE` のみを含めます。README などのドキュメントは GitHub で公開し、配布zipには含めません。v0.4.0 のzipはこの方針より前に公開されたため、README、`assets/`、`docs/`も含まれます。
 `winproc-tui.toml` は同梱されません。ファイルがない状態では既定値で起動し、正常終了時に実行ファイルと同じディレクトリへ作成されます。
 
-公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。winget と [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) もこの Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
+公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。現在利用できる [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) は、この Release のバイナリを使用します。申請中の winget パッケージも、承認後は同じ Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
 
 Release から zip と対応する `.zip.sha256` ファイルをダウンロードします。zip の SHA256 ハッシュ値を計算するコマンドは以下のとおりです。
 

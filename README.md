@@ -18,14 +18,15 @@ _Example investigation of a process's private memory using tracking, display pau
 
 ### 1. Launch the App
 
-If winget is available, install and launch the app with:
+If Scoop is available, install and launch the app from the TX230 Bucket:
 
 ```powershell
-winget install --id TX230.winproc-tui -e
+scoop bucket add tx230 https://github.com/TX230/scoop-bucket
+scoop install tx230/winproc-tui
 winproc-tui
 ```
 
-Alternatively, download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No additional runtime is required.
+The winget registration is currently pending review, so `TX230.winproc-tui` cannot be installed through winget yet. Alternatively, download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No additional runtime is required.
 
 The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
 
@@ -97,22 +98,9 @@ Administrator privileges are not required for normal monitoring. Some metrics an
 
 ## Use a Prebuilt Binary
 
-### Install with winget
+### winget (pending; installation unavailable)
 
-```powershell
-winget install --id TX230.winproc-tui -e
-```
-
-After installation, run `winproc-tui` from any directory. Use these commands to upgrade or uninstall it:
-
-```powershell
-winget upgrade --id TX230.winproc-tui -e
-winget uninstall --id TX230.winproc-tui -e
-```
-
-To remove the entire portable package directory, including its configuration, add `--purge` when uninstalling.
-
-winget downloads the zip from the official GitHub Release and registers the `winproc-tui` command. No additional runtime is required.
+The winget package is currently [pending submission to winget-pkgs](https://github.com/microsoft/winget-pkgs/pull/406136). The submission has not been reviewed and merged yet, so `TX230.winproc-tui` cannot be downloaded or installed through winget. Use Scoop below or GitHub Releases for now.
 
 ### Install with Scoop (TX230 Bucket)
 
@@ -139,7 +127,7 @@ Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/rel
 The current packaging workflow includes only `winproc-tui.exe` and `LICENSE`. Documentation such as the README remains on GitHub and is not included in new distribution archives. The v0.4.0 zip predates this policy and also contains the README files, `assets/`, and `docs/`.
 `winproc-tui.toml` is not prepackaged. The application starts with defaults when the file is absent and creates it next to the executable after a successful run.
 
-Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). winget and the [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) use the same Release binaries.
+Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). The currently available [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) uses these Release binaries. After approval, the pending winget package will use the same Release binaries.
 Binaries from third-party copies, mirrors, or modified repositories are not official builds.
 
 Download both the zip and its corresponding `.zip.sha256` file from the Release. Use these PowerShell commands to calculate the zip's SHA256 hash and display the published value:
