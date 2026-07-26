@@ -285,7 +285,7 @@ The header shows the current activity as `LIVE`, `REC`, or `LOG`. At the right e
 
 The Dark and Light themes use quiet grayscale surfaces for focus and selection. Green identifies `LIVE` and successful actions, amber identifies tracked items, Graph slots, A/B markers, `LOG`, and warnings, and red is reserved for `REC`, danger, and errors. CPU usage is shown by bar length and numeric values rather than a green-to-red severity gradient.
 
-The `PROCESSES` title shows the visible row count, a clickable `☐ Tracked only(T)` / `☑ Tracked only(T)` control, and the active filter. The reverse-video `T` refers to the Tracked List marker shown beside registered process names. The current row is identified only by its brighter background, without a leading cursor symbol. Sort direction remains in the table header. Memory values use compact decimal units such as `388.1 MB` in the table, while Samples, A/B comparison, clipboard output, and recording logs retain exact byte values.
+The `PROCESSES` title shows the visible row count, a clickable `☐ Tracked only(T)` / `☑ Tracked only(T)` control, and the active filter without repeating the active Tracked List name. The reverse-video `T` refers to the Tracked List marker shown beside registered process names. The current row is identified only by its brighter background, without a leading cursor symbol. Sort direction remains in the table header. Memory values use compact decimal units such as `388.1 MB` in the table, while Samples, A/B comparison, clipboard output, and recording logs retain exact byte values.
 
 ## Recording and Log View
 
@@ -348,7 +348,7 @@ processes = ["app.exe", "worker.exe"]
 
 `graphs.columns` accepts `1` or `2`. `samples` stores the Samples visibility used in one-column mode, and `delta` stores the Delta-column visibility.
 
-`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; an unsaved difference adds `*` to the list name in the `PROCESSES` title.
+`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; the Tracked Lists dialog indicates an unsaved difference with `(*)` beside the active list name.
 
 When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority.
 

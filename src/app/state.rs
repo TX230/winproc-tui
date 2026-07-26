@@ -3953,18 +3953,6 @@ impl App {
         normalized_process_names(&saved.processes) != self.normalized_watch_names
     }
 
-    pub(crate) fn active_tracked_list_title(&self) -> Option<String> {
-        let active = self.runtime.active_tracked_list.as_deref()?;
-        Some(format!(
-            "List \"{active}{}\"",
-            if self.active_tracked_list_dirty() {
-                "*"
-            } else {
-                ""
-            }
-        ))
-    }
-
     pub(crate) fn hide_selected_ghost_row(&mut self) {
         let Some(selected) = self.process_table_state.selected() else {
             self.status = "No process selected".to_string();

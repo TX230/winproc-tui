@@ -6861,7 +6861,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_table_title_shows_named_list_and_unsaved_marker() {
+    fn process_table_title_omits_named_list_and_unsaved_marker() {
         let mut app = make_test_app(1, 10);
         app.watch_list = vec!["proc-0".to_string()];
         app.normalized_watch_names = ["proc-0".to_string()].into_iter().collect();
@@ -6872,12 +6872,20 @@ processes = ["api.exe", "worker.exe"]
         }];
 
         let saved = render_app_to_text(&app, 120, 30);
-        assert!(saved.contains("PROCESSES · List \"API\""), "{saved}");
+        assert!(
+            saved.contains("PROCESSES · 1 visible · ☐ Tracked only(T)"),
+            "{saved}"
+        );
+        assert!(!saved.contains("List \"API\""), "{saved}");
 
         app.watch_list.push("worker.exe".to_string());
         app.normalized_watch_names.insert("worker.exe".to_string());
         let dirty = render_app_to_text(&app, 120, 30);
-        assert!(dirty.contains("PROCESSES · List \"API*\""), "{dirty}");
+        assert!(
+            dirty.contains("PROCESSES · 1 visible · ☐ Tracked only(T)"),
+            "{dirty}"
+        );
+        assert!(!dirty.contains("List \"API*\""), "{dirty}");
     }
 
     #[test]
