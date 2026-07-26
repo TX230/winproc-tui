@@ -94,6 +94,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 ## Issue Workflow Rules
 
 - GitHub Issues are the backlog and status-management surface.
+- Write GitHub Issue titles and bodies in English.
 - Use only two issue types: Bug report and Feature request.
 - Issue templates are intentionally light. At minimum, a goal or a description of what is broken is required. Background, scope, acceptance criteria, and test plan are optional and can be added when implementation actually starts or in related commits on the agent branch.
 - Keep durable product behavior in Help, Footer, README, tests, source, and this file when it is an agent-facing invariant. Keep metric definitions in `docs/metrics.md` and architecture in `docs/architecture.md`.
