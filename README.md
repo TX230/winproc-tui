@@ -114,13 +114,32 @@ To remove the entire portable package directory, including its configuration, ad
 
 winget downloads the zip from the official GitHub Release and registers the `winproc-tui` command. No additional runtime is required.
 
+### Install with Scoop (TX230 Bucket)
+
+```powershell
+scoop bucket add tx230 https://github.com/TX230/scoop-bucket
+scoop install tx230/winproc-tui
+```
+
+After installation, run `winproc-tui` from any directory. Use these commands to update or uninstall it:
+
+```powershell
+scoop update
+scoop update winproc-tui
+scoop uninstall winproc-tui
+```
+
+A normal uninstall preserves `winproc-tui.toml`. To remove the persisted configuration as well, use `scoop uninstall --purge winproc-tui`.
+
+The TX230 Bucket downloads the zip from the official GitHub Release, verifies its SHA256 hash, and registers the `winproc-tui` command. No additional runtime is required.
+
 ### Extract the zip manually
 
 Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it to any folder, and run `winproc-tui.exe`. No additional runtime or installer is required.
-The zip contains only `winproc-tui.exe` and `LICENSE`. Documentation such as the README remains on GitHub and is not included in the distribution archive.
+The current packaging workflow includes only `winproc-tui.exe` and `LICENSE`. Documentation such as the README remains on GitHub and is not included in new distribution archives. The v0.4.0 zip predates this policy and also contains the README files, `assets/`, and `docs/`.
 `winproc-tui.toml` is not prepackaged. The application starts with defaults when the file is absent and creates it next to the executable after a successful run.
 
-Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). winget uses the same Release binaries.
+Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). winget and the [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) use the same Release binaries.
 Binaries from third-party copies, mirrors, or modified repositories are not official builds.
 
 Download both the zip and its corresponding `.zip.sha256` file from the Release. Use these PowerShell commands to calculate the zip's SHA256 hash and display the published value:

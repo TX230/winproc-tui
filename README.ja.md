@@ -114,14 +114,33 @@ winget uninstall --id TX230.winproc-tui -e
 
 winget は公式 GitHub Release の zip をダウンロードし、`winproc-tui` コマンドを登録します。追加のランタイムは不要です。
 
+### Scoop（TX230 Bucket）でインストールする
+
+```powershell
+scoop bucket add tx230 https://github.com/TX230/scoop-bucket
+scoop install tx230/winproc-tui
+```
+
+インストール後は、任意のディレクトリから `winproc-tui` で起動できます。更新とアンインストールは次のコマンドで行います。
+
+```powershell
+scoop update
+scoop update winproc-tui
+scoop uninstall winproc-tui
+```
+
+通常のアンインストールでは `winproc-tui.toml` が保持されます。設定も削除する場合は `scoop uninstall --purge winproc-tui` を使用します。
+
+TX230 Bucket は公式 GitHub Release の zip をダウンロードし、SHA256 を検証して `winproc-tui` コマンドを登録します。追加のランタイムは不要です。
+
 ### zip を展開して使う
 
 [GitHub Releases](https://github.com/TX230/winproc-tui/releases) から入手します。
 ダウンロードした zip を任意のフォルダに展開し、`winproc-tui.exe` を実行してください。追加のランタイムやインストーラは不要です。
-zip には `winproc-tui.exe` と `LICENSE` のみが含まれます。README などのドキュメントは GitHub で公開し、配布zipには含めません。
+現行のパッケージ作成手順では、zip に `winproc-tui.exe` と `LICENSE` のみを含めます。README などのドキュメントは GitHub で公開し、配布zipには含めません。v0.4.0 のzipはこの方針より前に公開されたため、README、`assets/`、`docs/`も含まれます。
 `winproc-tui.toml` は同梱されません。ファイルがない状態では既定値で起動し、正常終了時に実行ファイルと同じディレクトリへ作成されます。
 
-公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。winget もこの Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
+公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。winget と [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) もこの Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
 
 Release から zip と対応する `.zip.sha256` ファイルをダウンロードします。zip の SHA256 ハッシュ値を計算するコマンドは以下のとおりです。
 

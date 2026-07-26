@@ -143,6 +143,11 @@ try {
 
     Write-Host "Created package: $ZipPath"
     Write-Host "Created checksum: $Sha256Path"
+    Write-Host "After publishing the GitHub Release, update the Scoop manifest:"
+    Write-Host "  Bucket: https://github.com/TX230/scoop-bucket"
+    Write-Host "  Version: $Version"
+    Write-Host "  URL: https://github.com/TX230/winproc-tui/releases/download/v$Version/$ZipName"
+    Write-Host "  SHA256: $($hash.Hash.ToLowerInvariant())"
 }
 finally {
     Pop-Location
