@@ -233,6 +233,45 @@ Open the draft release in GitHub and confirm:
 
 After confirming the draft, publish it from the GitHub Releases page.
 
+## Scoop Bucket Publication
+
+The custom Scoop bucket is published from `TX230/scoop-bucket`. Its `bucket/winproc-tui.json` manifest downloads the versioned Windows x64 zip directly from this repository's GitHub Release, verifies its SHA-256 hash, registers the `winproc-tui` command, and persists `winproc-tui.toml`.
+
+Publish and verify the GitHub Release before updating the Scoop manifest. Never use a `latest` asset URL. Set the manifest `version`, version-specific `url`, and `hash` from the published asset, and do not replace an asset after a manifest refers to its URL.
+
+The manifest keeps the release zip unchanged. It uses `pre_install` to create an empty `winproc-tui.toml` only when no persisted file exists, then declares the file in `persist`. Do not add a preset config to the release zip.
+
+After updating the manifest, confirm that Scoop detects the intended release:
+
+```powershell
+& "$(scoop prefix scoop)\bin\checkver.ps1" `
+  -App winproc-tui `
+  -Dir <scoop-bucket>\bucket `
+  -ThrowError
+```
+
+Run the bucket tests and perform a clean lifecycle check:
+
+```powershell
+scoop bucket add tx230 https://github.com/TX230/scoop-bucket
+scoop install tx230/winproc-tui
+& "$(scoop prefix winproc-tui)\winproc-tui.exe" --version
+scoop uninstall winproc-tui
+scoop install tx230/winproc-tui
+scoop uninstall --purge winproc-tui
+```
+
+Confirm at least:
+
+- The manifest passes the Scoop schema and bucket tests.
+- The downloaded zip passes its SHA-256 check.
+- The installed executable reports the intended version.
+- The shim is created and removed correctly.
+- A normal uninstall preserves `winproc-tui.toml`.
+- Reinstallation reuses the persisted config.
+- `--purge` removes the persisted config.
+- `checkver` and `autoupdate` resolve the versioned Release asset naming convention.
+
 ## Windows Package Manager Publication
 
 The winget package identifier is `TX230.winproc-tui`. Its portable manifest downloads the versioned Windows x64 zip directly from this repository's GitHub Release and registers the `winproc-tui` command.
