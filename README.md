@@ -281,7 +281,7 @@ When multiple Graphs are shown, the visible time span, cursor position, and A/B 
 
 ## Display Conventions
 
-The header shows the current activity as `LIVE`, `REC`, or `LOG`. At the right edge, it quietly shows the product name and version, such as `winproc-tui 0.4.0`, only when the activity state and Recording / Log path already have enough room; narrow layouts omit it. If no successful sample arrives for 3 seconds in Live or Recording, it adds `STALE Ns` until sampling succeeds again. `DISPLAY PAUSED` freezes only the displayed snapshot; sampling and recording continue.
+The header shows the current activity as `LIVE`, `REC`, or `LOG`. At the right edge, it quietly shows the product name and version, such as `winproc-tui 0.5.0`, only when the activity state and Recording / Log path already have enough room; narrow layouts omit it. If no successful sample arrives for 3 seconds in Live or Recording, it adds `STALE Ns` until sampling succeeds again. `DISPLAY PAUSED` freezes only the displayed snapshot; sampling and recording continue.
 
 The Dark and Light themes use quiet grayscale surfaces for focus and selection. Green identifies `LIVE` and successful actions, amber identifies tracked items, Graph slots, A/B markers, `LOG`, and warnings, and red is reserved for `REC`, danger, and errors. CPU usage is shown by bar length and numeric values rather than a green-to-red severity gradient.
 
