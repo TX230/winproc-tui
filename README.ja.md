@@ -113,7 +113,7 @@ scoop bucket add tx230 https://github.com/TX230/scoop-bucket
 scoop install tx230/winproc-tui
 ```
 
-インストール後は、任意のディレクトリから `winproc-tui` で起動できます。更新とアンインストールは次のコマンドで行います。
+インストール後は、任意のディレクトリから `winproc-tui` で起動できます。更新時は、最初に `scoop update` で登録済み Bucket のローカルマニフェストを更新し、その後 `scoop update winproc-tui` を実行します。`scoop update tx230/winproc-tui` だけでは、ローカルの TX230 Bucket が古い場合に最新バージョンを検出できません。更新とアンインストールは次のコマンドで行います。
 
 ```powershell
 scoop update
