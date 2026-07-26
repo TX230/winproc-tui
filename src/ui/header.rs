@@ -12,6 +12,7 @@ use crate::{
 };
 
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
+const HEADER_ITEM_GAP: usize = 2;
 
 pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let mut spans = Vec::new();
@@ -43,11 +44,37 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         spans.push(Span::raw("  "));
         spans.push(mode_span("DISPLAY PAUSED", theme.warning, theme));
     }
-    if let Some(path) = app.active_log_path() {
+    let active_log_path = app.active_log_path().map(|path| path.display().to_string());
+    let product_and_version = format!("winproc-tui {}", env!("CARGO_PKG_VERSION"));
+    let product_width = product_and_version.chars().count();
+    let left_content_width = spans_width(&spans).saturating_add(
+        active_log_path
+            .as_ref()
+            .map(|path| HEADER_ITEM_GAP.saturating_add(path.chars().count()))
+            .unwrap_or(0),
+    );
+    let show_product_and_version = left_content_width
+        .saturating_add(HEADER_ITEM_GAP)
+        .saturating_add(product_width)
+        <= usize::from(area.width);
+    let left_area = if show_product_and_version {
+        Rect::new(
+            area.x,
+            area.y,
+            area.width
+                .saturating_sub(product_width as u16)
+                .saturating_sub(HEADER_ITEM_GAP as u16),
+            area.height,
+        )
+    } else {
+        area
+    };
+
+    if let Some(path) = active_log_path {
         append_log_path(
             &mut spans,
-            area,
-            &path.display().to_string(),
+            left_area,
+            &path,
             if activity == AppActivity::Recording {
                 theme.warning
             } else {
@@ -62,6 +89,20 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         .style(Style::default().bg(theme.panel))
         .alignment(Alignment::Left);
     frame.render_widget(header_widget, area);
+
+    if show_product_and_version {
+        let product_area = Rect::new(
+            area.x
+                .saturating_add(area.width.saturating_sub(product_width as u16)),
+            area.y,
+            product_width as u16,
+            area.height,
+        );
+        let product_widget = Paragraph::new(product_and_version)
+            .style(Style::default().fg(theme.muted).bg(theme.panel))
+            .alignment(Alignment::Right);
+        frame.render_widget(product_widget, product_area);
+    }
 }
 
 fn stale_span(age_seconds: u64, theme: Theme) -> Span<'static> {
@@ -79,11 +120,9 @@ fn append_log_path(
     path: &str,
     color: ratatui::prelude::Color,
 ) {
-    let used_width = spans
-        .iter()
-        .map(|span| span.content.chars().count())
-        .sum::<usize>();
-    let path_width = usize::from(area.width).saturating_sub(used_width.saturating_add(2));
+    let used_width = spans_width(spans);
+    let path_width =
+        usize::from(area.width).saturating_sub(used_width.saturating_add(HEADER_ITEM_GAP));
     if path_width == 0 {
         return;
     }
@@ -92,6 +131,10 @@ fn append_log_path(
         truncate_middle(path, path_width.min(usize::from(u16::MAX)) as u16),
         Style::default().fg(color),
     ));
+}
+
+fn spans_width(spans: &[Span<'_>]) -> usize {
+    spans.iter().map(|span| span.content.chars().count()).sum()
 }
 
 fn mode_span(label: &'static str, color: ratatui::prelude::Color, theme: Theme) -> Span<'static> {

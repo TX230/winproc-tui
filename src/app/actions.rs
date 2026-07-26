@@ -1779,7 +1779,6 @@ impl App {
                 x,
                 &self.process_columns,
                 self.process_metric_column_offset,
-                self.process_table_state.selected().is_some(),
             ) {
                 self.select_process_column_index(column_index);
             }

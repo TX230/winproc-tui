@@ -22,21 +22,11 @@ pub(crate) fn draw_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
 }
 
 fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    let (focus_label, mut items) = match app.focused_panel {
-        FocusedPanel::System => (
-            "RAM/VRAM".to_string(),
-            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
-        ),
-        FocusedPanel::SystemActivity => (
-            "NW/DISK".to_string(),
-            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
-        ),
-        FocusedPanel::Cpu => (
-            "CPUS".to_string(),
-            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")],
-        ),
-        FocusedPanel::Processes => (
-            "PROCESSES".to_string(),
+    let mut items = match app.focused_panel {
+        FocusedPanel::System | FocusedPanel::SystemActivity | FocusedPanel::Cpu => {
+            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")]
+        }
+        FocusedPanel::Processes => {
             vec![
                 ("Ctrl+T", "Lists"),
                 ("c", "Columns"),
@@ -48,10 +38,9 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("Space", "Track"),
                 ("d", "Kill"),
                 ("Ctrl+F", "Filter"),
-            ],
-        ),
-        FocusedPanel::DetailsGraph => (
-            format!("GRAPH#{}", app.active_graph_slot_index + 1),
+            ]
+        }
+        FocusedPanel::DetailsGraph => {
             vec![
                 ("Ctrl+Left/Right", "Pan"),
                 ("PgUp/PgDn", "Span"),
@@ -59,10 +48,9 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("z", "Min 0"),
                 ("a/b", "Set A/B"),
                 ("Shift+A/B", "Jump A/B"),
-            ],
-        ),
-        FocusedPanel::DetailsSamples => (
-            format!("SAMPLES#{}", app.active_graph_slot_index + 1),
+            ]
+        }
+        FocusedPanel::DetailsSamples => {
             vec![
                 ("PgUp/PgDn", "Page"),
                 ("Home/End", "Edge"),
@@ -71,8 +59,8 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("a/b", "Set A/B"),
                 ("Shift+A/B", "Jump A/B"),
                 ("x", "Clear A/B"),
-            ],
-        ),
+            ]
+        }
     };
     if app.activity() == AppActivity::LogView {
         items.insert(0, ("Esc", "Live"));
@@ -80,14 +68,9 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
         items.insert(0, ("Ctrl+P", "Pause"));
         items.push(("Esc", "Quit"));
     }
-    items.push(("?", "Help"));
+    items.insert(0, ("?", "Help"));
 
-    let mut spans = vec![Span::styled(focus_label, Style::default().fg(theme.accent))];
-    if !items.is_empty() {
-        spans.push(Span::raw("  "));
-    }
-    spans.extend(shortcut_spans(&items, theme));
-    spans
+    shortcut_spans(&items, theme)
 }
 
 fn shortcut_spans(items: &[(&'static str, &'static str)], theme: Theme) -> Vec<Span<'static>> {

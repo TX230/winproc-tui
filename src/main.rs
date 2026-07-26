@@ -2551,7 +2551,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("[Samples: 7,201]"), "{rendered}");
         assert!(
-            rendered.contains("PROCESSES · 1 visible · All processes"),
+            rendered.contains("PROCESSES · 1 visible · ☐ Tracked only(T)"),
             "{rendered}"
         );
         assert!(!rendered.contains("Samples: tracked"), "{rendered}");
@@ -3593,7 +3593,15 @@ processes = ["api.exe", "worker.exe"]
             let buffer = render_app_to_buffer(&app, 100, 30);
 
             let product_and_version = format!("winproc-tui {}", env!("CARGO_PKG_VERSION"));
-            assert!(find_text_position(&buffer, &product_and_version).is_none());
+            let (product_x, product_y) = find_text_position(&buffer, &product_and_version)
+                .expect("product and version should render when the header has room");
+            assert_eq!(
+                product_x + product_and_version.len() as u16,
+                buffer.area.width
+            );
+            assert_eq!(product_y, 0);
+            assert_eq!(buffer[(product_x, product_y)].fg, theme.muted);
+            assert_eq!(buffer[(product_x, product_y)].bg, theme.panel);
 
             let (live_x, live_y) =
                 find_text_position(&buffer, "LIVE").expect("live badge should be rendered");
@@ -3642,8 +3650,9 @@ processes = ["api.exe", "worker.exe"]
             .expect("graphed private bytes should be rendered");
         let (name_x, name_y) =
             find_text_position(&buffer, "target.exe").expect("tracked name should be rendered");
-        let (tracked_x, tracked_y) =
-            find_text_position(&buffer, "★").expect("tracked marker should be rendered");
+        let tracked_x = (0..name_x)
+            .find(|&x| buffer[(x, name_y)].symbol() == "T")
+            .expect("tracked marker should be rendered beside the process name");
         let graph_number_x = (1..MetricColumn::PrivateBytes.width())
             .find_map(|offset| {
                 let x = value_x.checked_sub(offset)?;
@@ -3652,7 +3661,7 @@ processes = ["api.exe", "worker.exe"]
             .expect("graph slot number should be rendered in the metric cell");
         let graph_number_cell = &buffer[(graph_number_x, value_y)];
         let value_cell = &buffer[(value_x, value_y)];
-        let tracked_cell = &buffer[(tracked_x, tracked_y)];
+        let tracked_cell = &buffer[(tracked_x, name_y)];
 
         assert_eq!(graph_number_cell.symbol(), "1");
         assert_eq!(graph_number_cell.fg, ui::THEMES[0].warning);
@@ -3661,9 +3670,46 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(value_cell.fg, ui::THEMES[0].text);
         assert_ne!(value_cell.bg, ui::THEMES[0].warning);
         assert_eq!(buffer[(name_x, name_y)].fg, ui::THEMES[0].text);
-        assert_eq!(tracked_cell.fg, ui::THEMES[0].tracked);
-        assert_ne!(tracked_cell.bg, ui::THEMES[0].tracked);
+        assert_eq!(tracked_cell.fg, ui::THEMES[0].background);
+        assert_eq!(tracked_cell.bg, ui::THEMES[0].tracked);
         assert!(!tracked_cell.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn process_table_keeps_tracked_badge_visible_on_the_selected_row() {
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            app.snapshot.processes[0].name = "target.exe".to_string();
+            track_process_name(&mut app, "target.exe");
+
+            let buffer = render_app_to_buffer(&app, 100, 30);
+            let (name_x, name_y) =
+                find_text_position(&buffer, "target.exe").expect("tracked name should render");
+            let marker_x = (0..name_x)
+                .find(|&x| buffer[(x, name_y)].symbol() == "T")
+                .expect("tracked badge should render on the selected row");
+            let marker = &buffer[(marker_x, name_y)];
+
+            assert_eq!(marker.fg, theme.background);
+            assert_eq!(marker.bg, theme.tracked);
+            assert!(!marker.modifier.contains(Modifier::BOLD));
+        }
+    }
+
+    #[test]
+    fn process_table_current_row_uses_background_without_cursor_symbol() {
+        let app = make_test_app(1, 10);
+        let buffer = render_app_to_buffer(&app, 100, 30);
+        let rendered = buffer_to_text(&buffer);
+        let (name_x, name_y) =
+            find_text_position(&buffer, "proc-0").expect("current process row should render");
+
+        assert!(!rendered.contains(">>"), "{rendered}");
+        assert_eq!(
+            buffer[(name_x, name_y)].bg,
+            ui::THEMES[0].table_selection_surface
+        );
     }
 
     #[test]
@@ -3710,8 +3756,8 @@ processes = ["api.exe", "worker.exe"]
 
         let screen = Rect::new(0, 0, 120, 45);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "All processes")
-            .expect("all-processes control should be rendered in the process title");
+        let (x, y) = find_text_position(&buffer, "☐ Tracked only(T)")
+            .expect("unchecked tracked-only control should render in the process title");
 
         app.on_mouse(
             MouseEvent {
@@ -3732,8 +3778,8 @@ processes = ["api.exe", "worker.exe"]
         );
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "Tracked only")
-            .expect("tracked-only control should be rendered in the process title");
+        let (x, y) = find_text_position(&buffer, "☑ Tracked only(T)")
+            .expect("checked tracked-only control should render in the process title");
 
         app.on_mouse(
             MouseEvent {
@@ -3822,10 +3868,6 @@ processes = ["api.exe", "worker.exe"]
             Some(SystemMetric::Committed)
         );
         assert!(app.show_details);
-
-        let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("1 Committed"), "{rendered}");
-        assert!(!rendered.contains("★"), "{rendered}");
 
         let buffer = render_app_to_buffer(&app, 120, 45);
         let (x, y) =
@@ -4616,11 +4658,24 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn footer_keeps_help_visible_at_narrow_width() {
+        let app = make_test_app(3, 10);
+        let buffer = render_app_to_buffer(&app, 30, 24);
+        let footer = Rect::new(0, 23, 30, 1);
+        let (help_x, help_y) = find_text_position_in_area(&buffer, footer, "? Help")
+            .expect("Help should remain visible");
+
+        assert_eq!(help_x, 0);
+        assert_eq!(help_y, footer.y);
+        assert!(find_text_position_in_area(&buffer, footer, "PROCESSES").is_none());
+        assert!(find_text_position(&buffer, "Ctrl+T Lists").is_none());
+    }
+
+    #[test]
     fn footer_shortcuts_follow_the_focused_panel() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::System;
         let system = render_app_to_text(&app, 170, 30);
-        assert!(system.contains("RAM/VRAM"), "{system}");
         assert!(system.contains("i System info"), "{system}");
         assert!(!system.contains("Up/Down Metric"), "{system}");
         assert!(!system.contains("Left/Right Column"), "{system}");
@@ -4628,7 +4683,6 @@ processes = ["api.exe", "worker.exe"]
         app.focused_panel = FocusedPanel::DetailsGraph;
         app.active_graph_slot_index = 1;
         let graph = render_app_to_text(&app, 170, 45);
-        assert!(graph.contains("GRAPH#2"), "{graph}");
         assert!(graph.contains("Ctrl+Left/Right Pan"), "{graph}");
         assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
         assert!(graph.contains("f Fit"), "{graph}");
@@ -4639,7 +4693,6 @@ processes = ["api.exe", "worker.exe"]
 
         app.focused_panel = FocusedPanel::DetailsSamples;
         let samples = render_app_to_text(&app, 170, 45);
-        assert!(samples.contains("SAMPLES#2"), "{samples}");
         assert!(samples.contains("PgUp/PgDn Page"), "{samples}");
         assert!(samples.contains("Home/End Edge"), "{samples}");
         assert!(samples.contains("f Fit"), "{samples}");
@@ -5363,6 +5416,17 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("LIVE"), "{rendered}");
         assert!(!rendered.contains("fresh"), "{rendered}");
         assert!(!rendered.contains("STALE"), "{rendered}");
+    }
+
+    #[test]
+    fn live_header_hides_product_and_version_when_the_row_is_too_narrow() {
+        let app = make_test_app(1, 10);
+        let product_and_version = format!("winproc-tui {}", env!("CARGO_PKG_VERSION"));
+
+        let rendered = render_app_to_text(&app, 24, 20);
+
+        assert!(rendered.contains("LIVE"), "{rendered}");
+        assert!(!rendered.contains(&product_and_version), "{rendered}");
     }
 
     #[test]
@@ -6739,7 +6803,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.visible_tracked_process_count(), 0);
         assert!(app.status.contains("0 visible"));
         assert!(
-            rendered.contains("PROCESSES · 0 visible · Tracked only"),
+            rendered.contains("PROCESSES · 0 visible · ☑ Tracked only(T)"),
             "{rendered}"
         );
     }
@@ -6761,7 +6825,7 @@ processes = ["api.exe", "worker.exe"]
         let rendered = buffer_to_text(&buffer);
 
         assert!(
-            rendered.contains("PROCESSES · 1 visible · Tracked only · Filter \"target\""),
+            rendered.contains("PROCESSES · 1 visible · ☑ Tracked only(T) · Filter \"target\""),
             "{rendered}"
         );
         assert!(
@@ -6772,13 +6836,22 @@ processes = ["api.exe", "worker.exe"]
         assert!(!rendered.contains("[x]"), "{rendered}");
         assert!(!rendered.contains("Custom"), "{rendered}");
 
-        let (state_x, state_y) = find_text_position(&buffer, "Tracked only")
+        let (state_x, state_y) = find_text_position(&buffer, "☑ Tracked only(T)")
             .expect("tracked-only state should be rendered");
         let state_cell = &buffer[(state_x, state_y)];
         assert_eq!(state_cell.fg, ui::THEMES[0].tracked);
         assert_ne!(state_cell.fg, ui::THEMES[0].warning);
         assert_eq!(state_cell.bg, ui::THEMES[0].panel);
         assert!(!state_cell.modifier.contains(Modifier::BOLD));
+
+        let (label_x, label_y) = find_text_position(&buffer, "Tracked only(T)")
+            .expect("tracked-only marker legend should be rendered");
+        let marker_x = label_x + "Tracked only(".len() as u16;
+        let marker_cell = &buffer[(marker_x, label_y)];
+        assert_eq!(marker_cell.symbol(), "T");
+        assert_eq!(marker_cell.fg, ui::THEMES[0].background);
+        assert_eq!(marker_cell.bg, ui::THEMES[0].tracked);
+        assert!(!marker_cell.modifier.contains(Modifier::BOLD));
 
         let (filter_x, filter_y) = find_text_position(&buffer, "Filter \"target\"")
             .expect("filter state should be rendered");
@@ -7983,6 +8056,24 @@ processes = ["api.exe", "worker.exe"]
         assert!(!rendered.contains("fresh"), "{rendered}");
         assert!(!rendered.contains("STALE"), "{rendered}");
         assert!(rendered.contains("winproc-tui-demo.log"), "{rendered}");
+        assert!(
+            rendered.contains(&format!("winproc-tui {}", env!("CARGO_PKG_VERSION"))),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn log_view_header_keeps_the_path_and_hides_product_at_narrow_width() {
+        let mut app = make_test_app(1, 10);
+        let path = "C:/logs/winproc-tui-demo.log";
+        let product_and_version = format!("winproc-tui {}", env!("CARGO_PKG_VERSION"));
+        app.log_view_path = Some(std::path::PathBuf::from(path));
+
+        let rendered = render_app_to_text(&app, 40, 20);
+
+        assert!(rendered.contains("LOG"), "{rendered}");
+        assert!(rendered.contains(path), "{rendered}");
+        assert!(!rendered.contains(&product_and_version), "{rendered}");
     }
 
     #[test]

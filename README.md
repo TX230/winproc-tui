@@ -47,7 +47,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 
 ### 4. Track and Record a Process
 
-1. In `PROCESSES`, select a process. If there is no star beside its name, press `Space` to add the name to the Tracked List. `Space` toggles the registration.
+1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `Space` to add the name to the Tracked List. `Space` toggles the registration.
 2. For targets you use repeatedly, press `Ctrl+T` and save the Tracked List with a name.
 3. If needed, press `t` to switch between All processes and Tracked only. Tracked only view is not required for recording.
 4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
@@ -210,7 +210,7 @@ There are currently only two startup options.
 Only the main controls are listed in this README.
 **Press** `?` **while running to view the full key bindings in the Help dialog.**
 
-Some single-letter keys such as `f` map to different actions depending on which panel is focused. Persistent panel headings and the Footer's active-panel label use uppercase names such as `PROCESSES`, `CPUS`, `GRAPHS`, and `GRAPH#n`. In Live and Recording, `Ctrl+P Pause` stays visible across panels; it is omitted in Log view, where display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the main controls by panel.
+Some single-letter keys such as `f` map to different actions depending on which panel is focused. The Footer does not repeat the active panel name; it places `? Help` at the left edge so it remains visible at narrow widths. In Live and Recording, `Ctrl+P Pause` follows it across panels; it is omitted in Log view, where display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the main controls by panel.
 
 ### General
 
@@ -281,11 +281,11 @@ When multiple Graphs are shown, the visible time span, cursor position, and A/B 
 
 ## Display Conventions
 
-The header shows the current activity as `LIVE`, `REC`, or `LOG`. If no successful sample arrives for 3 seconds in Live or Recording, it adds `STALE Ns` until sampling succeeds again. `DISPLAY PAUSED` freezes only the displayed snapshot; sampling and recording continue.
+The header shows the current activity as `LIVE`, `REC`, or `LOG`. At the right edge, it quietly shows the product name and version, such as `winproc-tui 0.4.0`, only when the activity state and Recording / Log path already have enough room; narrow layouts omit it. If no successful sample arrives for 3 seconds in Live or Recording, it adds `STALE Ns` until sampling succeeds again. `DISPLAY PAUSED` freezes only the displayed snapshot; sampling and recording continue.
 
 The Dark and Light themes use quiet grayscale surfaces for focus and selection. Green identifies `LIVE` and successful actions, amber identifies tracked items, Graph slots, A/B markers, `LOG`, and warnings, and red is reserved for `REC`, danger, and errors. CPU usage is shown by bar length and numeric values rather than a green-to-red severity gradient.
 
-The `PROCESSES` title shows the visible row count, All processes / Tracked only mode, and active filter. Sort direction remains in the table header. Memory values use compact decimal units such as `388.1 MB` in the table, while Samples, A/B comparison, clipboard output, and recording logs retain exact byte values.
+The `PROCESSES` title shows the visible row count, a clickable `☐ Tracked only(T)` / `☑ Tracked only(T)` control, and the active filter. The reverse-video `T` refers to the Tracked List marker shown beside registered process names. The current row is identified only by its brighter background, without a leading cursor symbol. Sort direction remains in the table header. Memory values use compact decimal units such as `388.1 MB` in the table, while Samples, A/B comparison, clipboard output, and recording logs retain exact byte values.
 
 ## Recording and Log View
 

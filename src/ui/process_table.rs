@@ -22,7 +22,6 @@ const PID_COLUMN_WIDTH: u16 = 6;
 const PROCESS_COLUMN_MIN_WIDTH: u16 = 18;
 const TABLE_COLUMN_SPACING: u16 = 1;
 const TABLE_BORDER_WIDTH: u16 = 2;
-const HIGHLIGHT_SYMBOL_WIDTH: u16 = 3;
 const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
 const PROCESS_TITLE: &str = "PROCESSES";
 const TITLE_SEPARATOR: &str = " · ";
@@ -137,9 +136,7 @@ pub(crate) fn draw_process_table(
 
     let table = Table::new(rows, constraints)
         .header(header)
-        .column_spacing(TABLE_COLUMN_SPACING)
-        .row_highlight_style(Style::default())
-        .highlight_symbol(">> ");
+        .column_spacing(TABLE_COLUMN_SPACING);
 
     let mut state = app.process_table_state.clone();
     *state.offset_mut() = 0;
@@ -157,7 +154,6 @@ pub(crate) fn process_metric_column_index_at(
     x: u16,
     columns: &[MetricColumn],
     metric_offset: usize,
-    has_row_selection: bool,
 ) -> Option<usize> {
     let table_area = area.inner(Margin {
         horizontal: 1,
@@ -169,17 +165,9 @@ pub(crate) fn process_metric_column_index_at(
 
     let visible_columns = visible_metric_columns(area.width, columns, metric_offset);
     let constraints = process_table_constraints(&visible_columns);
-    let selection_width = if has_row_selection {
-        HIGHLIGHT_SYMBOL_WIDTH
-    } else {
-        0
-    };
-    let [_selection_area, columns_area] =
-        Layout::horizontal([Constraint::Length(selection_width), Constraint::Fill(0)])
-            .areas(table_area);
     let column_rects = Layout::horizontal(constraints)
         .spacing(TABLE_COLUMN_SPACING)
-        .split(columns_area);
+        .split(table_area);
 
     if let Some(pid_rect) = column_rects.get(1) {
         if x >= pid_rect.x && x < pid_rect.right() {
@@ -234,7 +222,7 @@ fn visible_metric_columns(
     columns: &[MetricColumn],
     metric_offset: usize,
 ) -> Vec<(usize, MetricColumn)> {
-    let usable_width = area_width.saturating_sub(TABLE_BORDER_WIDTH + HIGHLIGHT_SYMBOL_WIDTH);
+    let usable_width = area_width.saturating_sub(TABLE_BORDER_WIDTH);
     let fixed_width = TRACKED_COLUMN_WIDTH
         + PID_COLUMN_WIDTH
         + PROCESS_COLUMN_MIN_WIDTH
@@ -309,8 +297,7 @@ fn full_path_column_render_width(
         .iter()
         .any(|(_, column)| *column == MetricColumn::FullPath)
         .then(|| {
-            let usable_width =
-                area_width.saturating_sub(TABLE_BORDER_WIDTH + HIGHLIGHT_SYMBOL_WIDTH);
+            let usable_width = area_width.saturating_sub(TABLE_BORDER_WIDTH);
             let metric_width = visible_columns
                 .iter()
                 .map(|(_, column)| metric_column_render_width(*column))
@@ -587,16 +574,28 @@ fn process_metric_line_with_graph_slots(
 }
 
 fn tracked_cell(row: &VisibleProcessRow<'_>, theme: Theme) -> Cell<'static> {
-    let symbol = tracked_symbol(row.tracked);
-    let color = match row.lifecycle {
+    if !row.tracked {
+        return Cell::from(Line::from(Span::raw(tracked_symbol(false))));
+    }
+    Cell::from(Line::from(Span::styled(
+        tracked_symbol(true),
+        tracked_marker_style(&row.lifecycle, theme),
+    )))
+}
+
+fn tracked_marker_style(lifecycle: &ProcessLifecycle, theme: Theme) -> Style {
+    let background = match lifecycle {
         ProcessLifecycle::Live => theme.tracked,
         ProcessLifecycle::Exited { .. } => theme.exited,
     };
-    Cell::from(Line::from(Span::styled(symbol, Style::default().fg(color))))
+    Style::default()
+        .fg(theme.background)
+        .bg(background)
+        .remove_modifier(Modifier::BOLD)
 }
 
 fn tracked_symbol(tracked: bool) -> &'static str {
-    if tracked { "★" } else { " " }
+    if tracked { "T" } else { " " }
 }
 
 fn process_display_name(process: &ProcessRow, lifecycle: &ProcessLifecycle) -> String {
@@ -715,10 +714,14 @@ fn process_table_title(app: &App, theme: Theme) -> Line<'static> {
     } else {
         for segment in process_table_state_segments(app) {
             spans.push(title_separator(theme));
-            spans.push(Span::styled(
-                segment.label,
-                process_title_segment_style(segment.kind, app, theme),
-            ));
+            if segment.kind == ProcessTitleSegmentKind::TrackedOnly {
+                spans.extend(process_tracked_only_title_spans(app, theme));
+            } else {
+                spans.push(Span::styled(
+                    segment.label,
+                    process_title_segment_style(segment.kind, app, theme),
+                ));
+            }
         }
     }
     Line::from(spans)
@@ -774,6 +777,28 @@ fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: 
             .fg(theme.warning)
             .remove_modifier(Modifier::BOLD),
     }
+}
+
+fn process_tracked_only_title_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
+    let label_style = process_title_segment_style(ProcessTitleSegmentKind::TrackedOnly, app, theme);
+    vec![
+        Span::styled(
+            if app.watch_enabled {
+                "☑ Tracked only("
+            } else {
+                "☐ Tracked only("
+            },
+            label_style,
+        ),
+        Span::styled(
+            "T",
+            Style::default()
+                .fg(theme.background)
+                .bg(theme.tracked)
+                .remove_modifier(Modifier::BOLD),
+        ),
+        Span::styled(")", label_style),
+    ]
 }
 
 fn filter_title_spans(filter: &str, theme: Theme) -> Vec<Span<'static>> {
@@ -871,9 +896,9 @@ pub(crate) fn process_tracked_only_control_area(area: Rect, app: &App) -> Option
 
 fn process_tracked_only_label(app: &App) -> &'static str {
     if app.watch_enabled {
-        "Tracked only"
+        "☑ Tracked only(T)"
     } else {
-        "All processes"
+        "☐ Tracked only(T)"
     }
 }
 
@@ -972,7 +997,7 @@ mod tests {
     use ratatui::style::Styled;
 
     #[test]
-    fn tracked_cell_uses_star_for_tracked_rows_only() {
+    fn tracked_cell_uses_t_for_tracked_rows_only() {
         let process = ProcessRow {
             pid: 1,
             name: "app.exe".to_string(),
@@ -1010,8 +1035,22 @@ mod tests {
             is_tracked_total: false,
         };
 
-        assert_eq!(tracked_symbol(tracked.tracked), "★");
+        assert_eq!(tracked_symbol(tracked.tracked), "T");
         assert_eq!(tracked_symbol(ordinary.tracked), " ");
+        for theme in crate::ui::THEMES {
+            let style = tracked_marker_style(&tracked.lifecycle, theme);
+            assert_eq!(style.fg, Some(theme.background));
+            assert_eq!(style.bg, Some(theme.tracked));
+            assert!(!style.add_modifier.contains(Modifier::BOLD));
+
+            let exited = ProcessLifecycle::Exited {
+                exited_at: chrono::Local::now(),
+            };
+            let exited_style = tracked_marker_style(&exited, theme);
+            assert_eq!(exited_style.fg, Some(theme.background));
+            assert_eq!(exited_style.bg, Some(theme.exited));
+            assert!(!exited_style.add_modifier.contains(Modifier::BOLD));
+        }
     }
 
     #[test]
@@ -1142,7 +1181,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_row_uses_table_selection_surface_without_bold() {
+    fn current_row_uses_table_selection_surface_without_bold() {
         let theme = crate::ui::theme::THEMES[0];
         let style = process_row_style(true, false, theme);
 
@@ -1167,7 +1206,7 @@ mod tests {
             + PROCESS_COLUMN_MIN_WIDTH
             + metric_width
             + TABLE_COLUMN_SPACING.saturating_mul(total_columns.saturating_sub(1));
-        assert!(total_width <= 100 - TABLE_BORDER_WIDTH - HIGHLIGHT_SYMBOL_WIDTH);
+        assert!(total_width <= 100 - TABLE_BORDER_WIDTH);
     }
 
     #[test]
@@ -1186,7 +1225,7 @@ mod tests {
         );
         assert_eq!(
             full_path_column_render_width(140, &visible),
-            Some(MetricColumn::FullPath.width() + 60)
+            Some(MetricColumn::FullPath.width() + 63)
         );
     }
 
