@@ -2062,6 +2062,55 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn graph_enter_opens_info_for_graphed_process_without_changing_selection() {
+        let mut app = make_test_app(3, 10);
+        let selected_identity = app.selected_visible_process_identity().unwrap();
+        let graph_identity = ProcessIdentity::from_row(&app.snapshot.processes[2]);
+        app.graph_slots[0] = Some(GraphSlot::process(
+            graph_identity.clone(),
+            DetailsMetric::Private,
+        ));
+        app.active_graph_slot_index = 0;
+        app.show_details = true;
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.filter_text = "proc-0".to_string();
+        app.rebuild_visible_process_cache();
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.show_process_info_dialog);
+        assert_eq!(
+            ProcessIdentity::from_row(app.process_info_target_process().unwrap()),
+            graph_identity
+        );
+        assert_eq!(
+            app.selected_visible_process_identity(),
+            Some(selected_identity)
+        );
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.status, "Process Info: proc-2");
+    }
+
+    #[test]
+    fn graph_enter_rejects_system_graphs() {
+        let mut app = make_test_app(1, 10);
+        app.graph_slots[0] = Some(GraphSlot::system(SystemMetric::PhysicalMemory));
+        app.active_graph_slot_index = 0;
+        app.show_details = true;
+        app.focused_panel = FocusedPanel::DetailsGraph;
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!app.show_process_info_dialog);
+        assert_eq!(
+            app.status,
+            "Process Info is available only for process Graphs"
+        );
+    }
+
+    #[test]
     fn graph_pan_skips_empty_time_ranges() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
@@ -4720,6 +4769,8 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Clear A/B comparison"), "{rendered}");
 
         assert!(rendered.contains("Pan time range"), "{rendered}");
+        assert!(rendered.contains("Enter / Left/Right"), "{rendered}");
+        assert!(rendered.contains("Info / select sample"), "{rendered}");
         assert!(
             rendered.contains("f/z") && rendered.contains("Fit all / toggle Min 0"),
             "{rendered}"
@@ -4971,6 +5022,7 @@ processes = ["api.exe", "worker.exe"]
         app.focused_panel = FocusedPanel::DetailsGraph;
         app.active_graph_slot_index = 1;
         let graph = render_app_to_text(&app, 170, 45);
+        assert!(graph.contains("Enter Info"), "{graph}");
         assert!(graph.contains("Ctrl+Left/Right Pan"), "{graph}");
         assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
         assert!(graph.contains("f Fit"), "{graph}");

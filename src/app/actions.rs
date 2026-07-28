@@ -613,6 +613,10 @@ impl App {
 
         if self.focused_panel == FocusedPanel::DetailsGraph && self.show_details {
             match key.code {
+                KeyCode::Enter => {
+                    self.open_active_graph_process_info_dialog()?;
+                    return Ok(());
+                }
                 KeyCode::PageUp => {
                     self.zoom_graph_time_span(true);
                     return Ok(());

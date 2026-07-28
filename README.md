@@ -261,6 +261,7 @@ Process Info keeps the selected process's static information at the top and list
 
 | Key                        | Action                                                                              |
 | -------------------------- | ----------------------------------------------------------------------------------- |
+| `Enter`                    | Open Process Info for the active process Graph.                                     |
 | `Left` / `Right`           | Move the selected sample.                                                           |
 | `Ctrl+Left` / `Ctrl+Right` | Pan the visible range.                                                              |
 | Right drag / `Ctrl`+left drag | Pan the visible range with the mouse.                                            |
@@ -277,6 +278,7 @@ Process Info keeps the selected process's static information at the top and list
 
 Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, plus the `v: Samples`, `d: Delta`, `l: 2 cols`, `f: Fit all`, and `z: Min 0` checkboxes. The checkboxes can also be clicked. Each slot uses one frame titled `GRAPH#n · item · metric · B-A: value`, with its Graph and synchronized Samples table grouped inside that frame. The title computes `B-A` from that slot's own metric values and shows `--` when either point is unset or the slot has no value at either exact time. The active slot title is emphasized and inactive slot titles are muted.
 The shared `v`, `d`, `l`, `f`, and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
+With the Graph part of a process slot focused, `Enter` opens Process Info for that slot's process without changing the selected Processes row. System Graphs do not have process details.
 
 In two-column mode, slots use row-major order: upper left, upper right, lower left, then lower right. A single Graph uses the full width, and three Graphs leave the lower-right cell empty. Two-column mode hides Samples and restores its previous visibility when returning to one column. Enabling Samples with `v` while in two-column mode also switches to one column.
 

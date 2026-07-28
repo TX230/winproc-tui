@@ -43,6 +43,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
         }
         FocusedPanel::DetailsGraph => {
             vec![
+                ("Enter", "Info"),
                 ("Ctrl+Left/Right", "Pan"),
                 ("PgUp/PgDn", "Span"),
                 ("f", "Fit"),

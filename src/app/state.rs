@@ -4482,21 +4482,70 @@ impl App {
         self.request_open_files_for_selected_process(true, "Loading open files for")
     }
 
+    pub(crate) fn open_active_graph_process_info_dialog(&mut self) -> Result<()> {
+        let Some(slot) = self.graph_slot(self.active_graph_slot_index) else {
+            self.status = "No active Graph selected".to_string();
+            return Ok(());
+        };
+        let Some(identity) = slot.process_identity().cloned() else {
+            self.status = "Process Info is available only for process Graphs".to_string();
+            return Ok(());
+        };
+        let Some(target) = self.process_info_target_for_identity(&identity) else {
+            self.status = "Graphed process is unavailable".to_string();
+            return Ok(());
+        };
+        self.open_process_info_dialog(target);
+        Ok(())
+    }
+
     pub(crate) fn open_selected_process_info_dialog(&mut self) -> Result<()> {
         let Some(process) = self.selected_visible_process().cloned() else {
             self.status = "No process selected".to_string();
             return Ok(());
         };
-        let process_name = process.name.clone();
         let identity = ProcessIdentity::from_row(&process);
         let lifecycle = self
             .selected_visible_process_lifecycle()
             .unwrap_or(ProcessLifecycle::Live);
-        self.process_info_target = Some(ProcessInfoDialogTarget {
+        self.open_process_info_dialog(ProcessInfoDialogTarget {
             identity,
             process,
             lifecycle,
         });
+        Ok(())
+    }
+
+    fn process_info_target_for_identity(
+        &self,
+        identity: &ProcessIdentity,
+    ) -> Option<ProcessInfoDialogTarget> {
+        if let Some(process) = self
+            .display_snapshot()
+            .processes
+            .iter()
+            .find(|process| ProcessIdentity::from_row(process) == *identity)
+        {
+            return Some(ProcessInfoDialogTarget {
+                identity: identity.clone(),
+                process: process.clone(),
+                lifecycle: ProcessLifecycle::Live,
+            });
+        }
+        self.display_exited_tracked_rows()
+            .get(identity)
+            .map(|row| ProcessInfoDialogTarget {
+                identity: identity.clone(),
+                process: row.process.clone(),
+                lifecycle: ProcessLifecycle::Exited {
+                    exited_at: row.exited_at,
+                },
+            })
+    }
+
+    fn open_process_info_dialog(&mut self, target: ProcessInfoDialogTarget) {
+        let process_name = target.process.name.clone();
+        self.process_info_target = Some(target);
         self.show_process_info_dialog = true;
         self.process_info_scroll.reset();
         if self.activity() == AppActivity::LogView {
@@ -4505,7 +4554,6 @@ impl App {
             self.ensure_selected_process_info();
         }
         self.status = format!("Process Info: {process_name}");
-        Ok(())
     }
 
     pub(crate) fn close_process_info_dialog(&mut self) {

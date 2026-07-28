@@ -203,8 +203,8 @@ const CPU_ROWS: &[HelpItem] = &[HelpItem {
 
 const GRAPH_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "Left/Right",
-        label: "Select sample",
+        key: "Enter / Left/Right",
+        label: "Info / select sample",
     },
     HelpItem {
         key: "Ctrl+Left/Right",
