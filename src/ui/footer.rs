@@ -30,6 +30,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             vec![
                 ("Ctrl+T", "Lists"),
                 ("c", "Columns"),
+                ("w/W", "Width"),
                 ("s", "Sort"),
                 ("g", "Graphs"),
                 ("Ctrl+I", "Jump"),

@@ -26,14 +26,15 @@ use crate::{
         },
         log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
-        process_info_close_button_area_for_screen, process_kill_button_at,
-        process_metric_column_index_at, process_table_area_for_screen, process_table_page_size,
-        process_tracked_only_control_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
-        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
-        recording_path_button_at, system_activity_panel_area_for_screen,
-        system_info_ok_button_area_for_screen, tracked_list_confirm_button_at,
-        tracked_list_index_at, tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
-        tracked_list_startup_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
+        process_info_close_button_area_for_screen, process_info_content_area_for_screen,
+        process_kill_button_at, process_metric_column_index_at, process_table_area_for_screen,
+        process_table_page_size, process_tracked_only_control_area, quit_confirm_button_at,
+        ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
+        recording_overwrite_button_at, recording_path_button_at,
+        system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
+        tracked_list_confirm_button_at, tracked_list_index_at, tracked_list_name_button_at,
+        tracked_list_save_name_area_for_screen, tracked_list_startup_area_for_screen,
+        tracked_lists_button_at, tracked_remove_button_at,
     },
 };
 
@@ -427,6 +428,14 @@ impl App {
         if self.show_process_info_dialog {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_process_info_dialog(),
+                KeyCode::Up => self.scroll_process_info_up(1),
+                KeyCode::Down => self.scroll_process_info_down(1),
+                KeyCode::PageUp => self.scroll_process_info_up(self.process_info_scroll.page_size),
+                KeyCode::PageDown => {
+                    self.scroll_process_info_down(self.process_info_scroll.page_size)
+                }
+                KeyCode::Home => self.scroll_process_info_home(),
+                KeyCode::End => self.scroll_process_info_end(),
                 _ => {}
             }
             return Ok(());
@@ -864,6 +873,18 @@ impl App {
             {
                 self.open_column_picker();
             }
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'w')
+                    && self.focused_panel == FocusedPanel::Processes
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                if ch.is_ascii_uppercase() || key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.narrow_selected_process_column();
+                } else {
+                    self.widen_selected_process_column();
+                }
+            }
             KeyCode::Char('s') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.cycle_sort_column();
             }
@@ -1235,11 +1256,32 @@ impl App {
         }
 
         if self.show_process_info_dialog {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && process_info_close_button_area_for_screen(screen_area)
-                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
-            {
-                self.close_process_info_dialog();
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left)
+                    if process_info_close_button_area_for_screen(screen_area)
+                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
+                {
+                    self.close_process_info_dialog();
+                }
+                MouseEventKind::ScrollUp
+                    if contains_point(
+                        process_info_content_area_for_screen(screen_area),
+                        mouse.column,
+                        mouse.row,
+                    ) =>
+                {
+                    self.scroll_process_info_up(1);
+                }
+                MouseEventKind::ScrollDown
+                    if contains_point(
+                        process_info_content_area_for_screen(screen_area),
+                        mouse.column,
+                        mouse.row,
+                    ) =>
+                {
+                    self.scroll_process_info_down(1);
+                }
+                _ => {}
             }
             return;
         }
@@ -1779,6 +1821,7 @@ impl App {
                 x,
                 &self.process_columns,
                 self.process_metric_column_offset,
+                &self.process_column_widths,
             ) {
                 self.select_process_column_index(column_index);
             }

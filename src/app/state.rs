@@ -16,9 +16,10 @@ use crate::{
     app::path_completion::{PathCompletion, PathCompletionState},
     config::{RuntimeConfig, TrackedListStartup},
     model::{
-        ColumnPreset, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessHistory,
-        ProcessIdentity, ProcessInfo, ProcessRow, Snapshot, SortColumn, SortDirection, SortSpec,
-        SystemHistory, SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY, sort_process_rows,
+        ColumnPreset, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessColumnWidths,
+        ProcessHistory, ProcessIdentity, ProcessInfo, ProcessRow, ProcessSample, Snapshot,
+        SortColumn, SortDirection, SortSpec, SystemHistory, SystemMetric,
+        TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY, sort_process_rows,
     },
     samplers::{
         CollectSnapshotResult, SamplingRuntime, SamplingWorker,
@@ -27,6 +28,10 @@ use crate::{
     },
     ui::{
         THEMES, Theme, column_picker_row_for_index, column_picker_scroll_max_for_page_size,
+        format::{
+            format_compact_bytes, format_integer, format_mbps, format_signed_compact_bytes,
+            format_signed_integer, format_signed_mbps,
+        },
         help_scroll_max_for_page_size, log_list_total_rows_for_count, theme_index_by_name,
         widgets::scrollable_modal::ScrollableModalState,
     },
@@ -43,6 +48,23 @@ const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50)
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PROCESS_NAVIGATION_ORDER_HOLD: Duration = Duration::from_millis(750);
 pub(crate) const SAMPLE_STALE_AFTER_SECONDS: u64 = 3;
+const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 14] = [
+    MetricColumn::CpuPercent,
+    MetricColumn::PrivateBytes,
+    MetricColumn::WorksetBytes,
+    MetricColumn::WorksetPrivateBytes,
+    MetricColumn::ThreadCount,
+    MetricColumn::HandleCount,
+    MetricColumn::UserObjectCount,
+    MetricColumn::GdiObjectCount,
+    MetricColumn::GpuPercent,
+    MetricColumn::DotNetHeapBytes,
+    MetricColumn::GpuDedicatedBytes,
+    MetricColumn::GpuSharedBytes,
+    MetricColumn::IoReadBytesPerSec,
+    MetricColumn::IoWriteBytesPerSec,
+];
+pub(crate) const PROCESS_INFO_CONTENT_ROWS: usize = 23;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessLifecycle {
@@ -145,6 +167,87 @@ pub(crate) struct AbComparisonPoint {
 pub(crate) struct AbComparison {
     pub(crate) a: Option<AbComparisonPoint>,
     pub(crate) b: Option<AbComparisonPoint>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProcessInfoDialogTarget {
+    pub(crate) identity: ProcessIdentity,
+    pub(crate) process: ProcessRow,
+    pub(crate) lifecycle: ProcessLifecycle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProcessInfoMetricRow {
+    pub(crate) label: &'static str,
+    pub(crate) value: String,
+    pub(crate) delta: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProcessInfoMetricsView {
+    pub(crate) value_heading: &'static str,
+    pub(crate) delta_heading: Option<&'static str>,
+    pub(crate) range: String,
+    pub(crate) rows: Vec<ProcessInfoMetricRow>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ProcessMetricValue {
+    Percent(f64),
+    Bytes(u64),
+    Count(u64),
+    IoRate(u64),
+}
+
+impl ProcessMetricValue {
+    fn from_sample(sample: &ProcessSample, column: MetricColumn) -> Option<Self> {
+        match column {
+            MetricColumn::CpuPercent => sample.cpu_percent.map(Self::Percent),
+            MetricColumn::PrivateBytes => sample.private_bytes.map(Self::Bytes),
+            MetricColumn::WorksetBytes => sample.workset_bytes.map(Self::Bytes),
+            MetricColumn::WorksetPrivateBytes => sample.workset_private_bytes.map(Self::Bytes),
+            MetricColumn::ThreadCount => sample.thread_count.map(Self::Count),
+            MetricColumn::HandleCount => sample.handle_count.map(Self::Count),
+            MetricColumn::UserObjectCount => sample.user_object_count.map(Self::Count),
+            MetricColumn::GdiObjectCount => sample.gdi_object_count.map(Self::Count),
+            MetricColumn::GpuPercent => sample.gpu_percent.map(Self::Percent),
+            MetricColumn::DotNetHeapBytes => sample.dotnet_heap_bytes.map(Self::Bytes),
+            MetricColumn::GpuDedicatedBytes => sample.gpu_dedicated_bytes.map(Self::Bytes),
+            MetricColumn::GpuSharedBytes => sample.gpu_shared_bytes.map(Self::Bytes),
+            MetricColumn::IoReadBytesPerSec => sample.io_read_bytes_per_sec.map(Self::IoRate),
+            MetricColumn::IoWriteBytesPerSec => sample.io_write_bytes_per_sec.map(Self::IoRate),
+            MetricColumn::WorksetShareableBytes
+            | MetricColumn::WorksetSharedBytes
+            | MetricColumn::FullPath => None,
+        }
+    }
+
+    fn format(self) -> String {
+        match self {
+            Self::Percent(value) => format!("{value:.1}%"),
+            Self::Bytes(value) => format_compact_bytes(value),
+            Self::Count(value) => format_integer(value),
+            Self::IoRate(value) => format_mbps(value),
+        }
+    }
+
+    fn format_delta(self, baseline: Self) -> Option<String> {
+        match (self, baseline) {
+            (Self::Percent(value), Self::Percent(baseline)) => {
+                Some(format!("{:+.1}%", value - baseline))
+            }
+            (Self::Bytes(value), Self::Bytes(baseline)) => Some(format_signed_compact_bytes(
+                i128::from(value) - i128::from(baseline),
+            )),
+            (Self::Count(value), Self::Count(baseline)) => Some(format_signed_integer(
+                i128::from(value) - i128::from(baseline),
+            )),
+            (Self::IoRate(value), Self::IoRate(baseline)) => {
+                Some(format_signed_mbps(i128::from(value) - i128::from(baseline)))
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -622,6 +725,8 @@ pub(crate) struct App {
     pub(crate) open_files_filter: String,
     pub(crate) open_files_filter_cursor: usize,
     pub(crate) show_process_info_dialog: bool,
+    pub(crate) process_info_scroll: ScrollableModalState,
+    pub(crate) process_info_target: Option<ProcessInfoDialogTarget>,
     pub(crate) show_system_info_dialog: bool,
     pub(crate) log_summaries: Vec<LogSummary>,
     pub(crate) log_list_dir: Option<PathBuf>,
@@ -654,6 +759,7 @@ pub(crate) struct App {
     pub(crate) details_live: bool,
     pub(crate) column_preset: ColumnPreset,
     pub(crate) process_columns: Vec<MetricColumn>,
+    pub(crate) process_column_widths: ProcessColumnWidths,
     pub(crate) sort: SortSpec,
     pub(crate) paused_display: Option<PausedDisplay>,
     pub(crate) log_view_display: Option<PausedDisplay>,
@@ -716,6 +822,7 @@ impl App {
         };
         let selected_process_column_index =
             process_column_index_for_sort(sort.column, &process_columns);
+        let process_column_widths = runtime.process_column_widths.clone();
         let selected_process_identity = process_table_state
             .selected()
             .and_then(|index| initial.snapshot.processes.get(index))
@@ -803,6 +910,11 @@ impl App {
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
             show_process_info_dialog: false,
+            process_info_scroll: ScrollableModalState {
+                page_size: 1,
+                ..ScrollableModalState::default()
+            },
+            process_info_target: None,
             show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
@@ -835,6 +947,7 @@ impl App {
             details_live: true,
             column_preset,
             process_columns,
+            process_column_widths,
             sort,
             paused_display: None,
             log_view_display: None,
@@ -2504,6 +2617,32 @@ impl App {
         }
     }
 
+    pub(crate) fn widen_selected_process_column(&mut self) {
+        self.adjust_selected_process_column_width(1);
+    }
+
+    pub(crate) fn narrow_selected_process_column(&mut self) {
+        self.adjust_selected_process_column_width(-1);
+    }
+
+    fn adjust_selected_process_column_width(&mut self, direction: i16) {
+        let column = self.selected_process_column();
+        let current = self.process_column_widths.resolved(column);
+        let requested = if direction > 0 {
+            current.saturating_add(1)
+        } else {
+            current.saturating_sub(1)
+        };
+        let next = column.clamp_width(requested);
+        if next == current {
+            self.status = format!("Column width limit: {} {current}", column.label());
+            return;
+        }
+        self.process_column_widths.set(column, next);
+        self.ensure_selected_process_column_visible();
+        self.status = format!("Column width: {} {next}", column.label());
+    }
+
     pub(crate) fn select_previous_process_column(&mut self) {
         self.details_target = DetailsTarget::Process;
         self.selected_process_column_index = self
@@ -2605,6 +2744,7 @@ impl App {
             self.process_table_area_width(),
             &self.process_columns,
             self.process_metric_column_offset,
+            &self.process_column_widths,
         )
     }
 
@@ -2613,6 +2753,9 @@ impl App {
             self.process_metric_column_offset = 0;
             return;
         }
+        self.process_metric_column_offset = self
+            .process_metric_column_offset
+            .min(self.process_columns.len().saturating_sub(1));
         let Some(metric_index) = self
             .selected_process_column_index
             .checked_sub(FIXED_PROCESS_COLUMN_COUNT)
@@ -2620,9 +2763,6 @@ impl App {
             return;
         };
         let metric_index = metric_index.min(self.process_columns.len().saturating_sub(1));
-        self.process_metric_column_offset = self
-            .process_metric_column_offset
-            .min(self.process_columns.len().saturating_sub(1));
         let range = self.visible_process_metric_range();
         if range.contains(&metric_index) {
             return;
@@ -4096,12 +4236,101 @@ impl App {
     }
 
     pub(crate) fn process_info_for_selected(&self) -> Option<&ProcessInfo> {
-        let identity = self.selected_visible_process_identity()?;
         let cache = self.display_process_info_cache();
+        if let Some(target) = &self.process_info_target {
+            return cache.get(&target.identity);
+        }
+        let identity = self.selected_visible_process_identity()?;
         cache.get(&identity).or_else(|| {
             self.display_process_info_identity()
                 .and_then(|identity| cache.get(identity))
         })
+    }
+
+    pub(crate) fn process_info_target_process(&self) -> Option<&ProcessRow> {
+        self.process_info_target
+            .as_ref()
+            .map(|target| &target.process)
+    }
+
+    pub(crate) fn process_info_metrics_view(&self) -> Option<ProcessInfoMetricsView> {
+        let target = self.process_info_target.as_ref()?;
+        let current_at = self.display_snapshot().captured_at;
+        let history = self.display_process_history();
+        let comparison = self.ab_comparison.as_ref();
+        let point_a = comparison.and_then(|comparison| comparison.a);
+        let point_b = comparison.and_then(|comparison| comparison.b);
+        let (value_at, value_heading, delta_heading) = match (point_a, point_b) {
+            (Some(_), Some(point_b)) => (point_b.captured_at, "At B", Some("B-A")),
+            (Some(_), None) => (current_at, "Current", Some("Delta from A")),
+            _ => (current_at, "Current", None),
+        };
+        let value_sample = history.sample_at(&target.identity, value_at);
+        let baseline_sample =
+            point_a.and_then(|point| history.sample_at(&target.identity, point.captured_at));
+        let range = match (point_a, point_b) {
+            (Some(point_a), Some(point_b)) => format!(
+                "A {} -> B {}",
+                format_process_info_time(point_a.captured_at),
+                format_process_info_time(point_b.captured_at)
+            ),
+            (Some(point_a), None) => format!(
+                "A {} -> Current {}",
+                format_process_info_time(point_a.captured_at),
+                format_process_info_time(current_at)
+            ),
+            _ => format!("Current {}", format_process_info_time(current_at)),
+        };
+        let rows = PROCESS_INFO_METRIC_COLUMNS
+            .into_iter()
+            .map(|column| {
+                let value =
+                    value_sample.and_then(|sample| ProcessMetricValue::from_sample(sample, column));
+                let baseline = baseline_sample
+                    .and_then(|sample| ProcessMetricValue::from_sample(sample, column));
+                ProcessInfoMetricRow {
+                    label: column.label(),
+                    value: value
+                        .map(ProcessMetricValue::format)
+                        .unwrap_or_else(|| "--".to_string()),
+                    delta: delta_heading.map(|_| {
+                        value
+                            .zip(baseline)
+                            .and_then(|(value, baseline)| value.format_delta(baseline))
+                            .unwrap_or_else(|| "--".to_string())
+                    }),
+                }
+            })
+            .collect();
+        Some(ProcessInfoMetricsView {
+            value_heading,
+            delta_heading,
+            range,
+            rows,
+        })
+    }
+
+    pub(crate) fn set_process_info_page_size(&mut self, page_size: usize) {
+        self.process_info_scroll
+            .set_page_size(page_size, PROCESS_INFO_CONTENT_ROWS);
+    }
+
+    pub(crate) fn scroll_process_info_up(&mut self, amount: usize) {
+        self.process_info_scroll.scroll_up(amount);
+    }
+
+    pub(crate) fn scroll_process_info_down(&mut self, amount: usize) {
+        self.process_info_scroll
+            .scroll_down(amount, PROCESS_INFO_CONTENT_ROWS);
+    }
+
+    pub(crate) fn scroll_process_info_home(&mut self) {
+        self.process_info_scroll.scroll_home();
+    }
+
+    pub(crate) fn scroll_process_info_end(&mut self) {
+        self.process_info_scroll
+            .scroll_end(PROCESS_INFO_CONTENT_ROWS);
     }
 
     pub(crate) fn open_system_info_dialog(&mut self) {
@@ -4130,30 +4359,37 @@ impl App {
         if !self.show_process_info_dialog {
             return;
         }
-        let Some(identity) = self.selected_visible_process_identity() else {
+        if self.process_info_target.is_none()
+            && let Some(process) = self.selected_visible_process().cloned()
+        {
+            let identity = ProcessIdentity::from_row(&process);
+            let lifecycle = self
+                .selected_visible_process_lifecycle()
+                .unwrap_or(ProcessLifecycle::Live);
+            self.process_info_target = Some(ProcessInfoDialogTarget {
+                identity,
+                process,
+                lifecycle,
+            });
+        }
+        let Some(target) = self.process_info_target.clone() else {
             self.pending_process_info = None;
             return;
         };
+        let identity = target.identity;
         if !force_refresh && self.process_info_cache.contains_key(&identity) {
             self.process_info_display_identity = Some(identity);
             self.pending_process_info = None;
             return;
         }
-        let Some(process) = self.selected_visible_process().cloned() else {
-            self.pending_process_info = None;
-            return;
-        };
-        let lifecycle = self
-            .selected_visible_process_lifecycle()
-            .unwrap_or(ProcessLifecycle::Live);
         if self.process_info_in_flight.as_ref() == Some(&identity) {
             self.pending_process_info = None;
             return;
         }
         self.pending_process_info = Some(PendingProcessInfo {
             identity,
-            process,
-            lifecycle,
+            process: target.process,
+            lifecycle: target.lifecycle,
             changed_at: Instant::now(),
             force_refresh,
         });
@@ -4229,7 +4465,11 @@ impl App {
         }
         self.process_info_in_flight = None;
         if !self.show_process_info_dialog
-            || self.selected_visible_process_identity().as_ref() != Some(&result.identity)
+            || self
+                .process_info_target
+                .as_ref()
+                .map(|target| &target.identity)
+                != Some(&result.identity)
         {
             return false;
         }
@@ -4243,23 +4483,35 @@ impl App {
     }
 
     pub(crate) fn open_selected_process_info_dialog(&mut self) -> Result<()> {
-        if self.activity() == AppActivity::LogView {
-            self.status = "Process Info is unavailable in Log view".to_string();
-            return Ok(());
-        }
-        let Some(process) = self.selected_visible_process() else {
+        let Some(process) = self.selected_visible_process().cloned() else {
             self.status = "No process selected".to_string();
             return Ok(());
         };
         let process_name = process.name.clone();
+        let identity = ProcessIdentity::from_row(&process);
+        let lifecycle = self
+            .selected_visible_process_lifecycle()
+            .unwrap_or(ProcessLifecycle::Live);
+        self.process_info_target = Some(ProcessInfoDialogTarget {
+            identity,
+            process,
+            lifecycle,
+        });
         self.show_process_info_dialog = true;
-        self.ensure_selected_process_info();
+        self.process_info_scroll.reset();
+        if self.activity() == AppActivity::LogView {
+            self.pending_process_info = None;
+        } else {
+            self.ensure_selected_process_info();
+        }
         self.status = format!("Process Info: {process_name}");
         Ok(())
     }
 
     pub(crate) fn close_process_info_dialog(&mut self) {
         self.show_process_info_dialog = false;
+        self.process_info_target = None;
+        self.process_info_scroll.stop_drag();
         self.cancel_process_info_request();
         self.status = "Process Info closed".to_string();
     }
@@ -5600,6 +5852,10 @@ fn sample_index_at_time(samples: &[GraphSample], captured_at: DateTime<Local>) -
     samples
         .iter()
         .position(|sample| sample.captured_at == captured_at)
+}
+
+fn format_process_info_time(captured_at: DateTime<Local>) -> String {
+    captured_at.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 fn sample_index_nearest_time(

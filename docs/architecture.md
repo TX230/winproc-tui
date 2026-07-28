@@ -137,13 +137,15 @@ The working Tracked List is separate from saved named definitions. `Space` edits
 
 ### 5.3 Graph and Samples state
 
-Multiple Graph slots share the visible time span, cursor time, and A/B points. Y-axis scale, sample availability, target, metric, and displayed value remain slot-specific.
+Multiple Graph slots share the visible time span, cursor time, and A/B points. Process Info also consumes those shared A/B timestamps for the process selected when the dialog opens. Y-axis scale, sample availability, target, metric, and displayed value remain slot-specific.
 
 Navigation may choose the nearest useful timestamp, but a Graph displays a value only when that series has a sample at the selected captured time. This prevents one slot from presenting another slot's nearby sample as a synchronized value. When the selected sample moves outside the shared visible time window, the window shifts only far enough to include it; selections already inside the window do not move it.
 
 `GraphSlotLayout` selects either a one-column stack or a row-major two-column grid. A single visible slot always uses the full width. Each slot title calculates `B-A` from that slot's exact metric samples and shows `--` when either point or value is unavailable. Two-column mode and the Samples panel are mutually exclusive: entering two-column mode remembers and hides Samples, returning to one column restores that preference, and enabling Samples from two-column mode requests a one-column layout. The layout and Samples / Delta preferences are persisted in `winproc-tui.toml`.
 
 Entering two-column mode and adding a Graph require every active slot to meet the shared minimum slot dimensions; rejected operations preserve the existing slots and layout. Entering one-column mode always applies the layout change, then uses the same cleanup as a terminal resize to remove the highest-numbered Graph slots until the remainder fits. Rendering, focus navigation, chart selection, Samples selection, and mouse hit testing all consume the same ordered slot rectangles.
+
+Process Info applies the stricter same-time invariant to every metric: it resolves each A, B, or displayed-current sample once by exact `ProcessIdentity` and exact `captured_at`, then derives all metric rows from those resolved samples. Display accessors keep paused and loaded-log histories separate from the updating live history.
 
 ## 6. Input and UI Boundaries
 
@@ -153,7 +155,7 @@ Input dispatch follows these rules:
 - Filter editing accepts text-editing and confirm/cancel input instead of normal navigation.
 - Non-modal actions depend on the current `FocusedPanel`.
 - Key press and repeat events are handled; release events are ignored to avoid duplicate processing while preserving terminal key repeat.
-- Drawing and mouse hit testing derive panel, Graph, Samples, scrollbar, and button regions from shared layout helpers.
+- Drawing and mouse hit testing derive panel, Graph, Samples, scrollbar, and button regions from shared layout helpers. Processes table rendering, horizontal visibility, cell formatting, and header hit testing consume the same identity-based resolved column widths.
 
 The UI module renders state and exposes geometry helpers; it does not collect metrics or own histories. Exact colors, emphasis, cell widths, marker shapes, cursor-guide placement, and complete key lists are intentionally kept in implementation and rendering tests rather than duplicated here.
 
@@ -203,6 +205,7 @@ The most important implementation invariants are:
 - terminal resizes and one-column transitions may remove only the highest-numbered Graph slots required to restore a valid layout;
 - two-column Graph layout must not display the Samples panel;
 - Graph shared state must not replace per-slot sample-availability checks;
+- Process Info comparisons must not substitute a nearby time or a different process identity;
 - unavailable metrics must remain explicit rather than being converted to plausible values.
 
 Unit tests live both beside modules and in `src/main.rs`. `SamplingWorker::test_pair` supports asynchronous state tests without a real collector, while ratatui `TestBackend` and buffer assertions cover layout, styling, and interaction-sensitive rendering. Exact UI details removed from this document should be protected by those implementation tests when they are intentional behavior.

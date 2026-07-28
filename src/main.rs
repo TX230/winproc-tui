@@ -55,7 +55,8 @@ use model::SystemCounterSample;
 #[cfg(test)]
 use model::{
     ColumnPreset, CpuCoreKind, CpuLogicalProcessorSample, GpuUsageSample, InfoValue, MetricColumn,
-    ProcessIdentity, ProcessInfo, ProcessRow, SortColumn, SortDirection, SortSpec,
+    ProcessColumnWidths, ProcessIdentity, ProcessInfo, ProcessRow, SortColumn, SortDirection,
+    SortSpec,
 };
 #[cfg(test)]
 use model::{ProcessHistory, SystemHistory, SystemMetric};
@@ -201,6 +202,51 @@ mod tests {
         let runtime = build_runtime_config(AppConfig::default()).unwrap();
 
         assert_eq!(runtime.process_columns, MetricColumn::ALL);
+        assert_eq!(
+            runtime.process_column_widths.resolved(SortColumn::Pid),
+            SortColumn::Pid.default_width()
+        );
+    }
+
+    #[test]
+    fn build_runtime_config_restores_and_clamps_column_width_overrides() {
+        let mut config = AppConfig::default();
+        config.process_table.column_widths.extend([
+            ("PID".to_string(), -10),
+            ("Process".to_string(), 999),
+            ("Private".to_string(), 14),
+            ("Full Path".to_string(), 60),
+            ("WS Shrbl".to_string(), 40),
+            ("Unknown".to_string(), 50),
+        ]);
+
+        let runtime = build_runtime_config(config).unwrap();
+
+        assert_eq!(runtime.process_column_widths.resolved(SortColumn::Pid), 5);
+        assert_eq!(
+            runtime
+                .process_column_widths
+                .resolved(SortColumn::ProcessName),
+            120
+        );
+        assert_eq!(
+            runtime
+                .process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            14
+        );
+        assert_eq!(
+            runtime
+                .process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::FullPath)),
+            60
+        );
+        assert_eq!(
+            runtime
+                .process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::WorksetShareableBytes)),
+            MetricColumn::WorksetShareableBytes.width()
+        );
     }
 
     #[test]
@@ -522,6 +568,40 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("columns = 2"), "{rendered}");
         assert!(rendered.contains("samples = true"), "{rendered}");
         assert!(rendered.contains("delta = false"), "{rendered}");
+    }
+
+    #[test]
+    fn app_config_round_trips_only_non_default_column_widths() {
+        let mut app = make_test_app(3, 10);
+        app.process_column_widths.set(SortColumn::Pid, 8);
+        app.process_column_widths
+            .set(SortColumn::Metric(MetricColumn::PrivateBytes), 14);
+        app.process_column_widths.set(
+            SortColumn::ProcessName,
+            SortColumn::ProcessName.default_width(),
+        );
+        let path = unique_config_path("column-widths");
+
+        write_app_config(&path, &app).unwrap();
+        let rendered = std::fs::read_to_string(&path).unwrap();
+        let loaded = load_config(&path).unwrap();
+        let runtime = build_runtime_config(loaded).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(
+            rendered.contains("[process_table.column_widths]"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("PID = 8"), "{rendered}");
+        assert!(rendered.contains("Private = 14"), "{rendered}");
+        assert!(!rendered.contains("Process = 18"), "{rendered}");
+        assert_eq!(runtime.process_column_widths.resolved(SortColumn::Pid), 8);
+        assert_eq!(
+            runtime
+                .process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            14
+        );
     }
 
     #[test]
@@ -3420,6 +3500,182 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn w_and_shift_w_adjust_selected_fixed_process_column_widths() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+
+        app.selected_process_column_index = 0;
+        app.process_metric_column_offset = usize::MAX;
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths.resolved(SortColumn::Pid),
+            SortColumn::Pid.default_width() + 1
+        );
+        assert_eq!(
+            app.process_metric_column_offset,
+            app.process_columns.len() - 1
+        );
+
+        app.selected_process_column_index = 1;
+        app.on_key(KeyEvent::new(KeyCode::Char('W'), KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths.resolved(SortColumn::ProcessName),
+            SortColumn::ProcessName.default_width() - 1
+        );
+
+        app.process_column_widths.set(
+            SortColumn::ProcessName,
+            SortColumn::ProcessName.default_width(),
+        );
+        app.on_key(KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths.resolved(SortColumn::ProcessName),
+            SortColumn::ProcessName.default_width() - 1
+        );
+
+        app.process_column_widths.set(
+            SortColumn::ProcessName,
+            SortColumn::ProcessName.default_width(),
+        );
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths.resolved(SortColumn::ProcessName),
+            SortColumn::ProcessName.default_width() - 1
+        );
+    }
+
+    #[test]
+    fn process_column_width_shortcuts_respect_limits_modifiers_focus_and_filter() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.selected_process_column_index = 0;
+
+        app.process_column_widths.set(
+            SortColumn::Pid,
+            crate::model::columns::PROCESS_COLUMN_WIDTH_MAX,
+        );
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths.resolved(SortColumn::Pid),
+            crate::model::columns::PROCESS_COLUMN_WIDTH_MAX
+        );
+        assert!(app.status.starts_with("Column width limit: PID"));
+
+        app.process_column_widths
+            .set(SortColumn::Pid, SortColumn::Pid.min_width());
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths.resolved(SortColumn::Pid),
+            SortColumn::Pid.min_width()
+        );
+
+        let width = app.process_column_widths.resolved(SortColumn::Pid);
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::ALT))
+            .unwrap();
+        assert_eq!(app.process_column_widths.resolved(SortColumn::Pid), width);
+
+        app.focused_panel = FocusedPanel::System;
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_column_widths.resolved(SortColumn::Pid), width);
+
+        app.focused_panel = FocusedPanel::Processes;
+        app.begin_filter_edit();
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('W'), KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.filter_draft, "wW");
+        assert_eq!(app.process_column_widths.resolved(SortColumn::Pid), width);
+
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.show_help);
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_column_widths.resolved(SortColumn::Pid), width);
+    }
+
+    #[test]
+    fn process_column_widths_follow_identity_without_changing_table_state() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.process_columns = vec![
+            MetricColumn::PrivateBytes,
+            MetricColumn::FullPath,
+            MetricColumn::HandleCount,
+        ];
+        app.selected_process_column_index = 2;
+        let original_sort = app.sort;
+        let original_details_metric = app.details_metric;
+        let original_show_details = app.show_details;
+        let original_preset = app.column_preset;
+        let original_order = app.process_columns.clone();
+
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            MetricColumn::PrivateBytes.width() + 1
+        );
+        assert_eq!(app.sort, original_sort);
+        assert_eq!(app.details_metric, original_details_metric);
+        assert_eq!(app.show_details, original_show_details);
+        assert_eq!(app.column_preset, original_preset);
+        assert_eq!(app.process_columns, original_order);
+
+        app.selected_process_column_index = 3;
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::FullPath)),
+            MetricColumn::FullPath.width() + 1
+        );
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            MetricColumn::PrivateBytes.width() + 1
+        );
+
+        app.selected_process_column_index = 2;
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.process_columns[1], MetricColumn::PrivateBytes);
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            MetricColumn::PrivateBytes.width() + 1
+        );
+
+        app.process_columns
+            .retain(|column| *column != MetricColumn::FullPath);
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::FullPath)),
+            MetricColumn::FullPath.width() + 1
+        );
+        app.process_columns.push(MetricColumn::FullPath);
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::FullPath)),
+            MetricColumn::FullPath.width() + 1
+        );
+    }
+
+    #[test]
     fn shift_left_right_do_not_reorder_fixed_process_columns() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::Processes;
@@ -3446,7 +3702,12 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 72, 45);
         app.set_screen_area(screen);
         let area = process_table_area_for_screen(screen, app.show_details);
-        let visible_count = process_table_visible_column_count(area.width, &app.process_columns, 0);
+        let visible_count = process_table_visible_column_count(
+            area.width,
+            &app.process_columns,
+            0,
+            &app.process_column_widths,
+        );
         assert!(visible_count < 2 + app.process_columns.len());
 
         app.selected_process_column_index = visible_count - 1;
@@ -3480,6 +3741,7 @@ processes = ["api.exe", "worker.exe"]
             area.width,
             &app.process_columns,
             app.process_metric_column_offset,
+            &app.process_column_widths,
         );
         assert!(visible_range.contains(&(visible_count - 2)));
     }
@@ -3720,12 +3982,20 @@ processes = ["api.exe", "worker.exe"]
             MetricColumn::ThreadCount,
             MetricColumn::HandleCount,
         ];
+        app.process_column_widths.set(SortColumn::Pid, 8);
+        app.process_column_widths.set(SortColumn::ProcessName, 27);
+        app.process_column_widths.set(
+            SortColumn::Metric(MetricColumn::ThreadCount),
+            MetricColumn::ThreadCount.width() + 4,
+        );
         app.selected_process_column_index = 2;
         app.snapshot.processes[1].thread_count = Some(77);
         app.snapshot.processes[1].handle_count = Some(888);
 
         let buffer = render_app_to_buffer(&app, 100, 30);
-        let (x, y) =
+        let (x, _) =
+            find_text_position(&buffer, "Hndl").expect("target column header should be rendered");
+        let (_, y) =
             find_text_position(&buffer, "888").expect("target handle count should be rendered");
 
         app.on_mouse(
@@ -3744,6 +4014,24 @@ processes = ["api.exe", "worker.exe"]
             SortColumn::Metric(MetricColumn::HandleCount)
         );
         assert_eq!(app.details_metric, DetailsMetric::Private);
+    }
+
+    #[test]
+    fn process_table_resize_preserves_custom_column_widths() {
+        let mut app = make_test_app(2, 10);
+        app.process_column_widths.set(
+            SortColumn::Metric(MetricColumn::PrivateBytes),
+            crate::model::columns::PROCESS_COLUMN_WIDTH_MAX,
+        );
+
+        let _ = render_app_to_buffer(&app, 40, 20);
+        let _ = render_app_to_buffer(&app, 160, 40);
+
+        assert_eq!(
+            app.process_column_widths
+                .resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            crate::model::columns::PROCESS_COLUMN_WIDTH_MAX
+        );
     }
 
     #[test]
@@ -5794,7 +6082,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_info_request_is_debounced_on_selection_change() {
+    fn process_info_request_keeps_the_process_selected_when_dialog_opened() {
         let (sampling_worker, _, _) = SamplingWorker::test_pair();
         let (process_info_worker, request_rx, _) = ProcessInfoWorker::test_pair();
         let (open_files_worker, _, _) = OpenFilesWorker::test_pair();
@@ -5805,8 +6093,7 @@ processes = ["api.exe", "worker.exe"]
             process_info_worker,
             open_files_worker,
         );
-        app.show_process_info_dialog = true;
-        app.ensure_selected_process_info();
+        app.open_selected_process_info_dialog().unwrap();
 
         app.move_selection_down(1);
         app.move_selection_down(1);
@@ -5822,12 +6109,12 @@ processes = ["api.exe", "worker.exe"]
 
         match request_rx.try_recv().unwrap() {
             ProcessInfoRequest::Collect { identity, .. } => {
-                assert_eq!(identity.name, "proc-2");
+                assert_eq!(identity.name, "proc-0");
             }
             ProcessInfoRequest::Stop => panic!("unexpected stop request"),
         }
         assert!(app.pending_process_info.is_none());
-        assert_eq!(app.process_info_in_flight.as_ref().unwrap().name, "proc-2");
+        assert_eq!(app.process_info_in_flight.as_ref().unwrap().name, "proc-0");
     }
 
     #[test]
@@ -5866,7 +6153,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn stale_process_info_result_is_ignored_after_selection_changes() {
+    fn process_info_result_applies_to_fixed_dialog_target_after_selection_changes() {
         let (sampling_worker, _, _) = SamplingWorker::test_pair();
         let (process_info_worker, request_rx, result_tx) = ProcessInfoWorker::test_pair();
         let (open_files_worker, _, _) = OpenFilesWorker::test_pair();
@@ -5877,8 +6164,7 @@ processes = ["api.exe", "worker.exe"]
             process_info_worker,
             open_files_worker,
         );
-        app.show_process_info_dialog = true;
-        app.ensure_selected_process_info();
+        app.open_selected_process_info_dialog().unwrap();
         app.pending_process_info.as_mut().unwrap().changed_at =
             std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
         app.request_due_process_info().unwrap();
@@ -5895,12 +6181,279 @@ processes = ["api.exe", "worker.exe"]
             })
             .unwrap();
 
-        assert!(!app.poll_process_info_results().unwrap());
-        assert!(!app.process_info_cache.contains_key(&old_identity));
+        assert!(app.poll_process_info_results().unwrap());
+        assert!(app.process_info_cache.contains_key(&old_identity));
         assert!(app.process_info_in_flight.is_none());
+        assert!(app.pending_process_info.is_none());
+    }
+
+    #[test]
+    fn process_info_metrics_follow_current_a_and_b_rules_with_missing_values() {
+        let mut app = make_test_app(1, 10);
+        let current_at = app.snapshot.captured_at;
+        let a_at = current_at - chrono::Duration::seconds(2);
+        let b_at = current_at - chrono::Duration::seconds(1);
+        let mut a = app.snapshot.processes[0].clone();
+        a.cpu_percent = Some(10.8);
+        a.private_bytes = Some(375_800_000);
+        a.thread_count = Some(1_036);
+        a.handle_count = Some(20);
+        a.gdi_object_count = Some(5);
+        let mut b = a.clone();
+        b.cpu_percent = Some(11.7);
+        b.private_bytes = Some(384_400_000);
+        b.thread_count = Some(1_030);
+        b.handle_count = Some(20);
+        let mut current = a.clone();
+        current.cpu_percent = Some(12.3);
+        current.private_bytes = Some(388_100_000);
+        current.thread_count = Some(1_024);
+        current.handle_count = Some(20);
+        current.gdi_object_count = None;
+        app.snapshot.processes[0] = current.clone();
+        app.process_history
+            .record_snapshot_unbounded(a_at, &[a.clone()]);
+        app.process_history
+            .record_snapshot_unbounded(b_at, &[b.clone()]);
+        app.process_history
+            .record_snapshot_unbounded(current_at, &[current]);
+        app.open_selected_process_info_dialog().unwrap();
+
+        let current_view = app.process_info_metrics_view().unwrap();
+        assert_eq!(current_view.value_heading, "Current");
+        assert_eq!(current_view.delta_heading, None);
+        assert!(current_view.rows.iter().all(|row| row.delta.is_none()));
         assert_eq!(
-            app.pending_process_info.as_ref().unwrap().identity.name,
-            "proc-1"
+            current_view
+                .rows
+                .iter()
+                .find(|row| row.label == "Private")
+                .unwrap()
+                .value,
+            "388.1 MB"
+        );
+
+        app.ab_comparison = Some(app::AbComparison {
+            a: Some(app::AbComparisonPoint { captured_at: a_at }),
+            b: None,
+        });
+        let a_view = app.process_info_metrics_view().unwrap();
+        assert_eq!(a_view.delta_heading, Some("Delta from A"));
+        assert_eq!(
+            a_view
+                .rows
+                .iter()
+                .find(|row| row.label == "CPU%")
+                .unwrap()
+                .delta
+                .as_deref(),
+            Some("+1.5%")
+        );
+        assert_eq!(
+            a_view
+                .rows
+                .iter()
+                .find(|row| row.label == "Private")
+                .unwrap()
+                .delta
+                .as_deref(),
+            Some("+12.3 MB")
+        );
+        assert_eq!(
+            a_view
+                .rows
+                .iter()
+                .find(|row| row.label == "Thrd")
+                .unwrap()
+                .delta
+                .as_deref(),
+            Some("-12")
+        );
+        assert_eq!(
+            a_view
+                .rows
+                .iter()
+                .find(|row| row.label == "Hndl")
+                .unwrap()
+                .delta
+                .as_deref(),
+            Some("+0")
+        );
+        let missing = a_view.rows.iter().find(|row| row.label == "GDI").unwrap();
+        assert_eq!(missing.value, "--");
+        assert_eq!(missing.delta.as_deref(), Some("--"));
+
+        app.ab_comparison = Some(app::AbComparison {
+            a: Some(app::AbComparisonPoint { captured_at: a_at }),
+            b: Some(app::AbComparisonPoint { captured_at: b_at }),
+        });
+        let ab_view = app.process_info_metrics_view().unwrap();
+        assert_eq!(ab_view.value_heading, "At B");
+        assert_eq!(ab_view.delta_heading, Some("B-A"));
+        assert_eq!(
+            ab_view
+                .rows
+                .iter()
+                .find(|row| row.label == "Private")
+                .unwrap()
+                .value,
+            "384.4 MB"
+        );
+
+        app.ab_comparison = Some(app::AbComparison {
+            a: None,
+            b: Some(app::AbComparisonPoint { captured_at: b_at }),
+        });
+        let b_only_view = app.process_info_metrics_view().unwrap();
+        assert_eq!(b_only_view.value_heading, "Current");
+        assert_eq!(b_only_view.delta_heading, None);
+    }
+
+    #[test]
+    fn process_info_renders_range_above_underlined_metric_headers() {
+        let mut app = make_test_app(1, 10);
+        let current_at = app.snapshot.captured_at;
+        let a_at = current_at - chrono::Duration::seconds(2);
+        let b_at = current_at - chrono::Duration::seconds(1);
+        let process = app.snapshot.processes[0].clone();
+        app.process_history
+            .record_snapshot_unbounded(a_at, std::slice::from_ref(&process));
+        app.process_history
+            .record_snapshot_unbounded(b_at, std::slice::from_ref(&process));
+        app.process_history
+            .record_snapshot_unbounded(current_at, std::slice::from_ref(&process));
+        app.ab_comparison = Some(app::AbComparison {
+            a: Some(app::AbComparisonPoint { captured_at: a_at }),
+            b: Some(app::AbComparisonPoint { captured_at: b_at }),
+        });
+        app.open_selected_process_info_dialog().unwrap();
+        let range = app.process_info_metrics_view().unwrap().range;
+
+        let buffer = render_app_to_buffer(&app, 120, 40);
+        let (_, range_y) =
+            find_text_position(&buffer, &range).expect("comparison range should render");
+        let (metrics_x, header_y) =
+            find_text_position(&buffer, "Metrics").expect("metric header should render");
+
+        assert!(range_y < header_y);
+        for heading in ["Metrics", "At B", "B-A"] {
+            let (x, y) =
+                find_text_position(&buffer, heading).expect("column heading should render");
+            for offset in 0..heading.len() as u16 {
+                assert!(
+                    buffer[(x + offset, y)]
+                        .modifier
+                        .contains(ratatui::style::Modifier::UNDERLINED),
+                    "{heading} should be underlined"
+                );
+            }
+        }
+        assert!(
+            !buffer[(metrics_x + "Metrics".len() as u16, header_y)]
+                .modifier
+                .contains(ratatui::style::Modifier::UNDERLINED),
+            "spacing after a column heading should not be underlined"
+        );
+    }
+
+    #[test]
+    fn process_info_current_delta_updates_while_dialog_remains_open() {
+        let mut app = make_test_app(1, 10);
+        let a_at = app.snapshot.captured_at;
+        let mut a = app.snapshot.processes[0].clone();
+        a.private_bytes = Some(100_000_000);
+        app.snapshot.processes[0] = a.clone();
+        app.process_history
+            .record_snapshot_unbounded(a_at, &[a.clone()]);
+        app.open_selected_process_info_dialog().unwrap();
+        app.ab_comparison = Some(app::AbComparison {
+            a: Some(app::AbComparisonPoint { captured_at: a_at }),
+            b: None,
+        });
+
+        let later = a_at + chrono::Duration::seconds(1);
+        let mut current = a;
+        current.private_bytes = Some(125_000_000);
+        app.snapshot.captured_at = later;
+        app.snapshot.processes[0] = current.clone();
+        app.process_history
+            .record_snapshot_unbounded(later, &[current]);
+
+        let view = app.process_info_metrics_view().unwrap();
+        assert!(view.range.contains("Current"));
+        assert_eq!(
+            view.rows
+                .iter()
+                .find(|row| row.label == "Private")
+                .unwrap()
+                .delta
+                .as_deref(),
+            Some("+25.0 MB")
+        );
+    }
+
+    #[test]
+    fn process_info_uses_paused_history_and_log_view_starts_no_live_worker() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, request_rx, _) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, _, _) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            1,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+        let paused_at = app.snapshot.captured_at - chrono::Duration::seconds(5);
+        let mut paused_snapshot = app.snapshot.clone();
+        paused_snapshot.captured_at = paused_at;
+        paused_snapshot.processes[0].private_bytes = Some(42_000_000);
+        paused_snapshot.processes[0].executable_path = Some(r"C:\recorded\proc-0.exe".to_string());
+        let mut paused_history = ProcessHistory::default();
+        paused_history.record_snapshot_unbounded(paused_at, &paused_snapshot.processes);
+        app.paused_display = Some(app::state::PausedDisplay {
+            snapshot: paused_snapshot,
+            exited_tracked_rows: std::collections::HashMap::new(),
+            process_history: paused_history,
+            system_history: SystemHistory::default(),
+            process_info_cache: std::collections::HashMap::new(),
+            process_info_display_identity: None,
+        });
+
+        app.open_selected_process_info_dialog().unwrap();
+        assert_eq!(
+            app.process_info_metrics_view()
+                .unwrap()
+                .rows
+                .iter()
+                .find(|row| row.label == "Private")
+                .unwrap()
+                .value,
+            "42.0 MB"
+        );
+        app.close_process_info_dialog();
+        app.log_view_display = app.paused_display.take();
+        app.log_view_path = Some(std::path::PathBuf::from("recording.jsonl"));
+        app.open_selected_process_info_dialog().unwrap();
+
+        assert!(app.pending_process_info.is_none());
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert_eq!(
+            app.process_info_target_process()
+                .unwrap()
+                .executable_path
+                .as_deref(),
+            Some(r"C:\recorded\proc-0.exe")
+        );
+        assert_eq!(
+            app.process_info_metrics_view()
+                .unwrap()
+                .rows
+                .iter()
+                .find(|row| row.label == "Private")
+                .unwrap()
+                .value,
+            "42.0 MB"
         );
     }
 
@@ -6328,21 +6881,51 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_info_panel_keeps_previous_info_while_selected_row_is_pending() {
+    fn process_info_dialog_keeps_the_process_selected_when_opened() {
         let mut app = make_test_app(2, 10);
-        app.show_process_info_dialog = true;
         let identity = app.selected_visible_process_identity().unwrap();
         app.process_info_cache.insert(
             identity.clone(),
             test_process_info(&identity.name, identity.pid),
         );
         app.process_info_display_identity = Some(identity);
+        app.open_selected_process_info_dialog().unwrap();
 
         app.move_selection_down(1);
 
         assert_eq!(app.selected_visible_process().unwrap().name, "proc-1");
         assert_eq!(app.process_info_for_selected().unwrap().name, "proc-0");
-        assert!(app.pending_process_info.is_some());
+        assert!(app.pending_process_info.is_none());
+    }
+
+    #[test]
+    fn process_info_small_dialog_scrolls_without_overwriting_close_button() {
+        let mut app = make_test_app(1, 10);
+        let captured_at = app.snapshot.captured_at;
+        let process = app.snapshot.processes[0].clone();
+        app.process_history
+            .record_snapshot_unbounded(captured_at, &[process]);
+        app.open_selected_process_info_dialog().unwrap();
+        let screen = Rect::new(0, 0, 60, 12);
+        app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+        let content = ui::process_info_content_area_for_screen(screen);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: content.x,
+                row: content.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(app.process_info_scroll.offset, 1);
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+
+        let rendered = render_app_to_text(&app, screen.width, screen.height);
+        assert!(rendered.contains("IO Write/s"), "{rendered}");
+        assert!(rendered.contains("[ Close ]"), "{rendered}");
     }
 
     #[test]
@@ -8375,6 +8958,7 @@ processes = ["api.exe", "worker.exe"]
                     MetricColumn::PrivateBytes,
                     MetricColumn::WorksetPrivateBytes,
                 ],
+                process_column_widths: ProcessColumnWidths::default(),
                 sort: SortSpec::default(),
                 initial_tracked_only: false,
                 process_filters: Vec::new(),
@@ -8456,6 +9040,11 @@ processes = ["api.exe", "worker.exe"]
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
             show_process_info_dialog: false,
+            process_info_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
+                page_size: 1,
+                ..ui::widgets::scrollable_modal::ScrollableModalState::default()
+            },
+            process_info_target: None,
             show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
@@ -8491,6 +9080,7 @@ processes = ["api.exe", "worker.exe"]
                 MetricColumn::PrivateBytes,
                 MetricColumn::WorksetPrivateBytes,
             ],
+            process_column_widths: ProcessColumnWidths::default(),
             sort: SortSpec::default(),
             paused_display: None,
             log_view_display: None,

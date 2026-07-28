@@ -5,11 +5,12 @@ pub(crate) mod snapshot;
 pub(crate) mod system;
 
 pub(crate) use columns::{
-    ColumnPreset, MetricColumn, SortColumn, SortDirection, SortSpec, sort_process_rows,
+    ColumnPreset, MetricColumn, ProcessColumnWidths, SortColumn, SortDirection, SortSpec,
+    sort_process_rows,
 };
 pub(crate) use history::{
-    GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, ProcessHistory, ProcessIdentity, SystemHistory,
-    SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
+    GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, ProcessHistory, ProcessIdentity, ProcessSample,
+    SystemHistory, SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
 };
 pub(crate) use process::{
     InfoValue, ProcessExtraMetrics, ProcessInfo, ProcessRow, WorkingSetShareSample,

@@ -1,8 +1,10 @@
-use std::{cmp::Ordering, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 
 use crate::model::ProcessRow;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) const PROCESS_COLUMN_WIDTH_MAX: u16 = 120;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SortColumn {
     Pid,
     ProcessName,
@@ -24,6 +26,26 @@ impl SortColumn {
             Self::Metric(MetricColumn::FullPath) => SortDirection::Asc,
             Self::Metric(_) => SortDirection::Desc,
         }
+    }
+
+    pub(crate) fn default_width(self) -> u16 {
+        match self {
+            Self::Pid => 6,
+            Self::ProcessName => 18,
+            Self::Metric(column) => column.width(),
+        }
+    }
+
+    pub(crate) fn min_width(self) -> u16 {
+        match self {
+            Self::Pid => 5,
+            Self::ProcessName => 8,
+            Self::Metric(_) => 4,
+        }
+    }
+
+    pub(crate) fn clamp_width(self, width: u16) -> u16 {
+        width.clamp(self.min_width(), PROCESS_COLUMN_WIDTH_MAX)
     }
 
     fn compare_values(self, left: &ProcessRow, right: &ProcessRow) -> Ordering {
@@ -67,7 +89,7 @@ impl FromStr for SortColumn {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MetricColumn {
     CpuPercent,
     PrivateBytes,
@@ -86,6 +108,44 @@ pub(crate) enum MetricColumn {
     IoReadBytesPerSec,
     IoWriteBytesPerSec,
     FullPath,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ProcessColumnWidths {
+    overrides: HashMap<SortColumn, u16>,
+}
+
+impl ProcessColumnWidths {
+    pub(crate) fn from_overrides(overrides: impl IntoIterator<Item = (SortColumn, u16)>) -> Self {
+        let mut widths = Self::default();
+        for (column, width) in overrides {
+            widths.set(column, width);
+        }
+        widths
+    }
+
+    pub(crate) fn resolved(&self, column: SortColumn) -> u16 {
+        self.overrides
+            .get(&column)
+            .copied()
+            .unwrap_or_else(|| column.default_width())
+    }
+
+    pub(crate) fn set(&mut self, column: SortColumn, width: u16) -> u16 {
+        let width = column.clamp_width(width);
+        if width == column.default_width() {
+            self.overrides.remove(&column);
+        } else {
+            self.overrides.insert(column, width);
+        }
+        width
+    }
+
+    pub(crate) fn overrides(&self) -> impl Iterator<Item = (SortColumn, u16)> + '_ {
+        self.overrides
+            .iter()
+            .map(|(column, width)| (*column, *width))
+    }
 }
 
 impl MetricColumn {
@@ -704,6 +764,37 @@ mod tests {
         assert_eq!(
             MetricColumn::DotNetHeapBytes.label().chars().count() + 2,
             MetricColumn::DotNetHeapBytes.width() as usize
+        );
+    }
+
+    #[test]
+    fn process_column_widths_are_identity_based_clamped_overrides() {
+        let mut widths = ProcessColumnWidths::from_overrides([
+            (SortColumn::Pid, 0),
+            (SortColumn::ProcessName, u16::MAX),
+            (SortColumn::Metric(MetricColumn::PrivateBytes), 14),
+            (SortColumn::Metric(MetricColumn::FullPath), 60),
+        ]);
+
+        assert_eq!(widths.resolved(SortColumn::Pid), 5);
+        assert_eq!(
+            widths.resolved(SortColumn::ProcessName),
+            PROCESS_COLUMN_WIDTH_MAX
+        );
+        assert_eq!(
+            widths.resolved(SortColumn::Metric(MetricColumn::PrivateBytes)),
+            14
+        );
+        assert_eq!(
+            widths.resolved(SortColumn::Metric(MetricColumn::FullPath)),
+            60
+        );
+
+        widths.set(SortColumn::Pid, SortColumn::Pid.default_width());
+        assert!(
+            widths
+                .overrides()
+                .all(|(column, _)| column != SortColumn::Pid)
         );
     }
 

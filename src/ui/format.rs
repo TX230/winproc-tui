@@ -23,6 +23,18 @@ pub(crate) fn fmt_bytes(bytes: u64) -> String {
 }
 
 pub(crate) fn format_compact_bytes(bytes: u64) -> String {
+    format_compact_bytes_magnitude(u128::from(bytes))
+}
+
+pub(crate) fn format_signed_compact_bytes(bytes: i128) -> String {
+    let sign = if bytes >= 0 { "+" } else { "-" };
+    format!(
+        "{sign}{}",
+        format_compact_bytes_magnitude(bytes.unsigned_abs())
+    )
+}
+
+fn format_compact_bytes_magnitude(bytes: u128) -> String {
     const UNITS: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
     let mut value = bytes as f64;
     let mut unit_index = 0;
@@ -102,6 +114,11 @@ pub(crate) fn format_mbps(bytes_per_sec: u64) -> String {
     )
 }
 
+pub(crate) fn format_signed_mbps(bytes_per_sec: i128) -> String {
+    let mbps = ((bytes_per_sec as f64 * 8.0) / 1_000_000.0).round() as i128;
+    format!("{} Mbps", format_signed_integer(mbps))
+}
+
 pub(crate) fn format_mb_per_sec(bytes_per_sec: u64) -> String {
     format!("{:.1} MB/s", bytes_per_sec as f64 / 1_000_000.0)
 }
@@ -119,5 +136,13 @@ mod tests {
         assert_eq!(format_compact_bytes(999_950_000), "1.0 GB");
         assert_eq!(format_compact_bytes(1_500_000_000), "1.5 GB");
         assert_eq!(format_compact_bytes(u64::MAX), "18.4 EB");
+    }
+
+    #[test]
+    fn signed_compact_values_keep_sign_for_decreases_and_zero() {
+        assert_eq!(format_signed_compact_bytes(-12_300_000), "-12.3 MB");
+        assert_eq!(format_signed_compact_bytes(0), "+0 B");
+        assert_eq!(format_signed_mbps(-1_000_000), "-8 Mbps");
+        assert_eq!(format_signed_mbps(0), "+0 Mbps");
     }
 }

@@ -241,6 +241,7 @@ README には主要操作のみを掲載します。**実行中に** `?` **を�
 | `Ctrl+Up/Down`      | 複数選択を変えずにカーソルだけ移動する。                    |
 | `Ctrl+Space`        | 現在の稼働中プロセス行を複数選択に追加 / 削除する。             |
 | `Shift+Left/Right`  | 選択中のメトリクスカラムを左 / 右へ移動する。                |
+| `w` / `Shift+W`     | 選択中カラムを 1 セル広げる / 狭める。                    |
 | `Space`             | 選択プロセス名を Tracked List に追加 / 削除。         |
 | `d` / `Delete`      | 確認後、選択した稼働中プロセス行を `taskkill /f /im` で終了する。 |
 | `t`                 | 追跡中のみ表示するかを切り替える。                       |
@@ -248,6 +249,8 @@ README には主要操作のみを掲載します。**実行中に** `?` **を�
 | `i`                 | System Info ダイアログを開く。 |
 | `f`                 | 選択中の稼働プロセスの Open files を開く。             |
 | `g`                 | 設定済みの全 Graph を一括で開く / 閉じる。              |
+
+Process Info は、上部に選択プロセスの静的情報を残し、その下に通常収集する 14 個の数値プロセスメトリクスを一覧表示します。Graph または Samples で A 点と必要に応じて B 点を設定してから `Enter` を押すと、A 点だけの場合は Current − A、両方ある場合は B − A を表示します。時刻が完全一致するサンプルがなければ `--` のままです。`Up` / `Down`、`PageUp` / `PageDown`、`Home` / `End`、マウスホイールでスクロールできます。
 
 
 ### Graph と A/B 比較
@@ -289,7 +292,7 @@ Dark / Light テーマでは、フォーカスや選択を落ち着いたグレ�
 `Ctrl+R` で記録の開始と停止を切り替えます。記録を開始するには Tracked List に 1 件以上の名前が必要です。ログは JSON Lines として保存されます（拡張子 `.log`）。各フレームには RAM / VRAM、平均 CPU 使用率、System Activity などのシステム指標と、Tracked List に一致する実行中プロセスが記録されます。一致するプロセスがその時点で存在しない場合も、システム指標は記録され、プロセス一覧は一致するプロセスが現れるまで空になります。記録開始時に保存先パスの入力ダイアログが開き、`Tab` でディレクトリ名を補完できます。Log view 中は記録を開始できず、記録中は Log view を開けません。
 
 `Ctrl+L` でログ一覧を開きます。前回の記録ディレクトリがあればそこ、なければカレントディレクトリの `*.log` を表示します。`Dir` 行で検索中のディレクトリを確認でき、`d` で別ディレクトリを指定できます。選択したログを `Enter` で開くと表示が `LOG` に切り替わり、Processes / Graph / Samples / A/B 比較で過去のセッションを調査できます。
-Log view は再生機能ではありません。Processes は記録の最終値を表示し続け、Graph と Samples で記録済みメトリクスの履歴を確認します。`Esc` で Live 表示へ戻ります。
+Log view は再生機能ではありません。Processes は記録の最終値を表示し続け、Graph、Samples、Process Info で記録済みメトリクスの履歴を確認します。Process Info の静的情報には記録済み項目を使い、記録されていない項目は `--` と表示します。`Esc` で Live 表示へ戻ります。
 
 記録ログのフォーマットと各フィールドの意味は [docs/metrics.md](docs/metrics.md) を参照してください。
 
@@ -319,6 +322,12 @@ sort_by = "WS Priv"
 sort_order = "desc"
 tracked_only = false
 
+[process_table.column_widths]
+PID = 8
+Process = 28
+Private = 14
+"Full Path" = 60
+
 [tracking]
 startup = "resume_last"
 active_list = "My app"
@@ -335,7 +344,7 @@ processes = ["app.exe", "worker.exe"]
 
 `tracking.startup` は `resume_last`（前回の作業中リスト）、`choose_list`（起動時に選択）、`start_empty`（空で開始）から選べ、`Ctrl+T` の Tracked Lists で変更できます。`choose_list` の選択は最初のサンプル取得より前に行われます。`Space` で作業中リストを変更しても保存済み定義は自動上書きされず、差があると Tracked Lists ダイアログの適用中リスト名に `(*)` が付きます。
 
-保存済みのカラム選択がない場合は、Columns ダイアログの全カラムを既定で選択します。明示的に保存された `columns` の一覧は、これまでどおり優先されます。
+保存済みのカラム選択がない場合は、Columns ダイアログの全カラムを既定で選択します。明示的に保存された `columns` の一覧は、これまでどおり優先されます。`process_table.column_widths` は、変更した要求幅だけを安定したカラム表示名で保存します。非表示カラムの幅も Preset 切り替えや並べ替え後まで保持されます。
 
 サンプリング間隔は現バージョンでは 1 秒固定で、設定ファイルからは変更できません。
 

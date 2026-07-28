@@ -114,8 +114,8 @@ The `System Info` dialog is not part of metric history. It displays static suppo
 ## Process Info
 
 Pressing `Enter` on the Processes panel opens a `Process Info` dialog for the selected process.
-Process Info is collected on a worker thread after the selected row has been stable for 200 ms.
-While collection is pending or running, the UI keeps the most recently displayed Process Info. If no information has been displayed yet, it shows `Loading...`.
+Live static Process Info is collected on a worker thread after the dialog target has been stable for 200 ms.
+The dialog immediately uses the selected `ProcessRow` as a fallback for recorded fields, so its metric history does not wait for static collection.
 
 | Display name | Description |
 |---|---|
@@ -127,6 +127,23 @@ While collection is pending or running, the UI keeps the most recently displayed
 | `File` | Modified time, file size, and product version. |
 
 Unavailable values are displayed as one of `<access denied>`, `<exited>`, `<not available>`, `<missing>`, or `--`.
+
+The Metrics section always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded.
+
+The comparison uses the app-wide A/B timestamps set in Graph or Samples:
+
+| A | B | Displayed value | Delta |
+|---|---|---|---|
+| Not set | Not set | Current displayed Snapshot | Hidden |
+| Set | Not set | Current displayed Snapshot | Current minus A |
+| Set | Set | B | B minus A |
+| Not set | Set | Current displayed Snapshot | Hidden |
+
+For each point, the process identity (PID, name, and start time) and `captured_at` must match exactly. Nearby samples, the latest sample of an exited ghost row, and samples from a reused PID are not substituted. A missing point or metric is displayed as `--`, and a delta is calculated only when both values exist.
+
+Metrics use the same compact decimal byte units and `Mbps` conversion as Processes. Counts use thousands separators. Every calculated delta, including zero, has an explicit sign and is enclosed in parentheses by the dialog.
+
+In `DISPLAY PAUSED`, both the current Snapshot and history come from the paused display state. In Log view, Current is the final recorded Snapshot, metric history comes from the loaded recording, and no live Process Info worker request is made. Static fields that are absent from the recording are displayed as `--`.
 
 ## Open Files
 
@@ -183,7 +200,7 @@ When start time is available, it is included in the identity to avoid mixing his
 
 | Kind | Display |
 |---|---|
-| Byte-based process metric | Processes uses adaptive decimal `B` / `KB` / `MB` / `GB` / `TB` / `PB` / `EB` values with one decimal above bytes. Samples, A/B comparison, clipboard output, and recording logs retain exact byte integers. |
+| Byte-based process metric | Processes and the Process Info Metrics section use adaptive decimal `B` / `KB` / `MB` / `GB` / `TB` / `PB` / `EB` values with one decimal above bytes. Samples, Graph A/B details, clipboard output, and recording logs retain exact byte integers. |
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |

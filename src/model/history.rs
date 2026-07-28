@@ -205,6 +205,17 @@ impl ProcessHistory {
             .unwrap_or_default()
     }
 
+    pub(crate) fn sample_at(
+        &self,
+        identity: &ProcessIdentity,
+        captured_at: DateTime<Local>,
+    ) -> Option<&ProcessSample> {
+        self.samples
+            .get(identity)?
+            .iter()
+            .find(|sample| sample.captured_at == captured_at)
+    }
+
     #[cfg(test)]
     pub(crate) fn sample_count_for(&self, identity: &ProcessIdentity) -> usize {
         self.samples
@@ -491,6 +502,43 @@ mod tests {
         });
         assert_eq!(samples.len(), 1);
         assert_eq!(samples[0].private_bytes, Some(10));
+    }
+
+    #[test]
+    fn process_history_exact_lookup_requires_time_and_identity_match() {
+        let now = Local::now();
+        let later = now + chrono::Duration::seconds(1);
+        let mut first = row(1, "app.exe", 10);
+        first.start_time = Some(100);
+        let mut restarted = row(1, "app.exe", 20);
+        restarted.start_time = Some(200);
+        let mut history = ProcessHistory::default();
+        history.record_snapshot(now, &[first], &empty_tracked_names());
+        history.record_snapshot(later, &[restarted], &empty_tracked_names());
+
+        let first_identity = ProcessIdentity {
+            pid: 1,
+            name: "app.exe".to_string(),
+            start_time: Some(100),
+        };
+        let restarted_identity = ProcessIdentity {
+            start_time: Some(200),
+            ..first_identity.clone()
+        };
+
+        assert_eq!(
+            history
+                .sample_at(&first_identity, now)
+                .and_then(|sample| sample.private_bytes),
+            Some(10)
+        );
+        assert!(history.sample_at(&first_identity, later).is_none());
+        assert!(history.sample_at(&restarted_identity, now).is_none());
+        assert!(
+            history
+                .sample_at(&first_identity, now + chrono::Duration::milliseconds(1))
+                .is_none()
+        );
     }
 
     #[test]

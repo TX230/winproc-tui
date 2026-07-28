@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -7,7 +8,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{App, GraphSlotLayout};
-use crate::model::{ColumnPreset, MetricColumn, SortColumn, SortDirection, SortSpec};
+use crate::model::{
+    ColumnPreset, MetricColumn, ProcessColumnWidths, SortColumn, SortDirection, SortSpec,
+};
 use crate::samplers::SamplingOptions;
 
 const CONFIG_FILE_NAME: &str = "winproc-tui.toml";
@@ -67,6 +70,8 @@ pub(crate) struct ProcessTableConfig {
     pub(crate) sort_by: String,
     pub(crate) sort_order: String,
     pub(crate) tracked_only: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) column_widths: BTreeMap<String, i64>,
 }
 
 impl Default for ProcessTableConfig {
@@ -81,6 +86,7 @@ impl Default for ProcessTableConfig {
             sort_by: MetricColumn::WorksetPrivateBytes.label().to_string(),
             sort_order: SortDirection::Desc.label().to_string(),
             tracked_only: false,
+            column_widths: BTreeMap::new(),
         }
     }
 }
@@ -156,6 +162,7 @@ pub(crate) struct RuntimeConfig {
     pub(crate) initial_show_sample_delta: bool,
     pub(crate) column_preset: ColumnPreset,
     pub(crate) process_columns: Vec<MetricColumn>,
+    pub(crate) process_column_widths: ProcessColumnWidths,
     pub(crate) sort: SortSpec,
     pub(crate) initial_tracked_only: bool,
     pub(crate) process_filters: Vec<String>,
@@ -200,6 +207,18 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         .unwrap_or(ColumnPreset::Default);
     let process_columns = parse_columns(&config.process_table.columns)
         .unwrap_or_else(|| column_preset.effective_columns().to_vec());
+    let process_column_widths =
+        ProcessColumnWidths::from_overrides(config.process_table.column_widths.iter().filter_map(
+            |(label, width)| {
+                parse_width_column(label).map(|column| {
+                    let width = (*width).clamp(
+                        i64::from(column.min_width()),
+                        i64::from(crate::model::columns::PROCESS_COLUMN_WIDTH_MAX),
+                    ) as u16;
+                    (column, width)
+                })
+            },
+        ));
     let process_filters = if config.tracking.startup == TrackedListStartup::StartEmpty {
         Vec::new()
     } else {
@@ -225,6 +244,7 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         initial_show_sample_delta: config.graphs.delta,
         column_preset,
         process_columns,
+        process_column_widths,
         sort: SortSpec {
             column: config
                 .process_table
@@ -276,6 +296,11 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
             sort_by: app.sort.column.label().to_string(),
             sort_order: app.sort.direction.label().to_string(),
             tracked_only: app.watch_enabled,
+            column_widths: app
+                .process_column_widths
+                .overrides()
+                .map(|(column, width)| (column.label().to_string(), i64::from(width)))
+                .collect(),
         },
         recording: RecordingConfig {
             last_dir: app.recording_last_dir.clone(),
@@ -334,4 +359,12 @@ fn parse_columns(columns: &[String]) -> Option<Vec<MetricColumn>> {
         .filter(|column: &MetricColumn| column.is_selectable())
         .collect::<Vec<_>>();
     (!parsed.is_empty()).then_some(parsed)
+}
+
+fn parse_width_column(label: &str) -> Option<SortColumn> {
+    let column = label.parse::<SortColumn>().ok()?;
+    match column {
+        SortColumn::Metric(metric) if !metric.is_selectable() => None,
+        _ => Some(column),
+    }
 }

@@ -244,6 +244,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Ctrl+Up/Down`      | Move the cursor without changing the multi-selection.                                 |
 | `Ctrl+Space`        | Add or remove the current live process row from the multi-selection.                  |
 | `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
+| `w` / `Shift+W`     | Widen or narrow the selected column by one cell.                                      |
 | `Space`             | Add or remove the selected process name from the Tracked List.                        |
 | `d` / `Delete`      | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
 | `t`                 | Toggle whether only tracked processes are shown.                                      |
@@ -251,6 +252,8 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `i`                 | Open the System Info dialog.                                                        |
 | `f`                 | Open the Open files list for the selected live process.                               |
 | `g`                 | Open or close all configured Graphs at once.                                          |
+
+Process Info keeps the selected process's static information at the top and lists all 14 normally sampled numeric process metrics below it. Set A and optionally B in Graph or Samples before pressing `Enter`: with A only, the dialog shows Current minus A; with both points, it shows B minus A. Missing exact-time samples remain `--`. The dialog can be scrolled with `Up` / `Down`, `PageUp` / `PageDown`, `Home` / `End`, or the mouse wheel.
 
 
 ### Graph and A/B Comparison
@@ -300,7 +303,7 @@ Press `Ctrl+L` to open the log list.
 The list shows `*.log` files from the previous recording directory if available, otherwise from the current directory.
 The `Dir` row shows the directory currently being searched, and `d` lets you choose another directory.
 Press `Enter` on a selected log to switch to the `LOG` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
-Log view is not a player: Processes keeps showing the last recorded values, while Graph and Samples expose the recorded metric history. Press `Esc` to return to the live display.
+Log view is not a player: Processes keeps showing the last recorded values, while Graph, Samples, and Process Info expose the recorded metric history. Process Info uses recorded fields for static details and shows `--` for details that were not recorded. Press `Esc` to return to the live display.
 
 The recording log format and the meaning of each field are described in [docs/metrics.md](docs/metrics.md).
 
@@ -334,6 +337,12 @@ sort_by = "WS Priv"
 sort_order = "desc"
 tracked_only = false
 
+[process_table.column_widths]
+PID = 8
+Process = 28
+Private = 14
+"Full Path" = 60
+
 [tracking]
 startup = "resume_last"
 active_list = "My app"
@@ -350,7 +359,7 @@ processes = ["app.exe", "worker.exe"]
 
 `tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; the Tracked Lists dialog indicates an unsaved difference with `(*)` beside the active list name.
 
-When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority.
+When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority. `process_table.column_widths` stores only changed requested widths by stable column label; hidden columns keep their overrides across preset or order changes.
 
 The sampling interval is fixed to 1 second in the current version and is not user-configurable.
 

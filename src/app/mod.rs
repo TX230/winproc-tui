@@ -21,8 +21,8 @@ use crate::ui::{
     column_picker_page_size_for_screen, details_slot_areas_for_screen, draw,
     help_page_size_for_screen,
     layout::{details_samples_area, details_samples_row_capacity},
-    open_files_page_size_for_screen, process_table_area_for_screen, process_table_page_size,
-    tracked_lists_page_size_for_screen,
+    open_files_page_size_for_screen, process_info_page_size_for_screen,
+    process_table_area_for_screen, process_table_page_size, tracked_lists_page_size_for_screen,
 };
 
 const EVENT_POLL_SLICE: Duration = Duration::from_millis(50);
@@ -47,6 +47,7 @@ pub(crate) use state::GraphSlot;
 pub(crate) use state::GraphSlotLayout;
 pub(crate) use state::GraphValueFormat;
 pub(crate) use state::LogDirSelection;
+pub(crate) use state::PROCESS_INFO_CONTENT_ROWS;
 #[cfg(test)]
 pub(crate) use state::PROCESS_INFO_DEBOUNCE;
 pub(crate) use state::ProcessKillSelection;
@@ -259,6 +260,7 @@ fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.set_column_picker_page_size(column_picker_page_size_for_screen(screen_area));
     app.set_log_list_page_size(crate::ui::log_list_page_size_for_screen(screen_area));
     app.set_open_files_page_size(open_files_page_size_for_screen(screen_area, app));
+    app.set_process_info_page_size(process_info_page_size_for_screen(screen_area));
     app.set_tracked_lists_page_size(tracked_lists_page_size_for_screen(screen_area));
     app.ensure_visible_panel_focus();
     app.clamp_process_table_state();

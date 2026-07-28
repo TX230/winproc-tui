@@ -113,6 +113,10 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Move metric column",
     },
     HelpItem {
+        key: "w/Shift+W",
+        label: "Widen / narrow column",
+    },
+    HelpItem {
         key: "1/2/3/4",
         label: "Set to Graph#n",
     },
@@ -142,7 +146,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter",
-        label: "Open Process Info",
+        label: "Open Process Info metrics",
     },
     HelpItem {
         key: "i",

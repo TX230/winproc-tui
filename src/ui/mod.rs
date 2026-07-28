@@ -65,7 +65,10 @@ pub(crate) use open_files::{
     open_files_scrollbar_area_for_screen, open_files_total_rows,
 };
 use process_info_dialog::draw_process_info_dialog;
-pub(crate) use process_info_dialog::process_info_close_button_area_for_screen;
+pub(crate) use process_info_dialog::{
+    process_info_close_button_area_for_screen, process_info_content_area_for_screen,
+    process_info_page_size_for_screen,
+};
 use process_kill_confirm::draw_process_kill_confirm;
 pub(crate) use process_kill_confirm::process_kill_button_at;
 #[cfg(test)]
