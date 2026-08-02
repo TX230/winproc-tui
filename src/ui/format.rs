@@ -23,18 +23,22 @@ pub(crate) fn fmt_bytes(bytes: u64) -> String {
 }
 
 pub(crate) fn format_compact_bytes(bytes: u64) -> String {
-    format_compact_bytes_magnitude(u128::from(bytes))
+    format_compact_bytes_magnitude(u128::from(bytes), 1)
+}
+
+pub(crate) fn format_compact_bytes_with_precision(bytes: u64, precision: usize) -> String {
+    format_compact_bytes_magnitude(u128::from(bytes), precision)
 }
 
 pub(crate) fn format_signed_compact_bytes(bytes: i128) -> String {
     let sign = if bytes >= 0 { "+" } else { "-" };
     format!(
         "{sign}{}",
-        format_compact_bytes_magnitude(bytes.unsigned_abs())
+        format_compact_bytes_magnitude(bytes.unsigned_abs(), 1)
     )
 }
 
-fn format_compact_bytes_magnitude(bytes: u128) -> String {
+fn format_compact_bytes_magnitude(bytes: u128, precision: usize) -> String {
     const UNITS: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
     let mut value = bytes as f64;
     let mut unit_index = 0;
@@ -47,12 +51,13 @@ fn format_compact_bytes_magnitude(bytes: u128) -> String {
     if unit_index == 0 {
         format!("{bytes} {}", UNITS[unit_index])
     } else {
-        value = (value * 10.0).round() / 10.0;
+        let factor = 10_f64.powi(precision as i32);
+        value = (value * factor).round() / factor;
         if value >= 1000.0 && unit_index + 1 < UNITS.len() {
             value /= 1000.0;
             unit_index += 1;
         }
-        format!("{value:.1} {}", UNITS[unit_index])
+        format!("{value:.precision$} {}", UNITS[unit_index])
     }
 }
 
@@ -136,6 +141,10 @@ mod tests {
         assert_eq!(format_compact_bytes(999_950_000), "1.0 GB");
         assert_eq!(format_compact_bytes(1_500_000_000), "1.5 GB");
         assert_eq!(format_compact_bytes(u64::MAX), "18.4 EB");
+        assert_eq!(
+            format_compact_bytes_with_precision(2_860_000_000, 2),
+            "2.86 GB"
+        );
     }
 
     #[test]

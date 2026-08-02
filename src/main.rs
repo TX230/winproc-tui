@@ -3487,7 +3487,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("GRAPHS · Span 60s"), "{rendered}");
         assert!(
-            rendered.contains("GRAPH#1 · proc-0 · Private · B-A: --"),
+            rendered.contains("GRAPH#1 · proc-0 · Private [B] · B-A: --"),
             "{rendered}"
         );
         assert!(!rendered.contains("Samples#1"), "{rendered}");
@@ -3572,6 +3572,76 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(positions[0].0, positions[2].0);
         assert!(positions[0].1 < positions[2].1);
         assert_eq!(positions[2].1, positions[3].1);
+    }
+
+    #[test]
+    fn one_column_graphs_share_compact_y_axis_width_and_keep_samples_exact() {
+        let mut app = make_test_app(3, 10);
+        let screen = Rect::new(0, 0, 140, 80);
+        app.set_screen_area(screen);
+        let identity = app.selected_visible_process_identity().unwrap();
+        app.snapshot.processes[0].private_bytes = Some(5_900_000);
+        app.snapshot.processes[0].handle_count = Some(42);
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
+        app.graph_slots[1] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
+        app.show_samples_panel = true;
+        app.show_details = true;
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let rendered = buffer_to_text(&buffer);
+        assert!(rendered.contains("Private [B]"), "{rendered}");
+        assert!(rendered.contains("Hndl [count]"), "{rendered}");
+        assert!(rendered.contains("5.9 MB"), "{rendered}");
+        assert!(rendered.contains("5,900,000"), "{rendered}");
+
+        let slots = ui::details_slot_areas_for_app(screen, &app, 2, GraphSlotLayout::OneColumn);
+        for slot in slots {
+            let graph =
+                ui::layout::details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
+            let chart = ui::layout::details_graph_rows(graph)[1];
+            assert_eq!(buffer[(chart.x + 6, chart.y)].symbol(), "┤");
+        }
+    }
+
+    #[test]
+    fn two_column_graphs_share_compact_y_axis_width() {
+        let mut app = make_test_app(3, 10);
+        let screen = Rect::new(0, 0, 140, 80);
+        app.set_screen_area(screen);
+        let identity = app.selected_visible_process_identity().unwrap();
+        app.snapshot.processes[0].private_bytes = Some(5_900_000);
+        app.snapshot.processes[0].handle_count = Some(42);
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
+        app.graph_slots[1] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        app.graph_slot_layout = GraphSlotLayout::TwoColumns;
+        app.show_samples_panel = false;
+        app.show_details = true;
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let rendered = buffer_to_text(&buffer);
+        assert!(rendered.contains("Private [B]"), "{rendered}");
+        assert!(rendered.contains("Hndl [count]"), "{rendered}");
+        assert!(rendered.contains("5.9 MB"), "{rendered}");
+
+        let slots = ui::details_slot_areas_for_app(screen, &app, 2, GraphSlotLayout::TwoColumns);
+        assert_eq!(slots.len(), 2);
+        for slot in slots {
+            let graph =
+                ui::layout::details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
+            let chart = ui::layout::details_graph_rows(graph)[1];
+            assert_eq!(buffer[(chart.x + 6, chart.y)].symbol(), "┤");
+        }
     }
 
     #[test]
@@ -4893,14 +4963,13 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Enter / Left/Right"), "{rendered}");
         assert!(rendered.contains("Info / select sample"), "{rendered}");
         assert!(
-            rendered.contains("f/z") && rendered.contains("Fit all / toggle Min 0"),
+            rendered.contains("f/z") && rendered.contains("Fit all / compact Min0"),
             "{rendered}"
         );
         assert!(
             rendered.contains("v/d/l") && rendered.contains("Samples/Delta/2c"),
             "{rendered}"
         );
-
         assert!(rendered.contains("Toggle recording"), "{rendered}");
         assert!(rendered.contains("Pause / Resume"), "{rendered}");
         assert!(rendered.contains("Copy selected row"), "{rendered}");

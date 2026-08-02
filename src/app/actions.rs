@@ -16,9 +16,9 @@ use crate::{
     ui::{
         THEMES, TrackedListNameButton, column_picker_close_button_area_for_screen,
         column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
-        display_area_warning_ok_button_area,
-        format::format_integer,
-        help_area, help_close_button_area, help_scrollbar_area,
+        details_panel::graph_y_axis_label_width,
+        display_area_warning_ok_button_area, help_area, help_close_button_area,
+        help_scrollbar_area,
         layout::{
             ProcessTableLayout, details_graph_area, details_graph_chart_area, details_samples_area,
             details_shared_controls_area, details_slot_areas, details_slot_title_area,
@@ -1965,19 +1965,7 @@ impl App {
     }
 
     fn graph_plot_left_padding(&self) -> u16 {
-        let max_value = self
-            .graph_slots
-            .iter()
-            .filter_map(Option::as_ref)
-            .flat_map(|slot| {
-                self.graph_slot_samples(slot)
-                    .into_iter()
-                    .filter_map(|sample| sample.value.map(|value| value.round().max(0.0) as u64))
-            })
-            .max()
-            .unwrap_or(0);
-        let label_width = format_integer(nice_axis_max(max_value)).chars().count();
-        label_width.max(1) as u16
+        graph_y_axis_label_width(self).saturating_sub(1) as u16
     }
 }
 
@@ -2148,15 +2136,6 @@ fn details_sample_page_size_for_samples_area(
 
 fn help_close_button_area_for_screen(screen_area: Rect) -> Option<Rect> {
     help_close_button_area(help_area(screen_area))
-}
-
-fn nice_axis_max(value: u64) -> u64 {
-    if value <= 10 {
-        return value.max(1);
-    }
-    let digits = value.ilog10() + 1;
-    let step = 10_u64.pow(digits.saturating_sub(2));
-    value.div_ceil(step) * step
 }
 
 fn sample_row_index_at(

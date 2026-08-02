@@ -310,7 +310,9 @@ fn format_graph_sample_value(value: Option<f64>, value_format: GraphValueFormat)
         GraphValueFormat::MegabitsPerSec => format_mbps(value.round().max(0.0) as u64),
         GraphValueFormat::MegabytesPerSec => format_mb_per_sec(value.round().max(0.0) as u64),
         GraphValueFormat::QueueLength => format!("{value:.1}"),
-        GraphValueFormat::Integer => format_integer(value.round().max(0.0) as u64),
+        GraphValueFormat::Bytes | GraphValueFormat::Count => {
+            format_integer(value.round().max(0.0) as u64)
+        }
     }
 }
 
@@ -340,7 +342,9 @@ fn format_details_delta(delta: f64, value_format: GraphValueFormat) -> String {
             format_signed_integer(mb_per_sec) + " MB/s"
         }
         GraphValueFormat::QueueLength => format!("{delta:+.1}"),
-        GraphValueFormat::Integer => format_signed_integer(delta.round() as i128),
+        GraphValueFormat::Bytes | GraphValueFormat::Count => {
+            format_signed_integer(delta.round() as i128)
+        }
     }
 }
 

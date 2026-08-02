@@ -40,7 +40,7 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 
 When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
 When it is not selected, filtering matches process name only.
-Compact byte formatting is limited to Process-table presentation. Sorting and Graph data continue to use the raw numeric values.
+Compact byte formatting is used in the Processes table and for Graph Y-axis tick labels. Sorting and Graph data continue to use the raw numeric values.
 
 ## Process Metrics Defined Internally Only
 
@@ -200,7 +200,8 @@ When start time is available, it is included in the identity to avoid mixing his
 
 | Kind | Display |
 |---|---|
-| Byte-based process metric | Processes and the Process Info Metrics section use adaptive decimal `B` / `KB` / `MB` / `GB` / `TB` / `PB` / `EB` values with one decimal above bytes. Samples, Graph A/B details, clipboard output, and recording logs retain exact byte integers. |
+| Byte-based process metric | Processes and the Process Info Metrics section use adaptive decimal `B` / `KB` / `MB` / `GB` / `TB` / `PB` / `EB` values with one decimal above bytes. Graph Y-axis ticks use the same compact units and may add precision to keep nearby tick labels distinct. Samples, cursor labels, Graph A/B details and deltas, clipboard output, and recording logs retain exact byte integers. |
+| Count metric | Graph Y-axis ticks, Samples, cursor labels, A/B details and deltas, clipboard output, and recording logs use integers. |
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |
@@ -210,6 +211,8 @@ When start time is available, it is included in the identity to avoid mixing his
 | Missing value | `--`. |
 
 `GB`, `MB`, and `Mbps` are rounded using a base of 1,000.
+Graph slot titles append concise unit metadata such as `[B]`, `[count]`, `[Mbps]`, or `[MB/s]`. A unit already present in the metric name is not repeated, so `CPU%` and `GPU%` remain unchanged while `CPU Usage` is shown as `CPU Usage [%]`.
+Percent, throughput, and disk queue-length Y-axis ticks retain their metric-specific formats.
 The `B-A` value in each Graph slot title uses the same metric-specific format as the A/B comparison. It is `--` unless both points are set and that Graph has values at both exact captured times.
 
 ## Metrics in Recording Logs

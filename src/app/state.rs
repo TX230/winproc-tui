@@ -134,7 +134,8 @@ pub(crate) enum DetailsMetric {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphValueFormat {
-    Integer,
+    Bytes,
+    Count,
     Percent,
     MegabitsPerSec,
     MegabytesPerSec,
@@ -146,7 +147,29 @@ impl GraphValueFormat {
         match metric {
             DetailsMetric::CpuPercent | DetailsMetric::GpuPercent => Self::Percent,
             DetailsMetric::IoRead | DetailsMetric::IoWrite => Self::MegabitsPerSec,
-            _ => Self::Integer,
+            DetailsMetric::Private
+            | DetailsMetric::Workset
+            | DetailsMetric::WorksetPrivate
+            | DetailsMetric::WorksetShareable
+            | DetailsMetric::WorksetShared
+            | DetailsMetric::DotNetHeap
+            | DetailsMetric::GpuDedicated
+            | DetailsMetric::GpuShared => Self::Bytes,
+            DetailsMetric::ThreadCount
+            | DetailsMetric::HandleCount
+            | DetailsMetric::UserObjectCount
+            | DetailsMetric::GdiObjectCount => Self::Count,
+        }
+    }
+
+    pub(crate) fn unit_label(self) -> &'static str {
+        match self {
+            Self::Bytes => "B",
+            Self::Count => "count",
+            Self::Percent => "%",
+            Self::MegabitsPerSec => "Mbps",
+            Self::MegabytesPerSec => "MB/s",
+            Self::QueueLength => "requests",
         }
     }
 }
@@ -325,6 +348,16 @@ impl GraphSlot {
         }
     }
 
+    pub(crate) fn metric_title(&self) -> String {
+        let label = self.metric_label();
+        let unit = self.value_format().unit_label();
+        if label.contains(unit) {
+            label.to_string()
+        } else {
+            format!("{label} [{unit}]")
+        }
+    }
+
     pub(crate) fn item_label(&self) -> String {
         match self {
             Self::Process { identity, .. } => identity.name.clone(),
@@ -347,7 +380,7 @@ impl GraphSlot {
             Self::System {
                 metric: SystemMetric::DiskQueueLength,
             } => GraphValueFormat::QueueLength,
-            Self::System { .. } => GraphValueFormat::Integer,
+            Self::System { .. } => GraphValueFormat::Bytes,
         }
     }
 }

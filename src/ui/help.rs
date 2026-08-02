@@ -220,7 +220,7 @@ const GRAPH_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "f/z",
-        label: "Fit all / toggle Min 0",
+        label: "Fit all / compact Min0",
     },
     HelpItem {
         key: "v/d/l",

@@ -18,7 +18,10 @@ use crate::{
     },
     ui::{
         Theme,
-        format::{format_integer, format_mb_per_sec, format_signed_integer},
+        format::{
+            format_compact_bytes, format_compact_bytes_with_precision, format_integer,
+            format_mb_per_sec, format_signed_integer,
+        },
         layout::{
             DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, details_graph_area, details_graph_rows,
             details_samples_area, details_samples_divider_area, details_samples_row_capacity,
@@ -55,22 +58,7 @@ pub(crate) fn draw_details_panel(
 
     draw_graph_shared_controls(frame, details_shared_controls_area(area), app, theme);
 
-    let bounds = graph_bounds(
-        app.effective_graph_time_span_seconds(),
-        app.effective_graph_time_offset_seconds(),
-    );
-    let common_y_label_width = slots
-        .iter()
-        .map(|(_, slot)| {
-            let samples = app.graph_slot_samples(slot);
-            let metric = slot.value_format();
-            let data = chart_points(samples.as_slice(), bounds);
-            let stats = graph_stats(samples.as_slice(), app.graph_slot_peak(slot), &data);
-            let (y_min, y_max) = graph_y_bounds(&stats, app.graph_y_axis_zero_min);
-            y_axis_label_width(&y_axis_labels(y_min, y_max, metric))
-        })
-        .max()
-        .unwrap_or(1);
+    let common_y_label_width = graph_y_axis_label_width(app);
     let selected_sample_time = app.selected_details_sample_time();
     let slot_areas = details_slot_areas(area, slots.len(), app.graph_slot_layout);
     for ((slot_index, slot), slot_area) in slots.into_iter().zip(slot_areas) {
@@ -101,6 +89,26 @@ pub(crate) fn draw_details_panel(
             selected_sample_time,
         );
     }
+}
+
+pub(crate) fn graph_y_axis_label_width(app: &App) -> usize {
+    let bounds = graph_bounds(
+        app.effective_graph_time_span_seconds(),
+        app.effective_graph_time_offset_seconds(),
+    );
+    app.graph_slots
+        .iter()
+        .filter_map(Option::as_ref)
+        .map(|slot| {
+            let samples = app.graph_slot_samples(slot);
+            let metric = slot.value_format();
+            let data = chart_points(samples.as_slice(), bounds);
+            let stats = graph_stats(samples.as_slice(), app.graph_slot_peak(slot), &data);
+            let (y_min, y_max) = graph_y_bounds(&stats, app.graph_y_axis_zero_min);
+            y_axis_label_width(&y_axis_labels(y_min, y_max, metric))
+        })
+        .max()
+        .unwrap_or(1)
 }
 
 fn render_details_content(
@@ -714,7 +722,7 @@ fn details_paragraph<'a>(lines: Vec<Line<'a>>, theme: Theme) -> Paragraph<'a> {
 
 fn format_metric_sample_value(sample: &GraphSample, metric: GraphValueFormat) -> String {
     metric_value(sample, metric)
-        .map(|value| format_metric_value(value, metric))
+        .map(|value| format_metric_exact_value(value, metric))
         .unwrap_or_else(|| "--".to_string())
 }
 
@@ -729,7 +737,7 @@ fn sample_max_line(
     Line::from(Span::styled(
         format!(
             "Max: {} @ {}",
-            format_metric_value(value, metric),
+            format_metric_exact_value(value, metric),
             sample.captured_at.format("%H:%M:%S")
         ),
         Style::default().fg(theme.muted),
@@ -772,7 +780,7 @@ fn sample_moving_average_line(
     Line::from(Span::styled(
         format!(
             "MA5: {} @ {}",
-            format_metric_value(value, metric),
+            format_metric_exact_value(value, metric),
             captured_at.format("%H:%M:%S")
         ),
         Style::default().fg(theme.muted),
@@ -814,18 +822,27 @@ fn sample_max<'a>(
 }
 
 fn format_metric_axis_value(value: f64, metric: GraphValueFormat) -> String {
-    format_metric_value(value, metric)
+    match metric {
+        GraphValueFormat::Bytes => format_compact_bytes(value.round().max(0.0) as u64),
+        _ => format_metric_exact_value(value, metric),
+    }
 }
 
 fn y_axis_labels(y_min: f64, y_max: f64, metric: GraphValueFormat) -> Vec<String> {
     let y_mid = y_min + (y_max - y_min) / 2.0;
-    let lower_label = if y_min == 0.0 {
-        "0".to_string()
+    let [lower_label, middle_label, upper_label] = if metric == GraphValueFormat::Bytes {
+        compact_byte_axis_labels([y_min, y_mid, y_max])
     } else {
-        format_metric_axis_value(y_min, metric)
+        [
+            if y_min == 0.0 {
+                "0".to_string()
+            } else {
+                format_metric_axis_value(y_min, metric)
+            },
+            format_metric_axis_value(y_mid, metric),
+            format_metric_axis_value(y_max, metric),
+        ]
     };
-    let middle_label = format_metric_axis_value(y_mid, metric);
-    let upper_label = format_metric_axis_value(y_max, metric);
     let visible_middle_label = if middle_label == lower_label || middle_label == upper_label {
         String::new()
     } else {
@@ -833,6 +850,30 @@ fn y_axis_labels(y_min: f64, y_max: f64, metric: GraphValueFormat) -> Vec<String
     };
 
     vec![lower_label, visible_middle_label, upper_label]
+}
+
+fn compact_byte_axis_labels(values: [f64; 3]) -> [String; 3] {
+    let mut labels = values.map(|value| format_compact_byte_axis_value(value, 1));
+    for precision in 1..=3 {
+        labels = values.map(|value| format_compact_byte_axis_value(value, precision));
+        if labels[0] != labels[2] && labels[1] != labels[0] && labels[1] != labels[2] {
+            break;
+        }
+    }
+    labels
+}
+
+fn format_compact_byte_axis_value(value: f64, precision: usize) -> String {
+    let value = value.round().max(0.0);
+    if value == 0.0 {
+        return "0".to_string();
+    }
+    let bytes = value as u64;
+    if bytes < 1_000 {
+        format_integer(bytes)
+    } else {
+        format_compact_bytes_with_precision(bytes, precision)
+    }
 }
 
 fn y_axis_label_width(labels: &[String]) -> usize {
@@ -858,15 +899,17 @@ fn pad_y_axis_labels(labels: Vec<String>, y_label_width: usize) -> Vec<String> {
         .collect()
 }
 
-fn format_metric_value(value: f64, metric: GraphValueFormat) -> String {
+fn format_metric_exact_value(value: f64, metric: GraphValueFormat) -> String {
     match metric {
+        GraphValueFormat::Bytes | GraphValueFormat::Count => {
+            format_integer(value.round().max(0.0) as u64)
+        }
         GraphValueFormat::Percent => format!("{value:.1}%"),
         GraphValueFormat::MegabitsPerSec => {
             format!("{} Mbps", ((value * 8.0) / 1_000_000.0).round() as u64)
         }
         GraphValueFormat::MegabytesPerSec => format_mb_per_sec(value.round().max(0.0) as u64),
         GraphValueFormat::QueueLength => format!("{value:.1}"),
-        GraphValueFormat::Integer => format_integer(value.round().max(0.0) as u64),
     }
 }
 
@@ -947,13 +990,16 @@ fn format_ab_point(
         .iter()
         .find(|sample| sample.captured_at == point.captured_at)
         .and_then(|sample| metric_value(sample, metric))
-        .map(|value| format_metric_value(value, metric))
+        .map(|value| format_metric_exact_value(value, metric))
         .unwrap_or_else(|| "--".to_string());
     format!("{} {}", point.captured_at.format("%H:%M:%S"), value)
 }
 
 fn format_ab_delta(delta: f64, metric: GraphValueFormat) -> String {
     match metric {
+        GraphValueFormat::Bytes | GraphValueFormat::Count => {
+            format_signed_integer(delta.round() as i128)
+        }
         GraphValueFormat::Percent => format!("{delta:+.1}%"),
         GraphValueFormat::MegabitsPerSec => {
             let mbps = ((delta * 8.0) / 1_000_000.0).round() as i128;
@@ -964,7 +1010,6 @@ fn format_ab_delta(delta: f64, metric: GraphValueFormat) -> String {
             format_signed_integer(mb_per_sec) + " MB/s"
         }
         GraphValueFormat::QueueLength => format!("{delta:+.1}"),
-        GraphValueFormat::Integer => format_signed_integer(delta.round() as i128),
     }
 }
 
@@ -1083,7 +1128,7 @@ fn graph_slot_title_line(
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(slot.item_label(), main_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
-        Span::styled(slot.metric_label(), main_style),
+        Span::styled(slot.metric_title(), main_style),
         Span::styled(" · B-A: ", comparison_style),
         Span::styled(
             format_graph_title_ab_delta(comparison, samples, metric),
@@ -1654,12 +1699,37 @@ mod tests {
             (2_860_000_000.0, 2_900_000_000.0)
         );
         assert_eq!(
-            y_axis_labels(2_860_000_000.0, 2_900_000_000.0, GraphValueFormat::Integer),
+            y_axis_labels(2_860_000_000.0, 2_900_000_000.0, GraphValueFormat::Bytes),
             vec![
-                "2,860,000,000".to_string(),
-                "2,880,000,000".to_string(),
-                "2,900,000,000".to_string()
+                "2.86 GB".to_string(),
+                "2.88 GB".to_string(),
+                "2.90 GB".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn byte_axis_ticks_are_compact_while_exact_graph_values_remain_integers() {
+        assert_eq!(
+            y_axis_labels(0.0, 5_900_000.0, GraphValueFormat::Bytes),
+            vec!["0".to_string(), "3.0 MB".to_string(), "5.9 MB".to_string()]
+        );
+        assert_eq!(
+            format_metric_exact_value(5_900_123.0, GraphValueFormat::Bytes),
+            "5,900,123"
+        );
+        assert_eq!(format_ab_delta(123.0, GraphValueFormat::Bytes), "+123");
+    }
+
+    #[test]
+    fn count_axis_ticks_and_exact_values_remain_integers() {
+        assert_eq!(
+            y_axis_labels(0.0, 12_400.0, GraphValueFormat::Count),
+            vec!["0".to_string(), "6,200".to_string(), "12,400".to_string()]
+        );
+        assert_eq!(
+            format_metric_exact_value(12_345.0, GraphValueFormat::Count),
+            "12,345"
         );
     }
 
@@ -1676,7 +1746,7 @@ mod tests {
             sample(second, Some(3_000), Some(7)),
         ];
         let refs = samples.to_vec();
-        let rendered = sample_max_line(&refs, GraphValueFormat::Integer, THEMES[0])
+        let rendered = sample_max_line(&refs, GraphValueFormat::Count, THEMES[0])
             .spans
             .iter()
             .map(|span| span.content.as_ref())
@@ -1702,7 +1772,7 @@ mod tests {
         let refs = samples.to_vec();
 
         assert_eq!(
-            sample_moving_average(&refs, 5, GraphValueFormat::Integer),
+            sample_moving_average(&refs, 5, GraphValueFormat::Count),
             Some((base + chrono::Duration::seconds(5), 50.0))
         );
     }
@@ -1720,11 +1790,11 @@ mod tests {
         let refs = samples.to_vec();
 
         assert_eq!(
-            sample_moving_average(&refs, 2, GraphValueFormat::Integer),
+            sample_moving_average(&refs, 2, GraphValueFormat::Count),
             Some((base + chrono::Duration::seconds(2), 20.0))
         );
         assert_eq!(
-            sample_moving_average_line(&refs, 1, GraphValueFormat::Integer, THEMES[0])
+            sample_moving_average_line(&refs, 1, GraphValueFormat::Count, THEMES[0])
                 .spans
                 .iter()
                 .map(|span| span.content.as_ref())
@@ -1741,11 +1811,11 @@ mod tests {
         let refs = samples.to_vec();
 
         assert_eq!(
-            sample_moving_average(&refs, 0, GraphValueFormat::Integer),
+            sample_moving_average(&refs, 0, GraphValueFormat::Count),
             None
         );
         assert_eq!(
-            sample_moving_average_line(&refs, 0, GraphValueFormat::Integer, THEMES[0])
+            sample_moving_average_line(&refs, 0, GraphValueFormat::Count, THEMES[0])
                 .spans
                 .iter()
                 .map(|span| span.content.as_ref())
@@ -1919,11 +1989,11 @@ mod tests {
     #[test]
     fn sample_delta_uses_previous_sample_value() {
         assert_eq!(
-            format_sample_delta(Some(130.0), Some(100.0), GraphValueFormat::Integer),
+            format_sample_delta(Some(130.0), Some(100.0), GraphValueFormat::Count),
             "+30"
         );
         assert_eq!(
-            format_sample_delta(Some(70.0), Some(100.0), GraphValueFormat::Integer),
+            format_sample_delta(Some(70.0), Some(100.0), GraphValueFormat::Count),
             "-30"
         );
         assert_eq!(
@@ -1931,7 +2001,7 @@ mod tests {
             "+1.5%"
         );
         assert_eq!(
-            format_sample_delta(Some(70.0), None, GraphValueFormat::Integer),
+            format_sample_delta(Some(70.0), None, GraphValueFormat::Count),
             "--"
         );
     }
@@ -2000,21 +2070,17 @@ mod tests {
             sample(second, Some(1_500), None),
         ];
         let refs = samples.to_vec();
-        let rendered = sample_ab_summary_lines(
-            Some(&comparison),
-            &refs,
-            GraphValueFormat::Integer,
-            THEMES[0],
-        )
-        .iter()
-        .map(|line| {
-            line.spans
+        let rendered =
+            sample_ab_summary_lines(Some(&comparison), &refs, GraphValueFormat::Bytes, THEMES[0])
                 .iter()
-                .map(|span| span.content.as_ref())
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .collect::<Vec<_>>();
+                .map(|line| {
+                    line.spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect::<Vec<_>>()
+                        .join("")
+                })
+                .collect::<Vec<_>>();
 
         assert_eq!(
             rendered,
@@ -2033,21 +2099,17 @@ mod tests {
         };
         let samples = [sample(first, Some(1_000), None)];
         let refs = samples.to_vec();
-        let rendered = sample_ab_summary_lines(
-            Some(&comparison),
-            &refs,
-            GraphValueFormat::Integer,
-            THEMES[0],
-        )
-        .iter()
-        .map(|line| {
-            line.spans
+        let rendered =
+            sample_ab_summary_lines(Some(&comparison), &refs, GraphValueFormat::Bytes, THEMES[0])
                 .iter()
-                .map(|span| span.content.as_ref())
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .collect::<Vec<_>>();
+                .map(|line| {
+                    line.spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect::<Vec<_>>()
+                        .join("")
+                })
+                .collect::<Vec<_>>();
 
         assert_eq!(rendered, vec!["A: 10:00:00 1,000", "B: --", "B-A: --"]);
     }
@@ -2211,7 +2273,7 @@ mod tests {
             &slot,
             0,
             &[],
-            GraphValueFormat::Integer,
+            GraphValueFormat::Bytes,
             None,
             true,
             crate::ui::THEMES[0],
@@ -2223,7 +2285,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "GRAPH#1 · app.exe · Private · B-A: --");
+        assert_eq!(rendered, "GRAPH#1 · app.exe · Private [B] · B-A: --");
         assert!(
             line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
                 && line.spans[0].style.add_modifier.contains(Modifier::BOLD)
@@ -2267,7 +2329,7 @@ mod tests {
             &slot,
             0,
             &samples,
-            GraphValueFormat::Integer,
+            GraphValueFormat::Count,
             Some(&comparison),
             true,
             crate::ui::THEMES[0],
@@ -2279,6 +2341,45 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "GRAPH#1 · DeepL.exe · Hndl · B-A: +2");
+        assert_eq!(rendered, "GRAPH#1 · DeepL.exe · Hndl [count] · B-A: +2");
+    }
+
+    #[test]
+    fn graph_metric_titles_add_units_without_duplicating_metric_names() {
+        let identity = crate::model::ProcessIdentity {
+            pid: 42,
+            name: "app.exe".to_string(),
+            start_time: Some(1_700_000_000),
+        };
+
+        assert_eq!(
+            GraphSlot::process(identity.clone(), crate::app::DetailsMetric::CpuPercent)
+                .metric_title(),
+            "CPU%"
+        );
+        assert_eq!(
+            GraphSlot::system(crate::model::SystemMetric::CpuAverage).metric_title(),
+            "CPU Usage [%]"
+        );
+        assert_eq!(
+            GraphSlot::process(identity.clone(), crate::app::DetailsMetric::Private).value_format(),
+            GraphValueFormat::Bytes
+        );
+        assert_eq!(
+            GraphSlot::process(identity.clone(), crate::app::DetailsMetric::IoRead).metric_title(),
+            "IO Read/s [Mbps]"
+        );
+        assert_eq!(
+            GraphSlot::process(identity, crate::app::DetailsMetric::ThreadCount).value_format(),
+            GraphValueFormat::Count
+        );
+        assert_eq!(
+            GraphSlot::system(crate::model::SystemMetric::DiskRead).metric_title(),
+            "Disk R [MB/s]"
+        );
+        assert_eq!(
+            GraphSlot::system(crate::model::SystemMetric::DiskQueueLength).metric_title(),
+            "Disk Q [requests]"
+        );
     }
 }
