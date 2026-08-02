@@ -13,6 +13,28 @@ This project does not maintain a separate `CHANGELOG.md` file.
 Use `gh release create --generate-notes` to create draft release notes, then review and edit them before publishing.
 GitHub's generated notes are a starting point, especially for releases built from merged maintainer-requested or AI-assisted pull requests; they are not a substitute for checking the actual commit range.
 
+The published notes should use a short `What's changed` section that summarizes user-visible outcomes rather than copying commit titles mechanically. Review the commits since the previous tag and group closely related commits into one bullet when that makes the result easier to understand. Append every relevant Issue number in the form `Issue #n`; when one bullet covers several Issues, write each one explicitly. Do not attach an Issue number to unrelated release housekeeping.
+
+Use this structure:
+
+```markdown
+## What's changed
+
+- Describe one user-visible change. (Issue #n)
+- Describe a related group of changes. (Issue #n, Issue #n)
+- Describe release or compatibility work. (Issue #n)
+
+**Full Changelog**: https://github.com/TX230/winproc-tui/compare/<previous-tag>...<current-tag>
+```
+
+Generated notes may contain only a Full Changelog link when the release range has no merged pull requests. In that case, write the `What's changed` bullets manually. Prefer a notes file over a long inline shell argument so Markdown, backticks, and line breaks are not altered by PowerShell:
+
+```powershell
+gh release edit $Tag `
+  --repo TX230/winproc-tui `
+  --notes-file <release-notes-file>
+```
+
 ### Git Tag
 
 A Git tag is a stable name for a specific commit.
@@ -38,6 +60,16 @@ It can contain:
 - Checksum files such as `.sha256`.
 
 The important rule is that the uploaded binary should be built from the same commit that the release tag points to.
+
+## Publication Order
+
+Publish in this order:
+
+1. Publish and verify the versioned GitHub Release.
+2. Update and verify `TX230/scoop-bucket`.
+3. Submit the version to `microsoft/winget-pkgs`.
+
+Both package-manager manifests must use the immutable version-specific Release URL and the SHA-256 of the published asset. Do not prepare them from a draft `untagged-*` asset URL, and do not replace a published asset after either manifest refers to it.
 
 ## Manual Release Procedure
 
@@ -227,6 +259,7 @@ Open the draft release in GitHub and confirm:
 - The release points to the intended tag.
 - The release title is correct.
 - The generated notes match the intended release contents. Edit them in the draft if any entry is missing, unclear, or duplicated; the edited text becomes the final published release notes.
+- The notes contain a `What's changed` section, every relevant `Issue #n`, and a Full Changelog link for the tag range.
 - The `.zip` and `.sha256` files are attached.
 - The attached `.sha256` file matches the attached `.zip` file.
 - The GitHub-displayed `sha256:` digest for the `.zip` asset matches the generated checksum.
@@ -236,15 +269,64 @@ Open the draft release in GitHub and confirm:
 - The release page does not point users to third-party binaries or mirrors as official builds.
 - The executable starts successfully on Windows 11 x64.
 
-After confirming the draft, publish it from the GitHub Releases page.
+Inspect the draft from the command line as well:
+
+```powershell
+gh release view $Tag `
+  --repo TX230/winproc-tui `
+  --json name,tagName,targetCommitish,isDraft,isPrerelease,body,assets
+```
+
+A draft asset URL may contain `releases/download/untagged-*`. That is expected while the release is a draft; verify `tagName`, the target commit, asset names, sizes, and digests instead of treating the draft URL as a publication failure.
+
+After confirming the draft, publish it from the GitHub Releases page or with:
+
+```powershell
+gh release edit $Tag `
+  --repo TX230/winproc-tui `
+  --draft=false `
+  --latest
+```
+
+Run `gh release view` again after publication. Confirm that `isDraft` is `false`, the public asset URL contains `/releases/download/$Tag/`, and the GitHub asset digest matches the local SHA-256 before updating Scoop or winget.
 
 ## Scoop Bucket Publication
 
 The custom Scoop bucket is published from `TX230/scoop-bucket`. Its `bucket/winproc-tui.json` manifest downloads the versioned Windows x64 zip directly from this repository's GitHub Release, verifies its SHA-256 hash, registers the `winproc-tui` command, and persists `winproc-tui.toml`.
 
+### Update the Custom Bucket Manifest
+
 Publish and verify the GitHub Release before updating the Scoop manifest. Never use a `latest` asset URL. Set the manifest `version`, version-specific `url`, and `hash` from the published asset, and do not replace an asset after a manifest refers to its URL.
 
+Clone the bucket or fast-forward an existing clean clone:
+
+```powershell
+gh repo clone TX230/scoop-bucket <scoop-bucket>
+Set-Location <scoop-bucket>
+
+# For an existing clone:
+git switch master
+git pull --ff-only origin master
+```
+
+Update only the release-specific values in `bucket/winproc-tui.json`:
+
+- `version`: the numeric version without the `v` prefix.
+- `architecture.64bit.url`: `https://github.com/TX230/winproc-tui/releases/download/vX.Y.Z/winproc-tui-X.Y.Z-windows-x64.zip`.
+- `architecture.64bit.hash`: the lowercase SHA-256 of that published zip.
+
+Keep `bin`, `pre_install`, `persist`, `checkver`, and `autoupdate` intact unless their behavior actually needs to change. Confirm that the JSON parses and inspect the resolved values:
+
+```powershell
+$Manifest = Get-Content bucket\winproc-tui.json -Raw | ConvertFrom-Json
+$Manifest.version
+$Manifest.architecture.'64bit'.url
+$Manifest.architecture.'64bit'.hash
+```
+
 The manifest keeps the release zip unchanged. It uses `pre_install` to create an empty `winproc-tui.toml` only when no persisted file exists, then declares the file in `persist`. Do not add a preset config to the release zip.
+
+### Validate the Scoop Lifecycle
 
 After updating the manifest, confirm that Scoop detects the intended release:
 
@@ -277,13 +359,85 @@ Confirm at least:
 - `--purge` removes the persisted config.
 - `checkver` and `autoupdate` resolve the versioned Release asset naming convention.
 
+Prefer a clean Windows Sandbox for the lifecycle check when the host already has `winproc-tui` installed. This avoids replacing the maintainer's current installation or persisted config. In the Sandbox, install from the local manifest before publishing, then repeat a remote-bucket install after the bucket commit is public when practical.
+
+If the `tx230` bucket is already registered on a machine, refresh all bucket manifests before checking for an application update:
+
+```powershell
+scoop update
+scoop update winproc-tui
+```
+
+`scoop update tx230/winproc-tui` alone does not refresh a stale local bucket checkout first.
+
+### Publish and Verify the Bucket
+
+Commit only `bucket/winproc-tui.json`, include a concise commit body, and push the bucket's `master` branch:
+
+```powershell
+git add bucket\winproc-tui.json
+git commit `
+  -m "chore(winproc-tui): update to X.Y.Z" `
+  -m "Point the Scoop manifest at the vX.Y.Z release asset and update its SHA-256 hash."
+git push origin master
+```
+
+Wait for the bucket CI to pass in both Windows PowerShell and PowerShell 7:
+
+```powershell
+$RunId = gh run list `
+  --repo TX230/scoop-bucket `
+  --branch master `
+  --workflow CI `
+  --limit 1 `
+  --json databaseId `
+  --jq '.[0].databaseId'
+
+gh run watch $RunId `
+  --repo TX230/scoop-bucket `
+  --exit-status
+```
+
+Do not report the version as published through Scoop until the remote manifest points to the intended immutable Release asset and the CI succeeds.
+
 ## Windows Package Manager Publication
 
 The winget package identifier is `TX230.winproc-tui`. Its portable manifest downloads the versioned Windows x64 zip directly from this repository's GitHub Release and registers the `winproc-tui` command.
 
 Publish the GitHub Release before submitting its winget manifest. Never use a `latest` download URL: the manifest must point to the version-specific asset URL and contain the SHA-256 of that exact asset. Once a manifest refers to a published asset, do not replace the asset at the same URL. Publish a new version instead.
 
-For the first package submission, create and test a multi-file manifest using the schema version currently recommended by `microsoft/winget-pkgs`. The installer manifest uses:
+### Prepare the Fork and Sparse Checkout
+
+Synchronize the fork's `master` branch with `microsoft/winget-pkgs`, then create a fresh sparse checkout and a version-specific branch:
+
+```powershell
+gh repo sync TX230/winget-pkgs `
+  --source microsoft/winget-pkgs `
+  --branch master
+
+git clone `
+  --filter=blob:none `
+  --sparse `
+  https://github.com/TX230/winget-pkgs.git `
+  <winget-pkgs>
+
+Set-Location <winget-pkgs>
+git sparse-checkout set manifests/t/TX230/winproc-tui Tools
+git switch -c update-tx230-winproc-tui-X.Y.Z
+```
+
+Do not reuse a dirty checkout from an earlier Sandbox test. `SandboxTest.ps1` may leave generated or modified validation files, and unrelated changes must not enter the manifest commit.
+
+### Create the Version Manifests
+
+Create one directory under `manifests/t/TX230/winproc-tui/X.Y.Z/` containing exactly these four files:
+
+- `TX230.winproc-tui.yaml`: version manifest.
+- `TX230.winproc-tui.installer.yaml`: portable zip installer manifest.
+- `TX230.winproc-tui.locale.en-US.yaml`: default English locale.
+- `TX230.winproc-tui.locale.ja-JP.yaml`: Japanese locale.
+
+Use the schema version currently recommended by the `microsoft/winget-pkgs` pull request template. The installer manifest uses:
 
 ```yaml
 InstallerType: zip
@@ -299,22 +453,14 @@ Installers:
 
 Do not set `Scope` in the manifest; winget does not support that field for a portable installer. The default portable installation is per-user.
 
-Validate and test the manifest before submission:
+For every version, update and review at least:
 
-```powershell
-winget validate <manifest-directory>
-.\Tools\SandboxTest.ps1 <manifest-directory>
-```
+- `PackageVersion` in all four files.
+- `InstallerUrl`, `InstallerSha256`, and `ReleaseDate` in the installer manifest.
+- Version-tagged `LicenseUrl`, `ReleaseNotesUrl`, and documentation URLs.
+- The locale descriptions and tags when product behavior changed.
 
-`SandboxTest.ps1` is provided by the `microsoft/winget-pkgs` repository. Confirm at least:
-
-- The manifest validates without warnings.
-- A standard user can install the package.
-- The `winproc-tui` command is registered and the application starts.
-- Upgrading from the previous version preserves `winproc-tui.toml`.
-- A standard user can uninstall the package and the command alias is removed.
-
-After the first version is available in the winget catalog, generate later version updates with WinGetCreate:
+After the first version is available in the winget catalog, WinGetCreate can generate an update candidate:
 
 ```powershell
 $ReleaseZipUrl = "https://github.com/TX230/winproc-tui/releases/download/$Tag/$ZipName"
@@ -326,4 +472,87 @@ wingetcreate update TX230.winproc-tui `
   --out <output-directory>
 ```
 
-Review the generated locale metadata as well as the installer URL and hash, then validate it and submit one package version per pull request to `microsoft/winget-pkgs`. Update the README install instructions only after the first manifest is available from the public winget source.
+If WinGetCreate reports that it cannot parse the portable Release zip, copy the previous version's four manifests into the new version directory and update them manually. Review every URL and hash; do not change the portable zip structure merely to satisfy WinGetCreate.
+
+### Validate in Windows Sandbox
+
+Validate and test the manifest before submission:
+
+```powershell
+winget validate --manifest <manifest-directory>
+.\Tools\SandboxTest.ps1 <manifest-directory>
+```
+
+`SandboxTest.ps1` is provided by the `microsoft/winget-pkgs` repository. The host `winget.exe` may fail to start in a non-interactive or stale logon session; that host-session error is not evidence that the manifest failed. Use the official Sandbox path for the authoritative local test. Close any existing Windows Sandbox instance before starting another configuration.
+
+For Sandbox automation:
+
+- Add `--accept-source-agreements` to commands that access a catalog source.
+- Add `--source winget` when an exact catalog install would otherwise match more than one source.
+- Keep install, upgrade, and uninstall in machine scope when the official Sandbox test is running in an administrator context. Pass `--scope machine` to those test commands; do not add `Scope` to the portable manifest.
+- Use Windows PowerShell 5.1-compatible `Set-Content -Encoding utf8` in helper scripts. `utf8NoBOM` is not supported there.
+- Use the same package source identity on both sides of an upgrade test. Install the previous and current versions from two local manifests, or install both from the public catalog. Do not install the previous version from the catalog and upgrade it from a local manifest when testing config preservation, because that changes the package directory identity.
+- Place the config sentinel next to the actual installed package executable, not next to the command alias under `WinGet\Links`. Resolve the alias target or locate `winproc-tui.exe` under the winget package directory before creating `winproc-tui.toml`.
+
+Confirm at least:
+
+- The manifest validates without warnings.
+- The published zip downloads and passes its SHA-256 check.
+- The package installs in the intended scope.
+- The default per-user install works in a non-elevated session when that test environment is available.
+- The `winproc-tui` command is registered and the application starts.
+- Upgrading from the previous version preserves `winproc-tui.toml`.
+- A clean install reports the intended version.
+- Uninstall succeeds and removes the command alias.
+
+### Commit and Submit the Pull Request
+
+Check that there is no other open pull request for the same package version, then commit only the new version directory with a concise body:
+
+```powershell
+gh pr list `
+  --repo microsoft/winget-pkgs `
+  --state open `
+  --search 'TX230.winproc-tui in:title'
+
+git add manifests/t/TX230/winproc-tui/X.Y.Z
+git commit `
+  -m "chore: update TX230.winproc-tui to X.Y.Z" `
+  -m "Add portable ZIP manifests for the statically linked vX.Y.Z release."
+git push -u origin update-tx230-winproc-tui-X.Y.Z
+```
+
+Fill out the current upstream pull request template and mark the CLA, duplicate-PR check, single-manifest scope, local validation, local install test, and schema checks accurately. Submit a ready pull request with the required title format:
+
+```powershell
+gh pr create `
+  --repo microsoft/winget-pkgs `
+  --base master `
+  --head TX230:update-tx230-winproc-tui-X.Y.Z `
+  --title "Update: TX230.winproc-tui to X.Y.Z" `
+  --body-file <pull-request-body-file>
+```
+
+After submission, distinguish these states clearly:
+
+- CLA success confirms only the contributor agreement.
+- The winget validation pipeline is a separate automated check.
+- An open, non-draft, mergeable pull request can still be blocked pending Microsoft moderator review.
+- The package is not available from the public winget source until the pull request is merged and the catalog is updated.
+
+Update README installation instructions only after the first manifest is available from the public winget source.
+
+### Withdraw a Defective Submission
+
+If a release defect is discovered before a winget pull request is merged, leave a concise explanation on the pull request and close it:
+
+```powershell
+gh pr comment <pull-request-number> `
+  --repo microsoft/winget-pkgs `
+  --body <withdrawal-reason>
+
+gh pr close <pull-request-number> `
+  --repo microsoft/winget-pkgs
+```
+
+Do not replace the defective asset at the existing Release URL. Publish a corrected version with a new immutable URL and submit a new one-version pull request.
