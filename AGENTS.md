@@ -103,6 +103,14 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Issue discussion, triage, labels, and status changes do not require repository commits by themselves.
 - Do not reintroduce `docs/backlog/index.md` or `docs/backlog/BL-xxx.md` unless the user explicitly reverses this policy.
 
+## GitHub CLI Authentication
+
+- A failed `gh auth status` inside the Codex Sandbox does not prove that the maintainer's GitHub CLI credentials are invalid. The Sandbox user may be unable to access credentials stored for the host user in Windows Credential Manager.
+- Do not ask the maintainer to run `gh auth login` based only on an authentication failure inside the Sandbox.
+- When authenticated `gh` access is required, verify it outside the Sandbox with `gh auth status --hostname github.com` and run the necessary `gh` command outside the Sandbox so it can reuse the host user's existing credentials.
+- Ask the maintainer to log in again only when the host-side authentication check also reports that authentication is missing or invalid.
+- Do not copy a token from the host keyring into repository files, command output, or plaintext configuration as a workaround for Sandbox isolation.
+
 ## Implementation Guide
 
 - Keep `model` as a data layer that does not depend on UI or samplers.
