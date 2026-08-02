@@ -504,6 +504,10 @@ processes = ["api.exe", "worker.exe"]
                 name: "api".to_string(),
                 processes: vec!["duplicate.exe".to_string()],
             },
+            config::SavedTrackedList {
+                name: " empty (DEFAULT) ".to_string(),
+                processes: Vec::new(),
+            },
         ];
 
         let runtime = build_runtime_config(config).unwrap();
@@ -514,6 +518,21 @@ processes = ["api.exe", "worker.exe"]
             runtime.saved_tracked_lists[0].processes,
             vec!["api.exe", "worker.exe"]
         );
+    }
+
+    #[test]
+    fn runtime_does_not_restore_builtin_empty_as_a_named_list() {
+        let mut config = AppConfig::default();
+        config.tracking.active_list = Some("Empty (default)".to_string());
+        config.tracked_lists = vec![config::SavedTrackedList {
+            name: "Empty (default)".to_string(),
+            processes: Vec::new(),
+        }];
+
+        let runtime = build_runtime_config(config).unwrap();
+
+        assert_eq!(runtime.active_tracked_list, None);
+        assert!(runtime.saved_tracked_lists.is_empty());
     }
 
     #[test]
@@ -535,6 +554,24 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("active_list = \"API\""), "{rendered}");
         assert!(rendered.contains("[[tracked_lists]]"), "{rendered}");
         assert!(rendered.contains("processes = [\"api.exe\"]"), "{rendered}");
+    }
+
+    #[test]
+    fn app_config_never_writes_builtin_empty_as_a_named_list() {
+        let mut app = make_test_app(1, 10);
+        app.runtime.active_tracked_list = Some("Empty (default)".to_string());
+        app.runtime.saved_tracked_lists = vec![config::SavedTrackedList {
+            name: "Empty (default)".to_string(),
+            processes: Vec::new(),
+        }];
+        let path = unique_config_path("builtin-empty-tracked-list");
+
+        config::write_app_config(&path, &app).unwrap();
+        let rendered = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(!rendered.contains("Empty (default)"), "{rendered}");
+        assert!(!rendered.contains("[[tracked_lists]]"), "{rendered}");
     }
 
     #[test]
@@ -3200,11 +3237,13 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("Load Saved Tracked List"), "{rendered}");
+        assert!(rendered.contains("Load Tracked List"), "{rendered}");
         assert!(
-            rendered.contains("Up/Down selects · Enter loads · (*) active"),
+            rendered
+                .contains("Up/Down selects · Enter loads · Click Empty loads · F2/Del saved only"),
             "{rendered}"
         );
+        assert!(rendered.contains("Empty (default)"), "{rendered}");
         assert!(rendered.contains("Save Current Tracked List"), "{rendered}");
         assert!(rendered.contains("Current: Browser"), "{rendered}");
         assert!(rendered.contains("List name:  Browser"), "{rendered}");
@@ -3242,12 +3281,173 @@ processes = ["api.exe", "worker.exe"]
             processes: vec!["api.exe".to_string()],
         }];
         app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(app.watch_list, vec!["api.exe"]);
         assert!(app.tracked_lists_dialog.is_none());
+    }
+
+    #[test]
+    fn tracked_lists_builtin_empty_is_virtual_and_active_only_for_empty_working_list() {
+        let mut app = make_test_app(1, 10);
+        app.open_tracked_lists();
+
+        let rendered = render_app_to_text(&app, 120, 45);
+        let empty_row = rendered
+            .lines()
+            .find(|line| line.contains("Empty (default)"))
+            .expect("built-in empty row should render");
+        assert!(empty_row.contains("Empty (default) (*)"), "{empty_row}");
+        assert!(rendered.contains("Enter/Click Load Empty"), "{rendered}");
+        assert!(!rendered.contains("New Empty"), "{rendered}");
+        assert!(app.runtime.saved_tracked_lists.is_empty());
+
+        app.watch_list = vec!["worker.exe".to_string()];
+        app.normalized_watch_names = ["worker.exe".to_string()].into_iter().collect();
+        let rendered = render_app_to_text(&app, 120, 45);
+        let empty_row = rendered
+            .lines()
+            .find(|line| line.contains("Empty (default)"))
+            .expect("built-in empty row should render");
+        assert!(!empty_row.contains("(*)"), "{empty_row}");
+
+        app.watch_list.clear();
+        app.normalized_watch_names.clear();
+        app.runtime.active_tracked_list = Some("Saved empty".to_string());
+        app.runtime.saved_tracked_lists = vec![config::SavedTrackedList {
+            name: "Saved empty".to_string(),
+            processes: Vec::new(),
+        }];
+        let rendered = render_app_to_text(&app, 120, 45);
+        let empty_row = rendered
+            .lines()
+            .find(|line| line.contains("Empty (default)"))
+            .expect("built-in empty row should render");
+        assert!(!empty_row.contains("(*)"), "{empty_row}");
+        assert!(rendered.contains("Saved empty (*)"), "{rendered}");
+    }
+
+    #[test]
+    fn tracked_lists_builtin_empty_loads_with_enter_and_preserves_tracked_only() {
+        let mut app = make_test_app(1, 10);
+        app.watch_list = vec!["api.exe".to_string()];
+        app.normalized_watch_names = ["api.exe".to_string()].into_iter().collect();
+        app.watch_enabled = true;
+        app.runtime.active_tracked_list = Some("API".to_string());
+        app.runtime.saved_tracked_lists = vec![config::SavedTrackedList {
+            name: "API".to_string(),
+            processes: vec!["api.exe".to_string()],
+        }];
+        app.open_tracked_lists();
+        app.move_tracked_list_selection_home();
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.watch_list.is_empty());
+        assert!(app.watch_enabled);
+        assert_eq!(app.runtime.active_tracked_list, None);
+        assert_eq!(app.runtime.saved_tracked_lists.len(), 1);
+        assert_eq!(app.runtime.saved_tracked_lists[0].name, "API");
+        assert!(app.tracked_lists_dialog.is_none());
+    }
+
+    #[test]
+    fn tracked_lists_builtin_empty_loads_with_mouse() {
+        let screen = Rect::new(0, 0, 120, 45);
+        let mut app = make_test_app(1, 10);
+        app.watch_list = vec!["api.exe".to_string()];
+        app.normalized_watch_names = ["api.exe".to_string()].into_iter().collect();
+        app.open_tracked_lists();
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position(&buffer, "Empty (default)")
+            .expect("built-in empty row should render");
+
+        app.on_mouse(left_click(x + 1, y), screen);
+
+        assert!(app.watch_list.is_empty());
+        assert!(app.tracked_lists_dialog.is_none());
+    }
+
+    #[test]
+    fn tracked_lists_builtin_empty_cannot_be_renamed_deleted_or_overwritten() {
+        let mut app = make_test_app(1, 10);
+        app.open_tracked_lists();
+
+        app.on_key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE))
+            .unwrap();
+        assert!(matches!(
+            app.tracked_lists_view(),
+            Some(app::TrackedListsView::Browse)
+        ));
+        app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE))
+            .unwrap();
+        assert!(matches!(
+            app.tracked_lists_view(),
+            Some(app::TrackedListsView::Browse)
+        ));
+
+        app.focus_tracked_lists_save_name();
+        for ch in "Empty (default)".chars() {
+            app.push_tracked_list_save_name_char(ch);
+        }
+        app.save_current_tracked_list();
+
+        let (_, _, error) = app
+            .tracked_lists_save_name()
+            .expect("save-name input should remain available");
+        assert_eq!(
+            error,
+            Some("Empty (default) is built in and cannot be overwritten.")
+        );
+        assert!(app.runtime.saved_tracked_lists.is_empty());
+    }
+
+    #[test]
+    fn tracked_lists_named_list_cannot_be_renamed_to_builtin_empty_name() {
+        let mut app = make_test_app(1, 10);
+        app.runtime.saved_tracked_lists = vec![config::SavedTrackedList {
+            name: "API".to_string(),
+            processes: vec!["api.exe".to_string()],
+        }];
+        app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
+        app.begin_tracked_list_rename();
+        for _ in 0.."API".len() {
+            app.pop_tracked_list_name_char();
+        }
+        for ch in "Empty (default)".chars() {
+            app.push_tracked_list_name_char(ch);
+        }
+
+        app.commit_tracked_list_name_input();
+
+        assert_eq!(app.runtime.saved_tracked_lists[0].name, "API");
+        assert!(matches!(
+            app.tracked_lists_view(),
+            Some(app::TrackedListsView::NameInput { error: Some(error), .. })
+                if error.contains("cannot be overwritten")
+        ));
+    }
+
+    #[test]
+    fn tracked_lists_plain_n_no_longer_starts_empty() {
+        let mut app = make_test_app(1, 10);
+        app.watch_list = vec!["api.exe".to_string()];
+        app.normalized_watch_names = ["api.exe".to_string()].into_iter().collect();
+        app.open_tracked_lists();
+
+        app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.watch_list, vec!["api.exe"]);
+        assert!(matches!(
+            app.tracked_lists_view(),
+            Some(app::TrackedListsView::Browse)
+        ));
     }
 
     #[test]
@@ -3258,7 +3458,6 @@ processes = ["api.exe", "worker.exe"]
             (None, true, false),
             (Some(app::TrackedListsButton::Save), false, false),
             (None, false, true),
-            (Some(app::TrackedListsButton::NewEmpty), false, false),
             (Some(app::TrackedListsButton::Close), false, false),
             (None, false, false),
         ];
@@ -3287,6 +3486,7 @@ processes = ["api.exe", "worker.exe"]
             processes: vec!["api.exe".to_string()],
         }];
         app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
 
         app.on_key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE))
             .unwrap();
@@ -3315,6 +3515,7 @@ processes = ["api.exe", "worker.exe"]
             processes: vec!["api.exe".to_string()],
         }];
         app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
 
         app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE))
             .unwrap();
@@ -3420,6 +3621,7 @@ processes = ["api.exe", "worker.exe"]
             processes: vec!["api.exe".to_string()],
         }];
         app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
         app.request_delete_selected_tracked_list();
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let (x, y) = find_text_position(&buffer, "[ Delete ]")
@@ -7686,6 +7888,7 @@ processes = ["api.exe", "worker.exe"]
             processes: vec!["api.exe".to_string(), "worker.exe".to_string()],
         }];
         app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
 
         app.load_selected_tracked_list();
 
@@ -7706,6 +7909,7 @@ processes = ["api.exe", "worker.exe"]
             processes: vec!["api.exe".to_string()],
         }];
         app.open_tracked_lists();
+        app.move_tracked_list_selection_down(1);
 
         app.load_selected_tracked_list();
 
@@ -7728,6 +7932,37 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.runtime.active_tracked_list.as_deref(), Some("API"));
         assert_eq!(selected_process_history_sample_count(&app, "old.exe"), 120);
         assert!(app.tracked_lists_dialog.is_none());
+    }
+
+    #[test]
+    fn loading_builtin_empty_confirms_before_discarding_older_history() {
+        let mut app = make_test_app(1, 10);
+        app.snapshot.processes[0].name = "old.exe".to_string();
+        track_process_name(&mut app, "old.exe");
+        record_tracked_process_history_samples(&mut app, "old.exe", 121);
+        app.watch_enabled = true;
+        app.open_tracked_lists();
+
+        app.load_selected_tracked_list();
+
+        let Some(app::TrackedListsView::ConfirmSwitch { pending, selection }) =
+            app.tracked_lists_view()
+        else {
+            panic!("expected built-in empty switch confirmation");
+        };
+        assert_eq!(*selection, app::TrackedListConfirmSelection::Cancel);
+        assert_eq!(pending.target_name, None);
+        assert!(pending.target_processes.is_empty());
+        assert_eq!(pending.discarded_sample_count, 1);
+        assert_eq!(app.watch_list, vec!["old.exe"]);
+
+        app.set_tracked_list_confirmation_selection(app::TrackedListConfirmSelection::Apply);
+        app.activate_tracked_list_confirmation();
+
+        assert!(app.watch_list.is_empty());
+        assert!(app.watch_enabled);
+        assert_eq!(app.runtime.active_tracked_list, None);
+        assert_eq!(selected_process_history_sample_count(&app, "old.exe"), 120);
     }
 
     #[test]

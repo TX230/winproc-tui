@@ -14,7 +14,9 @@ use crate::{
     app::export::RecordingSession,
     app::logs::{LoadedLog, LogListResult, LogListWorker, LogLoadWorker, LogSummary},
     app::path_completion::{PathCompletion, PathCompletionState},
-    config::{RuntimeConfig, TrackedListStartup},
+    config::{
+        EMPTY_TRACKED_LIST_NAME, RuntimeConfig, TrackedListStartup, is_empty_tracked_list_name,
+    },
     model::{
         ColumnPreset, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessColumnWidths,
         ProcessHistory, ProcessIdentity, ProcessInfo, ProcessRow, ProcessSample, Snapshot,
@@ -581,26 +583,7 @@ impl TrackedRemoveSelection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TrackedListsButton {
     Save,
-    NewEmpty,
     Close,
-}
-
-impl TrackedListsButton {
-    const fn next(self) -> Option<Self> {
-        match self {
-            Self::Save => Some(Self::NewEmpty),
-            Self::NewEmpty => Some(Self::Close),
-            Self::Close => None,
-        }
-    }
-
-    const fn previous(self) -> Option<Self> {
-        match self {
-            Self::Save => None,
-            Self::NewEmpty => Some(Self::Save),
-            Self::Close => Some(Self::NewEmpty),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3288,8 +3271,9 @@ impl App {
                     .iter()
                     .position(|list| list.name.eq_ignore_ascii_case(active))
             })
+            .map(|index| index.saturating_add(1))
             .unwrap_or(0)
-            .min(self.runtime.saved_tracked_lists.len().saturating_sub(1));
+            .min(self.runtime.saved_tracked_lists.len());
         let save_name_draft = self.runtime.active_tracked_list.clone().unwrap_or_default();
         let save_name_cursor = save_name_draft.len();
         self.tracked_lists_dialog = Some(TrackedListsDialog {
@@ -3335,6 +3319,24 @@ impl App {
             .as_ref()
             .map(|dialog| dialog.scroll.offset)
             .unwrap_or(0)
+    }
+
+    pub(crate) fn tracked_lists_entry_count(&self) -> usize {
+        self.runtime.saved_tracked_lists.len().saturating_add(1)
+    }
+
+    pub(crate) fn tracked_lists_empty_selected(&self) -> bool {
+        self.tracked_lists_index() == 0
+    }
+
+    pub(crate) fn empty_tracked_list_active(&self) -> bool {
+        self.runtime.active_tracked_list.is_none() && self.watch_list.is_empty()
+    }
+
+    fn selected_saved_tracked_list_index(&self) -> Option<usize> {
+        self.tracked_lists_index()
+            .checked_sub(1)
+            .filter(|index| *index < self.runtime.saved_tracked_lists.len())
     }
 
     pub(crate) fn tracked_lists_focused_button(&self) -> Option<TrackedListsButton> {
@@ -3386,7 +3388,7 @@ impl App {
             }
             if dialog.startup_focused {
                 dialog.startup_focused = false;
-                dialog.focused_button = Some(TrackedListsButton::NewEmpty);
+                dialog.focused_button = Some(TrackedListsButton::Close);
                 return;
             }
             dialog.focused_button = match dialog.focused_button {
@@ -3398,7 +3400,7 @@ impl App {
                     dialog.startup_focused = true;
                     None
                 }
-                Some(button) => button.next(),
+                Some(TrackedListsButton::Close) => None,
             };
         }
     }
@@ -3421,11 +3423,10 @@ impl App {
                     dialog.save_name_focused = true;
                     None
                 }
-                Some(TrackedListsButton::NewEmpty) => {
+                Some(TrackedListsButton::Close) => {
                     dialog.startup_focused = true;
                     None
                 }
-                Some(button) => button.previous(),
             };
         }
     }
@@ -3488,7 +3489,7 @@ impl App {
     }
 
     pub(crate) fn set_tracked_lists_page_size(&mut self, page_size: usize) {
-        let total = self.runtime.saved_tracked_lists.len();
+        let total = self.tracked_lists_entry_count();
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.scroll.set_page_size(page_size, total);
         }
@@ -3503,7 +3504,7 @@ impl App {
     }
 
     pub(crate) fn move_tracked_list_selection_down(&mut self, amount: usize) {
-        let last = self.runtime.saved_tracked_lists.len().saturating_sub(1);
+        let last = self.tracked_lists_entry_count().saturating_sub(1);
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.index = dialog.index.saturating_add(amount).min(last);
         }
@@ -3518,7 +3519,7 @@ impl App {
     }
 
     pub(crate) fn move_tracked_list_selection_end(&mut self) {
-        let last = self.runtime.saved_tracked_lists.len().saturating_sub(1);
+        let last = self.tracked_lists_entry_count().saturating_sub(1);
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.index = last;
         }
@@ -3526,7 +3527,7 @@ impl App {
     }
 
     pub(crate) fn select_tracked_list_index(&mut self, index: usize) {
-        let last = self.runtime.saved_tracked_lists.len().saturating_sub(1);
+        let last = self.tracked_lists_entry_count().saturating_sub(1);
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.index = index.min(last);
         }
@@ -3534,34 +3535,28 @@ impl App {
     }
 
     fn ensure_tracked_list_selection_visible(&mut self) {
-        let total = self.runtime.saved_tracked_lists.len();
+        let total = self.tracked_lists_entry_count();
         let Some(dialog) = self.tracked_lists_dialog.as_mut() else {
             return;
         };
-        if total == 0 {
-            dialog.index = 0;
-            dialog.scroll.offset = 0;
-            return;
-        }
         dialog.index = dialog.index.min(total - 1);
         dialog.scroll.ensure_visible(dialog.index, total);
     }
 
     pub(crate) fn load_selected_tracked_list(&mut self) {
-        let Some(list) = self
-            .runtime
-            .saved_tracked_lists
-            .get(self.tracked_lists_index())
-            .cloned()
-        else {
+        if self.tracked_lists_empty_selected() {
+            self.request_tracked_list_switch(None, Vec::new());
+            return;
+        }
+        let Some(index) = self.selected_saved_tracked_list_index() else {
+            self.status = "No saved Tracked List selected".to_string();
+            return;
+        };
+        let Some(list) = self.runtime.saved_tracked_lists.get(index).cloned() else {
             self.status = "No saved Tracked List selected".to_string();
             return;
         };
         self.request_tracked_list_switch(Some(list.name), list.processes);
-    }
-
-    pub(crate) fn start_empty_tracked_list(&mut self) {
-        self.request_tracked_list_switch(None, Vec::new());
     }
 
     pub(crate) fn push_tracked_list_save_name_char(&mut self, ch: char) {
@@ -3665,6 +3660,17 @@ impl App {
             self.status = "Name is required.".to_string();
             return;
         }
+        if is_empty_tracked_list_name(&name) {
+            if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
+                dialog.save_name_error = Some(format!(
+                    "{EMPTY_TRACKED_LIST_NAME} is built in and cannot be overwritten."
+                ));
+                dialog.save_name_feedback = None;
+            }
+            self.status =
+                format!("{EMPTY_TRACKED_LIST_NAME} is built in and cannot be overwritten");
+            return;
+        }
 
         let previous_lists = self.runtime.saved_tracked_lists.clone();
         let previous_active = self.runtime.active_tracked_list.clone();
@@ -3692,7 +3698,7 @@ impl App {
 
         if self.persist_tracked_list_changes() {
             if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-                dialog.index = index;
+                dialog.index = index.saturating_add(1);
                 dialog.save_name_draft = saved_name.clone();
                 dialog.save_name_cursor = saved_name.len();
                 dialog.save_name_error = None;
@@ -3715,10 +3721,14 @@ impl App {
     }
 
     pub(crate) fn begin_tracked_list_rename(&mut self) {
+        let Some(index) = self.selected_saved_tracked_list_index() else {
+            self.status = format!("{EMPTY_TRACKED_LIST_NAME} cannot be renamed");
+            return;
+        };
         let draft = self
             .runtime
             .saved_tracked_lists
-            .get(self.tracked_lists_index())
+            .get(index)
             .map(|list| list.name.clone())
             .unwrap_or_default();
         if draft.is_empty() {
@@ -3876,6 +3886,12 @@ impl App {
             self.set_tracked_list_name_error("Name is required.");
             return;
         }
+        if is_empty_tracked_list_name(&name) {
+            self.set_tracked_list_name_error(&format!(
+                "{EMPTY_TRACKED_LIST_NAME} is built in and cannot be overwritten."
+            ));
+            return;
+        }
 
         self.rename_selected_tracked_list(name);
     }
@@ -3892,7 +3908,12 @@ impl App {
     }
 
     fn rename_selected_tracked_list(&mut self, name: String) {
-        let index = self.tracked_lists_index();
+        let Some(index) = self.selected_saved_tracked_list_index() else {
+            self.set_tracked_list_name_error(&format!(
+                "{EMPTY_TRACKED_LIST_NAME} cannot be renamed."
+            ));
+            return;
+        };
         let Some(old_name) = self
             .runtime
             .saved_tracked_lists
@@ -3937,10 +3958,14 @@ impl App {
     }
 
     pub(crate) fn request_delete_selected_tracked_list(&mut self) {
+        let Some(index) = self.selected_saved_tracked_list_index() else {
+            self.status = format!("{EMPTY_TRACKED_LIST_NAME} cannot be deleted");
+            return;
+        };
         let Some(name) = self
             .runtime
             .saved_tracked_lists
-            .get(self.tracked_lists_index())
+            .get(index)
             .map(|list| list.name.clone())
         else {
             self.status = "No saved Tracked List selected".to_string();
@@ -4020,10 +4045,9 @@ impl App {
             self.runtime.active_tracked_list = None;
         }
         if self.persist_tracked_list_changes() {
+            let last = self.tracked_lists_entry_count().saturating_sub(1);
             if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-                dialog.index = dialog
-                    .index
-                    .min(self.runtime.saved_tracked_lists.len().saturating_sub(1));
+                dialog.index = dialog.index.min(last);
                 dialog.view = TrackedListsView::Browse;
             }
             self.ensure_tracked_list_selection_visible();
@@ -4094,9 +4118,6 @@ impl App {
         self.runtime.active_tracked_list = pending.target_name.clone();
         self.rebuild_normalized_watch_names();
         self.refresh_tracked_live_identities();
-        if self.watch_list.is_empty() {
-            self.watch_enabled = false;
-        }
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
         self.tracked_lists_dialog = None;

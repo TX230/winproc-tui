@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{AppActivity, FocusedPanel},
+    app::{AppActivity, FocusedPanel, TrackedListsButton, TrackedListsView},
     ui::Theme,
 };
 
@@ -22,6 +22,49 @@ pub(crate) fn draw_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
 }
 
 fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
+    if let Some(view) = app.tracked_lists_view() {
+        let items = match view {
+            TrackedListsView::Browse if app.tracked_lists_save_name_focused() => {
+                vec![("Enter", "Save"), ("Tab", "Next"), ("Esc", "Close")]
+            }
+            TrackedListsView::Browse if app.tracked_lists_startup_focused() => {
+                vec![("Left/Right", "Startup"), ("Tab", "Next"), ("Esc", "Close")]
+            }
+            TrackedListsView::Browse => match app.tracked_lists_focused_button() {
+                Some(TrackedListsButton::Save) => {
+                    vec![("Enter", "Save"), ("Tab", "Next"), ("Esc", "Close")]
+                }
+                Some(TrackedListsButton::Close) => {
+                    vec![("Enter", "Close"), ("Tab", "Next"), ("Esc", "Close")]
+                }
+                None if app.tracked_lists_empty_selected() => {
+                    vec![
+                        ("Enter/Click", "Load Empty"),
+                        ("Tab", "Next"),
+                        ("Esc", "Close"),
+                    ]
+                }
+                None => vec![
+                    ("Enter", "Load"),
+                    ("F2", "Rename"),
+                    ("Del", "Delete"),
+                    ("Tab", "Next"),
+                    ("Esc", "Close"),
+                ],
+            },
+            TrackedListsView::NameInput { .. } => {
+                vec![("Enter", "Rename"), ("Esc", "Cancel")]
+            }
+            TrackedListsView::ConfirmDelete { .. } => {
+                vec![("Y/Enter", "Confirm"), ("N/Esc", "Cancel")]
+            }
+            TrackedListsView::ConfirmSwitch { .. } => {
+                vec![("Y/Enter", "Load"), ("N/Esc", "Cancel")]
+            }
+        };
+        return shortcut_spans(&items, theme);
+    }
+
     let mut items = match app.focused_panel {
         FocusedPanel::System | FocusedPanel::SystemActivity | FocusedPanel::Cpu => {
             vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")]

@@ -56,7 +56,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 
 Recording requires at least one process name in the Tracked List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
 
-The Tracked Lists dialog is split into an upper area for loading a saved list and a lower area for saving the current Tracked List. In the upper area, select a saved list and press `Enter` to load it. The active list name has a `(*)` suffix, and each row previews its process names on the right; when they do not fit, the preview keeps leading names and shows the remaining count. In the lower area, the list-name field is prefilled with the current Tracked List name. `Save` stores the currently tracked processes under that name, creating a new list or updating an existing one. The save result appears directly below the name field. Use `Tab` / `Shift+Tab` to move focus between the list, name field, and buttons. Moving the mouse over a button also highlights that target.
+The Tracked Lists dialog is split into an upper area for loading a list and a lower area for saving the current Tracked List. The upper area always starts with the built-in `Empty (default)` entry, followed by saved named lists. Select a row and press `Enter` to load it; clicking `Empty (default)` also loads it directly. Loading that entry empties only the working Tracked List, preserves the independent Tracked-only setting, and uses the same confirmation as a named-list load when older retained history would be discarded. The active entry has a `(*)` suffix. The built-in entry is active only when the working list is empty and no named list is active. It is never persisted and cannot be renamed with `F2`, deleted with `Delete`, or overwritten by `Save`. Saved-list rows preview their process names on the right; when they do not fit, the preview keeps leading names and shows the remaining count. In the lower area, the list-name field is prefilled with the current named Tracked List. `Save` stores the currently tracked processes under that name, creating a new list or updating an existing one. The save result appears directly below the name field. Use `Tab` / `Shift+Tab` to move focus between the list, name field, and buttons. Moving the mouse over a button also highlights that target.
 
 ### Essential Keys
 
@@ -222,7 +222,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
 | `Ctrl+L`            | Open the log list.                                                  |
-| `Ctrl+T`            | Open Tracked Lists to save or load named lists and set startup behavior. |
+| `Ctrl+T`            | Open Tracked Lists to load the built-in empty list, manage named lists, and set startup behavior. |
 | `Ctrl+R`            | Start / stop recording.                                             |
 | `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
 | `Ctrl+Wheel`        | Change the Windows Terminal zoom level.                             |
@@ -359,7 +359,7 @@ processes = ["app.exe", "worker.exe"]
 
 `graphs.columns` accepts `1` or `2`. `samples` stores the Samples visibility used in one-column mode, and `delta` stores the Delta-column visibility.
 
-`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. Changes made to the working list with `Space` do not automatically overwrite its saved definition; the Tracked Lists dialog indicates an unsaved difference with `(*)` beside the active list name.
+`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. `Empty (default)` is a built-in dialog entry and is not written as a `[[tracked_lists]]` definition. Changes made to the working list with `Space` do not automatically overwrite its saved definition; the Tracked Lists dialog indicates an unsaved difference with `(*)` beside the active list name.
 
 When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority. `process_table.column_widths` stores only changed requested widths by stable column label; hidden columns keep their overrides across preset or order changes.
 

@@ -184,11 +184,6 @@ impl App {
                     {
                         self.save_current_tracked_list();
                     }
-                    KeyCode::Char(ch)
-                        if ch.eq_ignore_ascii_case(&'n') && key.modifiers.is_empty() =>
-                    {
-                        self.start_empty_tracked_list();
-                    }
                     _ => {}
                 },
                 TrackedListsView::NameInput { .. } => match key.code {
@@ -1048,11 +1043,14 @@ impl App {
                         mouse.column,
                         mouse.row,
                         self.tracked_lists_scroll_offset(),
-                        self.runtime.saved_tracked_lists.len(),
+                        self.tracked_lists_entry_count(),
                     ) {
                         self.focus_tracked_lists_list();
                         self.set_tracked_lists_hovered_button(None);
                         self.select_tracked_list_index(index);
+                        if index == 0 {
+                            self.load_selected_tracked_list();
+                        }
                         return;
                     }
                     if tracked_list_save_name_area_for_screen(screen_area)
@@ -1533,7 +1531,6 @@ impl App {
     fn activate_tracked_lists_button(&mut self, button: TrackedListsButton) {
         match button {
             TrackedListsButton::Save => self.save_current_tracked_list(),
-            TrackedListsButton::NewEmpty => self.start_empty_tracked_list(),
             TrackedListsButton::Close => self.close_tracked_lists(),
         }
     }

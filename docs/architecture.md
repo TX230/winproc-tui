@@ -133,7 +133,7 @@ Column selection and sorting are modeled separately through `MetricColumn`, `Sor
 
 Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracked List is empty.
 
-The working Tracked List is separate from saved named definitions. `Space` edits only the working copy. Loading a saved list replaces the working copy, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
+The working Tracked List is separate from saved named definitions. `Space` edits only the working copy. The Tracked Lists dialog prepends a virtual `Empty (default)` entry to the saved definitions; it is active only when no named definition is active and the working list is empty, and it is never persisted, renamed, deleted, or overwritten. Loading either the virtual empty entry or a saved list replaces the working copy without changing `tracked_only`, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
 
 ### 5.3 Graph and Samples state
 
@@ -201,6 +201,7 @@ The most important implementation invariants are:
 - stopping or quitting Recording must flush and close the log;
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
 - the working Tracked List must not overwrite a saved named definition without an explicit save action;
+- the built-in empty Tracked List must remain virtual and must not be stored among saved named definitions;
 - drawing and hit testing must use the same layout geometry;
 - dynamic Processes sizing must reserve a visible Tracked Total row and give reclaimed height to Graphs without changing the full-height Graphs-hidden layout;
 - terminal resizes and one-column transitions may remove only the highest-numbered Graph slots required to restore a valid layout;

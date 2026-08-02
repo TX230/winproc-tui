@@ -8,6 +8,7 @@ use ratatui::{
 use crate::{
     App,
     app::{TrackedListConfirmSelection, TrackedListsButton, TrackedListsView},
+    config::EMPTY_TRACKED_LIST_NAME,
     ui::{
         Theme,
         widgets::{
@@ -45,10 +46,7 @@ const CONFIRM_DIALOG_HEIGHT: u16 = 8;
 const CONFIRM_BUTTON_ROW: u16 = 5;
 
 const SAVE_BUTTONS: [(&str, TrackedListsButton); 1] = [(" Save ", TrackedListsButton::Save)];
-const FOOTER_BUTTONS: [(&str, TrackedListsButton); 2] = [
-    (" New Empty ", TrackedListsButton::NewEmpty),
-    (" Close ", TrackedListsButton::Close),
-];
+const FOOTER_BUTTONS: [(&str, TrackedListsButton); 1] = [(" Close ", TrackedListsButton::Close)];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TrackedListNameButton {
@@ -90,11 +88,11 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     frame.render_widget(block, popup);
 
     let load_area = load_area(content);
-    let load_block = panel_block("Load Saved Tracked List", theme);
+    let load_block = panel_block("Load Tracked List", theme);
     let load_content = load_block.inner(load_area);
     frame.render_widget(load_block, load_area);
     frame.render_widget(
-        Paragraph::new("Up/Down selects · Enter loads · (*) active")
+        Paragraph::new("Up/Down selects · Enter loads · Click Empty loads · F2/Del saved only")
             .style(Style::default().fg(theme.muted)),
         row(load_content, LOAD_HINT_ROW),
     );
@@ -105,51 +103,43 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
         load_content.width,
         LIST_HEIGHT.min(load_content.height.saturating_sub(LIST_ROW)),
     );
-    if app.runtime.saved_tracked_lists.is_empty() {
-        frame.render_widget(
-            Paragraph::new("No saved Tracked Lists.").style(Style::default().fg(theme.muted)),
-            list_area,
-        );
-    } else {
-        let offset = app.tracked_lists_scroll_offset();
-        let selected = app.tracked_lists_index();
-        let lines = app
-            .runtime
-            .saved_tracked_lists
-            .iter()
-            .enumerate()
-            .skip(offset)
-            .take(list_area.height as usize)
-            .map(|(index, list)| {
-                let is_selected = index == selected;
+    let offset = app.tracked_lists_scroll_offset();
+    let selected = app.tracked_lists_index();
+    let lines = (offset..app.tracked_lists_entry_count())
+        .take(list_area.height as usize)
+        .map(|index| {
+            let (name, processes, is_active) = if index == 0 {
+                (
+                    EMPTY_TRACKED_LIST_NAME,
+                    &[][..],
+                    app.empty_tracked_list_active(),
+                )
+            } else {
+                let list = &app.runtime.saved_tracked_lists[index - 1];
                 let is_active = app
                     .runtime
                     .active_tracked_list
                     .as_deref()
                     .is_some_and(|active| active.eq_ignore_ascii_case(&list.name));
-                let style = if is_selected {
-                    Style::default()
-                        .fg(theme.text)
-                        .bg(theme.highlight)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(theme.text)
-                };
-                let cursor = if is_selected { ">" } else { " " };
-                Line::from(Span::styled(
-                    tracked_list_row_text(
-                        cursor,
-                        &list.name,
-                        &list.processes,
-                        is_active,
-                        list_area.width as usize,
-                    ),
-                    style,
-                ))
-            })
-            .collect::<Vec<_>>();
-        frame.render_widget(Paragraph::new(lines), list_area);
-    }
+                (list.name.as_str(), list.processes.as_slice(), is_active)
+            };
+            let is_selected = index == selected;
+            let style = if is_selected {
+                Style::default()
+                    .fg(theme.text)
+                    .bg(theme.highlight)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.text)
+            };
+            let cursor = if is_selected { ">" } else { " " };
+            Line::from(Span::styled(
+                tracked_list_row_text(cursor, name, processes, is_active, list_area.width as usize),
+                style,
+            ))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(lines), list_area);
 
     let save_area = save_area(content);
     let save_block = panel_block("Save Current Tracked List", theme);
@@ -172,8 +162,13 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
             )
         })
         .unwrap_or_else(|| {
+            let name = if app.watch_list.is_empty() {
+                EMPTY_TRACKED_LIST_NAME
+            } else {
+                "Unsaved"
+            };
             format!(
-                "Current: Unsaved · {} process{}",
+                "Current: {name} · {} process{}",
                 app.watch_list.len(),
                 if app.watch_list.len() == 1 { "" } else { "es" }
             )

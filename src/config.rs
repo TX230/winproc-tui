@@ -14,6 +14,11 @@ use crate::model::{
 use crate::samplers::SamplingOptions;
 
 const CONFIG_FILE_NAME: &str = "winproc-tui.toml";
+pub(crate) const EMPTY_TRACKED_LIST_NAME: &str = "Empty (default)";
+
+pub(crate) fn is_empty_tracked_list_name(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case(EMPTY_TRACKED_LIST_NAME)
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -219,6 +224,7 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
                 })
             },
         ));
+    let saved_tracked_lists = normalize_saved_tracked_lists(config.tracked_lists);
     let process_filters = if config.tracking.startup == TrackedListStartup::StartEmpty {
         Vec::new()
     } else {
@@ -227,7 +233,10 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
     let active_tracked_list = if config.tracking.startup == TrackedListStartup::StartEmpty {
         None
     } else {
-        config.tracking.active_list
+        config
+            .tracking
+            .active_list
+            .filter(|name| !is_empty_tracked_list_name(name))
     };
 
     Ok(RuntimeConfig {
@@ -261,7 +270,7 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         process_filters,
         tracked_list_startup: config.tracking.startup,
         active_tracked_list,
-        saved_tracked_lists: normalize_saved_tracked_lists(config.tracked_lists),
+        saved_tracked_lists,
         sampling_options: SamplingOptions {
             collect_ws_share: false,
             collect_gpu: true,
@@ -307,14 +316,18 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
         },
         tracking: TrackingConfig {
             startup: app.runtime.tracked_list_startup,
-            active_list: app.runtime.active_tracked_list.clone(),
+            active_list: app
+                .runtime
+                .active_tracked_list
+                .clone()
+                .filter(|name| !is_empty_tracked_list_name(name)),
         },
         tracked: app
             .watch_list
             .iter()
             .map(|name| TrackedConfig { name: name.clone() })
             .collect(),
-        tracked_lists: app.runtime.saved_tracked_lists.clone(),
+        tracked_lists: normalize_saved_tracked_lists(app.runtime.saved_tracked_lists.clone()),
     };
     let content = toml::to_string_pretty(&config)?;
     fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))
@@ -325,6 +338,7 @@ fn normalize_saved_tracked_lists(lists: Vec<SavedTrackedList>) -> Vec<SavedTrack
     for mut list in lists {
         list.name = list.name.trim().to_string();
         if list.name.is_empty()
+            || is_empty_tracked_list_name(&list.name)
             || normalized
                 .iter()
                 .any(|saved| saved.name.eq_ignore_ascii_case(&list.name))

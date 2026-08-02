@@ -59,7 +59,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+T",
-        label: "Open Tracked Lists",
+        label: "Open/load Tracked Lists",
     },
     HelpItem {
         key: "Ctrl+R",
