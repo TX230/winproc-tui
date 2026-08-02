@@ -32,6 +32,7 @@ If the specifications and implementation conflict, inspect the implementation fi
 - Keep Japanese documentation limited to `README.ja.md` unless the user explicitly asks otherwise.
 - In `README.ja.md`, prefer natural, readable Japanese over literal translation or unnecessary English mixing.
 - The GitHub Release zip is runtime-only. Package `winproc-tui.exe` and the `LICENSE` distribution notice, but do not package README files, `assets/`, `docs/`, or a preset `winproc-tui.toml`. The application creates or updates its user-specific config next to the executable after a successful run.
+- Release builds for `x86_64-pc-windows-msvc` must statically link the Microsoft C runtime. Do not package or publish an executable that imports runtime DLLs such as `VCRUNTIME140.dll` or `api-ms-win-crt-*.dll`.
 
 ## Documentation Workflow
 

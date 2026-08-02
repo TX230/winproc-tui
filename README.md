@@ -185,6 +185,7 @@ cargo build --release
 ```
 
 The executable is generated at `target\release\winproc-tui.exe`.
+The repository's Cargo configuration statically links the Microsoft C runtime into Windows x64 builds.
 After building, launch it in either of the following ways:
 
 ```powershell

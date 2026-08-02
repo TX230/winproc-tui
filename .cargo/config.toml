@@ -1,0 +1,4 @@
+# Release archives contain only the executable and license, so the Microsoft C
+# runtime must be linked into the Windows x64 binary.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

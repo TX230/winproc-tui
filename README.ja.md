@@ -184,6 +184,7 @@ cargo build --release
 ```
 
 実行ファイルは `target\release\winproc-tui.exe` に生成されます。
+リポジトリの Cargo 設定により、Windows x64 ビルドには Microsoft C ランタイムが静的リンクされます。
 ビルド後は次のいずれかで起動できます。
 
 ```powershell

@@ -33,6 +33,53 @@ function Invoke-CheckedNativeCommand {
     }
 }
 
+function Get-DumpbinPath {
+    $dumpbinCommand = Get-Command "dumpbin.exe" -ErrorAction SilentlyContinue
+    if ($dumpbinCommand) {
+        return $dumpbinCommand.Source
+    }
+
+    $vswherePath = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswherePath) {
+        $dumpbinPaths = @(
+            & $vswherePath `
+                -latest `
+                -products * `
+                -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+                -find "VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe"
+        )
+        if ($LASTEXITCODE -eq 0 -and $dumpbinPaths.Count -gt 0) {
+            return $dumpbinPaths[0]
+        }
+    }
+
+    throw "dumpbin.exe was not found. Install the Visual C++ x64 build tools before packaging."
+}
+
+function Assert-StaticMsvcRuntime {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExecutablePath
+    )
+
+    $dumpbinPath = Get-DumpbinPath
+    $dumpbinOutput = @(& $dumpbinPath /nologo /dependents $ExecutablePath 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "dumpbin.exe failed with exit code ${LASTEXITCODE}: $ExecutablePath"
+    }
+
+    $dynamicRuntimePattern = '(?i)\b(?:vcruntime\d+(?:_\d+)?|msvcp\d+(?:_\d+)?|msvcr\d+|ucrtbase|api-ms-win-crt-[a-z0-9-]+)\.dll\b'
+    $dynamicRuntimeDlls = @(
+        [regex]::Matches(($dumpbinOutput -join "`n"), $dynamicRuntimePattern) |
+            ForEach-Object { $_.Value } |
+            Sort-Object -Unique
+    )
+
+    if ($dynamicRuntimeDlls.Count -gt 0) {
+        throw "Release executable dynamically links the Microsoft C runtime: $($dynamicRuntimeDlls -join ', ')"
+    }
+}
+
 function Assert-PackageEntries {
     param(
         [Parameter(Mandatory = $true)]
@@ -108,6 +155,8 @@ try {
     if (-not (Test-Path $ExePath)) {
         throw "Release executable was not found: $ExePath"
     }
+
+    Assert-StaticMsvcRuntime -ExecutablePath $ExePath
 
     New-Item -ItemType Directory -Force (Join-Path $RepoRoot "dist") | Out-Null
 

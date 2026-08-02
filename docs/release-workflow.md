@@ -67,6 +67,7 @@ The repository also provides a helper script for the test, build, zip, and check
 
 If `-Version` is omitted, the script uses the package version from `Cargo.toml`.
 The script creates `dist\winproc-tui-X.Y.Z-windows-x64.zip` and `dist\winproc-tui-X.Y.Z-windows-x64.zip.sha256`.
+Before packaging, it verifies that the executable does not dynamically import Microsoft C runtime DLLs.
 Tag creation and GitHub Release creation remain explicit manual steps so that the maintainer can confirm the exact source commit and draft release contents before publishing.
 
 ### 1. Confirm the Target Repository
@@ -125,6 +126,8 @@ cargo test
 cargo build --release
 ```
 
+`.cargo/config.toml` enables `+crt-static` for `x86_64-pc-windows-msvc`, so the Release executable does not require a separately installed Microsoft Visual C++ Redistributable.
+
 The executable is generated at:
 
 ```text
@@ -145,6 +148,8 @@ The release archive is intentionally runtime-only. Documentation remains on GitH
 winproc-tui.exe
 LICENSE
 ```
+
+The packaging helper rejects the executable if `dumpbin /dependents` reports dynamic Microsoft C runtime imports such as `VCRUNTIME140.dll` or `api-ms-win-crt-*.dll`.
 
 The package name includes:
 
