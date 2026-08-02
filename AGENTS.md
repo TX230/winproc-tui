@@ -49,6 +49,7 @@ If the specifications and implementation conflict, inspect the implementation fi
 ## Commit Rules
 
 - Use English Conventional Commits for commit messages.
+- Every commit must include a concise commit message body that summarizes the changes so readers can understand what changed when reviewing the commit history.
 - Keep commits scoped. Do not include unrelated dirty files or local-only artifacts.
 - When a coherent unit of AI work is complete, commit it promptly.
 - Do not commit ignored local-only files such as `notes/` or `logs/` unless the user explicitly asks to track them.
