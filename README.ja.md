@@ -18,15 +18,14 @@ _追跡、表示の一時停止、A/B 比較を使用してプロセスのプラ
 
 ### 1. 起動する
 
-Scoop を使用できる環境では、TX230 Bucket からインストールして起動できます。
+WinGet からインストールして起動できます。
 
 ```powershell
-scoop bucket add tx230 https://github.com/TX230/scoop-bucket
-scoop install tx230/winproc-tui
+winget install --id TX230.winproc-tui -e
 winproc-tui
 ```
 
-winget は現在申請中であり、まだ `TX230.winproc-tui` をインストールできません。または、[GitHub Releases](https://github.com/TX230/winproc-tui/releases) から zip をダウンロードして展開し、`winproc-tui.exe` を実行します。追加のランタイムは不要です。
+GitHub Release の公開直後は、WinGet カタログへの最新版の反映が遅れ、古いバージョンがインストールされる場合があります。TX230 Scoop Bucket は WinGet の審査・反映を経由しないため、Bucket 更新後に `scoop update` を実行すれば、WinGet の反映を待たずに最新版をインストールできます。Release 直後など、Bucket 更新前に最新版を使用する場合は、[GitHub Releases](https://github.com/TX230/winproc-tui/releases) から zip をダウンロードして展開し、`winproc-tui.exe` を実行してください。追加のランタイムは不要です。
 
 画面上部にはシステム全体の RAM / VRAM、ネットワーク / ディスク、CPU 使用率が表示され、`PROCESSES` パネルには実行中のプロセスが並びます。`Tab` / `Shift+Tab` でパネルを移動し、方向キーで行やカラムを選択します。
 
@@ -102,9 +101,20 @@ Windows 専用です。Linux / macOS など他のプラットフォームには�
 
 ## ビルド済みバイナリを使う
 
-### winget（申請中・現在はインストール不可）
+### WinGet でインストールする
 
-winget は現在 [winget-pkgs への登録を申請中](https://github.com/microsoft/winget-pkgs/pull/406136) です。申請はまだ審査・マージされていないため、`TX230.winproc-tui` を winget からダウンロードまたはインストールすることはできません。現時点では、以下の Scoop または GitHub Releases を使用してください。
+```powershell
+winget install --id TX230.winproc-tui -e
+```
+
+インストール後は、任意のディレクトリから `winproc-tui` で起動できます。更新とアンインストールは次のコマンドで行います。
+
+```powershell
+winget upgrade --id TX230.winproc-tui -e
+winget uninstall --id TX230.winproc-tui -e
+```
+
+GitHub Release の公開後、対応する最新版が WinGet カタログへ反映されるまで時間がかかる場合があります。その間に `winget install` を実行すると、古いバージョンがインストールされることがあります。`winget show --id TX230.winproc-tui -e` でカタログ上のバージョンを確認し、最新の Release より古い場合は、反映を待つか GitHub Releases の zip を使用してください。TX230 Scoop Bucket は WinGet カタログの審査・反映を経由しません。Bucket マニフェストの更新後は、以下の `scoop update` でローカルの Bucket を更新すれば、WinGet の反映を待たずに最新版を利用できます。
 
 ### Scoop（TX230 Bucket）でインストールする
 
@@ -121,7 +131,7 @@ scoop update winproc-tui
 scoop uninstall winproc-tui
 ```
 
-通常のアンインストールでは `winproc-tui.toml` が保持されます。設定も削除する場合は `scoop uninstall --purge winproc-tui` を使用します。
+通常のアンインストールでは設定が保持されます。設定も削除する場合は `scoop uninstall --purge winproc-tui` を使用します。
 
 TX230 Bucket は公式 GitHub Release の zip をダウンロードし、SHA256 を検証して `winproc-tui` コマンドを登録します。追加のランタイムは不要です。
 
@@ -130,9 +140,8 @@ TX230 Bucket は公式 GitHub Release の zip をダウンロードし、SHA256 
 [GitHub Releases](https://github.com/TX230/winproc-tui/releases) から入手します。
 ダウンロードした zip を任意のフォルダに展開し、`winproc-tui.exe` を実行してください。追加のランタイムやインストーラは不要です。
 現行のパッケージ作成手順では、zip に `winproc-tui.exe` と `LICENSE` のみを含めます。README などのドキュメントは GitHub で公開し、配布zipには含めません。v0.4.0 のzipはこの方針より前に公開されたため、README、`assets/`、`docs/`も含まれます。
-`winproc-tui.toml` は同梱されません。ファイルがない状態では既定値で起動し、正常終了時に実行ファイルと同じディレクトリへ作成されます。
 
-公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。現在利用できる [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) は、この Release のバイナリを使用します。申請中の winget パッケージも、承認後は同じ Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
+公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。WinGet パッケージと [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) は、この Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
 
 Release から zip と対応する `.zip.sha256` ファイルをダウンロードします。zip の SHA256 ハッシュ値を計算するコマンドは以下のとおりです。
 
@@ -281,14 +290,6 @@ Graph 領域の上には、表示時間幅、カーソルと A/B の時刻に加
 
 複数 Graph を表示するときは、表示時間幅、カーソル位置、A/B 点がスロット間で共有され、Y 軸スケール、サンプルの有無、値ラベルは Graph ごとに独立します。バイト値の Y 軸目盛りは `5.9 MB` のような可変単位で短く表示し、個数の目盛りは整数のまま表示します。短くなった共通の目盛り幅は各 Graph のプロット領域として使います。Samples、カーソルラベル、A/B の値と差分、クリップボード出力、記録ログは正確な値を維持します。Samples で選択した値が現在の Graph 表示範囲外にある場合は、その値が見える位置まで時間範囲を最小限移動します。1 列から 2 列への切り替え時と Graph の追加時は、表示領域が足りなければ `Not enough display area.` と表示して変更しません。2 列から 1 列へ切り替えたときは、ターミナルを縮小した場合と同様に、収まるまで番号の大きい Graph スロットから削除します。2 列表示中に `v` で Samples を有効にした場合も同じです。
 
-## 画面表示の規則
-
-ヘッダーには現在の動作を `LIVE`、`REC`、`LOG` で表示します。右端には、状態表示と記録 / ログパスに必要な幅を確保できる場合だけ `winproc-tui 0.5.0` のように製品名とバージョンを控えめに表示し、狭い画面では省略します。Live または Recording で正常なサンプル取得が3秒間なければ、次の取得成功まで `STALE Ns` を追加します。`DISPLAY PAUSED` は表示中のスナップショットだけを固定し、サンプリングと記録は継続します。
-
-Dark / Light テーマでは、フォーカスや選択を落ち着いたグレースケールで示します。緑は `LIVE` と操作成功、アンバーは追跡対象、Graph スロット、A/B マーカー、`LOG`、警告に使用し、赤は `REC`、危険、エラーに限定します。CPU 使用率は緑から赤への色分けではなく、バーの長さと数値で示します。
-
-`PROCESSES` のタイトルには、適用中の Tracked List 名を繰り返さず、表示行数、クリック可能な `☐ Tracked only(T)` / `☑ Tracked only(T)`、適用中のフィルターを表示します。選択済みのメトリクスカラムが横方向に隠れている場合は、右端に `‹ 1–10/15 ›` のような表示範囲を示します。Graph の表示中は、テーブルヘッダー、実際に表示するプロセス行、`Tracked Total` 行に合わせて、従来の最大 13 行までパネルの高さを調整します。空いた領域は Graph に割り当て、上限を超えたプロセスは従来どおりスクロールできます。Graph を非表示にすると、Processes は画面下部全体を使う表示に戻ります。反転表示の `T` はプロセス名の左に付く Tracked List 登録済みマーカーを示します。Process 名が収まらない場合は末尾に `⋯` を付け、`Full Path` を切り詰める場合は先頭を `⋯` で示して実行ファイル名側を残します。これらは表示だけの変更で、フィルター、ソート、検索、クリップボード出力には完全な値を使います。カレント行は明るい背景色だけで示し、行頭のカーソル記号は表示しません。ソート方向はテーブルヘッダーに表示します。メモリ値はテーブルでは `388.1 MB` のような短い 10 進単位で表示し、Samples、A/B 比較、クリップボード出力、記録ログでは正確なバイト値を維持します。
-
 ## 記録と Log view
 
 `Ctrl+R` で記録の開始と停止を切り替えます。記録を開始するには Tracked List に 1 件以上の名前が必要です。ログは JSON Lines として保存されます（拡張子 `.log`）。各フレームには RAM / VRAM、平均 CPU 使用率、System Activity などのシステム指標と、Tracked List に一致する実行中プロセスが記録されます。一致するプロセスがその時点で存在しない場合も、システム指標は記録され、プロセス一覧は一致するプロセスが現れるまで空になります。記録開始時に保存先パスの入力ダイアログが開き、`Tab` でディレクトリ名を補完できます。Log view 中は記録を開始できず、記録中は Log view を開けません。
@@ -298,57 +299,9 @@ Log view は再生機能ではありません。Processes は記録の最終値�
 
 記録ログのフォーマットと各フィールドの意味は [docs/metrics.md](docs/metrics.md) を参照してください。
 
-## 設定ファイル
+## 設定の保存
 
-設定ファイルは、実行ファイルと同じディレクトリに置かれる `winproc-tui.toml` です。ファイルが無ければ既定値で起動します。アプリの終了時には、テーマ・Graph の列数と Samples / Delta の表示設定・プロセス表のカラム・ソート・Tracked Only・作業中の Tracked List・保存済みの名前付きリストが保存されます。Tracked Lists で起動設定を変更した場合や、明示的に Save、Rename、Delete を実行した場合は、終了を待たずに設定ファイルへ反映します。フィルター入力の状態は次回起動に引き継ぎません。
-
-例:
-
-```toml
-[general]
-mouse = true
-theme = "Dark"
-
-[graphs]
-columns = 1
-samples = true
-delta = true
-
-[process_table]
-preset = "Default"
-columns = [
-    "CPU%", "Private", "WS", "WS Priv", "Thrd", "Hndl", "USER", "GDI",
-    "GPU%", ".NET Heap", "GPU D", "GPU S", "IO Read/s", "IO Write/s", "Full Path",
-]
-sort_by = "WS Priv"
-sort_order = "desc"
-tracked_only = false
-
-[process_table.column_widths]
-PID = 8
-Process = 28
-Private = 14
-"Full Path" = 60
-
-[tracking]
-startup = "resume_last"
-active_list = "My app"
-
-[[tracked]]
-name = "app.exe"
-
-[[tracked_lists]]
-name = "My app"
-processes = ["app.exe", "worker.exe"]
-```
-
-`graphs.columns` は `1` または `2` です。`samples` は 1 列表示時の Samples 表示状態、`delta` は Delta 列の表示状態を保存します。
-
-`tracking.startup` は `resume_last`（前回の作業中リスト）、`choose_list`（起動時に選択）、`start_empty`（空で開始）から選べ、`Ctrl+T` の Tracked Lists で変更できます。`choose_list` の選択は最初のサンプル取得より前に行われます。`Empty (default)` はダイアログだけに存在する組み込み項目で、`[[tracked_lists]]` の定義としては保存されません。`Space` で作業中リストを変更しても保存済み定義は自動上書きされず、差があると Tracked Lists ダイアログの適用中リスト名に `(*)` が付きます。
-
-保存済みのカラム選択がない場合は、Columns ダイアログの全カラムを既定で選択します。明示的に保存された `columns` の一覧は、これまでどおり優先されます。`process_table.column_widths` は、変更した要求幅だけを安定したカラム表示名で保存します。非表示カラムの幅も Preset 切り替えや並べ替え後まで保持されます。
-
-サンプリング間隔は現バージョンでは 1 秒固定で、設定ファイルからは変更できません。
+テーマ、Graph と Samples / Delta の表示状態、プロセス表のカラム・ソート・幅、Tracked Only、作業中の Tracked List、保存済みの名前付きリストは自動的に保存され、次回起動時に復元されます。Tracked Lists の起動設定と Save、Rename、Delete の変更は、その操作時に保存されます。フィルター入力は次回起動に引き継ぎません。
 
 ## 開発者向けドキュメント
 

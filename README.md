@@ -18,15 +18,14 @@ _Example investigation of a process's private memory using tracking, display pau
 
 ### 1. Launch the App
 
-If Scoop is available, install and launch the app from the TX230 Bucket:
+Install and launch the app with WinGet:
 
 ```powershell
-scoop bucket add tx230 https://github.com/TX230/scoop-bucket
-scoop install tx230/winproc-tui
+winget install --id TX230.winproc-tui -e
 winproc-tui
 ```
 
-The winget registration is currently pending review, so `TX230.winproc-tui` cannot be installed through winget yet. Alternatively, download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No additional runtime is required.
+Immediately after a GitHub Release, the latest version may take time to appear in the WinGet catalog, so WinGet may install an older version. The TX230 Scoop Bucket does not go through WinGet review or publication, so after the bucket is updated, run `scoop update` to install the latest version without waiting for WinGet. To use the latest version before the bucket is updated, download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it, and run `winproc-tui.exe`. No additional runtime is required.
 
 The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
 
@@ -102,9 +101,20 @@ Administrator privileges are not required for normal monitoring. Some metrics an
 
 ## Use a Prebuilt Binary
 
-### winget (pending; installation unavailable)
+### Install with WinGet
 
-The winget package is currently [pending submission to winget-pkgs](https://github.com/microsoft/winget-pkgs/pull/406136). The submission has not been reviewed and merged yet, so `TX230.winproc-tui` cannot be downloaded or installed through winget. Use Scoop below or GitHub Releases for now.
+```powershell
+winget install --id TX230.winproc-tui -e
+```
+
+After installation, run `winproc-tui` from any directory. Use these commands to update or uninstall it:
+
+```powershell
+winget upgrade --id TX230.winproc-tui -e
+winget uninstall --id TX230.winproc-tui -e
+```
+
+After a new GitHub Release, publication of the corresponding version to the WinGet catalog may take some time. During that interval, `winget install` may install an older version. Check the catalog version with `winget show --id TX230.winproc-tui -e`; if it is older than the latest Release, wait for the catalog update or use the zip from GitHub Releases. The TX230 Scoop Bucket does not go through WinGet catalog review or publication. After its manifest is updated, run `scoop update` below to refresh your local bucket and use the latest version without waiting for WinGet.
 
 ### Install with Scoop (TX230 Bucket)
 
@@ -121,7 +131,7 @@ scoop update winproc-tui
 scoop uninstall winproc-tui
 ```
 
-A normal uninstall preserves `winproc-tui.toml`. To remove the persisted configuration as well, use `scoop uninstall --purge winproc-tui`.
+A normal uninstall preserves the application settings. To remove them as well, use `scoop uninstall --purge winproc-tui`.
 
 The TX230 Bucket downloads the zip from the official GitHub Release, verifies its SHA256 hash, and registers the `winproc-tui` command. No additional runtime is required.
 
@@ -129,9 +139,8 @@ The TX230 Bucket downloads the zip from the official GitHub Release, verifies it
 
 Download the zip from [GitHub Releases](https://github.com/TX230/winproc-tui/releases), extract it to any folder, and run `winproc-tui.exe`. No additional runtime or installer is required.
 The current packaging workflow includes only `winproc-tui.exe` and `LICENSE`. Documentation such as the README remains on GitHub and is not included in new distribution archives. The v0.4.0 zip predates this policy and also contains the README files, `assets/`, and `docs/`.
-`winproc-tui.toml` is not prepackaged. The application starts with defaults when the file is absent and creates it next to the executable after a successful run.
 
-Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). The currently available [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) uses these Release binaries. After approval, the pending winget package will use the same Release binaries.
+Official release binaries are published only from [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases). The WinGet package and [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) use these Release binaries.
 Binaries from third-party copies, mirrors, or modified repositories are not official builds.
 
 Download both the zip and its corresponding `.zip.sha256` file from the Release. Use these PowerShell commands to calculate the zip's SHA256 hash and display the published value:
@@ -284,14 +293,6 @@ In two-column mode, slots use row-major order: upper left, upper right, lower le
 
 When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph. Byte-based Y-axis ticks use compact adaptive units such as `5.9 MB`; count ticks remain integers. The shared reduced tick width is reclaimed by every plot. Samples, cursor labels, A/B values and deltas, clipboard output, and recording logs retain exact values. If a selected Samples value is outside the current Graph range, the time window moves only as far as needed to reveal it. Switching from one to two columns and adding a Graph are rejected with `Not enough display area.` when the available area is insufficient. Switching from two columns to one removes the highest-numbered Graph slots until the remaining slots fit, using the same behavior as a terminal resize. The same cleanup applies when `v` enables Samples from two-column mode.
 
-## Display Conventions
-
-The header shows the current activity as `LIVE`, `REC`, or `LOG`. At the right edge, it quietly shows the product name and version, such as `winproc-tui 0.5.0`, only when the activity state and Recording / Log path already have enough room; narrow layouts omit it. If no successful sample arrives for 3 seconds in Live or Recording, it adds `STALE Ns` until sampling succeeds again. `DISPLAY PAUSED` freezes only the displayed snapshot; sampling and recording continue.
-
-The Dark and Light themes use quiet grayscale surfaces for focus and selection. Green identifies `LIVE` and successful actions, amber identifies tracked items, Graph slots, A/B markers, `LOG`, and warnings, and red is reserved for `REC`, danger, and errors. CPU usage is shown by bar length and numeric values rather than a green-to-red severity gradient.
-
-The `PROCESSES` title shows the visible row count, a clickable `☐ Tracked only(T)` / `☑ Tracked only(T)` control, and the active filter without repeating the active Tracked List name. When selected metric columns are hidden horizontally, its right edge shows the visible range, such as `‹ 1–10/15 ›`. While Graphs are visible, the panel shrinks to the table header and rows it actually renders, including `Tracked Total`, up to its existing 13-line maximum; reclaimed space goes to Graphs, and additional processes remain scrollable. Hiding Graphs restores the full-height Processes layout. The reverse-video `T` refers to the Tracked List marker shown beside registered process names. A Process name that does not fit ends with `⋯`; a truncated `Full Path` starts with `⋯` and keeps the executable-name end. These cues affect only rendering, so filtering, sorting, searching, and clipboard output continue to use the complete values. The current row is identified only by its brighter background, without a leading cursor symbol. Sort direction remains in the table header. Memory values use compact decimal units such as `388.1 MB` in the table, while Samples, A/B comparison, clipboard output, and recording logs retain exact byte values.
-
 ## Recording and Log View
 
 Press `Ctrl+R` to start or stop recording.
@@ -309,61 +310,9 @@ Log view is not a player: Processes keeps showing the last recorded values, whil
 
 The recording log format and the meaning of each field are described in [docs/metrics.md](docs/metrics.md).
 
-## Configuration File
+## Saved Settings
 
-The configuration file is `winproc-tui.toml`, placed next to the executable.
-If the file does not exist, defaults are used.
-On exit, the current theme, Graph columns and Samples / Delta visibility, process-table columns, sort, Tracked Only state, working Tracked List, and saved named lists are saved.
-Changing startup behavior or using explicit Save, Rename, and Delete actions in Tracked Lists writes the configuration immediately without waiting for exit.
-Filter input state is not carried over to the next launch.
-
-Example:
-
-```toml
-[general]
-mouse = true
-theme = "Dark"
-
-[graphs]
-columns = 1
-samples = true
-delta = true
-
-[process_table]
-preset = "Default"
-columns = [
-    "CPU%", "Private", "WS", "WS Priv", "Thrd", "Hndl", "USER", "GDI",
-    "GPU%", ".NET Heap", "GPU D", "GPU S", "IO Read/s", "IO Write/s", "Full Path",
-]
-sort_by = "WS Priv"
-sort_order = "desc"
-tracked_only = false
-
-[process_table.column_widths]
-PID = 8
-Process = 28
-Private = 14
-"Full Path" = 60
-
-[tracking]
-startup = "resume_last"
-active_list = "My app"
-
-[[tracked]]
-name = "app.exe"
-
-[[tracked_lists]]
-name = "My app"
-processes = ["app.exe", "worker.exe"]
-```
-
-`graphs.columns` accepts `1` or `2`. `samples` stores the Samples visibility used in one-column mode, and `delta` stores the Delta-column visibility.
-
-`tracking.startup` accepts `resume_last`, `choose_list`, or `start_empty` and can be changed in Tracked Lists with `Ctrl+T`. The `choose_list` selection is applied before the first sample is collected. `Empty (default)` is a built-in dialog entry and is not written as a `[[tracked_lists]]` definition. Changes made to the working list with `Space` do not automatically overwrite its saved definition; the Tracked Lists dialog indicates an unsaved difference with `(*)` beside the active list name.
-
-When no saved column selection exists, all columns in the Columns dialog are selected by default. An explicit saved `columns` list continues to take priority. `process_table.column_widths` stores only changed requested widths by stable column label; hidden columns keep their overrides across preset or order changes.
-
-The sampling interval is fixed to 1 second in the current version and is not user-configurable.
+The theme, Graph and Samples / Delta visibility, process-table columns, sort, and widths, Tracked Only state, working Tracked List, and saved named lists are saved automatically and restored on the next launch. Tracked Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
 
 ## Developer Docs
 
