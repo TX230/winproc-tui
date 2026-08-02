@@ -1520,6 +1520,37 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn truncated_full_path_keeps_raw_filter_match_and_highlights_visible_tail() {
+        let mut app = make_test_app(1, 10);
+        app.process_columns = vec![MetricColumn::FullPath];
+        app.process_column_widths.set(SortColumn::ProcessName, 8);
+        app.snapshot.processes[0].name = "app.exe".to_string();
+        let raw_path = format!(r"C:\{}\beta\app.exe", "hidden".repeat(16));
+        app.snapshot.processes[0].executable_path = Some(raw_path.clone());
+
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+            .unwrap();
+        for ch in "beta".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
+                .unwrap();
+        }
+
+        let buffer = render_app_to_buffer(&app, 80, 30);
+        let (beta_x, y) = find_text_position(&buffer, r"beta\app.exe")
+            .expect("the retained Full Path tail should be rendered");
+
+        assert_eq!(app.visible_process_count(), 1);
+        assert_eq!(
+            app.snapshot.processes[0].executable_path.as_deref(),
+            Some(raw_path.as_str())
+        );
+        assert!((0..beta_x).any(|x| buffer[(x, y)].symbol() == "⋯"));
+        for offset in 0.."beta".len() as u16 {
+            assert_eq!(buffer[(beta_x + offset, y)].fg, ui::THEMES[0].warning);
+        }
+    }
+
+    #[test]
     fn process_filter_does_not_duplicate_name_match_in_full_path() {
         let mut app = make_test_app(1, 10);
         app.process_columns = vec![MetricColumn::FullPath];
@@ -4212,6 +4243,135 @@ processes = ["api.exe", "worker.exe"]
             buffer[(name_x, name_y)].bg,
             ui::THEMES[0].table_selection_surface
         );
+    }
+
+    #[test]
+    fn process_table_marks_only_names_that_are_actually_truncated() {
+        let mut app = make_test_app(1, 10);
+        app.process_columns = vec![MetricColumn::FullPath];
+        app.process_column_widths.set(SortColumn::ProcessName, 8);
+        app.snapshot.processes[0].name = "process-name.exe".to_string();
+        app.snapshot.processes[0].executable_path = Some(r"C:\app.exe".to_string());
+
+        let truncated = render_app_to_text(&app, 100, 30);
+
+        assert!(truncated.contains("process⋯"), "{truncated}");
+
+        app.snapshot.processes[0].name = "app.exe".to_string();
+        let complete = render_app_to_text(&app, 100, 30);
+
+        assert!(complete.contains("app.exe"), "{complete}");
+        assert!(!complete.contains('⋯'), "{complete}");
+    }
+
+    #[test]
+    fn process_name_width_shortcuts_change_the_rendered_width_immediately() {
+        let screen = Rect::new(0, 0, 100, 30);
+        let mut app = make_test_app(1, 10);
+        app.focused_panel = FocusedPanel::Processes;
+        app.process_columns = vec![MetricColumn::PrivateBytes];
+        app.process_column_widths.set(SortColumn::ProcessName, 8);
+        app.selected_process_column_index = 1;
+        app.snapshot.processes[0].name = "process-name.exe".to_string();
+        app.set_screen_area(screen);
+
+        let initial = render_app_to_text(&app, screen.width, screen.height);
+        assert!(initial.contains("process⋯"), "{initial}");
+
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE))
+            .unwrap();
+        let widened = render_app_to_text(&app, screen.width, screen.height);
+        assert!(widened.contains("process-⋯"), "{widened}");
+        assert!(!widened.contains("process⋯"), "{widened}");
+
+        app.on_key(KeyEvent::new(KeyCode::Char('W'), KeyModifiers::SHIFT))
+            .unwrap();
+        let narrowed = render_app_to_text(&app, screen.width, screen.height);
+        assert!(narrowed.contains("process⋯"), "{narrowed}");
+    }
+
+    #[test]
+    fn process_table_overflow_indicator_tracks_offsets_and_custom_widths() {
+        let screen = Rect::new(0, 0, 72, 30);
+        let mut app = make_test_app(1, 10);
+        app.process_columns = MetricColumn::ALL.to_vec();
+        app.show_details = false;
+
+        let area = ui::main_panel_areas_for_app(screen, &app).processes.area;
+        let leading_range = ui::process_table_visible_metric_range(
+            area.width,
+            &app.process_columns,
+            app.process_metric_column_offset,
+            &app.process_column_widths,
+        );
+        let leading_indicator = format!(
+            "‹ {}–{}/{} ›",
+            leading_range.start + 1,
+            leading_range.end,
+            app.process_columns.len()
+        );
+        let leading = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, _) = find_text_position(&leading, &leading_indicator)
+            .expect("the leading visible metric range should render");
+        assert_eq!(
+            x + leading_indicator.chars().count() as u16,
+            area.right().saturating_sub(1)
+        );
+
+        app.process_metric_column_offset = 10;
+        let offset_range = ui::process_table_visible_metric_range(
+            area.width,
+            &app.process_columns,
+            app.process_metric_column_offset,
+            &app.process_column_widths,
+        );
+        let offset_indicator = format!(
+            "‹ {}–{}/{} ›",
+            offset_range.start + 1,
+            offset_range.end,
+            app.process_columns.len()
+        );
+        let offset = render_app_to_text(&app, screen.width, screen.height);
+        assert!(offset.contains(&offset_indicator), "{offset}");
+
+        app.process_metric_column_offset = 0;
+        app.process_column_widths.set(SortColumn::ProcessName, 40);
+        let custom_range = ui::process_table_visible_metric_range(
+            area.width,
+            &app.process_columns,
+            app.process_metric_column_offset,
+            &app.process_column_widths,
+        );
+        let custom_indicator = format!(
+            "‹ {}–{}/{} ›",
+            custom_range.start + 1,
+            custom_range.end,
+            app.process_columns.len()
+        );
+        let custom = render_app_to_text(&app, screen.width, screen.height);
+        assert!(custom.contains(&custom_indicator), "{custom}");
+        assert!(custom_range.end < leading_range.end);
+    }
+
+    #[test]
+    fn process_table_overflow_indicator_handles_zero_or_no_hidden_metrics() {
+        let mut app = make_test_app(1, 10);
+        app.process_columns = MetricColumn::ALL.to_vec();
+
+        let narrow_buffer = render_app_to_buffer(&app, 35, 20);
+        let narrow = buffer_to_text(&narrow_buffer);
+        assert!(narrow.contains("‹ 0/15 ›"), "{narrow}");
+        let (indicator_x, indicator_y) = find_text_position(&narrow_buffer, "‹ 0/15 ›")
+            .expect("the zero-column indicator should render");
+        app.on_mouse(
+            left_click(indicator_x, indicator_y),
+            Rect::new(0, 0, 35, 20),
+        );
+        assert!(!app.watch_enabled);
+
+        let wide = render_app_to_text(&app, 400, 20);
+        assert!(!wide.contains("‹ 1–15/15 ›"), "{wide}");
+        assert!(!wide.contains("‹ 0/15 ›"), "{wide}");
     }
 
     #[test]
@@ -7957,7 +8117,7 @@ processes = ["api.exe", "worker.exe"]
         app.poll_sample_results().unwrap();
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("target.exe(12:34:56)"), "{rendered}");
+        assert!(rendered.contains("target.⋯(12:34:56)"), "{rendered}");
     }
 
     #[test]

@@ -24,6 +24,7 @@ const TABLE_BORDER_WIDTH: u16 = 2;
 const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
 const PROCESS_TITLE: &str = "PROCESSES";
 const TITLE_SEPARATOR: &str = " · ";
+const TRUNCATION_MARKER: &str = "⋯";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ProcessTitleSegmentKind {
@@ -44,12 +45,23 @@ pub(crate) fn draw_process_table(
     theme: Theme,
 ) {
     let area = layout.area;
+    let visible_columns = visible_metric_columns(
+        area.width,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    );
+    let overflow_indicator =
+        process_metric_overflow_indicator(&visible_columns, app.process_columns.len());
+    let column_rects =
+        process_table_column_rects(area, &visible_columns, &app.process_column_widths);
+    let process_name_width = column_rects.get(2).map_or(0, |rect| rect.width);
+    let full_path_width = full_path_column_render_width(&visible_columns, &column_rects);
     let title = process_table_title(app, theme);
-    let block = process_table_block(title, app, theme);
-    let inner = block.inner(area);
+    let block = process_table_block(title, overflow_indicator, app, theme);
+    let table_area = block.inner(area);
     frame.render_widget(block, area);
 
-    let table_area = inner;
     let total_row = layout
         .show_tracked_total
         .then(|| app.tracked_total_visible_row())
@@ -60,14 +72,6 @@ pub(crate) fn draw_process_table(
     let offset = app.process_table_state.offset().min(max_offset);
     let visible_processes = app.visible_process_row_window(offset, page_size);
     let selected_table_column_index = app.selected_process_column_index;
-    let visible_columns = visible_metric_columns(
-        area.width,
-        &app.process_columns,
-        app.process_metric_column_offset,
-        &app.process_column_widths,
-    );
-    let full_path_width =
-        full_path_column_render_width(area.width, &visible_columns, &app.process_column_widths);
     let selected_row_index = app.process_table_state.selected();
     let mut rows = visible_processes
         .iter()
@@ -78,6 +82,7 @@ pub(crate) fn draw_process_table(
                 row,
                 app,
                 &visible_columns,
+                process_name_width,
                 full_path_width,
                 selected_table_column_index,
                 row_selected,
@@ -90,6 +95,7 @@ pub(crate) fn draw_process_table(
             &total_row,
             app,
             &visible_columns,
+            process_name_width,
             full_path_width,
             selected_table_column_index,
             false,
@@ -161,10 +167,7 @@ pub(crate) fn process_metric_column_index_at(
     }
 
     let visible_columns = visible_metric_columns(area.width, columns, metric_offset, widths);
-    let constraints = process_table_constraints(&visible_columns, widths);
-    let column_rects = Layout::horizontal(constraints)
-        .spacing(TABLE_COLUMN_SPACING)
-        .split(table_area);
+    let column_rects = process_table_column_rects(area, &visible_columns, widths);
 
     if let Some(pid_rect) = column_rects.get(1) {
         if x >= pid_rect.x && x < pid_rect.right() {
@@ -262,18 +265,10 @@ fn process_table_constraints(
     widths: &ProcessColumnWidths,
 ) -> Vec<Constraint> {
     let process_width = widths.resolved(SortColumn::ProcessName);
-    let process_constraint = if visible_columns
-        .iter()
-        .any(|(_, column)| *column == MetricColumn::FullPath)
-    {
-        Constraint::Length(process_width)
-    } else {
-        Constraint::Min(process_width)
-    };
     let mut constraints = vec![
         Constraint::Length(TRACKED_COLUMN_WIDTH),
         Constraint::Length(widths.resolved(SortColumn::Pid)),
-        process_constraint,
+        Constraint::Length(process_width),
     ];
     for (_, column) in visible_columns {
         let width = metric_column_render_width(*column, widths);
@@ -287,48 +282,54 @@ fn process_table_constraints(
     constraints
 }
 
+fn process_table_column_rects(
+    area: Rect,
+    visible_columns: &[(usize, MetricColumn)],
+    widths: &ProcessColumnWidths,
+) -> Vec<Rect> {
+    let table_area = area.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    Layout::horizontal(process_table_constraints(visible_columns, widths))
+        .spacing(TABLE_COLUMN_SPACING)
+        .split(table_area)
+        .to_vec()
+}
+
 fn metric_column_render_width(column: MetricColumn, widths: &ProcessColumnWidths) -> u16 {
     widths.resolved(SortColumn::Metric(column))
 }
 
 fn full_path_column_render_width(
-    area_width: u16,
     visible_columns: &[(usize, MetricColumn)],
-    widths: &ProcessColumnWidths,
+    column_rects: &[Rect],
 ) -> Option<u16> {
     visible_columns
         .iter()
-        .any(|(_, column)| *column == MetricColumn::FullPath)
-        .then(|| {
-            let usable_width = area_width.saturating_sub(TABLE_BORDER_WIDTH);
-            let metric_width = visible_columns
-                .iter()
-                .map(|(_, column)| metric_column_render_width(*column, widths))
-                .sum::<u16>();
-            let total_columns = 3 + visible_columns.len() as u16;
-            let required_width = TRACKED_COLUMN_WIDTH
-                + widths.resolved(SortColumn::Pid)
-                + widths.resolved(SortColumn::ProcessName)
-                + metric_width
-                + TABLE_COLUMN_SPACING.saturating_mul(total_columns.saturating_sub(1));
-            widths
-                .resolved(SortColumn::Metric(MetricColumn::FullPath))
-                .saturating_add(usable_width.saturating_sub(required_width))
-        })
+        .position(|(_, column)| *column == MetricColumn::FullPath)
+        .and_then(|visible_index| column_rects.get(3 + visible_index))
+        .map(|rect| rect.width)
 }
 
 fn process_table_block<'a>(
     title: Line<'a>,
+    overflow_indicator: Option<String>,
     app: &App,
     theme: Theme,
 ) -> ratatui::widgets::Block<'a> {
     let input_active =
         (app.is_filter_editing() || app.is_process_jump_editing()) && !app.has_modal_focus();
-    let block = panel_block_focused(
+    let mut block = panel_block_focused(
         title,
         theme,
         app.panel_has_focus(FocusedPanel::Processes) || input_active,
     );
+    if let Some(indicator) = overflow_indicator {
+        block = block.title_top(
+            Line::from(Span::styled(indicator, Style::default().fg(theme.muted))).right_aligned(),
+        );
+    }
     if input_active {
         block.border_style(Style::default().fg(theme.accent))
     } else {
@@ -401,6 +402,7 @@ fn process_table_row(
     row: &VisibleProcessRow<'_>,
     app: &App,
     visible_columns: &[(usize, MetricColumn)],
+    process_name_width: u16,
     full_path_width: Option<u16>,
     selected_table_column_index: usize,
     row_selected: bool,
@@ -419,7 +421,7 @@ fn process_table_row(
             theme,
         ),
         process_fixed_cell(
-            process_name_line(row, app, theme),
+            process_name_line(row, process_name_width, app, theme),
             Alignment::Left,
             selected_table_column_index == 1,
             row_selected && selected_table_column_index == 1,
@@ -605,18 +607,13 @@ fn tracked_symbol(tracked: bool) -> &'static str {
     if tracked { "T" } else { " " }
 }
 
-fn process_display_name(process: &ProcessRow, lifecycle: &ProcessLifecycle) -> String {
-    match lifecycle {
-        ProcessLifecycle::Live => process.name.clone(),
-        ProcessLifecycle::Exited { exited_at } => {
-            format!("{}({})", process.name, exited_at.format("%H:%M:%S"))
-        }
-    }
-}
-
-fn process_name_line(row: &VisibleProcessRow<'_>, app: &App, theme: Theme) -> Line<'static> {
+fn process_name_line(
+    row: &VisibleProcessRow<'_>,
+    width: u16,
+    app: &App,
+    theme: Theme,
+) -> Line<'static> {
     let process = row.process;
-    let display_name = process_display_name(process, &row.lifecycle);
     let base_style = process_text_style(row, theme);
     let query = (if app.is_process_jump_editing() {
         Some(app.process_jump_draft().trim())
@@ -624,12 +621,21 @@ fn process_name_line(row: &VisibleProcessRow<'_>, app: &App, theme: Theme) -> Li
         active_filter_query(app)
     })
     .filter(|query| !query.is_empty());
-    match query {
-        Some(query) => {
-            highlighted_process_name_line(&display_name, &process.name, query, base_style, theme)
+    let line = match query {
+        Some(query) => highlighted_process_name_line(&process.name, query, base_style, theme),
+        None => Line::from(Span::styled(process.name.clone(), base_style)),
+    };
+    let width = width as usize;
+    if let ProcessLifecycle::Exited { exited_at } = &row.lifecycle {
+        let suffix = format!("({})", exited_at.format("%H:%M:%S"));
+        let suffix_width = text_width(&suffix);
+        if suffix_width < width {
+            let mut line = truncate_line_end(line, width - suffix_width, base_style);
+            line.spans.push(Span::styled(suffix, base_style));
+            return line;
         }
-        None => Line::from(Span::styled(display_name, base_style)),
     }
+    truncate_line_end(line, width, base_style)
 }
 
 fn active_filter_query(app: &App) -> Option<&str> {
@@ -645,7 +651,6 @@ fn process_name_matches_query(process: &ProcessRow, query: &str) -> bool {
 }
 
 fn highlighted_process_name_line(
-    display_name: &str,
     process_name: &str,
     query: &str,
     base_style: Style,
@@ -654,13 +659,13 @@ fn highlighted_process_name_line(
     let name_lower = process_name.to_ascii_lowercase();
     let query_lower = query.to_ascii_lowercase();
     let Some(start) = name_lower.find(&query_lower) else {
-        return Line::from(Span::styled(display_name.to_string(), base_style));
+        return Line::from(Span::styled(process_name.to_string(), base_style));
     };
     let end = start + query_lower.len();
-    if !display_name.is_char_boundary(start) || !display_name.is_char_boundary(end) {
-        return Line::from(Span::styled(display_name.to_string(), base_style));
+    if !process_name.is_char_boundary(start) || !process_name.is_char_boundary(end) {
+        return Line::from(Span::styled(process_name.to_string(), base_style));
     }
-    highlighted_match_line_at(display_name, start, end, base_style, theme)
+    highlighted_match_line_at(process_name, start, end, base_style, theme)
 }
 
 fn highlighted_match_line(
@@ -696,6 +701,89 @@ fn highlighted_match_line_at(
         ),
         Span::styled(value[end..].to_string(), base_style),
     ])
+}
+
+fn truncate_line_end(line: Line<'static>, max_width: usize, marker_style: Style) -> Line<'static> {
+    if line.width() <= max_width {
+        return line;
+    }
+
+    let marker_width = text_width(TRUNCATION_MARKER);
+    if max_width < marker_width {
+        return Line::default();
+    }
+
+    let content_width = max_width.saturating_sub(marker_width);
+    let mut remaining = content_width;
+    let mut spans = Vec::new();
+    for span in line.spans {
+        let content = prefix_to_width(span.content.as_ref(), remaining);
+        let fully_consumed = content.len() == span.content.len();
+        let width = text_width(&content);
+        if !content.is_empty() {
+            spans.push(Span::styled(content, span.style));
+        }
+        remaining = remaining.saturating_sub(width);
+        if remaining == 0 || !fully_consumed {
+            break;
+        }
+    }
+    spans.push(Span::styled(TRUNCATION_MARKER, marker_style));
+    Line::from(spans)
+}
+
+fn prefix_to_width(value: &str, max_width: usize) -> String {
+    let mut result = String::new();
+    let mut width = 0usize;
+    for ch in value.chars() {
+        let char_width = text_width(&ch.to_string());
+        if width.saturating_add(char_width) > max_width {
+            break;
+        }
+        result.push(ch);
+        width = width.saturating_add(char_width);
+    }
+    result
+}
+
+fn suffix_to_width(value: &str, max_width: usize) -> String {
+    let mut reversed = Vec::new();
+    let mut width = 0usize;
+    for ch in value.chars().rev() {
+        let char_width = text_width(&ch.to_string());
+        if width.saturating_add(char_width) > max_width {
+            break;
+        }
+        reversed.push(ch);
+        width = width.saturating_add(char_width);
+    }
+    reversed.into_iter().rev().collect()
+}
+
+fn text_width(value: &str) -> usize {
+    Line::from(value).width()
+}
+
+fn process_metric_overflow_indicator(
+    visible_columns: &[(usize, MetricColumn)],
+    total_columns: usize,
+) -> Option<String> {
+    if total_columns == 0 {
+        return None;
+    }
+
+    let start = visible_columns.first().map(|(index, _)| *index);
+    let end = visible_columns
+        .last()
+        .map(|(index, _)| index.saturating_add(1));
+    if start == Some(0) && end == Some(total_columns) {
+        return None;
+    }
+
+    Some(match (start, end) {
+        (Some(start), Some(end)) => format!("‹ {}–{end}/{total_columns} ›", start + 1),
+        _ => format!("‹ 0/{total_columns} ›"),
+    })
 }
 
 fn process_text_style(row: &VisibleProcessRow<'_>, theme: Theme) -> Style {
@@ -867,22 +955,36 @@ pub(crate) fn process_tracked_only_control_area(area: Rect, app: &App) -> Option
         return None;
     }
 
-    let mut prefix_width = PROCESS_TITLE.chars().count();
+    let visible_columns = visible_metric_columns(
+        area.width,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    );
+    let control_right =
+        process_metric_overflow_indicator(&visible_columns, app.process_columns.len())
+            .map(|indicator| {
+                area.right()
+                    .saturating_sub(1)
+                    .saturating_sub(text_width(&indicator) as u16)
+            })
+            .unwrap_or_else(|| area.right());
+    let mut prefix_width = text_width(PROCESS_TITLE);
     for segment in process_table_state_segments(app) {
-        prefix_width = prefix_width.saturating_add(TITLE_SEPARATOR.chars().count());
+        prefix_width = prefix_width.saturating_add(text_width(TITLE_SEPARATOR));
         if segment.kind == ProcessTitleSegmentKind::TrackedOnly {
             let title_x = area.x.saturating_add(1).saturating_add(prefix_width as u16);
-            if title_x >= area.right() {
+            if title_x >= control_right {
                 return None;
             }
             return Some(Rect::new(
                 title_x,
                 area.y,
-                (segment.label.chars().count() as u16).min(area.right().saturating_sub(title_x)),
+                (text_width(&segment.label) as u16).min(control_right.saturating_sub(title_x)),
                 1,
             ));
         }
-        prefix_width = prefix_width.saturating_add(segment.label.chars().count());
+        prefix_width = prefix_width.saturating_add(text_width(&segment.label));
     }
     None
 }
@@ -962,22 +1064,15 @@ fn process_metric_alignment(column: MetricColumn) -> Alignment {
 }
 
 fn compact_path_start(path: &str, width: usize) -> String {
-    let char_count = path.chars().count();
-    if char_count <= width {
+    if text_width(path) <= width {
         return path.to_string();
     }
-    if width <= 3 {
-        return ".".repeat(width);
+    let marker_width = text_width(TRUNCATION_MARKER);
+    if width < marker_width {
+        return String::new();
     }
-    let tail = path
-        .chars()
-        .rev()
-        .take(width - 3)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<String>();
-    format!("...{tail}")
+    let tail = suffix_to_width(path, width.saturating_sub(marker_width));
+    format!("{TRUNCATION_MARKER}{tail}")
 }
 
 fn format_cpu_percent(value: f64) -> String {
@@ -1116,8 +1211,69 @@ mod tests {
         );
         assert_eq!(
             compact_path_start(r"C:\very\long\workspace\target\debug\app.exe", 18),
-            r"...t\debug\app.exe"
+            r"⋯get\debug\app.exe"
         );
+    }
+
+    #[test]
+    fn truncation_marker_uses_one_terminal_cell() {
+        assert_eq!(text_width(TRUNCATION_MARKER), 1);
+        assert_eq!(Line::from(TRUNCATION_MARKER).width(), 1);
+    }
+
+    #[test]
+    fn process_name_marker_is_added_only_when_the_line_is_truncated() {
+        let style = Style::default();
+        let exact = truncate_line_end(Line::from(Span::styled("app.exe", style)), 7, style);
+        let truncated = truncate_line_end(Line::from(Span::styled("app.exe", style)), 6, style);
+
+        assert_eq!(line_text(&exact), "app.exe");
+        assert_eq!(line_text(&truncated), "app.e⋯");
+        assert_eq!(truncated.width(), 6);
+    }
+
+    #[test]
+    fn process_name_truncation_preserves_visible_filter_highlighting() {
+        let theme = crate::ui::theme::THEMES[0];
+        let base_style = Style::default().fg(theme.text);
+        let line = highlighted_match_line_at("winproc-tui.exe", 0, 3, base_style, theme);
+
+        let truncated = truncate_line_end(line, 8, base_style);
+
+        assert_eq!(line_text(&truncated), "winproc⋯");
+        assert_eq!(truncated.width(), 8);
+        assert_eq!(truncated.spans[0].style.fg, Some(theme.warning));
+        assert_eq!(truncated.spans.last().unwrap().content, TRUNCATION_MARKER);
+        assert_eq!(truncated.spans.last().unwrap().style, base_style);
+    }
+
+    #[test]
+    fn metric_overflow_indicator_reports_selected_column_window() {
+        let columns = MetricColumn::ALL;
+        let all = columns.iter().copied().enumerate().collect::<Vec<_>>();
+        let leading = all[..3].to_vec();
+        let offset = all[9..12].to_vec();
+
+        assert_eq!(process_metric_overflow_indicator(&all, columns.len()), None);
+        assert_eq!(
+            process_metric_overflow_indicator(&leading, columns.len()).as_deref(),
+            Some("‹ 1–3/15 ›")
+        );
+        assert_eq!(
+            process_metric_overflow_indicator(&offset, columns.len()).as_deref(),
+            Some("‹ 10–12/15 ›")
+        );
+        assert_eq!(
+            process_metric_overflow_indicator(&[], columns.len()).as_deref(),
+            Some("‹ 0/15 ›")
+        );
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
     }
 
     #[test]
@@ -1207,6 +1363,7 @@ mod tests {
     fn full_path_column_takes_extra_width_when_visible() {
         let visible = vec![(0, MetricColumn::PrivateBytes), (1, MetricColumn::FullPath)];
         let widths = ProcessColumnWidths::default();
+        let rects = process_table_column_rects(Rect::new(0, 0, 140, 3), &visible, &widths);
 
         assert_eq!(
             process_table_constraints(&visible, &widths),
@@ -1219,26 +1376,27 @@ mod tests {
             ]
         );
         assert_eq!(
-            full_path_column_render_width(140, &visible, &widths),
+            full_path_column_render_width(&visible, &rects),
             Some(MetricColumn::FullPath.width() + 63)
         );
     }
 
     #[test]
-    fn process_column_takes_extra_width_when_full_path_is_hidden() {
+    fn process_column_uses_resolved_width_when_full_path_is_hidden() {
         let visible = vec![(0, MetricColumn::PrivateBytes)];
         let widths = ProcessColumnWidths::default();
+        let rects = process_table_column_rects(Rect::new(0, 0, 140, 3), &visible, &widths);
 
         assert_eq!(
             process_table_constraints(&visible, &widths),
             vec![
                 Constraint::Length(TRACKED_COLUMN_WIDTH),
                 Constraint::Length(SortColumn::Pid.default_width()),
-                Constraint::Min(SortColumn::ProcessName.default_width()),
+                Constraint::Length(SortColumn::ProcessName.default_width()),
                 Constraint::Length(MetricColumn::PrivateBytes.width()),
             ]
         );
-        assert_eq!(full_path_column_render_width(140, &visible, &widths), None);
+        assert_eq!(full_path_column_render_width(&visible, &rects), None);
     }
 
     #[test]
@@ -1285,11 +1443,12 @@ mod tests {
     }
 
     #[test]
-    fn custom_process_and_full_path_widths_keep_flexible_extra_space() {
+    fn custom_process_width_is_fixed_while_full_path_keeps_flexible_extra_space() {
         let visible = vec![(0, MetricColumn::PrivateBytes), (1, MetricColumn::FullPath)];
         let mut widths = ProcessColumnWidths::default();
         widths.set(SortColumn::ProcessName, 28);
         widths.set(SortColumn::Metric(MetricColumn::FullPath), 60);
+        let rects = process_table_column_rects(Rect::new(0, 0, 180, 3), &visible, &widths);
 
         assert_eq!(
             process_table_constraints(&visible, &widths),
@@ -1301,10 +1460,7 @@ mod tests {
                 Constraint::Min(60),
             ]
         );
-        assert_eq!(
-            full_path_column_render_width(180, &visible, &widths),
-            Some(129)
-        );
+        assert_eq!(full_path_column_render_width(&visible, &rects), Some(129));
 
         let without_full_path = vec![(0, MetricColumn::PrivateBytes)];
         assert_eq!(
@@ -1312,7 +1468,7 @@ mod tests {
             vec![
                 Constraint::Length(TRACKED_COLUMN_WIDTH),
                 Constraint::Length(SortColumn::Pid.default_width()),
-                Constraint::Min(28),
+                Constraint::Length(28),
                 Constraint::Length(MetricColumn::PrivateBytes.width()),
             ]
         );

@@ -155,7 +155,7 @@ Input dispatch follows these rules:
 - Filter editing accepts text-editing and confirm/cancel input instead of normal navigation.
 - Non-modal actions depend on the current `FocusedPanel`.
 - Key press and repeat events are handled; release events are ignored to avoid duplicate processing while preserving terminal key repeat.
-- Drawing and mouse hit testing derive panel, Graph, Samples, scrollbar, and button regions from shared layout helpers. Processes table rendering, horizontal visibility, cell formatting, and header hit testing consume the same identity-based resolved column widths.
+- Drawing and mouse hit testing derive panel, Graph, Samples, scrollbar, and button regions from shared layout helpers. Processes table rendering, horizontal visibility, cell formatting, and header hit testing consume the same identity-based resolved column widths. Display-only truncation cues never replace the complete process name or executable path held in application state.
 
 The UI module renders state and exposes geometry helpers; it does not collect metrics or own histories. When Graphs are visible, the shared main-panel layout derives the Processes height and process page size from the filtered visible rows plus the optional Tracked Total row, capped at the existing panel maximum. Drawing, offset clamping, focus and mouse hit testing, Graph/Samples regions, and title controls all consume that same layout result. When Graphs are hidden, the Processes panel continues to use the full lower body. Exact colors, emphasis, cell widths, marker shapes, cursor-guide placement, and complete key lists are intentionally kept in implementation and rendering tests rather than duplicated here.
 
