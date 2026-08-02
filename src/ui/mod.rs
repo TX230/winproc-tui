@@ -21,7 +21,6 @@ pub(crate) mod tracked_remove_confirm;
 pub(crate) mod widgets;
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
     prelude::Style,
     widgets::{Block, Clear},
 };
@@ -47,13 +46,10 @@ pub(crate) use help::{
 };
 #[cfg(test)]
 pub(crate) use layout::{
-    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_graph_area_for_screen,
-    details_samples_area_for_screen, details_shared_controls_area_for_screen,
+    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_graph_area_for_app,
+    details_samples_area_for_app, details_shared_controls_area_for_app, details_slot_areas_for_app,
 };
-pub(crate) use layout::{
-    details_slot_areas_for_screen, details_slots_area_for_screen, process_table_area_for_screen,
-    process_table_page_size, screen_layout,
-};
+pub(crate) use layout::{main_panel_areas, main_panel_areas_for_app, screen_layout};
 use log_list::{draw_log_dir_dialog, draw_log_list};
 pub(crate) use log_list::{
     log_dir_button_at, log_list_index_at, log_list_page_size_for_screen,
@@ -119,9 +115,10 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     let layout = screen_layout(area);
+    let panels = layout::main_panel_areas_for_app(area, app);
 
     draw_header(frame, layout[0], app, theme);
-    draw_body(frame, layout[1], app, theme);
+    draw_body(frame, panels, app, theme);
     draw_footer(frame, layout[2], app, theme);
 
     if app.show_help {
@@ -177,19 +174,16 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
 }
 
-fn draw_body(frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect, app: &App, theme: Theme) {
-    let sections = layout::body_sections(area);
-
-    draw_system_panel(frame, sections[0], app, theme);
-    if app.show_details {
-        let lower = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(13), Constraint::Min(20)])
-            .split(sections[1]);
-        draw_process_table(frame, lower[0], app, theme);
-        draw_details_panel(frame, lower[1], app, theme);
-    } else {
-        draw_process_table(frame, sections[1], app, theme);
+fn draw_body(
+    frame: &mut ratatui::Frame<'_>,
+    panels: layout::MainPanelAreas,
+    app: &App,
+    theme: Theme,
+) {
+    draw_system_panel(frame, panels.system, app, theme);
+    draw_process_table(frame, panels.processes, app, theme);
+    if let Some(details) = panels.details {
+        draw_details_panel(frame, details, app, theme);
     }
 }
 

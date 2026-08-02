@@ -1,6 +1,9 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
-use crate::app::{GRAPH_SLOT_MIN_HEIGHT, GRAPH_SLOT_MIN_WIDTH, GraphSlotLayout};
+use crate::{
+    App,
+    app::{GRAPH_SLOT_MIN_HEIGHT, GRAPH_SLOT_MIN_WIDTH, GraphSlotLayout},
+};
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
 pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 15;
@@ -16,6 +19,22 @@ pub(crate) const DETAILS_SAMPLES_AB_SUMMARY_HEIGHT: u16 = 3;
 pub(crate) const DETAILS_SAMPLES_MAX_WIDTH: u16 = 49;
 pub(crate) const DETAILS_SAMPLES_MAX_WIDTH_NO_DELTA: u16 = 32;
 const DETAILS_GRAPH_MIN_WIDTH: u16 = 30;
+const PROCESS_TABLE_CHROME_HEIGHT: u16 = 3;
+pub(crate) const PROCESS_TABLE_MAX_HEIGHT: u16 = 13;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProcessTableLayout {
+    pub(crate) area: Rect,
+    pub(crate) page_size: usize,
+    pub(crate) show_tracked_total: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MainPanelAreas {
+    pub(crate) system: Rect,
+    pub(crate) processes: ProcessTableLayout,
+    pub(crate) details: Option<Rect>,
+}
 
 pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
     std::rc::Rc::from(
@@ -30,50 +49,76 @@ pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
     )
 }
 
-pub(crate) fn process_table_area(body_area: Rect) -> Rect {
-    let sections = body_sections(body_area);
-    sections[1]
-}
-
-pub(crate) fn process_table_area_for_screen(area: Rect, show_details: bool) -> Rect {
-    let layout = screen_layout(area);
-    if show_details {
-        details_process_table_area(layout[1])
-    } else {
-        process_table_area(layout[1])
-    }
-}
-
 pub(crate) fn system_panel_area_for_screen(area: Rect) -> Rect {
     let layout = screen_layout(area);
     let sections = body_sections(layout[1]);
     sections[0]
 }
 
-#[cfg(test)]
-pub(crate) fn details_panel_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
-    details_slots_area_for_screen(area, show_details)
+pub(crate) fn main_panel_areas_for_app(area: Rect, app: &App) -> MainPanelAreas {
+    main_panel_areas(
+        area,
+        app.show_details,
+        app.visible_process_count(),
+        app.has_visible_tracked_total_row(),
+    )
 }
 
-pub(crate) fn details_slots_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
-    show_details.then(|| {
-        let layout = screen_layout(area);
-        let sections = body_sections(layout[1]);
-        let lower = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(13), Constraint::Min(20)])
-            .split(sections[1]);
-        lower[1]
-    })
-}
-
-pub(crate) fn details_slot_areas_for_screen(
+pub(crate) fn main_panel_areas(
     area: Rect,
     show_details: bool,
+    visible_process_rows: usize,
+    has_tracked_total: bool,
+) -> MainPanelAreas {
+    let screen = screen_layout(area);
+    let sections = body_sections(screen[1]);
+    let system = sections[0];
+    if show_details {
+        let process_height = process_table_required_height(visible_process_rows, has_tracked_total);
+        let lower = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(process_height), Constraint::Min(20)])
+            .split(sections[1]);
+        MainPanelAreas {
+            system,
+            processes: process_table_layout(lower[0], has_tracked_total),
+            details: Some(lower[1]),
+        }
+    } else {
+        MainPanelAreas {
+            system,
+            processes: process_table_layout(sections[1], has_tracked_total),
+            details: None,
+        }
+    }
+}
+
+fn process_table_required_height(visible_process_rows: usize, has_tracked_total: bool) -> u16 {
+    let max_rows = PROCESS_TABLE_MAX_HEIGHT.saturating_sub(PROCESS_TABLE_CHROME_HEIGHT) as usize;
+    let rendered_rows = visible_process_rows
+        .saturating_add(usize::from(has_tracked_total))
+        .min(max_rows);
+    PROCESS_TABLE_CHROME_HEIGHT.saturating_add(rendered_rows as u16)
+}
+
+fn process_table_layout(area: Rect, has_tracked_total: bool) -> ProcessTableLayout {
+    let row_capacity = process_table_page_size(area);
+    let show_tracked_total = has_tracked_total && row_capacity > 0;
+    ProcessTableLayout {
+        area,
+        page_size: row_capacity.saturating_sub(usize::from(show_tracked_total)),
+        show_tracked_total,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn details_slot_areas_for_app(
+    area: Rect,
+    app: &App,
     slot_count: usize,
     slot_layout: GraphSlotLayout,
 ) -> Vec<Rect> {
-    let Some(content) = details_slots_area_for_screen(area, show_details) else {
+    let Some(content) = main_panel_areas_for_app(area, app).details else {
         return Vec::new();
     };
     details_slot_areas(content, slot_count, slot_layout)
@@ -134,11 +179,11 @@ pub(crate) fn details_shared_controls_area(area: Rect) -> Rect {
     )
 }
 
-pub(crate) fn details_shared_controls_area_for_screen(
-    area: Rect,
-    show_details: bool,
-) -> Option<Rect> {
-    details_slots_area_for_screen(area, show_details).map(details_shared_controls_area)
+#[cfg(test)]
+pub(crate) fn details_shared_controls_area_for_app(area: Rect, app: &App) -> Option<Rect> {
+    main_panel_areas_for_app(area, app)
+        .details
+        .map(details_shared_controls_area)
 }
 
 fn details_slots_content_area(area: Rect) -> Rect {
@@ -298,43 +343,23 @@ pub(crate) fn details_samples_max_width(show_sample_delta: bool) -> u16 {
 }
 
 #[cfg(test)]
-pub(crate) fn details_samples_page_size_for_screen(
-    area: Rect,
-    show_details: bool,
-    show_ab_summary: bool,
-) -> usize {
-    let Some(samples) = details_samples_area_for_screen(area, show_details) else {
-        return 1;
-    };
-    details_samples_row_capacity(samples.height, show_ab_summary, true)
+pub(crate) fn details_graph_area_for_app(area: Rect, app: &App) -> Option<Rect> {
+    let slot = details_slot_areas_for_app(area, app, 1, GraphSlotLayout::OneColumn)
+        .into_iter()
+        .next()?;
+    Some(details_graph_area(
+        slot,
+        app.show_samples_panel,
+        app.show_sample_delta,
+    ))
 }
 
 #[cfg(test)]
-pub(crate) fn details_graph_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
-    let slot = details_slot_areas_for_screen(area, show_details, 1, GraphSlotLayout::OneColumn)
+pub(crate) fn details_samples_area_for_app(area: Rect, app: &App) -> Option<Rect> {
+    let slot = details_slot_areas_for_app(area, app, 1, GraphSlotLayout::OneColumn)
         .into_iter()
         .next()?;
-    Some(details_graph_area(slot, true, true))
-}
-
-#[cfg(test)]
-pub(crate) fn details_samples_area_for_screen(area: Rect, show_details: bool) -> Option<Rect> {
-    let slot = details_slot_areas_for_screen(area, show_details, 1, GraphSlotLayout::OneColumn)
-        .into_iter()
-        .next()?;
-    Some(details_samples_area(slot, true))
-}
-
-#[cfg(test)]
-pub(crate) fn details_samples_area_for_screen_with_delta(
-    area: Rect,
-    show_details: bool,
-    show_sample_delta: bool,
-) -> Option<Rect> {
-    let slot = details_slot_areas_for_screen(area, show_details, 1, GraphSlotLayout::OneColumn)
-        .into_iter()
-        .next()?;
-    Some(details_samples_area(slot, show_sample_delta))
+    Some(details_samples_area(slot, app.show_sample_delta))
 }
 
 pub(crate) fn details_samples_row_capacity(
@@ -369,15 +394,6 @@ pub(crate) fn details_samples_summary_height(
     base + ab
 }
 
-pub(crate) fn details_process_table_area(body_area: Rect) -> Rect {
-    let sections = body_sections(body_area);
-    let lower = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(13), Constraint::Min(20)])
-        .split(sections[1]);
-    lower[0]
-}
-
 pub(crate) fn body_sections(body_area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
@@ -386,7 +402,7 @@ pub(crate) fn body_sections(body_area: Rect) -> std::rc::Rc<[Rect]> {
 }
 
 pub(crate) fn process_table_page_size(area: Rect) -> usize {
-    area.height.saturating_sub(3).max(1) as usize
+    area.height.saturating_sub(PROCESS_TABLE_CHROME_HEIGHT) as usize
 }
 
 pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -422,10 +438,14 @@ mod tests {
 
     #[test]
     fn process_table_area_matches_body_sections_without_details() {
-        let body = Rect::new(0, 1, 100, 40);
+        let screen = Rect::new(0, 0, 100, 43);
+        let body = screen_layout(screen)[1];
         let sections = body_sections(body);
 
-        assert_eq!(process_table_area(body), sections[1]);
+        assert_eq!(
+            main_panel_areas(screen, false, 0, false).processes.area,
+            sections[1]
+        );
     }
 
     #[test]
@@ -439,11 +459,11 @@ mod tests {
     #[test]
     fn details_layout_reserves_shared_controls_and_one_slot_frame() {
         let screen = Rect::new(0, 0, 100, 45);
-        let details = details_panel_area_for_screen(screen, true).unwrap();
-        let controls = details_shared_controls_area_for_screen(screen, true).unwrap();
-        let slot = details_slot_areas_for_screen(screen, true, 1, GraphSlotLayout::OneColumn)[0];
-        let graph = details_graph_area_for_screen(screen, true).unwrap();
-        let samples = details_samples_area_for_screen(screen, true).unwrap();
+        let details = main_panel_areas(screen, true, 3, false).details.unwrap();
+        let controls = details_shared_controls_area(details);
+        let slot = details_slot_areas(details, 1, GraphSlotLayout::OneColumn)[0];
+        let graph = details_graph_area(slot, true, true);
+        let samples = details_samples_area(slot, true);
 
         assert_eq!(controls, Rect::new(details.x, details.y, details.width, 1));
         assert_eq!(slot.y, details.y + 1);
@@ -454,6 +474,61 @@ mod tests {
         assert_eq!(samples.height, graph.height);
         assert_eq!(samples.right(), slot.right() - 1);
         assert!(samples.width <= DETAILS_SAMPLES_MAX_WIDTH);
+    }
+
+    #[test]
+    fn dynamic_process_height_matches_rendered_rows_and_caps_at_existing_maximum() {
+        let screen = Rect::new(0, 0, 120, 60);
+        let cases = [
+            (0, false, 3, 0, false),
+            (1, false, 4, 1, false),
+            (4, false, 7, 4, false),
+            (20, false, PROCESS_TABLE_MAX_HEIGHT, 10, false),
+            (0, true, 4, 0, true),
+            (1, true, 5, 1, true),
+            (4, true, 8, 4, true),
+            (20, true, PROCESS_TABLE_MAX_HEIGHT, 9, true),
+        ];
+
+        for (visible, has_total, height, page_size, show_total) in cases {
+            let panels = main_panel_areas(screen, true, visible, has_total);
+            assert_eq!(panels.processes.area.height, height, "visible={visible}");
+            assert_eq!(panels.processes.page_size, page_size, "visible={visible}");
+            assert_eq!(
+                panels.processes.show_tracked_total, show_total,
+                "visible={visible}"
+            );
+            assert_eq!(
+                panels.details.unwrap().y,
+                panels.processes.area.bottom(),
+                "visible={visible}"
+            );
+        }
+    }
+
+    #[test]
+    fn hidden_graphs_keep_full_height_process_layout() {
+        let screen = Rect::new(0, 0, 120, 60);
+        let empty = main_panel_areas(screen, false, 0, false);
+        let overflowing = main_panel_areas(screen, false, 100, true);
+
+        assert_eq!(empty.processes.area, overflowing.processes.area);
+        assert!(empty.details.is_none());
+        assert!(overflowing.details.is_none());
+    }
+
+    #[test]
+    fn resizing_gives_all_reclaimed_height_to_graphs() {
+        let short = main_panel_areas(Rect::new(0, 0, 120, 45), true, 2, false);
+        let tall = main_panel_areas(Rect::new(0, 0, 120, 60), true, 2, false);
+
+        assert_eq!(short.processes.area.height, 5);
+        assert_eq!(tall.processes.area.height, 5);
+        assert_eq!(short.details.unwrap().y, tall.details.unwrap().y);
+        assert_eq!(
+            tall.details.unwrap().height - short.details.unwrap().height,
+            15
+        );
     }
 
     #[test]
@@ -499,10 +574,10 @@ mod tests {
     #[test]
     fn details_samples_width_shrinks_when_delta_is_hidden() {
         let screen = Rect::new(0, 0, 120, 45);
-        let samples_with_delta = details_samples_area_for_screen_with_delta(screen, true, true)
-            .expect("samples area with delta");
-        let samples_without_delta = details_samples_area_for_screen_with_delta(screen, true, false)
-            .expect("samples area without delta");
+        let details = main_panel_areas(screen, true, 3, false).details.unwrap();
+        let slot = details_slot_areas(details, 1, GraphSlotLayout::OneColumn)[0];
+        let samples_with_delta = details_samples_area(slot, true);
+        let samples_without_delta = details_samples_area(slot, false);
 
         assert_eq!(samples_with_delta.width, DETAILS_SAMPLES_MAX_WIDTH);
         assert_eq!(
@@ -515,15 +590,15 @@ mod tests {
     #[test]
     fn details_samples_page_size_uses_shared_slot_content_height() {
         let screen = Rect::new(0, 0, 100, 45);
-        let samples = details_samples_area_for_screen(screen, true).unwrap();
+        let details = main_panel_areas(screen, true, 3, false).details.unwrap();
+        let slot = details_slot_areas(details, 1, GraphSlotLayout::OneColumn)[0];
+        let samples = details_samples_area(slot, true);
 
+        let without_ab = details_samples_row_capacity(samples.height, false, true);
+        let with_ab = details_samples_row_capacity(samples.height, true, true);
         assert_eq!(
-            details_samples_page_size_for_screen(screen, true, false),
-            details_samples_row_capacity(samples.height, false, true)
-        );
-        assert_eq!(
-            details_samples_page_size_for_screen(screen, true, false),
-            details_samples_page_size_for_screen(screen, true, true) + 3
+            without_ab,
+            with_ab + DETAILS_SAMPLES_AB_SUMMARY_HEIGHT as usize
         );
     }
 }

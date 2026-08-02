@@ -1780,7 +1780,14 @@ impl App {
         if slot_count == 0 {
             return true;
         }
-        crate::ui::details_slots_area_for_screen(self.last_screen_area, true).is_some_and(|area| {
+        crate::ui::main_panel_areas(
+            self.last_screen_area,
+            true,
+            self.visible_process_count(),
+            self.has_visible_tracked_total_row(),
+        )
+        .details
+        .is_some_and(|area| {
             !crate::ui::layout::details_slot_areas(area, slot_count, layout).is_empty()
         })
     }
@@ -2734,9 +2741,10 @@ impl App {
     }
 
     fn process_table_area_width(&self) -> u16 {
-        let area =
-            crate::ui::process_table_area_for_screen(self.last_screen_area, self.show_details);
-        area.width
+        crate::ui::main_panel_areas_for_app(self.last_screen_area, self)
+            .processes
+            .area
+            .width
     }
 
     fn visible_process_metric_range(&self) -> std::ops::Range<usize> {

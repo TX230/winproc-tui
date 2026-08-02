@@ -16,19 +16,19 @@ use crate::{
     ui::{
         THEMES, TrackedListNameButton, column_picker_close_button_area_for_screen,
         column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
-        details_slot_areas_for_screen, display_area_warning_ok_button_area,
+        display_area_warning_ok_button_area,
         format::format_integer,
         help_area, help_close_button_area, help_scrollbar_area,
         layout::{
-            details_graph_area, details_graph_chart_area, details_samples_area,
-            details_shared_controls_area_for_screen, details_slot_title_area,
+            ProcessTableLayout, details_graph_area, details_graph_chart_area, details_samples_area,
+            details_shared_controls_area, details_slot_areas, details_slot_title_area,
             graph_shared_control_areas,
         },
-        log_dir_button_at, log_list_index_at, metric_column_warning_ok_button_area,
-        no_graph_metrics_warning_ok_button_area, open_files_close_button_area_for_screen,
-        process_info_close_button_area_for_screen, process_info_content_area_for_screen,
-        process_kill_button_at, process_metric_column_index_at, process_table_area_for_screen,
-        process_table_page_size, process_tracked_only_control_area, quit_confirm_button_at,
+        log_dir_button_at, log_list_index_at, main_panel_areas_for_app,
+        metric_column_warning_ok_button_area, no_graph_metrics_warning_ok_button_area,
+        open_files_close_button_area_for_screen, process_info_close_button_area_for_screen,
+        process_info_content_area_for_screen, process_kill_button_at,
+        process_metric_column_index_at, process_tracked_only_control_area, quit_confirm_button_at,
         ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
         recording_overwrite_button_at, recording_path_button_at,
         system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
@@ -1781,7 +1781,7 @@ impl App {
         }
 
         if contains_point(
-            process_table_area_for_screen(screen_area, self.show_details),
+            main_panel_areas_for_app(screen_area, self).processes.area,
             x,
             y,
         ) {
@@ -1805,17 +1805,14 @@ impl App {
     }
 
     fn select_process_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
-        let area = process_table_area_for_screen(screen_area, self.show_details);
+        let layout = main_panel_areas_for_app(screen_area, self).processes;
+        let area = layout.area;
         if !contains_point(area, x, y) {
             return;
         }
 
-        let Some(row_index) = process_row_index_at(
-            area,
-            y,
-            self.process_table_state.offset(),
-            self.has_visible_tracked_total_row(),
-        ) else {
+        let Some(row_index) = process_row_index_at(layout, y, self.process_table_state.offset())
+        else {
             return;
         };
         if row_index < self.visible_process_count() {
@@ -1893,7 +1890,7 @@ impl App {
         }
 
         if contains_point(
-            process_table_area_for_screen(screen_area, self.show_details),
+            main_panel_areas_for_app(screen_area, self).processes.area,
             x,
             y,
         ) || self.focused_panel == FocusedPanel::Processes
@@ -1988,31 +1985,24 @@ fn contains_point(area: Rect, x: u16, y: u16) -> bool {
     x >= area.x && x < area.right() && y >= area.y && y < area.bottom()
 }
 
-fn process_row_index_at(
-    area: Rect,
-    y: u16,
-    offset: usize,
-    has_fixed_total_row: bool,
-) -> Option<usize> {
+fn process_row_index_at(layout: ProcessTableLayout, y: u16, offset: usize) -> Option<usize> {
+    let area = layout.area;
     let first_row_y = area.y.saturating_add(2);
-    let reserves_total_row = has_fixed_total_row && process_table_page_size(area) > 1;
-    let bottom_margin = 1 + u16::from(reserves_total_row);
-    let last_row_y = area.bottom().saturating_sub(bottom_margin);
+    let visible_height = u16::try_from(layout.page_size).unwrap_or(u16::MAX);
+    let last_row_y = first_row_y.saturating_add(visible_height);
     (y >= first_row_y && y < last_row_y).then(|| offset + (y - first_row_y) as usize)
 }
 
 fn visible_slot_areas_for_app(app: &App, screen_area: Rect) -> Vec<(usize, Rect)> {
     let indices = app.visible_graph_slot_indices();
-    details_slot_areas_for_screen(
-        screen_area,
-        app.show_details,
-        indices.len(),
-        app.graph_slot_layout,
-    )
-    .into_iter()
-    .zip(indices)
-    .map(|(area, index)| (index, area))
-    .collect()
+    let Some(details) = main_panel_areas_for_app(screen_area, app).details else {
+        return Vec::new();
+    };
+    details_slot_areas(details, indices.len(), app.graph_slot_layout)
+        .into_iter()
+        .zip(indices)
+        .map(|(area, index)| (index, area))
+        .collect()
 }
 
 fn graph_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, Rect)> {
@@ -2046,7 +2036,7 @@ fn graph_item_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<us
 }
 
 fn process_tracked_only_control_area_for_screen(screen_area: Rect, app: &App) -> Option<Rect> {
-    let area = process_table_area_for_screen(screen_area, app.show_details);
+    let area = main_panel_areas_for_app(screen_area, app).processes.area;
     process_tracked_only_control_area(area, app)
 }
 
@@ -2137,8 +2127,10 @@ fn graph_shared_control_areas_for_app(
     app: &App,
     screen_area: Rect,
 ) -> crate::ui::layout::GraphSharedControlAreas {
-    let controls =
-        details_shared_controls_area_for_screen(screen_area, app.show_details).unwrap_or_default();
+    let controls = main_panel_areas_for_app(screen_area, app)
+        .details
+        .map(details_shared_controls_area)
+        .unwrap_or_default();
     graph_shared_control_areas(controls, app.show_samples_panel)
 }
 
@@ -2308,12 +2300,22 @@ mod tests {
     #[test]
     fn process_row_index_uses_table_header_and_offset() {
         let area = Rect::new(0, 10, 80, 13);
+        let without_total = ProcessTableLayout {
+            area,
+            page_size: 10,
+            show_tracked_total: false,
+        };
+        let with_total = ProcessTableLayout {
+            area,
+            page_size: 9,
+            show_tracked_total: true,
+        };
 
-        assert_eq!(process_row_index_at(area, 12, 5, false), Some(5));
-        assert_eq!(process_row_index_at(area, 15, 5, false), Some(8));
-        assert_eq!(process_row_index_at(area, 11, 5, false), None);
-        assert_eq!(process_row_index_at(area, 22, 5, false), None);
-        assert_eq!(process_row_index_at(area, 21, 5, true), None);
+        assert_eq!(process_row_index_at(without_total, 12, 5), Some(5));
+        assert_eq!(process_row_index_at(without_total, 15, 5), Some(8));
+        assert_eq!(process_row_index_at(without_total, 11, 5), None);
+        assert_eq!(process_row_index_at(without_total, 22, 5), None);
+        assert_eq!(process_row_index_at(with_total, 21, 5), None);
     }
 
     #[test]

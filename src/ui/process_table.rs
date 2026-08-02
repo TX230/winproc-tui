@@ -13,6 +13,7 @@ use crate::{
         Theme,
         format::{format_compact_bytes, format_integer, format_mbps},
         graph_slot::graph_slot_marker_span,
+        layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
     },
 };
@@ -38,24 +39,22 @@ struct ProcessTitleSegment {
 
 pub(crate) fn draw_process_table(
     frame: &mut ratatui::Frame<'_>,
-    area: Rect,
+    layout: ProcessTableLayout,
     app: &App,
     theme: Theme,
 ) {
+    let area = layout.area;
     let title = process_table_title(app, theme);
     let block = process_table_block(title, app, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let table_area = inner;
-    let total_row = app.tracked_total_visible_row();
-    let row_capacity = process_table_row_capacity(table_area);
-    let reserve_total_row = total_row.is_some() && row_capacity > 1;
-    let page_size = if reserve_total_row {
-        row_capacity.saturating_sub(1)
-    } else {
-        row_capacity
-    };
+    let total_row = layout
+        .show_tracked_total
+        .then(|| app.tracked_total_visible_row())
+        .flatten();
+    let page_size = layout.page_size;
     let visible_process_count = app.visible_process_count();
     let max_offset = visible_process_count.saturating_sub(page_size);
     let offset = app.process_table_state.offset().min(max_offset);
@@ -86,18 +85,16 @@ pub(crate) fn draw_process_table(
             )
         })
         .collect::<Vec<_>>();
-    if reserve_total_row {
-        if let Some(total_row) = total_row {
-            rows.push(process_table_row(
-                &total_row,
-                app,
-                &visible_columns,
-                full_path_width,
-                selected_table_column_index,
-                false,
-                theme,
-            ));
-        }
+    if let Some(total_row) = total_row {
+        rows.push(process_table_row(
+            &total_row,
+            app,
+            &visible_columns,
+            full_path_width,
+            selected_table_column_index,
+            false,
+            theme,
+        ));
     }
 
     let mut header_cells = vec![
@@ -254,10 +251,6 @@ fn visible_metric_columns(
             }
         })
         .collect()
-}
-
-fn process_table_row_capacity(table_area: Rect) -> usize {
-    table_area.height.saturating_sub(1).max(1) as usize
 }
 
 fn metric_column_window_width(column: MetricColumn, widths: &ProcessColumnWidths) -> u16 {

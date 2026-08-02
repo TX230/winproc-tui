@@ -86,10 +86,9 @@ use std::sync::mpsc::{self, TryRecvError};
 use ui::layout::centered_rect;
 #[cfg(test)]
 use ui::{
-    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES,
-    details_graph_area_for_screen, details_samples_area_for_screen,
-    details_shared_controls_area_for_screen, details_slot_areas_for_screen, process_kill_button_at,
-    process_kill_dialog_area, process_table_area_for_screen, process_table_page_size,
+    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES, details_graph_area_for_app,
+    details_samples_area_for_app, details_shared_controls_area_for_app, details_slot_areas_for_app,
+    main_panel_areas, main_panel_areas_for_app, process_kill_button_at, process_kill_dialog_area,
     process_table_visible_column_count, screen_layout,
 };
 #[cfg(test)]
@@ -791,20 +790,17 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn system_history_tracks_real_commit_samples_only() {
-        assert_eq!(process_table_page_size(Rect::new(0, 0, 80, 13)), 10);
+    fn process_page_size_uses_full_height_without_graphs_and_caps_with_graphs() {
         assert_eq!(
-            process_table_page_size(process_table_area_for_screen(
-                Rect::new(0, 0, 120, 40),
-                false,
-            )),
+            main_panel_areas(Rect::new(0, 0, 120, 40), false, 30, false)
+                .processes
+                .page_size,
             27
         );
         assert_eq!(
-            process_table_page_size(process_table_area_for_screen(
-                Rect::new(0, 0, 120, 60),
-                true,
-            )),
+            main_panel_areas(Rect::new(0, 0, 120, 60), true, 30, false)
+                .processes
+                .page_size,
             10
         );
     }
@@ -929,7 +925,9 @@ processes = ["api.exe", "worker.exe"]
         }
 
         let screen = Rect::new(0, 0, 100, 45);
-        let page_size = process_table_page_size(process_table_area_for_screen(screen, false));
+        let page_size = main_panel_areas(screen, false, 1_000, false)
+            .processes
+            .page_size;
 
         for row_count in [120usize, 1_000usize] {
             let mut app = make_test_app(row_count, page_size);
@@ -1617,6 +1615,130 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn process_panel_shrinks_with_graphs_and_restores_full_height_when_hidden() {
+        let mut app = make_test_app(2, 10);
+        assign_private_graph(&mut app);
+        let screen = Rect::new(0, 0, 120, 60);
+
+        app::sync_layout_state(&mut app, screen);
+        let shown = main_panel_areas_for_app(screen, &app);
+        assert_eq!(shown.processes.area.height, 5);
+        assert_eq!(shown.processes.page_size, 2);
+        assert_eq!(shown.details.unwrap().y, shown.processes.area.bottom());
+
+        app.on_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE))
+            .unwrap();
+        app::sync_layout_state(&mut app, screen);
+        let hidden = main_panel_areas_for_app(screen, &app);
+        assert!(hidden.processes.area.height > shown.processes.area.height);
+        assert!(hidden.details.is_none());
+
+        app.on_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE))
+            .unwrap();
+        app::sync_layout_state(&mut app, screen);
+        assert_eq!(
+            main_panel_areas_for_app(screen, &app).processes,
+            shown.processes
+        );
+    }
+
+    #[test]
+    fn dynamic_process_page_size_preserves_selection_and_clamps_offset() {
+        let mut app = make_test_app(20, 10);
+        assign_private_graph(&mut app);
+        let screen = Rect::new(0, 0, 120, 60);
+        app::sync_layout_state(&mut app, screen);
+        app.select_process_index(15);
+        app.ensure_selected_row_visible();
+        assert_eq!(app.process_table_state.offset(), 6);
+
+        app.filter_text = "proc-15".to_string();
+        app.rebuild_visible_process_cache();
+        app::sync_layout_state(&mut app, screen);
+
+        assert_eq!(app.process_page_size, 1);
+        assert_eq!(app.process_table_state.offset(), 0);
+        assert_eq!(app.selected_visible_process().unwrap().name, "proc-15");
+
+        app.filter_text.clear();
+        app.rebuild_visible_process_cache();
+        app::sync_layout_state(&mut app, screen);
+
+        assert_eq!(app.process_page_size, 10);
+        assert_eq!(app.process_table_state.offset(), 6);
+        assert_eq!(app.selected_visible_process().unwrap().name, "proc-15");
+    }
+
+    #[test]
+    fn dynamic_graph_and_samples_regions_recompute_on_resize() {
+        let mut app = make_test_app(2, 10);
+        assign_private_graph(&mut app);
+        let short_screen = Rect::new(0, 0, 120, 45);
+        let tall_screen = Rect::new(0, 0, 120, 60);
+
+        app::sync_layout_state(&mut app, short_screen);
+        let short = main_panel_areas_for_app(short_screen, &app);
+        let short_sample_page_size = app.details_sample_page_size;
+
+        app::sync_layout_state(&mut app, tall_screen);
+        let tall = main_panel_areas_for_app(tall_screen, &app);
+
+        assert_eq!(short.processes.area.height, tall.processes.area.height);
+        assert_eq!(
+            tall.details.unwrap().height - short.details.unwrap().height,
+            15
+        );
+        assert_eq!(app.details_sample_page_size - short_sample_page_size, 15);
+    }
+
+    #[test]
+    fn tracked_total_is_rendered_when_it_is_the_only_process_row() {
+        let mut app = make_test_app(1, 10);
+        app.snapshot.processes[0].name = "target.exe".to_string();
+        app.rebuild_visible_process_cache();
+        app.clamp_process_table_state();
+        assign_private_graph(&mut app);
+        track_process_name(&mut app, "target.exe");
+        app.filter_text = "missing".to_string();
+        app.rebuild_visible_process_cache();
+        let screen = Rect::new(0, 0, 120, 45);
+
+        app::sync_layout_state(&mut app, screen);
+        let panels = main_panel_areas_for_app(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (_, total_y) =
+            find_text_position(&buffer, "Tracked Total").expect("Tracked Total should render");
+
+        assert_eq!(app.visible_process_count(), 0);
+        assert_eq!(panels.processes.area.height, 4);
+        assert_eq!(panels.processes.page_size, 0);
+        assert!(panels.processes.show_tracked_total);
+        assert_eq!(total_y, panels.processes.area.y + 2);
+    }
+
+    #[test]
+    fn mouse_selection_uses_dynamic_process_graph_boundary() {
+        let mut app = make_test_app(3, 10);
+        assign_private_graph(&mut app);
+        let screen = Rect::new(0, 0, 120, 45);
+        app::sync_layout_state(&mut app, screen);
+        let panels = main_panel_areas_for_app(screen, &app);
+        let process_area = panels.processes.area;
+
+        app.on_mouse(
+            left_click(process_area.x + 4, process_area.bottom() - 2),
+            screen,
+        );
+        assert_eq!(app.process_table_state.selected(), Some(2));
+
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
+        app.on_mouse(left_click(graph.x + 1, graph.y + 1), screen);
+
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.process_table_state.selected(), Some(2));
+    }
+
+    #[test]
     fn g_without_graph_metrics_shows_warning_dialog() {
         let mut app = make_test_app(3, 10);
 
@@ -1777,7 +1899,7 @@ processes = ["api.exe", "worker.exe"]
 
     #[test]
     fn adding_graph_slot_requires_minimum_display_area() {
-        let mut app = make_test_app(3, 10);
+        let mut app = make_test_app(30, 10);
         app.set_screen_area(Rect::new(0, 0, 120, 45));
 
         app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
@@ -1794,7 +1916,7 @@ processes = ["api.exe", "worker.exe"]
 
     #[test]
     fn resizing_closes_high_numbered_graph_slots_that_no_longer_fit() {
-        let mut app = make_test_app(3, 10);
+        let mut app = make_test_app(30, 10);
         let identity = app.selected_visible_process_identity().unwrap();
         app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
         app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
@@ -1973,7 +2095,7 @@ processes = ["api.exe", "worker.exe"]
             );
         }
         let screen = Rect::new(0, 0, 120, 60);
-        let samples = details_samples_area_for_screen(screen, app.show_details).unwrap();
+        let samples = details_samples_area_for_app(screen, &app).unwrap();
         let scrollbar_x = samples.right().saturating_sub(1);
         let scrollbar_top = samples.y;
         let scrollbar_bottom = samples.bottom().saturating_sub(1);
@@ -2183,7 +2305,7 @@ processes = ["api.exe", "worker.exe"]
             );
         }
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
         let start_x = graph.x.saturating_add(graph.width / 2);
         let y = graph.y.saturating_add(5);
 
@@ -2233,7 +2355,7 @@ processes = ["api.exe", "worker.exe"]
             );
         }
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
         let start_x = graph.x.saturating_add(20);
         let y = graph.y.saturating_add(5);
 
@@ -2270,7 +2392,7 @@ processes = ["api.exe", "worker.exe"]
         app.graph_time_offset_seconds = 60;
         app.details_live = false;
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
         let x = graph.x.saturating_add(30);
         let y = graph.y.saturating_add(5);
 
@@ -2314,7 +2436,7 @@ processes = ["api.exe", "worker.exe"]
         let selected = app.details_sample_selected;
         assert_eq!(app.graph_time_offset_seconds, 60);
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
         let start_x = graph.x.saturating_add(30);
         let y = graph.y.saturating_add(5);
 
@@ -2517,7 +2639,7 @@ processes = ["api.exe", "worker.exe"]
         }
         app.toggle_graph_all_samples();
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
         let start_x = graph.x.saturating_add(40);
         let y = graph.y.saturating_add(5);
 
@@ -2566,7 +2688,7 @@ processes = ["api.exe", "worker.exe"]
         }
 
         let screen = Rect::new(0, 0, 120, 45);
-        let controls = details_shared_controls_area_for_screen(screen, app.show_details).unwrap();
+        let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
         let x = controls
             .right()
             .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
@@ -2698,7 +2820,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.graph_y_axis_zero_min);
 
         let screen = Rect::new(0, 0, 120, 45);
-        let controls = details_shared_controls_area_for_screen(screen, app.show_details).unwrap();
+        let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
         let x = controls
             .right()
             .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
@@ -2740,7 +2862,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.graph_y_axis_zero_min);
 
         let screen = Rect::new(0, 0, 120, 45);
-        let controls = details_shared_controls_area_for_screen(screen, app.show_details).unwrap();
+        let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
         let y = controls.y;
         let all_samples_x = controls
             .right()
@@ -2790,11 +2912,10 @@ processes = ["api.exe", "worker.exe"]
         app.details_sample_selected = 0;
 
         let screen = Rect::new(0, 0, 120, 45);
-        let graph =
-            details_slot_areas_for_screen(screen, app.show_details, 1, app.graph_slot_layout)
-                .into_iter()
-                .next()
-                .expect("graph slot");
+        let graph = details_slot_areas_for_app(screen, &app, 1, app.graph_slot_layout)
+            .into_iter()
+            .next()
+            .expect("graph slot");
         let x = graph.right().saturating_sub(2);
         let y = graph.y.saturating_add(4);
 
@@ -2892,7 +3013,7 @@ processes = ["api.exe", "worker.exe"]
 
     #[test]
     fn switching_to_one_column_closes_high_numbered_graph_slots_that_do_not_fit() {
-        let mut app = make_test_app(3, 10);
+        let mut app = make_test_app(30, 10);
         let identity = app.selected_visible_process_identity().unwrap();
         app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
         app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
@@ -2924,7 +3045,7 @@ processes = ["api.exe", "worker.exe"]
 
     #[test]
     fn showing_samples_from_two_columns_closes_graph_slots_that_do_not_fit() {
-        let mut app = make_test_app(3, 10);
+        let mut app = make_test_app(30, 10);
         let identity = app.selected_visible_process_identity().unwrap();
         app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
         app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
@@ -3007,7 +3128,7 @@ processes = ["api.exe", "worker.exe"]
         app.select_process_index(0);
 
         let screen = Rect::new(0, 0, 120, 60);
-        let slot = details_slot_areas_for_screen(screen, true, 1, app.graph_slot_layout)
+        let slot = details_slot_areas_for_app(screen, &app, 1, app.graph_slot_layout)
             .into_iter()
             .next()
             .unwrap();
@@ -3336,7 +3457,7 @@ processes = ["api.exe", "worker.exe"]
 
         let screen = Rect::new(0, 0, 120, 45);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let graph = details_graph_area_for_screen(screen, app.show_details).unwrap();
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
         let (_, value_y) = find_text_position_in_area(&buffer, graph, "424,242")
             .expect("selected graph value should render in graph");
         let a_labels = find_styled_symbol_positions_in_area(&buffer, graph, "A", THEMES[0].warning);
@@ -3750,7 +3871,7 @@ processes = ["api.exe", "worker.exe"]
         app.show_details = false;
         let screen = Rect::new(0, 0, 72, 45);
         app.set_screen_area(screen);
-        let area = process_table_area_for_screen(screen, app.show_details);
+        let area = main_panel_areas_for_app(screen, &app).processes.area;
         let visible_count = process_table_visible_column_count(
             area.width,
             &app.process_columns,
@@ -7409,7 +7530,7 @@ processes = ["api.exe", "worker.exe"]
 
         let screen = Rect::new(0, 0, 100, 30);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let process_area = process_table_area_for_screen(screen, app.show_details);
+        let process_area = main_panel_areas_for_app(screen, &app).processes.area;
         let (_, process_y) =
             find_text_position(&buffer, "target.exe").expect("tracked process should be rendered");
         let (_, total_y) =
@@ -8298,7 +8419,7 @@ processes = ["api.exe", "worker.exe"]
     fn assert_modal_rect_focus_border(app: &App, popup: Rect) {
         let screen = Rect::new(0, 0, 100, 45);
         let buffer = render_app_to_buffer(app, screen.width, screen.height);
-        let process_table = process_table_area_for_screen(screen, app.show_details);
+        let process_table = main_panel_areas_for_app(screen, app).processes.area;
         let theme = app.theme();
 
         assert_eq!(

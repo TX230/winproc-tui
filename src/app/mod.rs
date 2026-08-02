@@ -18,11 +18,12 @@ use crossterm::event::{self, Event};
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use crate::ui::{
-    column_picker_page_size_for_screen, details_slot_areas_for_screen, draw,
-    help_page_size_for_screen,
-    layout::{details_samples_area, details_samples_row_capacity},
-    open_files_page_size_for_screen, process_info_page_size_for_screen,
-    process_table_area_for_screen, process_table_page_size, tracked_lists_page_size_for_screen,
+    column_picker_page_size_for_screen, draw, help_page_size_for_screen,
+    layout::{
+        MainPanelAreas, details_samples_area, details_samples_row_capacity, details_slot_areas,
+    },
+    main_panel_areas_for_app, open_files_page_size_for_screen, process_info_page_size_for_screen,
+    tracked_lists_page_size_for_screen,
 };
 
 const EVENT_POLL_SLICE: Duration = Duration::from_millis(50);
@@ -244,18 +245,12 @@ impl LoopTrace {
     }
 }
 
-fn sync_layout_state(app: &mut App, screen_area: Rect) {
+pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.set_screen_area(screen_area);
     app.close_graph_slots_that_do_not_fit();
-    let process_area = process_table_area_for_screen(screen_area, app.show_details);
-    let process_page_size = process_table_page_size(process_area);
-    let process_page_size = if app.has_visible_tracked_total_row() && process_page_size > 1 {
-        process_page_size.saturating_sub(1)
-    } else {
-        process_page_size
-    };
-    app.set_process_page_size(process_page_size);
-    app.set_details_sample_page_size(details_samples_page_size_for_app(screen_area, app));
+    let panels = main_panel_areas_for_app(screen_area, app);
+    app.set_process_page_size(panels.processes.page_size);
+    app.set_details_sample_page_size(details_samples_page_size_for_app(&panels, app));
     app.set_help_page_size(help_page_size_for_screen(screen_area));
     app.set_column_picker_page_size(column_picker_page_size_for_screen(screen_area));
     app.set_log_list_page_size(crate::ui::log_list_page_size_for_screen(screen_area));
@@ -266,17 +261,15 @@ fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.clamp_process_table_state();
 }
 
-fn details_samples_page_size_for_app(screen_area: Rect, app: &App) -> usize {
+fn details_samples_page_size_for_app(panels: &MainPanelAreas, app: &App) -> usize {
     if !app.show_samples_panel {
         return 1;
     }
     let slot_count = app.active_graph_slot_count().max(1);
-    let slot_areas = details_slot_areas_for_screen(
-        screen_area,
-        app.show_details,
-        slot_count,
-        app.graph_slot_layout,
-    );
+    let Some(details) = panels.details else {
+        return 1;
+    };
+    let slot_areas = details_slot_areas(details, slot_count, app.graph_slot_layout);
     let Some(slot) = slot_areas.get(app.active_graph_visible_index()).copied() else {
         return 1;
     };

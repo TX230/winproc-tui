@@ -157,7 +157,7 @@ Input dispatch follows these rules:
 - Key press and repeat events are handled; release events are ignored to avoid duplicate processing while preserving terminal key repeat.
 - Drawing and mouse hit testing derive panel, Graph, Samples, scrollbar, and button regions from shared layout helpers. Processes table rendering, horizontal visibility, cell formatting, and header hit testing consume the same identity-based resolved column widths.
 
-The UI module renders state and exposes geometry helpers; it does not collect metrics or own histories. Exact colors, emphasis, cell widths, marker shapes, cursor-guide placement, and complete key lists are intentionally kept in implementation and rendering tests rather than duplicated here.
+The UI module renders state and exposes geometry helpers; it does not collect metrics or own histories. When Graphs are visible, the shared main-panel layout derives the Processes height and process page size from the filtered visible rows plus the optional Tracked Total row, capped at the existing panel maximum. Drawing, offset clamping, focus and mouse hit testing, Graph/Samples regions, and title controls all consume that same layout result. When Graphs are hidden, the Processes panel continues to use the full lower body. Exact colors, emphasis, cell widths, marker shapes, cursor-guide placement, and complete key lists are intentionally kept in implementation and rendering tests rather than duplicated here.
 
 ## 7. Recording and Log View
 
@@ -202,6 +202,7 @@ The most important implementation invariants are:
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
 - the working Tracked List must not overwrite a saved named definition without an explicit save action;
 - drawing and hit testing must use the same layout geometry;
+- dynamic Processes sizing must reserve a visible Tracked Total row and give reclaimed height to Graphs without changing the full-height Graphs-hidden layout;
 - terminal resizes and one-column transitions may remove only the highest-numbered Graph slots required to restore a valid layout;
 - two-column Graph layout must not display the Samples panel;
 - Graph shared state must not replace per-slot sample-availability checks;
