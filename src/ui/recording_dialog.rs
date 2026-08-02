@@ -55,22 +55,18 @@ pub(crate) fn draw_recording_path_dialog(
         input_area,
     );
     frame.render_widget(
-        Paragraph::new("Missing directories will be created automatically. Tab completes.")
+        Paragraph::new("Missing directories will be created automatically.")
             .style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y.saturating_add(3), content.width, 1),
     );
     frame.render_widget(
-        Paragraph::new(confirm_dialog::button_line(
-            &[
-                (
-                    " Start ",
-                    app.recording_path_selection == RecordingPathSelection::Start,
-                ),
-                (
-                    " Cancel ",
-                    app.recording_path_selection == RecordingPathSelection::Cancel,
-                ),
-            ],
+        Paragraph::new("Enter starts · Esc cancels · Tab completes")
+            .style(Style::default().fg(theme.muted)),
+        Rect::new(content.x, content.y.saturating_add(4), content.width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new(recording_path_button_line(
+            app.recording_path_selection,
             theme,
         ))
         .alignment(Alignment::Right),
@@ -220,29 +216,54 @@ fn recording_block(title: &'static str, theme: Theme) -> ratatui::widgets::Block
     panel_block_focused(title, theme, true)
 }
 
+fn recording_path_button_line(selection: RecordingPathSelection, theme: Theme) -> Line<'static> {
+    Line::from(vec![
+        button(
+            " Start ",
+            selection == RecordingPathSelection::Start,
+            theme.accent,
+            theme,
+        ),
+        Span::raw("   "),
+        button(
+            " Cancel ",
+            selection == RecordingPathSelection::Cancel,
+            theme.accent,
+            theme,
+        ),
+    ])
+}
+
 fn overwrite_button_line(selection: RecordingOverwriteSelection, theme: Theme) -> Line<'static> {
     Line::from(vec![
         button(
             " Overwrite ",
             selection == RecordingOverwriteSelection::Overwrite,
+            theme.warning,
             theme,
         ),
         Span::raw("   "),
         button(
             " Cancel ",
             selection == RecordingOverwriteSelection::Cancel,
+            theme.warning,
             theme,
         ),
     ])
 }
 
-fn button(label: &'static str, selected: bool, theme: Theme) -> Span<'static> {
+fn button(
+    label: &'static str,
+    selected: bool,
+    selected_background: Color,
+    theme: Theme,
+) -> Span<'static> {
     if selected {
         Span::styled(
             format!("[{label}]"),
             Style::default()
                 .fg(confirm_button_text(theme))
-                .bg(theme.warning)
+                .bg(selected_background)
                 .add_modifier(Modifier::BOLD),
         )
     } else {

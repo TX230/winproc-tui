@@ -5804,6 +5804,27 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn recording_path_start_button_starts_with_mouse() {
+        let screen = Rect::new(0, 0, 100, 45);
+        let path = unique_recording_path("mouse-start");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position(&buffer, "[ Start ]").expect("Start button should render");
+
+        app.on_mouse(left_click(x + 2, y), screen);
+
+        assert!(!app.show_recording_path_dialog);
+        assert!(app.recording_session.is_some());
+        app.stop_recording().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn recording_path_dialog_tab_tries_completion_without_switching_buttons() {
         let mut app = make_test_app(1, 10);
         app.show_recording_path_dialog = true;
@@ -6016,7 +6037,10 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Missing directories will be created automatically."),
             "{rendered}"
         );
-        assert!(rendered.contains("Tab completes."), "{rendered}");
+        assert!(
+            rendered.contains("Enter starts · Esc cancels · Tab completes"),
+            "{rendered}"
+        );
         assert!(rendered.contains("[ Start ]   [ Cancel ]"), "{rendered}");
         assert!(!rendered.contains("Log file path"), "{rendered}");
         assert!(
@@ -6032,6 +6056,37 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(!rendered.contains("C:/logs/|example.log"), "{rendered}");
+    }
+
+    #[test]
+    fn recording_dialog_actions_use_semantic_roles_in_both_themes() {
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            app.show_recording_path_dialog = true;
+            app.recording_path_draft = "C:/logs/example.log".to_string();
+            app.recording_path_cursor = app.recording_path_draft.len();
+
+            let path_buffer = render_app_to_buffer(&app, 100, 45);
+            let (start_x, start_y) =
+                find_text_position(&path_buffer, "[ Start ]").expect("Start button should render");
+            assert_eq!(path_buffer[(start_x, start_y)].bg, theme.accent);
+            assert_ne!(path_buffer[(start_x, start_y)].bg, theme.warning);
+
+            app.show_recording_overwrite_confirmation = true;
+            app.recording_overwrite_selection = app::RecordingOverwriteSelection::Overwrite;
+            let overwrite_buffer = render_app_to_buffer(&app, 100, 45);
+            let (overwrite_x, overwrite_y) = find_text_position(&overwrite_buffer, "[ Overwrite ]")
+                .expect("Overwrite button should render");
+            assert_eq!(
+                overwrite_buffer[(overwrite_x, overwrite_y)].bg,
+                theme.warning
+            );
+            assert_ne!(
+                overwrite_buffer[(overwrite_x, overwrite_y)].bg,
+                theme.accent
+            );
+        }
     }
 
     #[test]
@@ -6302,7 +6357,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(!rendered.contains("Descriptions are concise"), "{rendered}");
         assert!(
-            rendered.contains("Up/Down move  Space toggle  Enter/Esc close"),
+            rendered.contains("Up/Down select  Space toggle  Enter/Esc close"),
             "{rendered}"
         );
         assert!(rendered.contains("[ Close ]"), "{rendered}");

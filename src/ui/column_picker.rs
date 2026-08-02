@@ -14,7 +14,7 @@ use crate::{
 const HEADER_TITLE: &str = "Select process columns";
 const CLOSE_BUTTON: &str = "[ Close ]";
 const SHORTCUT_ITEMS: [(&str, &str); 3] = [
-    ("Up/Down", "move"),
+    ("Up/Down", "select"),
     ("Space", "toggle"),
     ("Enter/Esc", "close"),
 ];
