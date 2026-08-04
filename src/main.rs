@@ -55,8 +55,9 @@ use model::SystemCounterSample;
 #[cfg(test)]
 use model::{
     ColumnPreset, CpuCoreKind, CpuLogicalProcessorSample, GpuUsageSample, InfoValue, MetricColumn,
-    ProcessColumnWidths, ProcessIdentity, ProcessInfo, ProcessRow, SortColumn, SortDirection,
-    SortSpec,
+    ProcessColumnWidths, ProcessEnvironmentEntry, ProcessEnvironmentError,
+    ProcessEnvironmentReport, ProcessIdentity, ProcessInfo, ProcessModuleEntry,
+    ProcessModulesError, ProcessModulesReport, ProcessRow, SortColumn, SortDirection, SortSpec,
 };
 #[cfg(test)]
 use model::{ProcessHistory, SystemHistory, SystemMetric};
@@ -68,7 +69,8 @@ use samplers::gpu::is_filtered_dxgi_adapter;
 use samplers::memory::map_memory_counters;
 #[cfg(test)]
 use samplers::open_files::{
-    OpenFileEntry, OpenFilesReport, OpenFilesRequest, OpenFilesResult, OpenFilesWorker,
+    OpenFileEntry, OpenFilesError, OpenFilesReport, OpenFilesRequest, OpenFilesResult,
+    OpenFilesWorker,
 };
 #[cfg(test)]
 use samplers::pdh::map_process_counter_instances_to_pids;
@@ -77,7 +79,15 @@ use samplers::pdh::{normalize_process_cpu_percent, sum_optional_values};
 #[cfg(test)]
 use samplers::process::{working_set_page_is_shareable, working_set_page_is_shared};
 #[cfg(test)]
+use samplers::process_environment::{
+    ProcessEnvironmentRequest, ProcessEnvironmentResult, ProcessEnvironmentWorker,
+};
+#[cfg(test)]
 use samplers::process_info::{ProcessInfoRequest, ProcessInfoResult, ProcessInfoWorker};
+#[cfg(test)]
+use samplers::process_modules::{
+    ProcessModulesRequest, ProcessModulesResult, ProcessModulesWorker,
+};
 #[cfg(test)]
 use samplers::{CollectSnapshotResult, SamplingWorker};
 #[cfg(test)]
@@ -2280,6 +2290,46 @@ processes = ["api.exe", "worker.exe"]
         );
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
         assert_eq!(app.status, "Process Info: proc-2");
+    }
+
+    #[test]
+    fn files_tab_from_graph_uses_fixed_graph_target() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, request_rx, _) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            3,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+        let selected_identity = app.selected_visible_process_identity().unwrap();
+        let graph_identity = ProcessIdentity::from_row(&app.snapshot.processes[2]);
+        app.graph_slots[0] = Some(GraphSlot::process(
+            graph_identity.clone(),
+            DetailsMetric::Private,
+        ));
+        app.active_graph_slot_index = 0;
+        app.show_details = true;
+        app.focused_panel = FocusedPanel::DetailsGraph;
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Files);
+        match request_rx.try_recv().unwrap() {
+            OpenFilesRequest::Collect { identity, .. } => assert_eq!(identity, graph_identity),
+            OpenFilesRequest::Stop => panic!("unexpected stop request"),
+        }
+        assert_eq!(
+            app.selected_visible_process_identity(),
+            Some(selected_identity)
+        );
     }
 
     #[test]
@@ -5343,7 +5393,9 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Kill selected live process"),
             "{rendered}"
         );
-        assert!(rendered.contains("Refresh open-files list"), "{rendered}");
+        assert!(rendered.contains("Info/detail / Files"), "{rendered}");
+        assert!(rendered.contains("Switch Info tabs"), "{rendered}");
+        assert!(rendered.contains("Refresh Info tab"), "{rendered}");
 
         assert!(rendered.contains("Click panel"), "{rendered}");
         assert!(rendered.contains("Samples auto-scroll"), "{rendered}");
@@ -5533,7 +5585,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Ctrl+I Jump"), "{rendered}");
         assert!(!rendered.contains("Shift+←/→ Move column"), "{rendered}");
         assert!(rendered.contains("1-4 Graph"), "{rendered}");
-        assert!(rendered.contains("Enter Info"), "{rendered}");
+        assert!(rendered.contains("Enter/f Info/Files"), "{rendered}");
         assert!(rendered.contains("Space Track"), "{rendered}");
         assert!(rendered.contains("d Kill"), "{rendered}");
         assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
@@ -6788,18 +6840,22 @@ processes = ["api.exe", "worker.exe"]
             process_info_worker,
             open_files_worker,
         );
-        app.show_process_info_dialog = true;
-        app.ensure_selected_process_info();
+        app.open_selected_process_info_dialog().unwrap();
         app.pending_process_info.as_mut().unwrap().changed_at =
             std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
         app.request_due_process_info().unwrap();
-        let identity = match request_rx.try_recv().unwrap() {
-            ProcessInfoRequest::Collect { identity, .. } => identity,
+        let (generation, identity) = match request_rx.try_recv().unwrap() {
+            ProcessInfoRequest::Collect {
+                generation,
+                identity,
+                ..
+            } => (generation, identity),
             ProcessInfoRequest::Stop => panic!("unexpected stop request"),
         };
 
         result_tx
             .send(ProcessInfoResult {
+                generation,
                 identity: identity.clone(),
                 info: test_process_info(&identity.name, identity.pid),
             })
@@ -6827,14 +6883,19 @@ processes = ["api.exe", "worker.exe"]
         app.pending_process_info.as_mut().unwrap().changed_at =
             std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
         app.request_due_process_info().unwrap();
-        let old_identity = match request_rx.try_recv().unwrap() {
-            ProcessInfoRequest::Collect { identity, .. } => identity,
+        let (generation, old_identity) = match request_rx.try_recv().unwrap() {
+            ProcessInfoRequest::Collect {
+                generation,
+                identity,
+                ..
+            } => (generation, identity),
             ProcessInfoRequest::Stop => panic!("unexpected stop request"),
         };
 
         app.move_selection_down(1);
         result_tx
             .send(ProcessInfoResult {
+                generation,
                 identity: old_identity.clone(),
                 info: test_process_info(&old_identity.name, old_identity.pid),
             })
@@ -6844,6 +6905,67 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.process_info_cache.contains_key(&old_identity));
         assert!(app.process_info_in_flight.is_none());
         assert!(app.pending_process_info.is_none());
+    }
+
+    #[test]
+    fn stale_process_info_result_cannot_replace_reopened_dialog_request() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, request_rx, result_tx) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, _, _) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            1,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+
+        app.open_selected_process_info_dialog().unwrap();
+        app.pending_process_info.as_mut().unwrap().changed_at =
+            std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
+        app.request_due_process_info().unwrap();
+        let (old_generation, identity) = match request_rx.try_recv().unwrap() {
+            ProcessInfoRequest::Collect {
+                generation,
+                identity,
+                ..
+            } => (generation, identity),
+            ProcessInfoRequest::Stop => panic!("unexpected stop request"),
+        };
+
+        app.close_process_info_dialog();
+        app.open_selected_process_info_dialog().unwrap();
+        app.pending_process_info.as_mut().unwrap().changed_at =
+            std::time::Instant::now() - PROCESS_INFO_DEBOUNCE;
+        app.request_due_process_info().unwrap();
+        let new_generation = match request_rx.try_recv().unwrap() {
+            ProcessInfoRequest::Collect { generation, .. } => generation,
+            ProcessInfoRequest::Stop => panic!("unexpected stop request"),
+        };
+
+        result_tx
+            .send(ProcessInfoResult {
+                generation: old_generation,
+                identity: identity.clone(),
+                info: test_process_info("old.exe", identity.pid),
+            })
+            .unwrap();
+        assert!(!app.poll_process_info_results().unwrap());
+        assert_eq!(app.process_info_in_flight_generation, Some(new_generation));
+        assert!(!app.process_info_cache.contains_key(&identity));
+
+        result_tx
+            .send(ProcessInfoResult {
+                generation: new_generation,
+                identity: identity.clone(),
+                info: test_process_info("new.exe", identity.pid),
+            })
+            .unwrap();
+        assert!(app.poll_process_info_results().unwrap());
+        assert_eq!(
+            app.process_info_cache.get(&identity).unwrap().name,
+            "new.exe"
+        );
     }
 
     #[test]
@@ -6991,13 +7113,17 @@ processes = ["api.exe", "worker.exe"]
         let buffer = render_app_to_buffer(&app, 120, 40);
         let (_, range_y) =
             find_text_position(&buffer, &range).expect("comparison range should render");
-        let (metrics_x, header_y) =
-            find_text_position(&buffer, "Metrics").expect("metric header should render");
+        let (_, header_y) =
+            find_text_position(&buffer, "At B").expect("metric header should render");
+        let metrics_x = ui::process_info_content_area_for_screen(Rect::new(0, 0, 120, 40)).x;
 
         assert!(range_y < header_y);
         for heading in ["Metrics", "At B", "B-A"] {
-            let (x, y) =
-                find_text_position(&buffer, heading).expect("column heading should render");
+            let (x, y) = if heading == "Metrics" {
+                (metrics_x, header_y)
+            } else {
+                find_text_position(&buffer, heading).expect("column heading should render")
+            };
             for offset in 0..heading.len() as u16 {
                 assert!(
                     buffer[(x + offset, y)]
@@ -7132,10 +7258,13 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
             .unwrap();
 
-        assert!(app.show_open_files);
+        assert!(app.show_process_info_dialog);
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Files);
         assert_eq!(app.open_files_in_flight.as_ref().unwrap().name, "proc-0");
         match request_rx.try_recv().unwrap() {
-            OpenFilesRequest::Collect { identity, process } => {
+            OpenFilesRequest::Collect {
+                identity, process, ..
+            } => {
                 assert_eq!(identity.name, "proc-0");
                 assert_eq!(process.name, "proc-0");
             }
@@ -7144,7 +7273,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn open_files_reuses_existing_filter_when_opened_again() {
+    fn process_info_resets_tab_filters_when_opened_again() {
         let (sampling_worker, _, _) = SamplingWorker::test_pair();
         let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
         let (open_files_worker, _request_rx, _) = OpenFilesWorker::test_pair();
@@ -7156,11 +7285,21 @@ processes = ["api.exe", "worker.exe"]
             open_files_worker,
         );
         app.open_files_filter = ".mxf .mp4".to_string();
+        app.open_files_filter_cursor = app.open_files_filter.len();
+        app.process_modules_filter = "microsoft".to_string();
+        app.process_modules_filter_cursor = app.process_modules_filter.len();
+        app.process_environment_filter = "path".to_string();
+        app.process_environment_filter_cursor = app.process_environment_filter.len();
 
         app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.open_files_filter, ".mxf .mp4");
+        assert!(app.open_files_filter.is_empty());
+        assert_eq!(app.open_files_filter_cursor, 0);
+        assert!(app.process_modules_filter.is_empty());
+        assert_eq!(app.process_modules_filter_cursor, 0);
+        assert!(app.process_environment_filter.is_empty());
+        assert_eq!(app.process_environment_filter_cursor, 0);
     }
 
     #[test]
@@ -7180,7 +7319,7 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
             .unwrap();
 
-        assert!(!app.show_open_files);
+        assert!(!app.show_process_info_dialog);
         assert!(request_rx.try_recv().is_err());
     }
 
@@ -7196,7 +7335,9 @@ processes = ["api.exe", "worker.exe"]
             process_info_worker,
             open_files_worker,
         );
-        app.show_open_files = true;
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Files;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         app.open_files_result = Some(OpenFilesReport {
             pid: 0,
             process_name: "proc-0".to_string(),
@@ -7210,6 +7351,7 @@ processes = ["api.exe", "worker.exe"]
             }],
             error: None,
         });
+        app.open_files_result_identity = Some(identity);
 
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
             .unwrap();
@@ -7217,7 +7359,9 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.open_files_result.is_some());
         assert_eq!(app.open_files_in_flight.as_ref().unwrap().name, "proc-0");
         match request_rx.try_recv().unwrap() {
-            OpenFilesRequest::Collect { identity, process } => {
+            OpenFilesRequest::Collect {
+                identity, process, ..
+            } => {
                 assert_eq!(identity.name, "proc-0");
                 assert_eq!(process.name, "proc-0");
             }
@@ -7229,7 +7373,7 @@ processes = ["api.exe", "worker.exe"]
     fn open_files_result_updates_modal_state() {
         let (sampling_worker, _, _) = SamplingWorker::test_pair();
         let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
-        let (open_files_worker, _, result_tx) = OpenFilesWorker::test_pair();
+        let (open_files_worker, request_rx, result_tx) = OpenFilesWorker::test_pair();
         let mut app = make_test_app_with_workers(
             1,
             10,
@@ -7237,13 +7381,20 @@ processes = ["api.exe", "worker.exe"]
             process_info_worker,
             open_files_worker,
         );
-        let identity = app.selected_visible_process_identity().unwrap();
-        app.open_files_in_flight = Some(identity.clone());
-        app.show_open_files = true;
+        app.open_selected_process_files().unwrap();
+        let (generation, identity) = match request_rx.try_recv().unwrap() {
+            OpenFilesRequest::Collect {
+                generation,
+                identity,
+                ..
+            } => (generation, identity),
+            OpenFilesRequest::Stop => panic!("unexpected stop request"),
+        };
 
         result_tx
             .send(OpenFilesResult {
-                identity,
+                generation,
+                identity: identity.clone(),
                 report: OpenFilesReport {
                     pid: 0,
                     process_name: "proc-0".to_string(),
@@ -7298,9 +7449,9 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn open_files_clipboard_uses_file_name_filter() {
+    fn open_files_clipboard_filter_matches_full_paths() {
         let mut app = make_test_app(1, 10);
-        app.open_files_filter = ".mxf .MP4".to_string();
+        app.open_files_filter = "exports".to_string();
         app.open_files_result = Some(OpenFilesReport {
             pid: 0,
             process_name: "proc-0".to_string(),
@@ -7314,11 +7465,11 @@ processes = ["api.exe", "worker.exe"]
                     handle_count: 1,
                 },
                 OpenFileEntry {
-                    path: r"C:\tmp\b.MXF".to_string(),
+                    path: r"C:\exports\b.MXF".to_string(),
                     handle_count: 2,
                 },
                 OpenFileEntry {
-                    path: r"C:\tmp\c.mp4".to_string(),
+                    path: r"C:\media\c.mp4".to_string(),
                     handle_count: 1,
                 },
             ],
@@ -7329,14 +7480,14 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             crate::app::clipboard::last_copied_text().unwrap(),
-            "C:\\tmp\\b.MXF\t2\nC:\\tmp\\c.mp4"
+            "C:\\exports\\b.MXF\t2"
         );
     }
 
     #[test]
     fn open_files_filter_cursor_moves_and_inserts_at_cursor() {
         let mut app = make_test_app(1, 10);
-        app.show_open_files = true;
+        show_process_info_files_tab(&mut app);
         app.open_files_filter = ".mp4".to_string();
         app.open_files_filter_cursor = app.open_files_filter.len();
 
@@ -7360,7 +7511,7 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn open_files_filter_delete_removes_character_at_cursor() {
         let mut app = make_test_app(1, 10);
-        app.show_open_files = true;
+        show_process_info_files_tab(&mut app);
         app.open_files_filter = ".mxpf".to_string();
         app.open_files_filter_cursor = ".mx".len();
 
@@ -7374,7 +7525,7 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn open_files_filter_shows_colon_and_terminal_cursor() {
         let mut app = make_test_app(1, 10);
-        app.show_open_files = true;
+        show_process_info_files_tab(&mut app);
         app.open_files_filter = ".mp4".to_string();
         app.open_files_filter_cursor = ".m".len();
         app.open_files_result = Some(OpenFilesReport {
@@ -7391,7 +7542,8 @@ processes = ["api.exe", "worker.exe"]
             error: None,
         });
         let screen = Rect::new(0, 0, 160, 45);
-        let expected_cursor = Position::new(20, 13);
+        let content = ui::process_info_content_area_for_screen(screen);
+        let expected_cursor = Position::new(content.x + 10, content.y + 1);
 
         let backend = TestBackend::new(screen.width, screen.height);
         let mut terminal = Terminal::new(backend).expect("test terminal should be created");
@@ -7433,10 +7585,11 @@ processes = ["api.exe", "worker.exe"]
             error: None,
         });
         let screen = Rect::new(0, 0, 160, 45);
-        let before = ui::open_files::open_files_page_size_for_screen(screen, &app);
+        show_process_info_files_tab(&mut app);
+        let before = ui::process_info_page_size_for_screen(screen);
 
         app.open_files_filter = "b.log".to_string();
-        let after = ui::open_files::open_files_page_size_for_screen(screen, &app);
+        let after = ui::process_info_page_size_for_screen(screen);
 
         assert_eq!(before, after);
     }
@@ -7444,7 +7597,7 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn open_files_modal_renders_table_columns() {
         let mut app = make_test_app(1, 10);
-        app.show_open_files = true;
+        show_process_info_files_tab(&mut app);
         app.open_files_result = Some(OpenFilesReport {
             pid: 0,
             process_name: "proc-0".to_string(),
@@ -7467,9 +7620,42 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn open_files_filter_matches_directory_and_shows_filtered_total() {
+        let mut app = make_test_app(1, 10);
+        show_process_info_files_tab(&mut app);
+        app.open_files_filter = "fonts".to_string();
+        app.open_files_filter_cursor = app.open_files_filter.len();
+        app.open_files_result = Some(OpenFilesReport {
+            pid: 0,
+            process_name: "proc-0".to_string(),
+            total_handles: 2,
+            file_handles: 2,
+            inaccessible_handles: 0,
+            unnamed_file_handles: 0,
+            entries: vec![
+                OpenFileEntry {
+                    path: r"C:\Windows\Fonts\a.ttf".to_string(),
+                    handle_count: 1,
+                },
+                OpenFileEntry {
+                    path: r"C:\tmp\b.log".to_string(),
+                    handle_count: 1,
+                },
+            ],
+            error: None,
+        });
+
+        let rendered = render_app_to_text(&app, 120, 30);
+
+        assert!(rendered.contains("shown 1/2"), "{rendered}");
+        assert!(rendered.contains("a.ttf"), "{rendered}");
+        assert!(!rendered.contains("b.log"), "{rendered}");
+    }
+
+    #[test]
     fn open_files_table_column_names_are_underlined() {
         let mut app = make_test_app(1, 10);
-        app.show_open_files = true;
+        show_process_info_files_tab(&mut app);
         app.open_files_result = Some(OpenFilesReport {
             pid: 0,
             process_name: "proc-0".to_string(),
@@ -7495,7 +7681,7 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn open_files_scroll_offset_changes_rendered_rows() {
         let mut app = make_test_app(1, 10);
-        app.show_open_files = true;
+        show_process_info_files_tab(&mut app);
         app.open_files_result = Some(OpenFilesReport {
             pid: 0,
             process_name: "proc-0".to_string(),
@@ -7512,10 +7698,8 @@ processes = ["api.exe", "worker.exe"]
             error: None,
         });
         let screen = Rect::new(0, 0, 160, 45);
-        app.set_open_files_page_size(ui::open_files::open_files_page_size_for_screen(
-            screen, &app,
-        ));
-        app.scroll_open_files_end();
+        app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+        app.scroll_process_info_end();
 
         let rendered = render_app_to_text(&app, screen.width, screen.height);
 
@@ -7526,14 +7710,13 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn cached_process_info_is_reused_without_worker_request() {
         let mut app = make_test_app(2, 10);
-        app.show_process_info_dialog = true;
         let identity = app.selected_visible_process_identity().unwrap();
         app.process_info_cache.insert(
             identity.clone(),
             test_process_info(&identity.name, identity.pid),
         );
 
-        app.ensure_selected_process_info();
+        app.open_selected_process_info_dialog().unwrap();
 
         assert!(app.pending_process_info.is_none());
         assert_eq!(app.process_info_display_identity, Some(identity));
@@ -7585,6 +7768,758 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, screen.width, screen.height);
         assert!(rendered.contains("IO Write/s"), "{rendered}");
         assert!(rendered.contains("[ Close ]"), "{rendered}");
+    }
+
+    #[test]
+    fn process_info_ctrl_left_right_cycles_while_tab_moves_control_focus() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, _open_files_request_rx, _) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            1,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+        let target = app.selected_visible_process_identity().unwrap();
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_scroll.offset = 4;
+
+        let screen = Rect::new(0, 0, 120, 40);
+        let initial = render_app_to_buffer(&app, screen.width, screen.height);
+        let (close_x, close_y) = find_text_position(&initial, "[ Close ]").unwrap();
+        assert_eq!(initial[(close_x, close_y)].bg, app.theme().panel_alt);
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        let focused = render_app_to_buffer(&app, screen.width, screen.height);
+        let (close_x, close_y) = find_text_position(&focused, "[ Close ]").unwrap();
+        assert_eq!(focused[(close_x, close_y)].bg, app.theme().accent);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+
+        for expected in [
+            app::ProcessInfoTab::Image,
+            app::ProcessInfoTab::Files,
+            app::ProcessInfoTab::Dlls,
+            app::ProcessInfoTab::Environment,
+            app::ProcessInfoTab::Metrics,
+        ] {
+            app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+                .unwrap();
+            assert_eq!(app.process_info_tab, expected);
+            assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        }
+
+        assert_eq!(app.process_info_scroll.offset, 4);
+        assert_eq!(
+            app.process_info_target
+                .as_ref()
+                .map(|target| &target.identity),
+            Some(&target)
+        );
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Environment);
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Dlls);
+    }
+
+    #[test]
+    fn process_info_mouse_tabs_close_and_outside_click_are_modal() {
+        let mut app = make_test_app(2, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        let screen = Rect::new(0, 0, 200, 60);
+        let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen);
+        let image_point = (layout.tabs.y..layout.tabs.bottom())
+            .flat_map(|y| (layout.tabs.x..layout.tabs.right()).map(move |x| (x, y)))
+            .find(|(x, y)| {
+                ui::process_info_tab_at(screen, *x, *y) == Some(app::ProcessInfoTab::Image)
+            })
+            .expect("Image tab should have a hit area");
+
+        app.on_mouse(left_click(image_point.0, image_point.1), screen);
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Image);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+
+        let selected = app.selected_visible_process_identity();
+        let focused = app.focused_panel;
+        app.on_mouse(left_click(0, 10), screen);
+        assert!(app.show_process_info_dialog);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        assert_eq!(app.selected_visible_process_identity(), selected);
+        assert_eq!(app.focused_panel, focused);
+
+        let close = ui::process_info_close_button_area_for_screen(screen).unwrap();
+        app.on_mouse(left_click(close.x, close.y), screen);
+        assert!(!app.show_process_info_dialog);
+    }
+
+    #[test]
+    fn process_info_image_shows_extended_fields_and_scrolls_long_values() {
+        let mut app = make_test_app(1, 10);
+        let identity = app.selected_visible_process_identity().unwrap();
+        let mut info = test_process_info(&identity.name, identity.pid);
+        info.command_line = InfoValue::Value(format!("{}COMMAND-END", "argument ".repeat(80)));
+        app.process_info_cache.insert(identity.clone(), info);
+        app.process_info_display_identity = Some(identity);
+        app.open_selected_process_info_dialog().unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+        let screen = Rect::new(0, 0, 70, 18);
+        app.set_screen_area(screen);
+        app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+
+        let first_page = render_app_to_text(&app, screen.width, screen.height);
+        assert!(first_page.contains("User"), "{first_page}");
+        assert!(first_page.contains("Architecture"), "{first_page}");
+        assert!(first_page.contains("Command line"), "{first_page}");
+
+        app.scroll_process_info_end();
+        let last_page = render_app_to_text(&app, screen.width, screen.height);
+        assert!(last_page.contains("COMMAND-END"), "{last_page}");
+        assert!(last_page.contains("Company"), "{last_page}");
+        assert!(last_page.contains("File version"), "{last_page}");
+    }
+
+    #[test]
+    fn files_tab_in_log_view_does_not_request_live_collection() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, process_request_rx, _) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, open_files_request_rx, _) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            1,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+        app.log_view_path = Some(std::path::PathBuf::from("recording.log"));
+
+        app.open_selected_process_info_dialog().unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert!(matches!(
+            process_request_rx.try_recv(),
+            Err(TryRecvError::Empty)
+        ));
+        assert!(matches!(
+            open_files_request_rx.try_recv(),
+            Err(TryRecvError::Empty)
+        ));
+        let rendered = render_app_to_text(&app, 120, 40);
+        assert!(rendered.contains("Not recorded in Log view."), "{rendered}");
+    }
+
+    #[test]
+    fn files_tab_does_not_query_after_the_fixed_target_exits() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, open_files_request_rx, _) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            1,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+
+        app.open_selected_process_info_dialog().unwrap();
+        app.snapshot.processes.clear();
+        app.activate_process_info_tab(app::ProcessInfoTab::Files)
+            .unwrap();
+
+        assert!(matches!(
+            open_files_request_rx.try_recv(),
+            Err(TryRecvError::Empty)
+        ));
+        assert_eq!(
+            app.open_files_result
+                .as_ref()
+                .and_then(|report| report.error.as_ref()),
+            Some(&OpenFilesError::ProcessExited)
+        );
+        assert_eq!(app.status, "Process has exited");
+    }
+
+    #[test]
+    fn stale_open_files_result_cannot_replace_reopened_dialog_request() {
+        let (sampling_worker, _, _) = SamplingWorker::test_pair();
+        let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
+        let (open_files_worker, request_rx, result_tx) = OpenFilesWorker::test_pair();
+        let mut app = make_test_app_with_workers(
+            1,
+            10,
+            sampling_worker,
+            process_info_worker,
+            open_files_worker,
+        );
+
+        app.open_selected_process_files().unwrap();
+        let (old_generation, identity) = match request_rx.try_recv().unwrap() {
+            OpenFilesRequest::Collect {
+                generation,
+                identity,
+                ..
+            } => (generation, identity),
+            OpenFilesRequest::Stop => panic!("unexpected stop request"),
+        };
+        app.close_process_info_dialog();
+        app.open_selected_process_files().unwrap();
+        let new_generation = match request_rx.try_recv().unwrap() {
+            OpenFilesRequest::Collect { generation, .. } => generation,
+            OpenFilesRequest::Stop => panic!("unexpected stop request"),
+        };
+
+        result_tx
+            .send(OpenFilesResult {
+                generation: old_generation,
+                identity: identity.clone(),
+                report: test_open_files_report(&identity.name, identity.pid, "old.log"),
+            })
+            .unwrap();
+        assert!(!app.poll_open_files_results().unwrap());
+        assert_eq!(app.open_files_in_flight_generation, Some(new_generation));
+        assert!(app.open_files_result.is_none());
+
+        result_tx
+            .send(OpenFilesResult {
+                generation: new_generation,
+                identity: identity.clone(),
+                report: test_open_files_report(&identity.name, identity.pid, "new.log"),
+            })
+            .unwrap();
+        assert!(app.poll_open_files_results().unwrap());
+        assert!(
+            app.open_files_result.as_ref().unwrap().entries[0]
+                .path
+                .ends_with("new.log")
+        );
+    }
+
+    #[test]
+    fn dlls_tab_lazy_loads_once_for_the_fixed_dialog_target() {
+        let (worker, request_rx, _) = ProcessModulesWorker::test_pair();
+        let mut app = make_test_app(2, 10);
+        app.process_modules_worker = worker;
+        app.open_selected_process_info_dialog().unwrap();
+        let target = app.process_info_target.as_ref().unwrap().identity.clone();
+
+        activate_process_modules_tab(&mut app);
+        match request_rx.try_recv().unwrap() {
+            ProcessModulesRequest::Collect { identity, .. } => assert_eq!(identity, target),
+            ProcessModulesRequest::Stop => panic!("unexpected stop request"),
+        }
+        app.move_selection_down(1);
+        app.activate_process_info_tab(app::ProcessInfoTab::Dlls)
+            .unwrap();
+
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert_eq!(
+            app.process_modules_in_flight.as_ref(),
+            Some(&target),
+            "DLL collection must remain bound to the dialog target"
+        );
+    }
+
+    #[test]
+    fn dlls_tab_refresh_preserves_snapshot_path_filter_and_copies_selected_path() {
+        let (worker, request_rx, result_tx) = ProcessModulesWorker::test_pair();
+        let mut app = make_test_app(1, 10);
+        app.process_modules_worker = worker;
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_modules_tab(&mut app);
+        let (generation, request_id, identity) = match request_rx.try_recv().unwrap() {
+            ProcessModulesRequest::Collect {
+                generation,
+                request_id,
+                identity,
+                ..
+            } => (generation, request_id, identity),
+            ProcessModulesRequest::Stop => panic!("unexpected stop request"),
+        };
+        let first = test_process_module_entry("first.dll", "First Company");
+        let second = test_process_module_entry("second.dll", "Second Company");
+        result_tx
+            .send(ProcessModulesResult {
+                generation,
+                request_id,
+                identity: identity.clone(),
+                outcome: Ok(test_process_modules_report(
+                    &identity.name,
+                    identity.pid,
+                    vec![first, second.clone()],
+                )),
+            })
+            .unwrap();
+        assert!(app.poll_process_modules_results().unwrap());
+
+        for ch in "second.dll".chars() {
+            app.push_process_modules_filter_char(ch);
+        }
+        assert_eq!(ui::process_modules::filtered_entries(&app).len(), 1);
+        let filtered = render_app_to_text(&app, 100, 30);
+        assert!(filtered.contains("shown 1/2"), "{filtered}");
+        app.copy_selected_process_module_to_clipboard().unwrap();
+        assert_eq!(
+            app::clipboard::last_copied_text().as_deref(),
+            Some(second.path.as_str())
+        );
+
+        app.refresh_process_modules().unwrap();
+        let refresh = match request_rx.try_recv().unwrap() {
+            ProcessModulesRequest::Collect {
+                generation,
+                request_id,
+                ..
+            } => (generation, request_id),
+            ProcessModulesRequest::Stop => panic!("unexpected stop request"),
+        };
+        assert!(app.process_modules_result.is_some());
+        app.refresh_process_modules().unwrap();
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert_eq!(app.status, "DLL refresh already in progress");
+
+        result_tx
+            .send(ProcessModulesResult {
+                generation: refresh.0,
+                request_id: refresh.1,
+                identity,
+                outcome: Err(ProcessModulesError::AccessDenied),
+            })
+            .unwrap();
+        assert!(app.poll_process_modules_results().unwrap());
+        assert!(app.process_modules_result.is_some());
+        assert_eq!(
+            app.process_modules_error,
+            Some(ProcessModulesError::AccessDenied)
+        );
+    }
+
+    #[test]
+    fn dlls_tab_lists_full_paths_and_enter_opens_selected_detail() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Dlls;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
+        let mut entry = test_process_module_entry(
+            "a-very-long-module-name-that-does-not-fit.dll",
+            "A Company With A Long Name",
+        );
+        entry.product_version = InfoValue::NotAvailable;
+        app.process_modules_result_identity = Some(identity.clone());
+        app.process_modules_result = Some(test_process_modules_report(
+            &identity.name,
+            identity.pid,
+            vec![entry],
+        ));
+
+        let list = render_app_to_text(&app, 68, 26);
+        assert!(list.contains("DLL path"), "{list}");
+        assert!(list.contains(r"C:\Program Files\Test"), "{list}");
+        assert!(!list.contains("Product Version"), "{list}");
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.process_modules_show_detail);
+        let detail = render_app_to_text(&app, 68, 26);
+        assert!(detail.contains("DLL details"), "{detail}");
+        assert!(detail.contains("DLL file"), "{detail}");
+        assert!(detail.contains("Product Version"), "{detail}");
+        assert!(detail.contains("Directory"), "{detail}");
+        assert!(detail.contains("<not available>"), "{detail}");
+        assert!(detail.contains("Esc/Enter back"), "{detail}");
+
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.show_process_info_dialog);
+        assert!(!app.process_modules_show_detail);
+
+        app.snapshot.processes.clear();
+        let exited = render_app_to_text(&app, 100, 30);
+        assert!(exited.contains("process exited"), "{exited}");
+    }
+
+    #[test]
+    fn dlls_tab_arrow_selection_controls_enter_detail_target() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Dlls;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
+        app.process_modules_result_identity = Some(identity.clone());
+        app.process_modules_result = Some(test_process_modules_report(
+            &identity.name,
+            identity.pid,
+            vec![
+                test_process_module_entry("first.dll", "First Company"),
+                test_process_module_entry("second.dll", "Second Company"),
+            ],
+        ));
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.process_modules_selected, 1);
+        assert!(app.process_modules_show_detail);
+        let detail = render_app_to_text(&app, 80, 26);
+        assert!(detail.contains("second.dll"), "{detail}");
+        assert!(detail.contains("Second Company"), "{detail}");
+        assert!(!detail.contains("First Company"), "{detail}");
+    }
+
+    #[test]
+    fn dlls_tab_in_log_view_starts_no_worker() {
+        let (worker, request_rx, _) = ProcessModulesWorker::test_pair();
+        let mut app = make_test_app(1, 10);
+        app.process_modules_worker = worker;
+        app.log_view_path = Some(std::path::PathBuf::from("recording.log"));
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_modules_tab(&mut app);
+
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        let rendered = render_app_to_text(&app, 120, 40);
+        assert!(rendered.contains("Not recorded in Log view."), "{rendered}");
+    }
+
+    #[test]
+    fn stale_dll_result_cannot_replace_reopened_dialog_request() {
+        let (worker, request_rx, result_tx) = ProcessModulesWorker::test_pair();
+        let mut app = make_test_app(1, 10);
+        app.process_modules_worker = worker;
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_modules_tab(&mut app);
+        let (old_generation, old_request_id, identity) = match request_rx.try_recv().unwrap() {
+            ProcessModulesRequest::Collect {
+                generation,
+                request_id,
+                identity,
+                ..
+            } => (generation, request_id, identity),
+            ProcessModulesRequest::Stop => panic!("unexpected stop request"),
+        };
+
+        app.close_process_info_dialog();
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_modules_tab(&mut app);
+        let (new_generation, new_request_id) = match request_rx.try_recv().unwrap() {
+            ProcessModulesRequest::Collect {
+                generation,
+                request_id,
+                ..
+            } => (generation, request_id),
+            ProcessModulesRequest::Stop => panic!("unexpected stop request"),
+        };
+        result_tx
+            .send(ProcessModulesResult {
+                generation: old_generation,
+                request_id: old_request_id,
+                identity: identity.clone(),
+                outcome: Ok(test_process_modules_report(
+                    &identity.name,
+                    identity.pid,
+                    vec![test_process_module_entry("old.dll", "Old")],
+                )),
+            })
+            .unwrap();
+        assert!(!app.poll_process_modules_results().unwrap());
+        assert_eq!(
+            app.process_modules_in_flight_request_id,
+            Some(new_request_id)
+        );
+        assert!(app.process_modules_result.is_none());
+
+        result_tx
+            .send(ProcessModulesResult {
+                generation: new_generation,
+                request_id: new_request_id,
+                identity: identity.clone(),
+                outcome: Ok(test_process_modules_report(
+                    &identity.name,
+                    identity.pid,
+                    vec![test_process_module_entry("new.dll", "New")],
+                )),
+            })
+            .unwrap();
+        assert!(app.poll_process_modules_results().unwrap());
+        assert_eq!(
+            app.process_modules_result.as_ref().unwrap().entries[0].dll_name,
+            "new.dll"
+        );
+    }
+
+    #[test]
+    fn environment_tab_lazy_loads_once_for_the_fixed_dialog_target() {
+        let (worker, request_rx, _) = ProcessEnvironmentWorker::test_pair();
+        let mut app = make_test_app(2, 10);
+        app.process_environment_worker = worker;
+        app.open_selected_process_info_dialog().unwrap();
+        let target = app.process_info_target.as_ref().unwrap().identity.clone();
+
+        activate_process_environment_tab(&mut app);
+        match request_rx.try_recv().unwrap() {
+            ProcessEnvironmentRequest::Collect { identity, .. } => assert_eq!(identity, target),
+            ProcessEnvironmentRequest::Stop => panic!("unexpected stop request"),
+        }
+        app.move_selection_down(1);
+        app.activate_process_info_tab(app::ProcessInfoTab::Environment)
+            .unwrap();
+
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert_eq!(app.process_environment_in_flight.as_ref(), Some(&target));
+    }
+
+    #[test]
+    fn environment_refresh_preserves_snapshot_filters_values_and_copies_one_entry() {
+        let (worker, request_rx, result_tx) = ProcessEnvironmentWorker::test_pair();
+        let mut app = make_test_app(1, 10);
+        app.process_environment_worker = worker;
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_environment_tab(&mut app);
+        let (generation, request_id, identity) = match request_rx.try_recv().unwrap() {
+            ProcessEnvironmentRequest::Collect {
+                generation,
+                request_id,
+                identity,
+                ..
+            } => (generation, request_id, identity),
+            ProcessEnvironmentRequest::Stop => panic!("unexpected stop request"),
+        };
+        let secret = "sensitive-value-for-filter-test";
+        result_tx
+            .send(ProcessEnvironmentResult {
+                generation,
+                request_id,
+                identity: identity.clone(),
+                outcome: Ok(test_process_environment_report(
+                    &identity.name,
+                    identity.pid,
+                    vec![
+                        ProcessEnvironmentEntry {
+                            name: "EMPTY".to_string(),
+                            value: String::new(),
+                        },
+                        ProcessEnvironmentEntry {
+                            name: "TOKEN".to_string(),
+                            value: secret.to_string(),
+                        },
+                    ],
+                )),
+            })
+            .unwrap();
+        assert!(app.poll_process_environment_results().unwrap());
+
+        for ch in "value-for-filter".chars() {
+            app.push_process_environment_filter_char(ch);
+        }
+        for ch in " missing-term".chars() {
+            app.push_process_environment_filter_char(ch);
+        }
+        assert_eq!(ui::process_environment::filtered_entries(&app).len(), 1);
+        app.copy_selected_process_environment_to_clipboard()
+            .unwrap();
+        assert_eq!(
+            app::clipboard::last_copied_text().as_deref(),
+            Some("TOKEN=sensitive-value-for-filter-test")
+        );
+
+        app.refresh_process_environment().unwrap();
+        let refresh = match request_rx.try_recv().unwrap() {
+            ProcessEnvironmentRequest::Collect {
+                generation,
+                request_id,
+                ..
+            } => (generation, request_id),
+            ProcessEnvironmentRequest::Stop => panic!("unexpected stop request"),
+        };
+        assert!(app.process_environment_result.is_some());
+        app.refresh_process_environment().unwrap();
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert_eq!(app.status, "Environment refresh already in progress");
+
+        result_tx
+            .send(ProcessEnvironmentResult {
+                generation: refresh.0,
+                request_id: refresh.1,
+                identity,
+                outcome: Err(ProcessEnvironmentError::AccessDenied),
+            })
+            .unwrap();
+        assert!(app.poll_process_environment_results().unwrap());
+        assert!(app.process_environment_result.is_some());
+        assert_eq!(
+            app.process_environment_error,
+            Some(ProcessEnvironmentError::AccessDenied)
+        );
+        assert!(!app.status.contains(secret));
+        app.close_process_info_dialog();
+        assert!(app.process_environment_result.is_none());
+    }
+
+    #[test]
+    fn environment_tab_enter_opens_long_selected_value_detail() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Environment;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
+        let long_value = "C:\\one;C:\\two;C:\\three;C:\\four;C:\\five;C:\\six";
+        let mut report = test_process_environment_report(
+            &identity.name,
+            identity.pid,
+            vec![ProcessEnvironmentEntry {
+                name: "PATH".to_string(),
+                value: long_value.to_string(),
+            }],
+        );
+        report.malformed_entries = 2;
+        app.process_environment_result_identity = Some(identity);
+        app.process_environment_result = Some(report);
+
+        let list = render_app_to_text(&app, 60, 24);
+        assert!(list.contains("Name"), "{list}");
+        assert!(list.contains("Value"), "{list}");
+        assert!(list.contains("Environment may contain secrets"), "{list}");
+        assert!(list.contains("2 malformed entries skipped"), "{list}");
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.process_environment_show_detail);
+        let detail = render_app_to_text(&app, 60, 24);
+        assert!(detail.contains("Environment variable details"), "{detail}");
+        assert!(detail.contains("C:\\one;"), "{detail}");
+        assert!(detail.contains("Esc/Enter back"), "{detail}");
+    }
+
+    #[test]
+    fn environment_detail_is_keyboard_scrollable_on_short_screens() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Environment;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
+        let long_value = format!("{}VALUE-END", "abcdefghij".repeat(20));
+        app.process_environment_result_identity = Some(identity.clone());
+        app.process_environment_result = Some(test_process_environment_report(
+            &identity.name,
+            identity.pid,
+            vec![ProcessEnvironmentEntry {
+                name: "LONG_VALUE".to_string(),
+                value: long_value,
+            }],
+        ));
+        let screen = Rect::new(0, 0, 50, 12);
+        app.set_screen_area(screen);
+        app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+
+        let detail = render_app_to_text(&app, screen.width, screen.height);
+        assert!(detail.contains("VALUE-END"), "{detail}");
+        assert!(detail.contains("[ Close ]"), "{detail}");
+    }
+
+    #[test]
+    fn environment_tab_in_log_view_starts_no_worker() {
+        let (worker, request_rx, _) = ProcessEnvironmentWorker::test_pair();
+        let mut app = make_test_app(1, 10);
+        app.process_environment_worker = worker;
+        app.log_view_path = Some(std::path::PathBuf::from("recording.log"));
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_environment_tab(&mut app);
+
+        assert!(matches!(request_rx.try_recv(), Err(TryRecvError::Empty)));
+        let rendered = render_app_to_text(&app, 120, 40);
+        assert!(rendered.contains("Not recorded in Log view."), "{rendered}");
+    }
+
+    #[test]
+    fn stale_environment_result_cannot_replace_reopened_dialog_request() {
+        let (worker, request_rx, result_tx) = ProcessEnvironmentWorker::test_pair();
+        let mut app = make_test_app(1, 10);
+        app.process_environment_worker = worker;
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_environment_tab(&mut app);
+        let (old_generation, old_request_id, identity) = match request_rx.try_recv().unwrap() {
+            ProcessEnvironmentRequest::Collect {
+                generation,
+                request_id,
+                identity,
+                ..
+            } => (generation, request_id, identity),
+            ProcessEnvironmentRequest::Stop => panic!("unexpected stop request"),
+        };
+        app.close_process_info_dialog();
+        app.open_selected_process_info_dialog().unwrap();
+        activate_process_environment_tab(&mut app);
+        let (new_generation, new_request_id) = match request_rx.try_recv().unwrap() {
+            ProcessEnvironmentRequest::Collect {
+                generation,
+                request_id,
+                ..
+            } => (generation, request_id),
+            ProcessEnvironmentRequest::Stop => panic!("unexpected stop request"),
+        };
+
+        result_tx
+            .send(ProcessEnvironmentResult {
+                generation: old_generation,
+                request_id: old_request_id,
+                identity: identity.clone(),
+                outcome: Ok(test_process_environment_report(
+                    &identity.name,
+                    identity.pid,
+                    vec![ProcessEnvironmentEntry {
+                        name: "OLD".to_string(),
+                        value: "old".to_string(),
+                    }],
+                )),
+            })
+            .unwrap();
+        assert!(!app.poll_process_environment_results().unwrap());
+        assert_eq!(
+            app.process_environment_in_flight_request_id,
+            Some(new_request_id)
+        );
+        assert!(app.process_environment_result.is_none());
+
+        result_tx
+            .send(ProcessEnvironmentResult {
+                generation: new_generation,
+                request_id: new_request_id,
+                identity: identity.clone(),
+                outcome: Ok(test_process_environment_report(
+                    &identity.name,
+                    identity.pid,
+                    vec![ProcessEnvironmentEntry {
+                        name: "NEW".to_string(),
+                        value: "new".to_string(),
+                    }],
+                )),
+            })
+            .unwrap();
+        assert!(app.poll_process_environment_results().unwrap());
+        assert_eq!(
+            app.process_environment_result.as_ref().unwrap().entries[0].name,
+            "NEW"
+        );
     }
 
     #[test]
@@ -8863,12 +9798,85 @@ processes = ["api.exe", "worker.exe"]
             command_line: InfoValue::Value(name.to_string()),
             file_modified: InfoValue::Value("2026-05-06 00:00:00".to_string()),
             file_size: InfoValue::Value("1,024".to_string()),
+            company_name: InfoValue::Value("Test Company".to_string()),
+            product_name: InfoValue::Value("Test Product".to_string()),
             product_version: InfoValue::Value("1.0.0".to_string()),
+            file_version: InfoValue::Value("1.0.0.1".to_string()),
             workset_bytes: InfoValue::Value("1,024".to_string()),
             workset_private_bytes: InfoValue::Value("512".to_string()),
             ws_shareable_bytes: InfoValue::Value("256".to_string()),
             ws_shared_bytes: InfoValue::Value("128".to_string()),
         }
+    }
+
+    fn show_process_info_files_tab(app: &mut App) {
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Files;
+    }
+
+    fn test_open_files_report(name: &str, pid: u32, file_name: &str) -> OpenFilesReport {
+        OpenFilesReport {
+            pid,
+            process_name: name.to_string(),
+            total_handles: 1,
+            file_handles: 1,
+            inaccessible_handles: 0,
+            unnamed_file_handles: 0,
+            entries: vec![OpenFileEntry {
+                path: format!(r"C:\tmp\{file_name}"),
+                handle_count: 1,
+            }],
+            error: None,
+        }
+    }
+
+    fn test_process_module_entry(file_name: &str, company: &str) -> ProcessModuleEntry {
+        ProcessModuleEntry {
+            path: format!(r"C:\Program Files\Test\{file_name}"),
+            dll_name: file_name.to_string(),
+            directory: r"C:\Program Files\Test".to_string(),
+            company_name: InfoValue::Value(company.to_string()),
+            product_version: InfoValue::Value("2.0.0".to_string()),
+            file_version: InfoValue::Value("2.0.0.1".to_string()),
+            modified: InfoValue::Value("2026-08-04 12:34:56".to_string()),
+        }
+    }
+
+    fn test_process_modules_report(
+        name: &str,
+        pid: u32,
+        entries: Vec<ProcessModuleEntry>,
+    ) -> ProcessModulesReport {
+        ProcessModulesReport {
+            pid,
+            process_name: name.to_string(),
+            captured_at: Local::now(),
+            entries,
+        }
+    }
+
+    fn activate_process_modules_tab(app: &mut App) {
+        app.activate_process_info_tab(app::ProcessInfoTab::Dlls)
+            .unwrap();
+    }
+
+    fn test_process_environment_report(
+        name: &str,
+        pid: u32,
+        entries: Vec<ProcessEnvironmentEntry>,
+    ) -> ProcessEnvironmentReport {
+        ProcessEnvironmentReport {
+            pid,
+            process_name: name.to_string(),
+            captured_at: Local::now(),
+            entries,
+            malformed_entries: 0,
+        }
+    }
+
+    fn activate_process_environment_tab(app: &mut App) {
+        app.activate_process_info_tab(app::ProcessInfoTab::Environment)
+            .unwrap();
     }
 
     fn unique_recording_path(label: &str) -> std::path::PathBuf {
@@ -9625,6 +10633,8 @@ processes = ["api.exe", "worker.exe"]
         process_info_worker: ProcessInfoWorker,
         open_files_worker: OpenFilesWorker,
     ) -> App {
+        let process_modules_worker = ProcessModulesWorker::test_noop();
+        let process_environment_worker = ProcessEnvironmentWorker::test_noop();
         let mut table_state = TableState::default();
         if row_count > 0 {
             table_state.select(Some(0));
@@ -9662,6 +10672,8 @@ processes = ["api.exe", "worker.exe"]
             sampling_worker,
             process_info_worker,
             open_files_worker,
+            process_modules_worker,
+            process_environment_worker,
             sampling_in_progress: false,
             snapshot,
             process_table_state: table_state,
@@ -9722,21 +10734,59 @@ processes = ["api.exe", "worker.exe"]
             log_dir_completion: app::path_completion::PathCompletionState::default(),
             log_dir_selection: app::LogDirSelection::Apply,
             log_dir_error: None,
-            show_open_files: false,
             open_files_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,
                 ..ui::widgets::scrollable_modal::ScrollableModalState::default()
             },
             open_files_result: None,
+            open_files_result_identity: None,
             open_files_in_flight: None,
+            open_files_in_flight_generation: None,
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
+            process_modules_result: None,
+            process_modules_result_identity: None,
+            process_modules_error: None,
+            process_modules_in_flight: None,
+            process_modules_in_flight_generation: None,
+            process_modules_in_flight_request_id: None,
+            process_modules_next_request_id: 0,
+            process_modules_filter: String::new(),
+            process_modules_filter_cursor: 0,
+            process_modules_selected: 0,
+            process_modules_show_detail: false,
+            process_environment_result: None,
+            process_environment_result_identity: None,
+            process_environment_error: None,
+            process_environment_in_flight: None,
+            process_environment_in_flight_generation: None,
+            process_environment_in_flight_request_id: None,
+            process_environment_next_request_id: 0,
+            process_environment_filter: String::new(),
+            process_environment_filter_cursor: 0,
+            process_environment_selected: 0,
+            process_environment_show_detail: false,
             show_process_info_dialog: false,
+            process_info_tab: app::ProcessInfoTab::Metrics,
+            process_info_focus: app::ProcessInfoFocus::Content,
             process_info_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,
                 ..ui::widgets::scrollable_modal::ScrollableModalState::default()
             },
+            process_info_image_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
+                page_size: 1,
+                ..ui::widgets::scrollable_modal::ScrollableModalState::default()
+            },
+            process_info_dlls_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
+                page_size: 1,
+                ..ui::widgets::scrollable_modal::ScrollableModalState::default()
+            },
+            process_info_environment_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
+                page_size: 1,
+                ..ui::widgets::scrollable_modal::ScrollableModalState::default()
+            },
             process_info_target: None,
+            process_info_generation: 0,
             show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
@@ -9796,6 +10846,7 @@ processes = ["api.exe", "worker.exe"]
             process_info_display_identity: None,
             pending_process_info: None,
             process_info_in_flight: None,
+            process_info_in_flight_generation: None,
             ab_comparison: None,
             last_screen_area: ratatui::layout::Rect::new(0, 0, 100, 45),
             theme_index: 0,

@@ -144,6 +144,10 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Open Files is an explicit per-process investigation action. It lists disk files currently open by the selected live process.
 - Open Files is not a general handle explorer for pipes, sockets, registry keys, events, mutexes, or every possible Windows handle type.
 - Open-file collection must not block the UI thread. Refreshing the list should be explicit and should not queue redundant refresh work for the same modal session.
+- Process Info tabs must keep the `ProcessIdentity` fixed when the dialog opens. Image, Files, DLL, and Environment worker results must also match the current dialog generation so stale results cannot update a reopened dialog.
+- DLL enumeration and file metadata collection must stay on its independent worker and occur only on initial tab activation or explicit refresh, never in normal sampling.
+- Environment remote-memory reads must stay on their independent worker, enforce the 4 MiB limit, never enter recording/export data, and never expose values through status or error text.
+- Log view must not start live Process Info Image, Files, DLL, or Environment collection. Dynamic tabs display their not-recorded state inside the shared Process Info dialog.
 - Loading a named Tracked List may prune older retained history for names removed from the working list. Confirm before discarding those older samples.
 
 ## UI / UX Guide

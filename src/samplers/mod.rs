@@ -6,7 +6,9 @@ pub(crate) mod memory;
 pub(crate) mod open_files;
 pub(crate) mod pdh;
 pub(crate) mod process;
+pub(crate) mod process_environment;
 pub(crate) mod process_info;
+pub(crate) mod process_modules;
 
 use std::{
     collections::HashMap,

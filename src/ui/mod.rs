@@ -9,8 +9,10 @@ pub(crate) mod help;
 pub(crate) mod layout;
 pub(crate) mod log_list;
 pub(crate) mod open_files;
+pub(crate) mod process_environment;
 pub(crate) mod process_info_dialog;
 pub(crate) mod process_kill_confirm;
+pub(crate) mod process_modules;
 pub(crate) mod process_table;
 pub(crate) mod quit_confirm;
 pub(crate) mod recording_dialog;
@@ -55,15 +57,12 @@ pub(crate) use log_list::{
     log_dir_button_at, log_list_index_at, log_list_page_size_for_screen,
     log_list_total_rows_for_count,
 };
-use open_files::draw_open_files;
-pub(crate) use open_files::{
-    open_files_close_button_area_for_screen, open_files_page_size_for_screen,
-    open_files_scrollbar_area_for_screen, open_files_total_rows,
-};
+pub(crate) use open_files::open_files_total_rows;
 use process_info_dialog::draw_process_info_dialog;
 pub(crate) use process_info_dialog::{
     process_info_close_button_area_for_screen, process_info_content_area_for_screen,
-    process_info_page_size_for_screen,
+    process_info_page_size_for_screen, process_info_scrollbar_area_for_screen, process_info_tab_at,
+    process_info_total_rows,
 };
 use process_kill_confirm::draw_process_kill_confirm;
 pub(crate) use process_kill_confirm::process_kill_button_at;
@@ -132,9 +131,6 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_log_dir_dialog {
         draw_log_dir_dialog(frame, area, app, theme);
-    }
-    if app.show_open_files {
-        draw_open_files(frame, area, app, theme);
     }
     if app.show_process_info_dialog {
         draw_process_info_dialog(frame, area, app, theme);

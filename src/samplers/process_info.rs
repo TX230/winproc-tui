@@ -1,5 +1,5 @@
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fs,
     path::Path,
     ptr::null_mut,
@@ -32,6 +32,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) enum ProcessInfoRequest {
     Collect {
+        generation: u64,
         identity: crate::model::ProcessIdentity,
         process: ProcessRow,
         lifecycle: ProcessLifecycle,
@@ -41,6 +42,7 @@ pub(crate) enum ProcessInfoRequest {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProcessInfoResult {
+    pub(crate) generation: u64,
     pub(crate) identity: crate::model::ProcessIdentity,
     pub(crate) info: ProcessInfo,
 }
@@ -59,13 +61,18 @@ impl ProcessInfoWorker {
             while let Ok(request) = request_rx.recv() {
                 match request {
                     ProcessInfoRequest::Collect {
+                        generation,
                         identity,
                         process,
                         lifecycle,
                     } => {
-                        let info = collect_process_info(&process, lifecycle);
+                        let info = collect_process_info_checked(&identity, &process, lifecycle);
                         if result_tx
-                            .send(ProcessInfoResult { identity, info })
+                            .send(ProcessInfoResult {
+                                generation,
+                                identity,
+                                info,
+                            })
                             .is_err()
                         {
                             break;
@@ -85,12 +92,14 @@ impl ProcessInfoWorker {
 
     pub(crate) fn request_info(
         &self,
+        generation: u64,
         identity: crate::model::ProcessIdentity,
         process: ProcessRow,
         lifecycle: ProcessLifecycle,
     ) -> Result<()> {
         self.request_tx
             .send(ProcessInfoRequest::Collect {
+                generation,
                 identity,
                 process,
                 lifecycle,
@@ -120,6 +129,37 @@ impl ProcessInfoWorker {
             result_tx,
         )
     }
+}
+
+fn collect_process_info_checked(
+    identity: &crate::model::ProcessIdentity,
+    process: &ProcessRow,
+    lifecycle: ProcessLifecycle,
+) -> ProcessInfo {
+    if !process_identity_matches(identity) {
+        return exited_process_info(process);
+    }
+    let info = collect_process_info(process, lifecycle);
+    if process_identity_matches(identity) {
+        info
+    } else {
+        exited_process_info(process)
+    }
+}
+
+fn process_identity_matches(identity: &crate::model::ProcessIdentity) -> bool {
+    let system = System::new_all();
+    system
+        .process(Pid::from_u32(identity.pid))
+        .is_some_and(|process| {
+            process
+                .name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&identity.name)
+                && identity
+                    .start_time
+                    .is_none_or(|start_time| process.start_time() == start_time)
+        })
 }
 
 impl Drop for ProcessInfoWorker {
@@ -173,10 +213,11 @@ pub(crate) fn collect_process_info(
                 .map(|user_id| format!("{user_id:?}"))
         });
     let executable_value = InfoValue::from_option(executable.clone());
-    let (file_modified, file_size, product_version) = executable
+    let file_metadata = executable
         .as_deref()
-        .map(file_info_values)
-        .unwrap_or_else(|| (InfoValue::Missing, InfoValue::Missing, InfoValue::Missing));
+        .map(Path::new)
+        .map(file_metadata_values)
+        .unwrap_or_default();
     let workset_bytes = format_optional_bytes(process.workset_bytes);
     let workset_private_bytes = format_optional_bytes(process.workset_private_bytes);
     let (ws_shareable_bytes, ws_shared_bytes) =
@@ -192,9 +233,12 @@ pub(crate) fn collect_process_info(
         user: InfoValue::from_option(user),
         executable: executable_value,
         command_line: InfoValue::from_option(command_line),
-        file_modified,
-        file_size,
-        product_version,
+        file_modified: file_metadata.file_modified,
+        file_size: file_metadata.file_size,
+        company_name: file_metadata.company_name,
+        product_name: file_metadata.product_name,
+        product_version: file_metadata.product_version,
+        file_version: file_metadata.file_version,
         workset_bytes,
         workset_private_bytes,
         ws_shareable_bytes,
@@ -215,7 +259,10 @@ fn exited_process_info(process: &ProcessRow) -> ProcessInfo {
         command_line: InfoValue::Exited,
         file_modified: InfoValue::Exited,
         file_size: InfoValue::Exited,
+        company_name: InfoValue::Exited,
+        product_name: InfoValue::Exited,
         product_version: InfoValue::Exited,
+        file_version: InfoValue::Exited,
         workset_bytes: InfoValue::Exited,
         workset_private_bytes: InfoValue::Exited,
         ws_shareable_bytes: InfoValue::Exited,
@@ -224,22 +271,11 @@ fn exited_process_info(process: &ProcessRow) -> ProcessInfo {
 }
 
 fn format_command_line(parts: &[OsString]) -> String {
-    let Some((program, args)) = parts.split_first() else {
-        return String::new();
-    };
-    std::iter::once(short_program_name(program))
-        .chain(args.iter().map(|arg| arg.to_string_lossy().into_owned()))
+    parts
+        .iter()
+        .map(|part| part.to_string_lossy().into_owned())
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn short_program_name(program: &OsStr) -> String {
-    Path::new(program)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| program.to_string_lossy().into_owned())
 }
 
 fn process_arch(pid: u32) -> InfoValue {
@@ -262,37 +298,57 @@ fn process_arch(pid: u32) -> InfoValue {
     }
 }
 
-fn file_info_values(path: &str) -> (InfoValue, InfoValue, InfoValue) {
-    let path = Path::new(path);
+pub(crate) fn file_metadata_values(path: &Path) -> FileMetadataValues {
     if !path.exists() {
-        return (
-            InfoValue::FileMissing,
-            InfoValue::FileMissing,
-            InfoValue::FileMissing,
-        );
+        return FileMetadataValues::file_missing();
     }
 
     let metadata = fs::metadata(path).ok();
-    let modified = metadata
+    let file_modified = metadata
         .as_ref()
         .and_then(|metadata| metadata.modified().ok())
         .map(format_system_time)
         .map(InfoValue::Value)
         .unwrap_or(InfoValue::Missing);
-    let size = metadata
+    let file_size = metadata
         .map(|metadata| format_file_size(metadata.len()))
         .map(InfoValue::Value)
         .unwrap_or(InfoValue::Missing);
     let version = file_version_info(path);
-    (modified, size, version.product_version)
+    FileMetadataValues {
+        file_modified,
+        file_size,
+        company_name: version.company_name,
+        product_name: version.product_name,
+        product_version: version.product_version,
+        file_version: version.file_version,
+    }
 }
 
-#[derive(Default)]
-struct FileVersionValues {
-    product_version: InfoValue,
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FileMetadataValues {
+    pub(crate) file_modified: InfoValue,
+    pub(crate) file_size: InfoValue,
+    pub(crate) company_name: InfoValue,
+    pub(crate) product_name: InfoValue,
+    pub(crate) product_version: InfoValue,
+    pub(crate) file_version: InfoValue,
 }
 
-fn file_version_info(path: &Path) -> FileVersionValues {
+impl FileMetadataValues {
+    fn file_missing() -> Self {
+        Self {
+            file_modified: InfoValue::FileMissing,
+            file_size: InfoValue::FileMissing,
+            company_name: InfoValue::FileMissing,
+            product_name: InfoValue::FileMissing,
+            product_version: InfoValue::FileMissing,
+            file_version: InfoValue::FileMissing,
+        }
+    }
+}
+
+fn file_version_info(path: &Path) -> FileMetadataValues {
     let Some(path) = path.to_str() else {
         return not_available_version();
     };
@@ -315,17 +371,49 @@ fn file_version_info(path: &Path) -> FileVersionValues {
             return not_available_version();
         }
 
-        let translation = query_translation(&buffer).unwrap_or((0x0409, 0x04b0));
-        FileVersionValues {
-            product_version: query_version_string(&buffer, translation, "ProductVersion")
-                .unwrap_or(InfoValue::NotAvailable),
+        let mut translations = query_translations(&buffer);
+        if translations.is_empty() {
+            translations.push((0x0409, 0x04b0));
+        }
+        FileMetadataValues {
+            file_modified: InfoValue::Missing,
+            file_size: InfoValue::Missing,
+            company_name: query_version_string_for_translations(
+                &buffer,
+                &translations,
+                "CompanyName",
+            )
+            .unwrap_or(InfoValue::NotAvailable),
+            product_name: query_version_string_for_translations(
+                &buffer,
+                &translations,
+                "ProductName",
+            )
+            .unwrap_or(InfoValue::NotAvailable),
+            product_version: query_version_string_for_translations(
+                &buffer,
+                &translations,
+                "ProductVersion",
+            )
+            .unwrap_or(InfoValue::NotAvailable),
+            file_version: query_version_string_for_translations(
+                &buffer,
+                &translations,
+                "FileVersion",
+            )
+            .unwrap_or(InfoValue::NotAvailable),
         }
     }
 }
 
-fn not_available_version() -> FileVersionValues {
-    FileVersionValues {
+fn not_available_version() -> FileMetadataValues {
+    FileMetadataValues {
+        file_modified: InfoValue::Missing,
+        file_size: InfoValue::Missing,
+        company_name: InfoValue::NotAvailable,
+        product_name: InfoValue::NotAvailable,
         product_version: InfoValue::NotAvailable,
+        file_version: InfoValue::NotAvailable,
     }
 }
 
@@ -362,7 +450,7 @@ fn format_integer(value: u64) -> String {
     out
 }
 
-unsafe fn query_translation(buffer: &[u8]) -> Option<(u16, u16)> {
+unsafe fn query_translations(buffer: &[u8]) -> Vec<(u16, u16)> {
     let mut ptr = null_mut();
     let mut len = 0u32;
     let block = to_wide("\\VarFileInfo\\Translation");
@@ -377,10 +465,24 @@ unsafe fn query_translation(buffer: &[u8]) -> Option<(u16, u16)> {
         || len < 4
         || ptr.is_null()
     {
-        return None;
+        return Vec::new();
     }
-    let values = unsafe { std::slice::from_raw_parts(ptr as *const u16, 2) };
-    Some((values[0], values[1]))
+    let pair_count = (len as usize / 4).max(1);
+    let values = unsafe { std::slice::from_raw_parts(ptr as *const u16, pair_count * 2) };
+    values
+        .chunks_exact(2)
+        .map(|pair| (pair[0], pair[1]))
+        .collect()
+}
+
+fn query_version_string_for_translations(
+    buffer: &[u8],
+    translations: &[(u16, u16)],
+    key: &str,
+) -> Option<InfoValue> {
+    translations
+        .iter()
+        .find_map(|translation| unsafe { query_version_string(buffer, *translation, key) })
 }
 
 unsafe fn query_version_string(
@@ -461,13 +563,16 @@ mod tests {
     }
 
     #[test]
-    fn command_line_shortens_executable_path_only() {
+    fn command_line_keeps_the_full_executable_path() {
         let command = format_command_line(&[
             OsString::from("C:\\Program Files\\App\\app.exe"),
             OsString::from("--config"),
             OsString::from("C:\\work\\config.toml"),
         ]);
 
-        assert_eq!(command, "app.exe --config C:\\work\\config.toml");
+        assert_eq!(
+            command,
+            "C:\\Program Files\\App\\app.exe --config C:\\work\\config.toml"
+        );
     }
 }

@@ -113,22 +113,31 @@ The `System Info` dialog is not part of metric history. It displays static suppo
 
 ## Process Info
 
-Pressing `Enter` on the Processes panel opens a `Process Info` dialog for the selected process.
-Live static Process Info is collected on a worker thread after the dialog target has been stable for 200 ms.
-The dialog immediately uses the selected `ProcessRow` as a fallback for recorded fields, so its metric history does not wait for static collection.
+Pressing `Enter` on the Processes panel opens a responsive, tabbed `Process Info` dialog for the selected process. The dialog keeps one fixed `ProcessIdentity` across its tabs. It has a maximum outer size and shrinks independently in width and height to fit the terminal's available body area.
+
+Live static Process Info is collected on a worker thread after the dialog target has been stable for 200 ms. The dialog immediately uses the selected `ProcessRow` as a fallback for recorded fields, so its metric history does not wait for static collection.
+
+The `Image` tab displays these values:
 
 | Display name | Description |
 |---|---|
 | `Process` | Process name and PID. |
+| `User` | User that owns the process. |
+| `Architecture` | `x64` or `x86` when available. |
 | `Parent` | Parent process information. |
 | `Started` | Start time and uptime. |
 | `Executable` | Executable path. |
-| `Command` | Command line. |
-| `File` | Modified time, file size, and product version. |
+| `Command line` | Command line. |
+| `Company` | Executable `CompanyName` version resource. |
+| `Product` | Executable `ProductName` version resource. |
+| `Product version` | Executable `ProductVersion` version resource. |
+| `File version` | Executable `FileVersion` version resource. |
+| `Modified` | Executable file modification time. |
+| `Size` | Executable file size. |
 
 Unavailable values are displayed as one of `<access denied>`, `<exited>`, `<not available>`, `<missing>`, or `--`.
 
-The Metrics section always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded.
+The `Metrics` tab always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded.
 
 The comparison uses the app-wide A/B timestamps set in Graph or Samples:
 
@@ -147,9 +156,9 @@ In `DISPLAY PAUSED`, both the current Snapshot and history come from the paused 
 
 ## Open Files
 
-`f` (with the Processes panel focused) displays disk file handles for the selected live process, grouped by path.
+`f` (with the Processes panel focused) opens Process Info on its `Files` tab and displays disk file handles for the selected live process, grouped by path. Switching to `Files` from another Process Info tab lazily starts the same collection for the dialog's fixed target.
 This is a supporting investigation tool after an increase in `Hndl` has been found, not a metric that is sampled continuously.
-While the Open files modal is open, `Ctrl+U` refreshes the list on demand without queuing another request if a collection is already running.
+While the `Files` tab is active, `Ctrl+U` refreshes the list on demand without queuing another request if a collection is already running.
 
 Sources are `NtQuerySystemInformation(SystemExtendedHandleInformation)`, `DuplicateHandle`, `GetFileType(FILE_TYPE_DISK)`, and `GetFinalPathNameByHandleW`.
 The app displays what can be collected with normal user permissions. Permission failures and handles that cannot be duplicated are treated as uncollected counts or `<access denied>`.
@@ -160,6 +169,26 @@ It does not show a true file-open timestamp because the stable file metadata tim
 
 When copying to the clipboard, use raw text without a header.
 Usually this is only the path. If the same path has multiple handles, copy `path<TAB>count`.
+
+## Loaded DLLs
+
+The Process Info `DLLs` tab explicitly takes a point-in-time snapshot of DLL modules loaded by the fixed live process target. It is not part of normal sampling, recording, or Log view. The collector runs on its own worker so Toolhelp enumeration and file metadata reads do not block input, drawing, Open Files, or the sampling worker.
+
+The collector combines native and WOW64 Toolhelp module snapshots, excludes the main executable and non-DLL modules, removes duplicate paths case-insensitively, and sorts by DLL name then directory. `ERROR_BAD_LENGTH` snapshot failures are retried up to three times. Process identity is checked before and after collection so a result from an exited process or reused PID is rejected.
+
+The table exposes `DLL`, `Company`, `Product Version`, `File Version`, `Modified`, and `Directory`. Version-resource or file-metadata failures remain per-file values such as `<not available>` or `<missing>` and do not remove that DLL from the list. Narrow layouts prioritize DLL name, file version, modified time, and directory; the selected-row detail retains every full value.
+
+The filter searches every displayed field. `Ctrl+U` takes a new snapshot without queuing a duplicate request, and the previous successful snapshot remains visible while refreshing or after a refresh error. `Ctrl+C` copies only the selected DLL's full path. Log view displays `Not recorded in Log view.` and never starts the DLL worker.
+
+## Process Environment
+
+The Process Info `Environment` tab is an explicit, best-effort Windows 11 x64 investigation action. It reads the fixed live target's remote environment block only when the tab is first activated or `Ctrl+U` requests a refresh. It is not part of normal sampling, recording, or Log view, and the in-memory result is cleared when Process Info closes because values may contain passwords, tokens, or other secrets.
+
+The independent Environment worker distinguishes native x64 and WOW64 targets, queries the appropriate PEB, follows pointer-width-specific `ProcessParameters` and environment pointers, and reads UTF-16LE memory with `ReadProcessMemory`. Collection is limited to 4 MiB and requires a double-null terminator. Null or overflowing pointers, unreadable or partial regions, odd byte counts, invalid UTF-16, unsupported architecture, access denial, process exit, and identity change become typed unavailable states rather than raw addresses or OS status values.
+
+Entries are split at the first `=`. Windows per-drive entries such as `=C:=C:\work` keep `=C:` as the name by using the second separator. Empty values are valid; rows without a separator are counted and skipped. Names are sorted case-insensitively. The filter searches both names and values, and `Ctrl+C` copies only the selected `NAME=value` without a header. Status and error text never includes an environment value.
+
+Log view displays `Not recorded in Log view.` and does not open a process or read remote memory. Recording and export schemas do not include Environment results.
 
 ## Meaning of CPU%
 

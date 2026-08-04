@@ -1,86 +1,56 @@
 use ratatui::{
     layout::{Position, Rect},
     prelude::{Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use crate::{
-    App,
-    samplers::open_files::OpenFileEntry,
-    ui::{Theme, widgets::scrollable_modal::ScrollableModal},
-};
+use crate::{App, app::AppActivity, samplers::open_files::OpenFileEntry, ui::Theme};
 
-const CLOSE_BUTTON: &str = "[ Close ]";
-const CONTENT_HEIGHT: u16 = 18;
-const FOOTER_HEIGHT: u16 = 3;
 const COUNT_COLUMN_WIDTH: usize = 5;
 const FILE_COLUMN_WIDTH: usize = 38;
 const DIRECTORY_COLUMN_WIDTH: usize = 92;
 
-pub(crate) fn draw_open_files(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let modal = open_files_modal();
-    let expected_layout = modal.layout(area);
-    let lines = open_files_lines(app, theme, expected_layout.content.width as usize);
+pub(crate) fn draw_open_files_tab(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &App,
+    theme: Theme,
+) {
+    let lines = open_files_lines(app, theme, area.width as usize);
     let line_count = lines.len();
-    let layout = modal.render(
-        frame,
+    let rows = area.height.max(1) as usize;
+    let offset = app
+        .open_files_scroll
+        .offset
+        .min(line_count.saturating_sub(rows));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(theme.text).bg(theme.panel))
+            .scroll((offset as u16, 0)),
         area,
-        Text::from(lines),
-        app.open_files_scroll.offset,
-        false,
-        theme,
     );
-    set_open_files_filter_cursor(frame, &layout, app, line_count);
+    set_open_files_filter_cursor(frame, area, app, line_count);
     render_open_files_scrollbar(frame, area, app, theme);
-    if layout.footer.height > 0 {
-        frame.render_widget(
-            Paragraph::new(Line::from(shortcut_spans(theme))),
-            Rect::new(layout.footer.x, layout.footer.y, layout.footer.width, 1),
-        );
-    }
-    if let Some(area) = open_files_close_button_area_in_footer(layout.footer) {
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                CLOSE_BUTTON,
-                Style::default()
-                    .fg(theme.background)
-                    .bg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ))),
-            area,
-        );
-    }
 }
 
-pub(crate) fn open_files_page_size_for_screen(area: Rect, app: &App) -> usize {
-    let _ = app;
-    open_files_modal().page_size(area)
-}
-
-pub(crate) fn open_files_scrollbar_area_for_screen(area: Rect, app: &App) -> Option<Rect> {
-    let layout = open_files_modal().layout(area);
+pub(crate) fn open_files_scrollbar_area(area: Rect, app: &App) -> Option<Rect> {
     let rows = app.open_files_scroll.page_size.max(1);
-    if open_files_total_rows(app) <= rows || layout.content.is_empty() {
+    if open_files_total_rows(app) <= rows || area.is_empty() {
         return None;
     }
     Some(Rect::new(
-        layout
-            .content
-            .right()
-            .min(layout.area.right().saturating_sub(2)),
-        layout.content.y,
+        area.right().saturating_sub(1),
+        area.y,
         1,
-        layout.content.height,
+        area.height,
     ))
 }
 
-pub(crate) fn open_files_close_button_area_for_screen(area: Rect, app: &App) -> Option<Rect> {
-    let _ = app;
-    open_files_close_button_area(open_files_modal().area(area))
-}
-
 pub(crate) fn open_files_total_rows(app: &App) -> usize {
+    if app.activity() == AppActivity::LogView {
+        return 1;
+    }
     match &app.open_files_result {
         Some(report) => {
             if report.error.is_some() {
@@ -96,6 +66,13 @@ pub(crate) fn open_files_total_rows(app: &App) -> usize {
 
 fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
+    if app.activity() == AppActivity::LogView {
+        lines.push(Line::from(Span::styled(
+            "Not recorded in Log view.",
+            Style::default().fg(theme.muted),
+        )));
+        return lines;
+    }
     let Some(report) = &app.open_files_result else {
         lines.push(Line::from(Span::styled(
             "Loading...",
@@ -117,14 +94,26 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         return lines;
     }
 
+    let entries = filtered_entries(app);
+    let total_paths = report.entries.len();
+    let path_count = if app.open_files_filter.is_empty() {
+        format!("paths {total_paths}")
+    } else {
+        format!("shown {}/{total_paths}", entries.len())
+    };
     lines.push(Line::from(Span::styled(
         format!(
-            "{} / PID {}  handles {}  file handles {}  paths {}{}",
+            "{} / PID {}{}  handles {}  file handles {}  {}{}",
             report.process_name,
             report.pid,
+            if app.process_info_target_is_currently_live() {
+                ""
+            } else {
+                " · process exited"
+            },
             report.total_handles,
             report.file_handles,
-            filtered_entries(app).len(),
+            path_count,
             if app.open_files_in_flight.is_some() {
                 "  refreshing..."
             } else {
@@ -156,13 +145,12 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         )));
     }
 
-    let entries = filtered_entries(app);
     if entries.is_empty() {
         lines.push(Line::from(Span::styled(
             if app.open_files_filter.is_empty() {
                 "No named disk file handles."
             } else {
-                "No matching file names."
+                "No matching paths."
             },
             Style::default().fg(theme.muted),
         )));
@@ -177,7 +165,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
 
 fn set_open_files_filter_cursor(
     frame: &mut ratatui::Frame<'_>,
-    layout: &crate::ui::widgets::scrollable_modal::ScrollableModalLayout,
+    area: Rect,
     app: &App,
     line_count: usize,
 ) {
@@ -189,7 +177,7 @@ fn set_open_files_filter_cursor(
     }
 
     let filter_row = 1usize;
-    let rows = layout.content.height.max(1) as usize;
+    let rows = area.height.max(1) as usize;
     let offset = app
         .open_files_scroll
         .offset
@@ -201,49 +189,15 @@ fn set_open_files_filter_cursor(
     let (_, cursor_x) = filter_input_view(
         &app.open_files_filter,
         app.open_files_filter_cursor,
-        filter_input_width(layout.content.width as usize),
+        filter_input_width(area.width as usize),
     );
     let label_width = filter_label_width();
     frame.set_cursor_position(Position::new(
-        layout
-            .content
-            .x
+        area.x
             .saturating_add((label_width + cursor_x) as u16)
-            .min(layout.content.right().saturating_sub(1)),
-        layout
-            .content
-            .y
-            .saturating_add((filter_row - offset) as u16),
+            .min(area.right().saturating_sub(1)),
+        area.y.saturating_add((filter_row - offset) as u16),
     ));
-}
-
-fn shortcut_spans(theme: Theme) -> Vec<Span<'static>> {
-    let items = [
-        ("Ctrl+U", "refresh"),
-        ("Ctrl+C", "copy paths"),
-        ("Esc/Enter", "close"),
-    ];
-    let mut spans = Vec::new();
-    for (index, (key, label)) in items.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::raw("  "));
-        }
-        spans.push(Span::styled(
-            *key,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            format!(" {label}"),
-            Style::default().fg(theme.text),
-        ));
-    }
-    spans
-}
-
-fn open_files_modal() -> ScrollableModal {
-    ScrollableModal::new("Open files", 140, CONTENT_HEIGHT, FOOTER_HEIGHT)
 }
 
 fn render_open_files_scrollbar(
@@ -252,7 +206,7 @@ fn render_open_files_scrollbar(
     app: &App,
     theme: Theme,
 ) {
-    let Some(scrollbar_area) = open_files_scrollbar_area_for_screen(area, app) else {
+    let Some(scrollbar_area) = open_files_scrollbar_area(area, app) else {
         return;
     };
     let total = open_files_total_rows(app);
@@ -296,8 +250,8 @@ pub(crate) fn filtered_entries(app: &App) -> Vec<&OpenFileEntry> {
         .entries
         .iter()
         .filter(|entry| {
-            let name = file_name(&entry.path).to_lowercase();
-            terms.iter().any(|term| name.contains(term))
+            let path = entry.path.to_lowercase();
+            terms.iter().any(|term| path.contains(term))
         })
         .collect()
 }
@@ -450,30 +404,4 @@ mod tests {
         assert_eq!(open_files_scrollbar_position(100, 10, 90), 99);
         assert_eq!(open_files_scrollbar_position(100, 10, 900), 99);
     }
-}
-
-fn open_files_close_button_area(popup: Rect) -> Option<Rect> {
-    if popup.width < 11 || popup.height < 4 {
-        return None;
-    }
-    let width = 11;
-    Some(Rect::new(
-        popup.x + popup.width.saturating_sub(width) / 2,
-        popup.bottom().saturating_sub(3),
-        width,
-        1,
-    ))
-}
-
-fn open_files_close_button_area_in_footer(footer: Rect) -> Option<Rect> {
-    if footer.width < 11 || footer.height == 0 {
-        return None;
-    }
-    let width = 11;
-    Some(Rect::new(
-        footer.x + footer.width.saturating_sub(width) / 2,
-        footer.y.saturating_add(1),
-        width,
-        1,
-    ))
 }

@@ -80,7 +80,7 @@ The Tracked Lists dialog is split into an upper area for loading a list and a lo
 - **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
 - **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
-- **Open files**: Lists the files a selected live process has open.
+- **Process investigation**: Opens a responsive, tabbed Process Info dialog for metrics, executable details, and files currently open by the selected live process.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
 
 ## When This Helps
@@ -97,7 +97,7 @@ The Tracked Lists dialog is split into an upper area for loading a list and a lo
 
 This project is Windows-only. Linux, macOS, and other platforms are not supported.
 
-Administrator privileges are not required for normal monitoring. Some metrics and Open files may be unavailable for protected processes; unavailable values are displayed as `--` or a diagnostic state.
+Administrator privileges are not required for normal monitoring. Some process details and open files may be unavailable for protected processes; unavailable values are displayed as `--` or a diagnostic state.
 
 ## Use a Prebuilt Binary
 
@@ -260,10 +260,14 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `t`                 | Toggle whether only tracked processes are shown.                                      |
 | `Enter`             | Open Process Info for the selected process.                                          |
 | `i`                 | Open the System Info dialog.                                                        |
-| `f`                 | Open the Open files list for the selected live process.                               |
+| `f`                 | Open Process Info directly on the Files tab for the selected live process.            |
 | `g`                 | Open or close all configured Graphs at once.                                          |
 
-Process Info keeps the selected process's static information at the top and lists all 14 normally sampled numeric process metrics below it. Set A and optionally B in Graph or Samples before pressing `Enter`: with A only, the dialog shows Current minus A; with both points, it shows B minus A. Missing exact-time samples remain `--`. The dialog can be scrolled with `Up` / `Down`, `PageUp` / `PageDown`, `Home` / `End`, or the mouse wheel.
+Process Info is a responsive tabbed dialog that stays compact on large terminals and shrinks to the available area on smaller ones. `Metrics` lists all 14 normally sampled numeric process metrics, `Image` shows executable, user, architecture, full command-line, and version details, `Files` contains the former Open files list, `DLLs` lists the full paths of loaded DLLs, and `Environment` shows the target's environment variables. Use `Ctrl+Right` / `Ctrl+Left` to switch to the next or previous tab; `Tab` / `Shift+Tab` moves focus between the active tab content and the Close button. Set A and optionally B in Graph or Samples before opening `Metrics`: with A only, the dialog shows Current minus A; with both points, it shows B minus A. Missing exact-time samples remain `--`.
+
+Scroll ordinary content with `Up` / `Down`, `PageUp` / `PageDown`, `Home` / `End`, or the mouse wheel. On `DLLs` and `Environment`, those keys select a row instead; press `Enter` to open the selected DLL metadata or the selected variable's complete value. The same scrolling keys move through a long detail view, and `Esc` or `Enter` returns to the list. `Files` and `DLLs` filters match full paths. All three list filters are cleared when a new Process Info dialog opens, but remain available while switching tabs or refreshing within that dialog. Filtered summaries show both the displayed and total item counts. On `Image`, `Files`, `DLLs`, and `Environment`, `Ctrl+U` refreshes the active tab. `Ctrl+C` copies the filtered paths on `Files`, the selected DLL path on `DLLs`, or the selected `NAME=value` on `Environment`. Dynamic collection is point-in-time and may be unavailable for protected, unsupported, or exited processes.
+
+Environment values can contain passwords, tokens, and other secrets. They are read only when the tab is opened or explicitly refreshed, are cleared from Process Info state when the dialog closes, and are never added to recordings or Log view.
 
 
 ### Graph and A/B Comparison

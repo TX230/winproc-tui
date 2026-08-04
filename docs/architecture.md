@@ -33,7 +33,7 @@ The diagram shows runtime data flow rather than a strict Rust module dependency 
 
 ### 2.1 Keep the UI thread responsive
 
-Windows counter and handle collection can block or take variable time. `SamplingWorker` therefore owns `SamplingRuntime` on a dedicated thread, and `App` exchanges requests and results through channels. Process information, Open Files collection, log-directory scans, and full log loading also use background work where blocking would otherwise affect input or drawing.
+Windows counter and handle collection can block or take variable time. `SamplingWorker` therefore owns `SamplingRuntime` on a dedicated thread, and `App` exchanges requests and results through channels. Process Image information, Process Info Files collection, loaded-DLL enumeration and file metadata, remote Environment reads, log-directory scans, and full log loading also use background work where blocking would otherwise affect input or drawing.
 
 `App` permits only one sampling request to be in flight. A slow collection delays the next result instead of creating an unbounded queue of sampling work.
 
@@ -95,7 +95,7 @@ Interactive quit goes through application cleanup. If recording is active, the e
 
 Each `run_tui` iteration:
 
-1. Applies completed sample, process-info, Open Files, and log-worker results.
+1. Applies completed sample, process-info, Open Files, loaded-DLL, Environment, and log-worker results.
 2. Recalculates layout state and draws only when the dirty flag is set.
 3. Polls terminal input with a bounded wait so worker results and console termination requests are checked promptly.
 4. Dispatches key and mouse input to `App`; resize events invalidate the layout.
@@ -133,6 +133,8 @@ Column selection and sorting are modeled separately through `MetricColumn`, `Sor
 
 Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracked List is empty.
 
+Process Info is one responsive modal with tab-specific scroll and collection state. Opening it fixes a `ProcessInfoDialogTarget` containing `ProcessIdentity`, the opening `ProcessRow`, and lifecycle. Every tab and worker request uses that target rather than consulting the current Processes selection again. Filters belong to one dialog session: tab switches and explicit refreshes preserve them, while opening a new Process Info session clears them. Files and DLL filtering use the full displayed path. DLL and Environment tabs separate their selectable lists from keyboard-scrollable detail views so complete metadata and values remain reachable on narrow terminals. A monotonically changing dialog generation accompanies Process Image, Files, DLL, and Environment requests, and DLL and Environment refreshes also have request ids, so a result from a closed, reopened, or superseded dialog request cannot update a newer session even when the same PID and identity are involved. DLL and Environment collection have independent workers from sampling, Image, and Open Files. All live collectors reject a target that exits or changes identity during collection. Environment's PEB offsets, pointer-width handling, memory-region validation, 4 MiB cap, and UTF-16 parser remain inside the platform-facing collector; UI and recording code receive only typed entries or typed errors. Environment results are cleared when the dialog closes and never enter recording state. Log view uses recorded display state for Metrics and Image fallbacks and never starts live Process Info collection.
+
 The working Tracked List is separate from saved named definitions. `Space` edits only the working copy. The Tracked Lists dialog prepends a virtual `Empty (default)` entry to the saved definitions; it is active only when no named definition is active and the working list is empty, and it is never persisted, renamed, deleted, or overwritten. Loading either the virtual empty entry or a saved list replaces the working copy without changing `tracked_only`, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
 
 ### 5.3 Graph and Samples state
@@ -152,6 +154,7 @@ Process Info applies the stricter same-time invariant to every metric: it resolv
 Input dispatch follows these rules:
 
 - Modal input has priority over the underlying panels.
+- Process Info tab, close-button, content, and scrollbar hit regions are derived from the same centered dialog layout used for drawing. Clicking outside the dialog neither dismisses it nor operates the underlying panels.
 - Filter editing accepts text-editing and confirm/cancel input instead of normal navigation.
 - Non-modal actions depend on the current `FocusedPanel`.
 - Key press and repeat events are handled; release events are ignored to avoid duplicate processing while preserving terminal key repeat.
@@ -208,6 +211,7 @@ The most important implementation invariants are:
 - two-column Graph layout must not display the Samples panel;
 - Graph shared state must not replace per-slot sample-availability checks;
 - Process Info comparisons must not substitute a nearby time or a different process identity;
+- all Process Info tabs must retain the target fixed when the dialog opened, and asynchronous results must match both its identity and dialog generation;
 - unavailable metrics must remain explicit rather than being converted to plausible values.
 
 Unit tests live both beside modules and in `src/main.rs`. `SamplingWorker::test_pair` supports asynchronous state tests without a real collector, while ratatui `TestBackend` and buffer assertions cover layout, styling, and interaction-sensitive rendering. Exact UI details removed from this document should be protected by those implementation tests when they are intentional behavior.

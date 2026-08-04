@@ -8,9 +8,9 @@ use ratatui::layout::Rect;
 
 use crate::{
     app::{
-        App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, ProcessKillSelection,
-        QuitConfirmSelection, RecordingOverwriteSelection, TrackedListConfirmSelection,
-        TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
+        App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, ProcessInfoFocus,
+        ProcessKillSelection, QuitConfirmSelection, RecordingOverwriteSelection,
+        TrackedListConfirmSelection, TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
@@ -26,15 +26,14 @@ use crate::{
         },
         log_dir_button_at, log_list_index_at, main_panel_areas_for_app,
         metric_column_warning_ok_button_area, no_graph_metrics_warning_ok_button_area,
-        open_files_close_button_area_for_screen, process_info_close_button_area_for_screen,
-        process_info_content_area_for_screen, process_kill_button_at,
-        process_metric_column_index_at, process_tracked_only_control_area, quit_confirm_button_at,
-        ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
-        recording_overwrite_button_at, recording_path_button_at,
-        system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
-        tracked_list_confirm_button_at, tracked_list_index_at, tracked_list_name_button_at,
-        tracked_list_save_name_area_for_screen, tracked_list_startup_area_for_screen,
-        tracked_lists_button_at, tracked_remove_button_at,
+        process_info_close_button_area_for_screen, process_info_content_area_for_screen,
+        process_info_tab_at, process_kill_button_at, process_metric_column_index_at,
+        process_tracked_only_control_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
+        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
+        recording_path_button_at, system_activity_panel_area_for_screen,
+        system_info_ok_button_area_for_screen, tracked_list_confirm_button_at,
+        tracked_list_index_at, tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
+        tracked_list_startup_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
     },
 };
 
@@ -384,53 +383,244 @@ impl App {
             return Ok(());
         }
 
-        if self.show_open_files {
+        if self.show_process_info_dialog {
             match key.code {
-                KeyCode::Esc | KeyCode::Enter => self.close_open_files(),
-                KeyCode::Up => self.scroll_open_files_up(1),
-                KeyCode::Down => self.scroll_open_files_down(1),
-                KeyCode::PageUp => self.scroll_open_files_up(self.open_files_scroll.page_size),
-                KeyCode::PageDown => self.scroll_open_files_down(self.open_files_scroll.page_size),
-                KeyCode::Home => self.scroll_open_files_home(),
-                KeyCode::End => self.scroll_open_files_end(),
-                KeyCode::Left => self.move_open_files_filter_cursor_left(),
-                KeyCode::Right => self.move_open_files_filter_cursor_right(),
-                KeyCode::Backspace => self.pop_open_files_filter_char(),
-                KeyCode::Delete => self.delete_open_files_filter_char(),
+                KeyCode::Esc if self.close_process_info_detail() => {}
+                KeyCode::Esc => self.close_process_info_dialog(),
+                KeyCode::Enter if self.process_info_focus == ProcessInfoFocus::Close => {
+                    self.close_process_info_dialog()
+                }
+                KeyCode::Enter if self.process_info_detail_is_open() => {
+                    self.close_process_info_detail();
+                }
+                KeyCode::Enter
+                    if matches!(
+                        self.process_info_tab,
+                        crate::app::ProcessInfoTab::Dlls | crate::app::ProcessInfoTab::Environment
+                    ) =>
+                {
+                    self.open_selected_process_info_detail();
+                }
+                KeyCode::Enter => self.close_process_info_dialog(),
+                KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.previous_process_info_tab()?
+                }
+                KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.next_process_info_tab()?
+                }
+                KeyCode::Tab
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                {
+                    self.focus_previous_process_info_control()
+                }
+                KeyCode::Tab if key.modifiers.is_empty() => self.focus_next_process_info_control(),
+                KeyCode::BackTab
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                {
+                    self.focus_previous_process_info_control()
+                }
+                _ if self.process_info_focus != ProcessInfoFocus::Content => {}
+                KeyCode::Up
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_up(1)
+                }
+                KeyCode::Down
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_down(1)
+                }
+                KeyCode::PageUp
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_up(self.process_info_page_size())
+                }
+                KeyCode::PageDown
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_down(self.process_info_page_size())
+                }
+                KeyCode::Home
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_home()
+                }
+                KeyCode::End
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_end()
+                }
+                KeyCode::Up
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_up(1)
+                }
+                KeyCode::Down
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_down(1)
+                }
+                KeyCode::PageUp
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_up(self.process_info_page_size())
+                }
+                KeyCode::PageDown
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_down(self.process_info_page_size())
+                }
+                KeyCode::Home
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_home()
+                }
+                KeyCode::End
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_end()
+                }
+                KeyCode::Up => self.scroll_process_info_up(1),
+                KeyCode::Down => self.scroll_process_info_down(1),
+                KeyCode::PageUp => self.scroll_process_info_up(self.process_info_page_size()),
+                KeyCode::PageDown => self.scroll_process_info_down(self.process_info_page_size()),
+                KeyCode::Home => self.scroll_process_info_home(),
+                KeyCode::End => self.scroll_process_info_end(),
+                KeyCode::Left if self.process_info_tab == crate::app::ProcessInfoTab::Files => {
+                    self.move_open_files_filter_cursor_left()
+                }
+                KeyCode::Right if self.process_info_tab == crate::app::ProcessInfoTab::Files => {
+                    self.move_open_files_filter_cursor_right()
+                }
+                KeyCode::Left
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_filter_cursor_left()
+                }
+                KeyCode::Right
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.move_process_modules_filter_cursor_right()
+                }
+                KeyCode::Left
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_filter_cursor_left()
+                }
+                KeyCode::Right
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.move_process_environment_filter_cursor_right()
+                }
+                KeyCode::Backspace
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Files =>
+                {
+                    self.pop_open_files_filter_char()
+                }
+                KeyCode::Delete if self.process_info_tab == crate::app::ProcessInfoTab::Files => {
+                    self.delete_open_files_filter_char()
+                }
+                KeyCode::Backspace
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.pop_process_modules_filter_char()
+                }
+                KeyCode::Delete
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail =>
+                {
+                    self.delete_process_modules_filter_char()
+                }
+                KeyCode::Backspace
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.pop_process_environment_filter_char()
+                }
+                KeyCode::Delete
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail =>
+                {
+                    self.delete_process_environment_filter_char()
+                }
                 KeyCode::Char(ch)
                     if ch.eq_ignore_ascii_case(&'c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && self.process_info_tab == crate::app::ProcessInfoTab::Files =>
                 {
                     self.copy_open_files_to_clipboard()?;
+                }
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && self.process_info_tab == crate::app::ProcessInfoTab::Dlls =>
+                {
+                    self.copy_selected_process_module_to_clipboard()?;
+                }
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && self.process_info_tab == crate::app::ProcessInfoTab::Environment =>
+                {
+                    self.copy_selected_process_environment_to_clipboard()?;
                 }
                 KeyCode::Char(ch)
                     if ch.eq_ignore_ascii_case(&'u')
                         && key.modifiers.contains(KeyModifiers::CONTROL) =>
                 {
-                    self.refresh_open_files()?;
+                    match self.process_info_tab {
+                        crate::app::ProcessInfoTab::Image => self.refresh_selected_process_info(),
+                        crate::app::ProcessInfoTab::Files => self.refresh_open_files()?,
+                        crate::app::ProcessInfoTab::Dlls => self.refresh_process_modules()?,
+                        crate::app::ProcessInfoTab::Environment => {
+                            self.refresh_process_environment()?
+                        }
+                        crate::app::ProcessInfoTab::Metrics => {}
+                    }
                 }
                 KeyCode::Char(ch)
-                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Files
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
                         && !key.modifiers.contains(KeyModifiers::ALT) =>
                 {
                     self.push_open_files_filter_char(ch);
                 }
-                _ => {}
-            }
-            return Ok(());
-        }
-
-        if self.show_process_info_dialog {
-            match key.code {
-                KeyCode::Esc | KeyCode::Enter => self.close_process_info_dialog(),
-                KeyCode::Up => self.scroll_process_info_up(1),
-                KeyCode::Down => self.scroll_process_info_down(1),
-                KeyCode::PageUp => self.scroll_process_info_up(self.process_info_scroll.page_size),
-                KeyCode::PageDown => {
-                    self.scroll_process_info_down(self.process_info_scroll.page_size)
+                KeyCode::Char(ch)
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && !self.process_modules_show_detail
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                {
+                    self.push_process_modules_filter_char(ch);
                 }
-                KeyCode::Home => self.scroll_process_info_home(),
-                KeyCode::End => self.scroll_process_info_end(),
+                KeyCode::Char(ch)
+                    if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && !self.process_environment_show_detail
+                        && !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                {
+                    self.push_process_environment_filter_char(ch);
+                }
                 _ => {}
             }
             return Ok(());
@@ -1233,30 +1423,6 @@ impl App {
             return;
         }
 
-        if self.show_open_files {
-            match mouse.kind {
-                MouseEventKind::Down(MouseButton::Left)
-                    if open_files_close_button_area_for_screen(screen_area, self)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
-                {
-                    self.close_open_files();
-                }
-                MouseEventKind::Down(MouseButton::Left) => {
-                    self.start_open_files_scrollbar_drag(mouse.column, mouse.row, screen_area);
-                }
-                MouseEventKind::Up(MouseButton::Left) => {
-                    self.open_files_scroll.stop_drag();
-                }
-                MouseEventKind::Drag(MouseButton::Left) if self.open_files_scroll.dragging => {
-                    self.drag_open_files_scrollbar(mouse.row, screen_area);
-                }
-                MouseEventKind::ScrollUp => self.scroll_open_files_up(1),
-                MouseEventKind::ScrollDown => self.scroll_open_files_down(1),
-                _ => {}
-            }
-            return;
-        }
-
         if self.show_process_info_dialog {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left)
@@ -1265,6 +1431,80 @@ impl App {
                 {
                     self.close_process_info_dialog();
                 }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(tab) = process_info_tab_at(screen_area, mouse.column, mouse.row) {
+                        if let Err(error) = self.activate_process_info_tab(tab) {
+                            self.status = format!("Process Info tab failed: {error}");
+                        }
+                    } else if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
+                        && contains_point(
+                            process_info_content_area_for_screen(screen_area),
+                            mouse.column,
+                            mouse.row,
+                        )
+                    {
+                        self.process_info_focus = ProcessInfoFocus::Content;
+                        let content = process_info_content_area_for_screen(screen_area);
+                        if let Some(index) = crate::ui::process_modules::process_module_index_at(
+                            content,
+                            self,
+                            mouse.column,
+                            mouse.row,
+                        ) {
+                            self.select_process_module(index);
+                        } else {
+                            self.start_process_info_scrollbar_drag(
+                                mouse.column,
+                                mouse.row,
+                                screen_area,
+                            );
+                        }
+                    } else if self.process_info_tab == crate::app::ProcessInfoTab::Environment
+                        && contains_point(
+                            process_info_content_area_for_screen(screen_area),
+                            mouse.column,
+                            mouse.row,
+                        )
+                    {
+                        self.process_info_focus = ProcessInfoFocus::Content;
+                        let content = process_info_content_area_for_screen(screen_area);
+                        if let Some(index) =
+                            crate::ui::process_environment::process_environment_index_at(
+                                content,
+                                self,
+                                mouse.column,
+                                mouse.row,
+                            )
+                        {
+                            self.select_process_environment(index);
+                        } else {
+                            self.start_process_info_scrollbar_drag(
+                                mouse.column,
+                                mouse.row,
+                                screen_area,
+                            );
+                        }
+                    } else if contains_point(
+                        process_info_content_area_for_screen(screen_area),
+                        mouse.column,
+                        mouse.row,
+                    ) {
+                        self.process_info_focus = ProcessInfoFocus::Content;
+                        self.start_process_info_scrollbar_drag(
+                            mouse.column,
+                            mouse.row,
+                            screen_area,
+                        );
+                    }
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    self.stop_process_info_scrollbar_drag();
+                }
+                MouseEventKind::Drag(MouseButton::Left)
+                    if self.process_info_scrollbar_dragging() =>
+                {
+                    self.drag_process_info_scrollbar(mouse.row, screen_area);
+                }
                 MouseEventKind::ScrollUp
                     if contains_point(
                         process_info_content_area_for_screen(screen_area),
@@ -1272,6 +1512,7 @@ impl App {
                         mouse.row,
                     ) =>
                 {
+                    self.process_info_focus = ProcessInfoFocus::Content;
                     self.scroll_process_info_up(1);
                 }
                 MouseEventKind::ScrollDown
@@ -1281,6 +1522,7 @@ impl App {
                         mouse.row,
                     ) =>
                 {
+                    self.process_info_focus = ProcessInfoFocus::Content;
                     self.scroll_process_info_down(1);
                 }
                 _ => {}

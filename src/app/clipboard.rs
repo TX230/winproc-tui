@@ -62,6 +62,32 @@ impl App {
         Ok(())
     }
 
+    pub(crate) fn copy_selected_process_module_to_clipboard(&mut self) -> Result<()> {
+        let Some(entry) = crate::ui::process_modules::selected_entry(self) else {
+            self.status = "No DLL selected".to_string();
+            return Ok(());
+        };
+        let path = entry.path.clone();
+        match copy_text_to_clipboard(&path) {
+            Ok(()) => self.status = "Copied DLL path".to_string(),
+            Err(error) => self.status = format!("Clipboard copy failed: {error}"),
+        }
+        Ok(())
+    }
+
+    pub(crate) fn copy_selected_process_environment_to_clipboard(&mut self) -> Result<()> {
+        let Some(entry) = crate::ui::process_environment::selected_entry(self) else {
+            self.status = "No environment variable selected".to_string();
+            return Ok(());
+        };
+        let value = entry.raw();
+        match copy_text_to_clipboard(&value) {
+            Ok(()) => self.status = "Copied environment variable".to_string(),
+            Err(error) => self.status = format!("Clipboard copy failed: {error}"),
+        }
+        Ok(())
+    }
+
     pub(crate) fn copy_selected_process_row_to_clipboard(&mut self) -> Result<()> {
         let Some(process) = self.selected_visible_process() else {
             self.status = "No process selected".to_string();

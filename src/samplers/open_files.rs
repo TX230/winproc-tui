@@ -9,6 +9,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
+use sysinfo::{Pid, System};
 use winapi::{
     shared::{
         minwindef::{DWORD, FALSE, LPVOID, ULONG},
@@ -63,6 +64,8 @@ pub(crate) struct OpenFilesReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OpenFilesError {
     AccessDenied,
+    ProcessExited,
+    IdentityChanged,
     QueryFailed(String),
 }
 
@@ -70,13 +73,31 @@ impl OpenFilesError {
     pub(crate) fn message(&self) -> String {
         match self {
             Self::AccessDenied => "<access denied>".to_string(),
+            Self::ProcessExited => "<exited>".to_string(),
+            Self::IdentityChanged => "<process changed>".to_string(),
             Self::QueryFailed(message) => format!("query failed: {message}"),
+        }
+    }
+}
+
+impl OpenFilesReport {
+    pub(crate) fn unavailable(process: &ProcessRow, error: OpenFilesError) -> Self {
+        Self {
+            pid: process.pid,
+            process_name: process.name.clone(),
+            total_handles: 0,
+            file_handles: 0,
+            inaccessible_handles: 0,
+            unnamed_file_handles: 0,
+            entries: Vec::new(),
+            error: Some(error),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct OpenFilesResult {
+    pub(crate) generation: u64,
     pub(crate) identity: ProcessIdentity,
     pub(crate) report: OpenFilesReport,
 }
@@ -84,6 +105,7 @@ pub(crate) struct OpenFilesResult {
 #[derive(Debug, Clone)]
 pub(crate) enum OpenFilesRequest {
     Collect {
+        generation: u64,
         identity: ProcessIdentity,
         process: ProcessRow,
     },
@@ -103,10 +125,31 @@ impl OpenFilesWorker {
         let join_handle = thread::spawn(move || {
             while let Ok(request) = request_rx.recv() {
                 match request {
-                    OpenFilesRequest::Collect { identity, process } => {
-                        let report = collect_open_files_for_process(&process);
+                    OpenFilesRequest::Collect {
+                        generation,
+                        identity,
+                        process,
+                    } => {
+                        let report = match verify_process_identity(&identity) {
+                            Ok(()) => {
+                                let report = collect_open_files_for_process(&process);
+                                if report.error.is_none() {
+                                    match verify_process_identity(&identity) {
+                                        Ok(()) => report,
+                                        Err(error) => OpenFilesReport::unavailable(&process, error),
+                                    }
+                                } else {
+                                    report
+                                }
+                            }
+                            Err(error) => OpenFilesReport::unavailable(&process, error),
+                        };
                         if result_tx
-                            .send(OpenFilesResult { identity, report })
+                            .send(OpenFilesResult {
+                                generation,
+                                identity,
+                                report,
+                            })
                             .is_err()
                         {
                             break;
@@ -126,11 +169,16 @@ impl OpenFilesWorker {
 
     pub(crate) fn request_open_files(
         &self,
+        generation: u64,
         identity: ProcessIdentity,
         process: ProcessRow,
     ) -> Result<()> {
         self.request_tx
-            .send(OpenFilesRequest::Collect { identity, process })
+            .send(OpenFilesRequest::Collect {
+                generation,
+                identity,
+                process,
+            })
             .context("open files worker is unavailable")
     }
 
@@ -152,6 +200,24 @@ impl OpenFilesWorker {
             result_tx,
         )
     }
+}
+
+fn verify_process_identity(identity: &ProcessIdentity) -> std::result::Result<(), OpenFilesError> {
+    let system = System::new_all();
+    let Some(process) = system.process(Pid::from_u32(identity.pid)) else {
+        return Err(OpenFilesError::ProcessExited);
+    };
+    if !process
+        .name()
+        .to_string_lossy()
+        .eq_ignore_ascii_case(&identity.name)
+        || identity
+            .start_time
+            .is_some_and(|start_time| process.start_time() != start_time)
+    {
+        return Err(OpenFilesError::IdentityChanged);
+    }
+    Ok(())
 }
 
 impl Drop for OpenFilesWorker {

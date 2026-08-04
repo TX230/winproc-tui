@@ -22,7 +22,7 @@ use crate::ui::{
     layout::{
         MainPanelAreas, details_samples_area, details_samples_row_capacity, details_slot_areas,
     },
-    main_panel_areas_for_app, open_files_page_size_for_screen, process_info_page_size_for_screen,
+    main_panel_areas_for_app, process_info_page_size_for_screen,
     tracked_lists_page_size_for_screen,
 };
 
@@ -48,9 +48,10 @@ pub(crate) use state::GraphSlot;
 pub(crate) use state::GraphSlotLayout;
 pub(crate) use state::GraphValueFormat;
 pub(crate) use state::LogDirSelection;
-pub(crate) use state::PROCESS_INFO_CONTENT_ROWS;
 #[cfg(test)]
 pub(crate) use state::PROCESS_INFO_DEBOUNCE;
+pub(crate) use state::ProcessInfoFocus;
+pub(crate) use state::ProcessInfoTab;
 pub(crate) use state::ProcessKillSelection;
 pub(crate) use state::ProcessLifecycle;
 pub(crate) use state::QuitConfirmSelection;
@@ -98,6 +99,8 @@ pub(crate) fn run_tui(
         dirty |= sample_dirty;
         dirty |= app.poll_process_info_results()?;
         dirty |= app.poll_open_files_results()?;
+        dirty |= app.poll_process_modules_results()?;
+        dirty |= app.poll_process_environment_results()?;
         dirty |= app.poll_log_workers();
         dirty |= app.request_due_process_info()?;
         let sample_freshness = app.sample_freshness();
@@ -139,6 +142,14 @@ pub(crate) fn run_tui(
         let timeout = app
             .open_files_poll_timeout()
             .map(|open_files_timeout| timeout.min(open_files_timeout))
+            .unwrap_or(timeout);
+        let timeout = app
+            .process_modules_poll_timeout()
+            .map(|modules_timeout| timeout.min(modules_timeout))
+            .unwrap_or(timeout);
+        let timeout = app
+            .process_environment_poll_timeout()
+            .map(|environment_timeout| timeout.min(environment_timeout))
             .unwrap_or(timeout);
 
         let wait = timeout.min(EVENT_POLL_SLICE);
@@ -254,7 +265,6 @@ pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.set_help_page_size(help_page_size_for_screen(screen_area));
     app.set_column_picker_page_size(column_picker_page_size_for_screen(screen_area));
     app.set_log_list_page_size(crate::ui::log_list_page_size_for_screen(screen_area));
-    app.set_open_files_page_size(open_files_page_size_for_screen(screen_area, app));
     app.set_process_info_page_size(process_info_page_size_for_screen(screen_area));
     app.set_tracked_lists_page_size(tracked_lists_page_size_for_screen(screen_area));
     app.ensure_visible_panel_focus();

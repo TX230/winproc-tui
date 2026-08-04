@@ -78,7 +78,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("g", "Graphs"),
                 ("Ctrl+I", "Jump"),
                 ("1-4", "Graph"),
-                ("Enter", "Info"),
+                ("Enter/f", "Info/Files"),
                 ("Space", "Track"),
                 ("d", "Kill"),
                 ("Ctrl+F", "Filter"),

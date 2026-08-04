@@ -145,16 +145,16 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Toggle Graphs panel",
     },
     HelpItem {
-        key: "Enter",
-        label: "Open Process Info metrics",
+        key: "Enter / f",
+        label: "Info/detail / Files",
     },
     HelpItem {
         key: "i",
         label: "Open System Info",
     },
     HelpItem {
-        key: "f",
-        label: "Open files of process",
+        key: "Ctrl+Left/Right",
+        label: "Switch Info tabs",
     },
     HelpItem {
         key: "d/Delete",
@@ -162,7 +162,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+U",
-        label: "Refresh open-files list",
+        label: "Refresh Info tab",
     },
 ];
 

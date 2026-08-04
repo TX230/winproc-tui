@@ -1,6 +1,8 @@
 pub(crate) mod columns;
 pub(crate) mod history;
 pub(crate) mod process;
+pub(crate) mod process_environment;
+pub(crate) mod process_module;
 pub(crate) mod snapshot;
 pub(crate) mod system;
 
@@ -15,6 +17,10 @@ pub(crate) use history::{
 pub(crate) use process::{
     InfoValue, ProcessExtraMetrics, ProcessInfo, ProcessRow, WorkingSetShareSample,
 };
+pub(crate) use process_environment::{
+    ProcessEnvironmentEntry, ProcessEnvironmentError, ProcessEnvironmentReport,
+};
+pub(crate) use process_module::{ProcessModuleEntry, ProcessModulesError, ProcessModulesReport};
 pub(crate) use snapshot::Snapshot;
 pub(crate) use system::{
     CpuCoreKind, CpuLogicalProcessorSample, CpuSummarySample, DiskUsageSample, GpuCapacitySample,

@@ -19,14 +19,17 @@ use crate::{
     },
     model::{
         ColumnPreset, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessColumnWidths,
-        ProcessHistory, ProcessIdentity, ProcessInfo, ProcessRow, ProcessSample, Snapshot,
-        SortColumn, SortDirection, SortSpec, SystemHistory, SystemMetric,
+        ProcessEnvironmentError, ProcessEnvironmentReport, ProcessHistory, ProcessIdentity,
+        ProcessInfo, ProcessModulesError, ProcessModulesReport, ProcessRow, ProcessSample,
+        Snapshot, SortColumn, SortDirection, SortSpec, SystemHistory, SystemMetric,
         TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY, sort_process_rows,
     },
     samplers::{
         CollectSnapshotResult, SamplingRuntime, SamplingWorker,
         open_files::{OpenFilesReport, OpenFilesResult, OpenFilesWorker},
+        process_environment::{ProcessEnvironmentResult, ProcessEnvironmentWorker},
         process_info::{ProcessInfoResult, ProcessInfoWorker},
+        process_modules::{ProcessModulesResult, ProcessModulesWorker},
     },
     ui::{
         THEMES, Theme, column_picker_row_for_index, column_picker_scroll_max_for_page_size,
@@ -48,6 +51,8 @@ pub(crate) const GRAPH_SLOT_MIN_WIDTH: u16 = 50;
 pub(crate) const PROCESS_INFO_DEBOUNCE: Duration = Duration::from_millis(200);
 const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const PROCESS_MODULES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const PROCESS_ENVIRONMENT_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PROCESS_NAVIGATION_ORDER_HOLD: Duration = Duration::from_millis(750);
 pub(crate) const SAMPLE_STALE_AFTER_SECONDS: u64 = 3;
 const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 14] = [
@@ -66,7 +71,6 @@ const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 14] = [
     MetricColumn::IoReadBytesPerSec,
     MetricColumn::IoWriteBytesPerSec,
 ];
-pub(crate) const PROCESS_INFO_CONTENT_ROWS: usize = 23;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessLifecycle {
@@ -97,6 +101,7 @@ pub(crate) struct ExitedTrackedRow {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PendingProcessInfo {
+    pub(crate) generation: u64,
     pub(crate) identity: ProcessIdentity,
     pub(crate) process: ProcessRow,
     pub(crate) lifecycle: ProcessLifecycle,
@@ -199,6 +204,59 @@ pub(crate) struct ProcessInfoDialogTarget {
     pub(crate) identity: ProcessIdentity,
     pub(crate) process: ProcessRow,
     pub(crate) lifecycle: ProcessLifecycle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessInfoTab {
+    Metrics,
+    Image,
+    Files,
+    Dlls,
+    Environment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessInfoFocus {
+    Content,
+    Close,
+}
+
+impl ProcessInfoTab {
+    pub(crate) const ALL: [Self; 5] = [
+        Self::Metrics,
+        Self::Image,
+        Self::Files,
+        Self::Dlls,
+        Self::Environment,
+    ];
+
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Metrics => "Metrics",
+            Self::Image => "Image",
+            Self::Files => "Files",
+            Self::Dlls => "DLLs",
+            Self::Environment => "Environment",
+        }
+    }
+
+    pub(crate) fn next(self) -> Self {
+        Self::ALL[(self.index() + 1) % Self::ALL.len()]
+    }
+
+    pub(crate) fn previous(self) -> Self {
+        Self::ALL[(self.index() + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+
+    pub(crate) const fn index(self) -> usize {
+        match self {
+            Self::Metrics => 0,
+            Self::Image => 1,
+            Self::Files => 2,
+            Self::Dlls => 3,
+            Self::Environment => 4,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -683,6 +741,8 @@ pub(crate) struct App {
     pub(crate) sampling_worker: SamplingWorker,
     pub(crate) process_info_worker: ProcessInfoWorker,
     pub(crate) open_files_worker: OpenFilesWorker,
+    pub(crate) process_modules_worker: ProcessModulesWorker,
+    pub(crate) process_environment_worker: ProcessEnvironmentWorker,
     pub(crate) sampling_in_progress: bool,
     pub(crate) snapshot: Snapshot,
     pub(crate) process_table_state: TableState,
@@ -734,15 +794,44 @@ pub(crate) struct App {
     pub(crate) log_dir_completion: PathCompletionState,
     pub(crate) log_dir_selection: LogDirSelection,
     pub(crate) log_dir_error: Option<String>,
-    pub(crate) show_open_files: bool,
     pub(crate) open_files_scroll: ScrollableModalState,
     pub(crate) open_files_result: Option<OpenFilesReport>,
+    pub(crate) open_files_result_identity: Option<ProcessIdentity>,
     pub(crate) open_files_in_flight: Option<ProcessIdentity>,
+    pub(crate) open_files_in_flight_generation: Option<u64>,
     pub(crate) open_files_filter: String,
     pub(crate) open_files_filter_cursor: usize,
+    pub(crate) process_modules_result: Option<ProcessModulesReport>,
+    pub(crate) process_modules_result_identity: Option<ProcessIdentity>,
+    pub(crate) process_modules_error: Option<ProcessModulesError>,
+    pub(crate) process_modules_in_flight: Option<ProcessIdentity>,
+    pub(crate) process_modules_in_flight_generation: Option<u64>,
+    pub(crate) process_modules_in_flight_request_id: Option<u64>,
+    pub(crate) process_modules_next_request_id: u64,
+    pub(crate) process_modules_filter: String,
+    pub(crate) process_modules_filter_cursor: usize,
+    pub(crate) process_modules_selected: usize,
+    pub(crate) process_modules_show_detail: bool,
+    pub(crate) process_environment_result: Option<ProcessEnvironmentReport>,
+    pub(crate) process_environment_result_identity: Option<ProcessIdentity>,
+    pub(crate) process_environment_error: Option<ProcessEnvironmentError>,
+    pub(crate) process_environment_in_flight: Option<ProcessIdentity>,
+    pub(crate) process_environment_in_flight_generation: Option<u64>,
+    pub(crate) process_environment_in_flight_request_id: Option<u64>,
+    pub(crate) process_environment_next_request_id: u64,
+    pub(crate) process_environment_filter: String,
+    pub(crate) process_environment_filter_cursor: usize,
+    pub(crate) process_environment_selected: usize,
+    pub(crate) process_environment_show_detail: bool,
     pub(crate) show_process_info_dialog: bool,
+    pub(crate) process_info_tab: ProcessInfoTab,
+    pub(crate) process_info_focus: ProcessInfoFocus,
     pub(crate) process_info_scroll: ScrollableModalState,
+    pub(crate) process_info_image_scroll: ScrollableModalState,
+    pub(crate) process_info_dlls_scroll: ScrollableModalState,
+    pub(crate) process_info_environment_scroll: ScrollableModalState,
     pub(crate) process_info_target: Option<ProcessInfoDialogTarget>,
+    pub(crate) process_info_generation: u64,
     pub(crate) show_system_info_dialog: bool,
     pub(crate) log_summaries: Vec<LogSummary>,
     pub(crate) log_list_dir: Option<PathBuf>,
@@ -799,6 +888,7 @@ pub(crate) struct App {
     pub(crate) process_info_display_identity: Option<ProcessIdentity>,
     pub(crate) pending_process_info: Option<PendingProcessInfo>,
     pub(crate) process_info_in_flight: Option<ProcessIdentity>,
+    pub(crate) process_info_in_flight_generation: Option<u64>,
     pub(crate) ab_comparison: Option<AbComparison>,
     pub(crate) last_screen_area: Rect,
     pub(crate) theme_index: usize,
@@ -826,6 +916,8 @@ impl App {
         let sampling_worker = SamplingWorker::spawn(runtime.sampling_options);
         let process_info_worker = ProcessInfoWorker::spawn();
         let open_files_worker = OpenFilesWorker::spawn();
+        let process_modules_worker = ProcessModulesWorker::spawn();
+        let process_environment_worker = ProcessEnvironmentWorker::spawn();
         let mut process_table_state = TableState::default();
         if !initial.snapshot.processes.is_empty() {
             process_table_state.select(Some(0));
@@ -856,6 +948,8 @@ impl App {
             sampling_worker,
             process_info_worker,
             open_files_worker,
+            process_modules_worker,
+            process_environment_worker,
             sampling_in_progress: false,
             snapshot: initial.snapshot,
             process_table_state,
@@ -916,21 +1010,59 @@ impl App {
             log_dir_completion: PathCompletionState::default(),
             log_dir_selection: LogDirSelection::Apply,
             log_dir_error: None,
-            show_open_files: false,
             open_files_scroll: ScrollableModalState {
                 page_size: 1,
                 ..ScrollableModalState::default()
             },
             open_files_result: None,
+            open_files_result_identity: None,
             open_files_in_flight: None,
+            open_files_in_flight_generation: None,
             open_files_filter: String::new(),
             open_files_filter_cursor: 0,
+            process_modules_result: None,
+            process_modules_result_identity: None,
+            process_modules_error: None,
+            process_modules_in_flight: None,
+            process_modules_in_flight_generation: None,
+            process_modules_in_flight_request_id: None,
+            process_modules_next_request_id: 0,
+            process_modules_filter: String::new(),
+            process_modules_filter_cursor: 0,
+            process_modules_selected: 0,
+            process_modules_show_detail: false,
+            process_environment_result: None,
+            process_environment_result_identity: None,
+            process_environment_error: None,
+            process_environment_in_flight: None,
+            process_environment_in_flight_generation: None,
+            process_environment_in_flight_request_id: None,
+            process_environment_next_request_id: 0,
+            process_environment_filter: String::new(),
+            process_environment_filter_cursor: 0,
+            process_environment_selected: 0,
+            process_environment_show_detail: false,
             show_process_info_dialog: false,
+            process_info_tab: ProcessInfoTab::Metrics,
+            process_info_focus: ProcessInfoFocus::Content,
             process_info_scroll: ScrollableModalState {
                 page_size: 1,
                 ..ScrollableModalState::default()
             },
+            process_info_image_scroll: ScrollableModalState {
+                page_size: 1,
+                ..ScrollableModalState::default()
+            },
+            process_info_dlls_scroll: ScrollableModalState {
+                page_size: 1,
+                ..ScrollableModalState::default()
+            },
+            process_info_environment_scroll: ScrollableModalState {
+                page_size: 1,
+                ..ScrollableModalState::default()
+            },
             process_info_target: None,
+            process_info_generation: 0,
             show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
@@ -987,6 +1119,7 @@ impl App {
             process_info_display_identity: None,
             pending_process_info: None,
             process_info_in_flight: None,
+            process_info_in_flight_generation: None,
             ab_comparison: None,
             last_screen_area: Rect::new(0, 0, 100, 45),
             status: initial.warning.unwrap_or_else(|| "Ready".to_string()),
@@ -1088,7 +1221,6 @@ impl App {
             || self.show_column_picker
             || self.show_log_list
             || self.show_log_dir_dialog
-            || self.show_open_files
             || self.show_process_info_dialog
             || self.show_system_info_dialog
             || self.show_quit_confirmation
@@ -4315,6 +4447,18 @@ impl App {
             .map(|target| &target.process)
     }
 
+    pub(crate) fn process_info_target_is_currently_live(&self) -> bool {
+        let Some(target) = &self.process_info_target else {
+            return false;
+        };
+        matches!(target.lifecycle, ProcessLifecycle::Live)
+            && self
+                .snapshot
+                .processes
+                .iter()
+                .any(|process| ProcessIdentity::from_row(process) == target.identity)
+    }
+
     pub(crate) fn process_info_metrics_view(&self) -> Option<ProcessInfoMetricsView> {
         let target = self.process_info_target.as_ref()?;
         let current_at = self.display_snapshot().captured_at;
@@ -4373,26 +4517,101 @@ impl App {
     }
 
     pub(crate) fn set_process_info_page_size(&mut self, page_size: usize) {
-        self.process_info_scroll
-            .set_page_size(page_size, PROCESS_INFO_CONTENT_ROWS);
+        let total = self.process_info_total_rows();
+        self.active_process_info_scroll_mut()
+            .set_page_size(page_size, total);
+    }
+
+    pub(crate) fn process_info_page_size(&self) -> usize {
+        self.active_process_info_scroll().page_size.max(1)
+    }
+
+    pub(crate) fn process_info_scroll_offset(&self) -> usize {
+        self.active_process_info_scroll().offset
     }
 
     pub(crate) fn scroll_process_info_up(&mut self, amount: usize) {
-        self.process_info_scroll.scroll_up(amount);
+        self.active_process_info_scroll_mut().scroll_up(amount);
     }
 
     pub(crate) fn scroll_process_info_down(&mut self, amount: usize) {
-        self.process_info_scroll
-            .scroll_down(amount, PROCESS_INFO_CONTENT_ROWS);
+        let total = self.process_info_total_rows();
+        self.active_process_info_scroll_mut()
+            .scroll_down(amount, total);
     }
 
     pub(crate) fn scroll_process_info_home(&mut self) {
-        self.process_info_scroll.scroll_home();
+        self.active_process_info_scroll_mut().scroll_home();
     }
 
     pub(crate) fn scroll_process_info_end(&mut self) {
-        self.process_info_scroll
-            .scroll_end(PROCESS_INFO_CONTENT_ROWS);
+        let total = self.process_info_total_rows();
+        self.active_process_info_scroll_mut().scroll_end(total);
+    }
+
+    pub(crate) fn next_process_info_tab(&mut self) -> Result<()> {
+        self.activate_process_info_tab(self.process_info_tab.next())
+    }
+
+    pub(crate) fn previous_process_info_tab(&mut self) -> Result<()> {
+        self.activate_process_info_tab(self.process_info_tab.previous())
+    }
+
+    pub(crate) fn activate_process_info_tab(&mut self, tab: ProcessInfoTab) -> Result<()> {
+        if !self.show_process_info_dialog {
+            return Ok(());
+        }
+        self.process_info_focus = ProcessInfoFocus::Content;
+        if self.process_info_tab == tab {
+            return Ok(());
+        }
+        self.active_process_info_scroll_mut().stop_drag();
+        self.process_modules_show_detail = false;
+        self.process_environment_show_detail = false;
+        self.process_info_tab = tab;
+        match tab {
+            ProcessInfoTab::Image => self.ensure_selected_process_info(),
+            ProcessInfoTab::Files => self.ensure_open_files_for_target()?,
+            ProcessInfoTab::Dlls => self.ensure_process_modules_for_target()?,
+            ProcessInfoTab::Environment => self.ensure_process_environment_for_target()?,
+            ProcessInfoTab::Metrics => {}
+        }
+        Ok(())
+    }
+
+    pub(crate) fn focus_next_process_info_control(&mut self) {
+        self.process_info_focus = match self.process_info_focus {
+            ProcessInfoFocus::Content => ProcessInfoFocus::Close,
+            ProcessInfoFocus::Close => ProcessInfoFocus::Content,
+        };
+    }
+
+    pub(crate) fn focus_previous_process_info_control(&mut self) {
+        self.focus_next_process_info_control();
+    }
+
+    fn active_process_info_scroll(&self) -> &ScrollableModalState {
+        match self.process_info_tab {
+            ProcessInfoTab::Metrics => &self.process_info_scroll,
+            ProcessInfoTab::Image => &self.process_info_image_scroll,
+            ProcessInfoTab::Files => &self.open_files_scroll,
+            ProcessInfoTab::Dlls => &self.process_info_dlls_scroll,
+            ProcessInfoTab::Environment => &self.process_info_environment_scroll,
+        }
+    }
+
+    fn active_process_info_scroll_mut(&mut self) -> &mut ScrollableModalState {
+        match self.process_info_tab {
+            ProcessInfoTab::Metrics => &mut self.process_info_scroll,
+            ProcessInfoTab::Image => &mut self.process_info_image_scroll,
+            ProcessInfoTab::Files => &mut self.open_files_scroll,
+            ProcessInfoTab::Dlls => &mut self.process_info_dlls_scroll,
+            ProcessInfoTab::Environment => &mut self.process_info_environment_scroll,
+        }
+    }
+
+    fn process_info_total_rows(&self) -> usize {
+        crate::ui::process_info_total_rows(self)
     }
 
     pub(crate) fn open_system_info_dialog(&mut self) {
@@ -4421,19 +4640,6 @@ impl App {
         if !self.show_process_info_dialog {
             return;
         }
-        if self.process_info_target.is_none()
-            && let Some(process) = self.selected_visible_process().cloned()
-        {
-            let identity = ProcessIdentity::from_row(&process);
-            let lifecycle = self
-                .selected_visible_process_lifecycle()
-                .unwrap_or(ProcessLifecycle::Live);
-            self.process_info_target = Some(ProcessInfoDialogTarget {
-                identity,
-                process,
-                lifecycle,
-            });
-        }
         let Some(target) = self.process_info_target.clone() else {
             self.pending_process_info = None;
             return;
@@ -4444,11 +4650,14 @@ impl App {
             self.pending_process_info = None;
             return;
         }
-        if self.process_info_in_flight.as_ref() == Some(&identity) {
+        if self.process_info_in_flight.as_ref() == Some(&identity)
+            && self.process_info_in_flight_generation == Some(self.process_info_generation)
+        {
             self.pending_process_info = None;
             return;
         }
         self.pending_process_info = Some(PendingProcessInfo {
+            generation: self.process_info_generation,
             identity,
             process: target.process,
             lifecycle: target.lifecycle,
@@ -4460,6 +4669,7 @@ impl App {
     fn cancel_process_info_request(&mut self) {
         self.pending_process_info = None;
         self.process_info_in_flight = None;
+        self.process_info_in_flight_generation = None;
     }
 
     pub(crate) fn process_info_poll_timeout(&self) -> Option<Duration> {
@@ -4496,11 +4706,13 @@ impl App {
             .take()
             .expect("pending process info should exist");
         self.process_info_worker.request_info(
+            pending.generation,
             pending.identity.clone(),
             pending.process,
             pending.lifecycle,
         )?;
         self.process_info_in_flight = Some(pending.identity);
+        self.process_info_in_flight_generation = Some(pending.generation);
         Ok(false)
     }
 
@@ -4514,6 +4726,7 @@ impl App {
                 Err(TryRecvError::Empty) => return Ok(changed),
                 Err(TryRecvError::Disconnected) => {
                     self.process_info_in_flight = None;
+                    self.process_info_in_flight_generation = None;
                     self.status = "Warning: process info worker stopped".to_string();
                     return Ok(true);
                 }
@@ -4522,11 +4735,15 @@ impl App {
     }
 
     fn apply_process_info_result(&mut self, result: ProcessInfoResult) -> bool {
-        if self.process_info_in_flight.as_ref() != Some(&result.identity) {
+        if self.process_info_in_flight.as_ref() != Some(&result.identity)
+            || self.process_info_in_flight_generation != Some(result.generation)
+        {
             return false;
         }
         self.process_info_in_flight = None;
+        self.process_info_in_flight_generation = None;
         if !self.show_process_info_dialog
+            || result.generation != self.process_info_generation
             || self
                 .process_info_target
                 .as_ref()
@@ -4541,7 +4758,15 @@ impl App {
     }
 
     pub(crate) fn open_selected_process_files(&mut self) -> Result<()> {
-        self.request_open_files_for_selected_process(true, "Loading open files for")
+        let Some(target) = self.selected_process_info_target() else {
+            self.status = "No process selected".to_string();
+            return Ok(());
+        };
+        if !matches!(target.lifecycle, ProcessLifecycle::Live) {
+            self.status = "Open files require a live process".to_string();
+            return Ok(());
+        }
+        self.open_process_info_dialog(target, ProcessInfoTab::Files)
     }
 
     pub(crate) fn open_active_graph_process_info_dialog(&mut self) -> Result<()> {
@@ -4557,25 +4782,28 @@ impl App {
             self.status = "Graphed process is unavailable".to_string();
             return Ok(());
         };
-        self.open_process_info_dialog(target);
-        Ok(())
+        self.open_process_info_dialog(target, ProcessInfoTab::Metrics)
     }
 
     pub(crate) fn open_selected_process_info_dialog(&mut self) -> Result<()> {
-        let Some(process) = self.selected_visible_process().cloned() else {
+        let Some(target) = self.selected_process_info_target() else {
             self.status = "No process selected".to_string();
             return Ok(());
         };
+        self.open_process_info_dialog(target, ProcessInfoTab::Metrics)
+    }
+
+    fn selected_process_info_target(&self) -> Option<ProcessInfoDialogTarget> {
+        let process = self.selected_visible_process().cloned()?;
         let identity = ProcessIdentity::from_row(&process);
         let lifecycle = self
             .selected_visible_process_lifecycle()
             .unwrap_or(ProcessLifecycle::Live);
-        self.open_process_info_dialog(ProcessInfoDialogTarget {
+        Some(ProcessInfoDialogTarget {
             identity,
             process,
             lifecycle,
-        });
-        Ok(())
+        })
     }
 
     fn process_info_target_for_identity(
@@ -4605,36 +4833,113 @@ impl App {
             })
     }
 
-    fn open_process_info_dialog(&mut self, target: ProcessInfoDialogTarget) {
+    fn open_process_info_dialog(
+        &mut self,
+        target: ProcessInfoDialogTarget,
+        initial_tab: ProcessInfoTab,
+    ) -> Result<()> {
         let process_name = target.process.name.clone();
+        self.process_info_generation = self.process_info_generation.wrapping_add(1).max(1);
         self.process_info_target = Some(target);
+        self.process_info_tab = initial_tab;
+        self.process_info_focus = ProcessInfoFocus::Content;
         self.show_process_info_dialog = true;
         self.process_info_scroll.reset();
+        self.process_info_image_scroll.reset();
+        self.process_info_dlls_scroll.reset();
+        self.process_info_environment_scroll.reset();
+        self.open_files_scroll.reset();
+        self.open_files_filter.clear();
+        self.open_files_filter_cursor = 0;
+        self.open_files_result = None;
+        self.open_files_result_identity = None;
+        self.open_files_in_flight = None;
+        self.open_files_in_flight_generation = None;
+        self.process_modules_result = None;
+        self.process_modules_result_identity = None;
+        self.process_modules_error = None;
+        self.process_modules_in_flight = None;
+        self.process_modules_in_flight_generation = None;
+        self.process_modules_in_flight_request_id = None;
+        self.process_modules_filter.clear();
+        self.process_modules_filter_cursor = 0;
+        self.process_modules_selected = 0;
+        self.process_modules_show_detail = false;
+        self.process_environment_result = None;
+        self.process_environment_result_identity = None;
+        self.process_environment_error = None;
+        self.process_environment_in_flight = None;
+        self.process_environment_in_flight_generation = None;
+        self.process_environment_in_flight_request_id = None;
+        self.process_environment_filter.clear();
+        self.process_environment_filter_cursor = 0;
+        self.process_environment_selected = 0;
+        self.process_environment_show_detail = false;
         if self.activity() == AppActivity::LogView {
             self.pending_process_info = None;
         } else {
             self.ensure_selected_process_info();
         }
         self.status = format!("Process Info: {process_name}");
+        if initial_tab == ProcessInfoTab::Files {
+            self.ensure_open_files_for_target()?;
+        } else if initial_tab == ProcessInfoTab::Dlls {
+            self.ensure_process_modules_for_target()?;
+        } else if initial_tab == ProcessInfoTab::Environment {
+            self.ensure_process_environment_for_target()?;
+        }
+        Ok(())
     }
 
     pub(crate) fn close_process_info_dialog(&mut self) {
         self.show_process_info_dialog = false;
         self.process_info_target = None;
         self.process_info_scroll.stop_drag();
+        self.process_info_image_scroll.stop_drag();
+        self.process_info_dlls_scroll.stop_drag();
+        self.process_info_environment_scroll.stop_drag();
+        self.open_files_scroll.stop_drag();
         self.cancel_process_info_request();
+        self.open_files_in_flight = None;
+        self.open_files_in_flight_generation = None;
+        self.process_modules_in_flight = None;
+        self.process_modules_in_flight_generation = None;
+        self.process_modules_in_flight_request_id = None;
+        self.process_modules_show_detail = false;
+        self.process_environment_in_flight = None;
+        self.process_environment_in_flight_generation = None;
+        self.process_environment_in_flight_request_id = None;
+        self.process_environment_result = None;
+        self.process_environment_result_identity = None;
+        self.process_environment_error = None;
+        self.process_environment_show_detail = false;
         self.status = "Process Info closed".to_string();
     }
 
     pub(crate) fn refresh_open_files(&mut self) -> Result<()> {
-        if self.open_files_in_flight.is_some() {
+        if self.open_files_in_flight.is_some()
+            && self.open_files_in_flight_generation == Some(self.process_info_generation)
+        {
             self.status = "Open files refresh already in progress".to_string();
             return Ok(());
         }
-        self.request_open_files_for_selected_process(false, "Refreshing open files for")
+        self.request_open_files_for_target(false, "Refreshing open files for")
     }
 
-    fn request_open_files_for_selected_process(
+    fn ensure_open_files_for_target(&mut self) -> Result<()> {
+        let Some(target) = self.process_info_target.as_ref() else {
+            return Ok(());
+        };
+        if self.open_files_result_identity.as_ref() == Some(&target.identity)
+            || (self.open_files_in_flight.as_ref() == Some(&target.identity)
+                && self.open_files_in_flight_generation == Some(self.process_info_generation))
+        {
+            return Ok(());
+        }
+        self.request_open_files_for_target(true, "Loading open files for")
+    }
+
+    fn request_open_files_for_target(
         &mut self,
         clear_previous_result: bool,
         status_prefix: &str,
@@ -4643,38 +4948,39 @@ impl App {
             self.status = "Open files are unavailable in Log view".to_string();
             return Ok(());
         }
-        let Some(identity) = self.selected_visible_process_identity() else {
-            self.status = "No process selected".to_string();
+        let Some(target) = self.process_info_target.clone() else {
+            self.status = "No Process Info target".to_string();
             return Ok(());
         };
-        let Some(process) = self.selected_visible_process().cloned() else {
-            self.status = "No process selected".to_string();
-            return Ok(());
-        };
-        if !matches!(
-            self.selected_visible_process_lifecycle(),
-            Some(ProcessLifecycle::Live)
-        ) {
+        if !matches!(target.lifecycle, ProcessLifecycle::Live) {
             self.status = "Open files require a live process".to_string();
             return Ok(());
         }
+        if !self.process_info_target_is_currently_live() {
+            self.open_files_result = Some(OpenFilesReport::unavailable(
+                &target.process,
+                crate::samplers::open_files::OpenFilesError::ProcessExited,
+            ));
+            self.open_files_result_identity = Some(target.identity);
+            self.status = "Process has exited".to_string();
+            return Ok(());
+        }
+        let identity = target.identity;
+        let process = target.process;
 
-        self.open_files_worker
-            .request_open_files(identity.clone(), process.clone())?;
-        self.show_open_files = true;
+        self.open_files_worker.request_open_files(
+            self.process_info_generation,
+            identity.clone(),
+            process.clone(),
+        )?;
         if clear_previous_result {
             self.open_files_result = None;
+            self.open_files_result_identity = None;
         }
         self.open_files_in_flight = Some(identity);
-        self.open_files_scroll.reset();
+        self.open_files_in_flight_generation = Some(self.process_info_generation);
         self.status = format!("{status_prefix} {}", process.name);
         Ok(())
-    }
-
-    pub(crate) fn close_open_files(&mut self) {
-        self.show_open_files = false;
-        self.open_files_scroll.stop_drag();
-        self.status = "Open files closed".to_string();
     }
 
     pub(crate) fn open_files_poll_timeout(&self) -> Option<Duration> {
@@ -4693,6 +4999,7 @@ impl App {
                 Err(TryRecvError::Empty) => return Ok(changed),
                 Err(TryRecvError::Disconnected) => {
                     self.open_files_in_flight = None;
+                    self.open_files_in_flight_generation = None;
                     self.status = "Warning: open files worker stopped".to_string();
                     return Ok(true);
                 }
@@ -4701,10 +5008,23 @@ impl App {
     }
 
     fn apply_open_files_result(&mut self, result: OpenFilesResult) -> bool {
-        if self.open_files_in_flight.as_ref() != Some(&result.identity) {
+        if self.open_files_in_flight.as_ref() != Some(&result.identity)
+            || self.open_files_in_flight_generation != Some(result.generation)
+        {
             return false;
         }
         self.open_files_in_flight = None;
+        self.open_files_in_flight_generation = None;
+        if !self.show_process_info_dialog
+            || result.generation != self.process_info_generation
+            || self
+                .process_info_target
+                .as_ref()
+                .map(|target| &target.identity)
+                != Some(&result.identity)
+        {
+            return false;
+        }
         let entry_count = result.report.entries.len();
         let process_name = result.report.process_name.clone();
         self.status = if let Some(error) = &result.report.error {
@@ -4715,35 +5035,13 @@ impl App {
         } else {
             format!("Loaded {entry_count} open file paths for {process_name}")
         };
+        self.open_files_result_identity = Some(result.identity);
         self.open_files_result = Some(result.report);
         self.open_files_scroll.set_page_size(
             self.open_files_scroll.page_size,
             self.open_files_total_rows(),
         );
         true
-    }
-
-    pub(crate) fn set_open_files_page_size(&mut self, page_size: usize) {
-        self.open_files_scroll
-            .set_page_size(page_size, self.open_files_total_rows());
-    }
-
-    pub(crate) fn scroll_open_files_up(&mut self, amount: usize) {
-        self.open_files_scroll.scroll_up(amount);
-    }
-
-    pub(crate) fn scroll_open_files_down(&mut self, amount: usize) {
-        self.open_files_scroll
-            .scroll_down(amount, self.open_files_total_rows());
-    }
-
-    pub(crate) fn scroll_open_files_home(&mut self) {
-        self.open_files_scroll.scroll_home();
-    }
-
-    pub(crate) fn scroll_open_files_end(&mut self) {
-        self.open_files_scroll
-            .scroll_end(self.open_files_total_rows());
     }
 
     pub(crate) fn push_open_files_filter_char(&mut self, ch: char) {
@@ -4817,27 +5115,668 @@ impl App {
             .unwrap_or(self.open_files_filter.len());
     }
 
-    pub(crate) fn start_open_files_scrollbar_drag(&mut self, x: u16, y: u16, area: Rect) -> bool {
-        let Some(scrollbar) = crate::ui::open_files_scrollbar_area_for_screen(area, self) else {
+    pub(crate) fn start_process_info_scrollbar_drag(&mut self, x: u16, y: u16, area: Rect) -> bool {
+        let Some(scrollbar) = crate::ui::process_info_scrollbar_area_for_screen(area, self) else {
             return false;
         };
         if x != scrollbar.x || y < scrollbar.y || y >= scrollbar.bottom() {
             return false;
         }
-        self.open_files_scroll
-            .start_drag(scrollbar, y, self.open_files_total_rows());
+        let total = self.process_info_total_rows();
+        self.active_process_info_scroll_mut()
+            .start_drag(scrollbar, y, total);
         true
     }
 
-    pub(crate) fn drag_open_files_scrollbar(&mut self, y: u16, area: Rect) {
-        if let Some(scrollbar) = crate::ui::open_files_scrollbar_area_for_screen(area, self) {
-            self.open_files_scroll
-                .drag_to(scrollbar, y, self.open_files_total_rows());
+    pub(crate) fn drag_process_info_scrollbar(&mut self, y: u16, area: Rect) {
+        if let Some(scrollbar) = crate::ui::process_info_scrollbar_area_for_screen(area, self) {
+            let total = self.process_info_total_rows();
+            self.active_process_info_scroll_mut()
+                .drag_to(scrollbar, y, total);
         }
+    }
+
+    pub(crate) fn stop_process_info_scrollbar_drag(&mut self) {
+        self.active_process_info_scroll_mut().stop_drag();
+    }
+
+    pub(crate) fn process_info_scrollbar_dragging(&self) -> bool {
+        self.active_process_info_scroll().dragging
     }
 
     pub(crate) fn open_files_total_rows(&self) -> usize {
         crate::ui::open_files_total_rows(self)
+    }
+
+    pub(crate) fn process_info_detail_is_open(&self) -> bool {
+        match self.process_info_tab {
+            ProcessInfoTab::Dlls => self.process_modules_show_detail,
+            ProcessInfoTab::Environment => self.process_environment_show_detail,
+            ProcessInfoTab::Metrics | ProcessInfoTab::Image | ProcessInfoTab::Files => false,
+        }
+    }
+
+    pub(crate) fn open_selected_process_info_detail(&mut self) -> bool {
+        match self.process_info_tab {
+            ProcessInfoTab::Dlls if crate::ui::process_modules::selected_entry(self).is_some() => {
+                self.process_modules_show_detail = true;
+                self.process_info_dlls_scroll.scroll_home();
+            }
+            ProcessInfoTab::Environment
+                if crate::ui::process_environment::selected_entry(self).is_some() =>
+            {
+                self.process_environment_show_detail = true;
+                self.process_info_environment_scroll.scroll_home();
+            }
+            _ => return false,
+        }
+        let total = self.process_info_total_rows();
+        let page_size = self.process_info_page_size();
+        self.active_process_info_scroll_mut()
+            .set_page_size(page_size, total);
+        true
+    }
+
+    pub(crate) fn close_process_info_detail(&mut self) -> bool {
+        match self.process_info_tab {
+            ProcessInfoTab::Dlls if self.process_modules_show_detail => {
+                self.process_modules_show_detail = false;
+                self.process_info_dlls_scroll.scroll_home();
+                self.ensure_selected_process_module_visible();
+            }
+            ProcessInfoTab::Environment if self.process_environment_show_detail => {
+                self.process_environment_show_detail = false;
+                self.process_info_environment_scroll.scroll_home();
+                self.ensure_selected_process_environment_visible();
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    pub(crate) fn refresh_process_modules(&mut self) -> Result<()> {
+        if self.process_modules_in_flight.is_some()
+            && self.process_modules_in_flight_generation == Some(self.process_info_generation)
+        {
+            self.status = "DLL refresh already in progress".to_string();
+            return Ok(());
+        }
+        self.request_process_modules_for_target(false, "Refreshing DLLs for")
+    }
+
+    fn ensure_process_modules_for_target(&mut self) -> Result<()> {
+        let Some(target) = self.process_info_target.as_ref() else {
+            return Ok(());
+        };
+        if self.process_modules_result_identity.as_ref() == Some(&target.identity)
+            || (self.process_modules_in_flight.as_ref() == Some(&target.identity)
+                && self.process_modules_in_flight_generation == Some(self.process_info_generation))
+        {
+            return Ok(());
+        }
+        self.request_process_modules_for_target(true, "Loading DLLs for")
+    }
+
+    fn request_process_modules_for_target(
+        &mut self,
+        clear_previous_result: bool,
+        status_prefix: &str,
+    ) -> Result<()> {
+        if self.activity() == AppActivity::LogView {
+            self.status = "DLLs are unavailable in Log view".to_string();
+            return Ok(());
+        }
+        let Some(target) = self.process_info_target.clone() else {
+            self.status = "No Process Info target".to_string();
+            return Ok(());
+        };
+        if !matches!(target.lifecycle, ProcessLifecycle::Live) {
+            self.status = "Process has exited".to_string();
+            return Ok(());
+        }
+        if !self.process_info_target_is_currently_live() {
+            self.process_modules_error = Some(ProcessModulesError::ProcessExited);
+            self.status = "Process has exited".to_string();
+            return Ok(());
+        }
+
+        self.process_modules_next_request_id =
+            self.process_modules_next_request_id.wrapping_add(1).max(1);
+        let request_id = self.process_modules_next_request_id;
+        self.process_modules_worker.request_modules(
+            self.process_info_generation,
+            request_id,
+            target.identity.clone(),
+            target.process.clone(),
+        )?;
+        if clear_previous_result {
+            self.process_modules_result = None;
+            self.process_modules_result_identity = None;
+            self.process_modules_selected = 0;
+            self.process_modules_show_detail = false;
+            self.process_info_dlls_scroll.scroll_home();
+        }
+        self.process_modules_error = None;
+        self.process_modules_in_flight = Some(target.identity);
+        self.process_modules_in_flight_generation = Some(self.process_info_generation);
+        self.process_modules_in_flight_request_id = Some(request_id);
+        self.status = format!("{status_prefix} {}", target.process.name);
+        Ok(())
+    }
+
+    pub(crate) fn process_modules_poll_timeout(&self) -> Option<Duration> {
+        self.process_modules_in_flight
+            .as_ref()
+            .map(|_| PROCESS_MODULES_IN_FLIGHT_POLL_INTERVAL)
+    }
+
+    pub(crate) fn poll_process_modules_results(&mut self) -> Result<bool> {
+        let mut changed = false;
+        loop {
+            match self.process_modules_worker.try_recv() {
+                Ok(result) => changed |= self.apply_process_modules_result(result),
+                Err(TryRecvError::Empty) => return Ok(changed),
+                Err(TryRecvError::Disconnected) => {
+                    self.process_modules_in_flight = None;
+                    self.process_modules_in_flight_generation = None;
+                    self.process_modules_in_flight_request_id = None;
+                    self.status = "Warning: process modules worker stopped".to_string();
+                    return Ok(true);
+                }
+            }
+        }
+    }
+
+    fn apply_process_modules_result(&mut self, result: ProcessModulesResult) -> bool {
+        if self.process_modules_in_flight.as_ref() != Some(&result.identity)
+            || self.process_modules_in_flight_generation != Some(result.generation)
+            || self.process_modules_in_flight_request_id != Some(result.request_id)
+        {
+            return false;
+        }
+        self.process_modules_in_flight = None;
+        self.process_modules_in_flight_generation = None;
+        self.process_modules_in_flight_request_id = None;
+        if !self.show_process_info_dialog
+            || result.generation != self.process_info_generation
+            || self
+                .process_info_target
+                .as_ref()
+                .map(|target| &target.identity)
+                != Some(&result.identity)
+        {
+            return false;
+        }
+
+        match result.outcome {
+            Ok(report) => {
+                let count = report.entries.len();
+                let process_name = report.process_name.clone();
+                self.process_modules_result_identity = Some(result.identity);
+                self.process_modules_result = Some(report);
+                self.process_modules_error = None;
+                self.clamp_process_modules_selection();
+                self.status = format!("Loaded {count} DLLs for {process_name}");
+            }
+            Err(error) => {
+                self.process_modules_error = Some(error);
+                self.status = format!(
+                    "DLLs unavailable for {}: {}",
+                    result.identity.name,
+                    error.message()
+                );
+            }
+        }
+        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let total = crate::ui::process_modules::process_modules_total_rows(self, width);
+        self.process_info_dlls_scroll
+            .set_page_size(self.process_info_dlls_scroll.page_size, total);
+        true
+    }
+
+    pub(crate) fn move_process_modules_up(&mut self, amount: usize) {
+        self.process_modules_selected = self.process_modules_selected.saturating_sub(amount);
+        self.ensure_selected_process_module_visible();
+    }
+
+    pub(crate) fn move_process_modules_down(&mut self, amount: usize) {
+        let count = crate::ui::process_modules::filtered_entries(self).len();
+        self.process_modules_selected = self
+            .process_modules_selected
+            .saturating_add(amount)
+            .min(count.saturating_sub(1));
+        self.ensure_selected_process_module_visible();
+    }
+
+    pub(crate) fn move_process_modules_home(&mut self) {
+        self.process_modules_selected = 0;
+        self.ensure_selected_process_module_visible();
+    }
+
+    pub(crate) fn move_process_modules_end(&mut self) {
+        self.process_modules_selected = crate::ui::process_modules::filtered_entries(self)
+            .len()
+            .saturating_sub(1);
+        self.ensure_selected_process_module_visible();
+    }
+
+    pub(crate) fn select_process_module(&mut self, index: usize) {
+        let count = crate::ui::process_modules::filtered_entries(self).len();
+        if index < count {
+            self.process_modules_selected = index;
+            self.ensure_selected_process_module_visible();
+        }
+    }
+
+    fn clamp_process_modules_selection(&mut self) {
+        let count = crate::ui::process_modules::filtered_entries(self).len();
+        self.process_modules_selected = self.process_modules_selected.min(count.saturating_sub(1));
+        self.ensure_selected_process_module_visible();
+    }
+
+    fn ensure_selected_process_module_visible(&mut self) {
+        let count = crate::ui::process_modules::filtered_entries(self).len();
+        if count == 0 {
+            self.process_modules_selected = 0;
+            self.process_modules_show_detail = false;
+            self.process_info_dlls_scroll.scroll_home();
+            return;
+        }
+        if self.process_modules_show_detail {
+            self.process_info_dlls_scroll.scroll_home();
+            let width =
+                crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+            let total = crate::ui::process_modules::process_modules_total_rows(self, width);
+            self.process_info_dlls_scroll
+                .set_page_size(self.process_info_dlls_scroll.page_size, total);
+            return;
+        }
+        let prefix = 3 + usize::from(self.process_modules_error.is_some());
+        let selected_line = prefix.saturating_add(self.process_modules_selected);
+        let page_size = self.process_info_dlls_scroll.page_size.max(1);
+        if selected_line < self.process_info_dlls_scroll.offset {
+            self.process_info_dlls_scroll.offset = selected_line;
+        } else if selected_line
+            >= self
+                .process_info_dlls_scroll
+                .offset
+                .saturating_add(page_size)
+        {
+            self.process_info_dlls_scroll.offset =
+                selected_line.saturating_add(1).saturating_sub(page_size);
+        }
+        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let total = crate::ui::process_modules::process_modules_total_rows(self, width);
+        self.process_info_dlls_scroll
+            .set_page_size(page_size, total);
+    }
+
+    pub(crate) fn push_process_modules_filter_char(&mut self, ch: char) {
+        self.process_modules_filter_cursor = self
+            .process_modules_filter_cursor
+            .min(self.process_modules_filter.len());
+        self.process_modules_filter
+            .insert(self.process_modules_filter_cursor, ch);
+        self.process_modules_filter_cursor += ch.len_utf8();
+        self.reset_process_modules_filter_selection();
+    }
+
+    pub(crate) fn pop_process_modules_filter_char(&mut self) {
+        if self.process_modules_filter_cursor > 0 {
+            let previous = self.process_modules_filter[..self.process_modules_filter_cursor]
+                .char_indices()
+                .last()
+                .map(|(index, _)| index)
+                .unwrap_or(0);
+            self.process_modules_filter
+                .drain(previous..self.process_modules_filter_cursor);
+            self.process_modules_filter_cursor = previous;
+        }
+        self.reset_process_modules_filter_selection();
+    }
+
+    pub(crate) fn delete_process_modules_filter_char(&mut self) {
+        if self.process_modules_filter_cursor < self.process_modules_filter.len() {
+            let next = self.process_modules_filter[self.process_modules_filter_cursor..]
+                .chars()
+                .next()
+                .map(|ch| self.process_modules_filter_cursor + ch.len_utf8())
+                .unwrap_or(self.process_modules_filter.len());
+            self.process_modules_filter
+                .drain(self.process_modules_filter_cursor..next);
+        }
+        self.reset_process_modules_filter_selection();
+    }
+
+    pub(crate) fn move_process_modules_filter_cursor_left(&mut self) {
+        if self.process_modules_filter_cursor == 0 {
+            return;
+        }
+        self.process_modules_filter_cursor = self.process_modules_filter
+            [..self.process_modules_filter_cursor]
+            .char_indices()
+            .last()
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+    }
+
+    pub(crate) fn move_process_modules_filter_cursor_right(&mut self) {
+        if self.process_modules_filter_cursor >= self.process_modules_filter.len() {
+            return;
+        }
+        self.process_modules_filter_cursor = self.process_modules_filter
+            [self.process_modules_filter_cursor..]
+            .chars()
+            .next()
+            .map(|ch| self.process_modules_filter_cursor + ch.len_utf8())
+            .unwrap_or(self.process_modules_filter.len());
+    }
+
+    fn reset_process_modules_filter_selection(&mut self) {
+        self.process_modules_selected = 0;
+        self.process_info_dlls_scroll.scroll_home();
+        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let total = crate::ui::process_modules::process_modules_total_rows(self, width);
+        self.process_info_dlls_scroll
+            .set_page_size(self.process_info_dlls_scroll.page_size, total);
+    }
+
+    pub(crate) fn refresh_process_environment(&mut self) -> Result<()> {
+        if self.process_environment_in_flight.is_some()
+            && self.process_environment_in_flight_generation == Some(self.process_info_generation)
+        {
+            self.status = "Environment refresh already in progress".to_string();
+            return Ok(());
+        }
+        self.request_process_environment_for_target(false, "Refreshing Environment for")
+    }
+
+    fn ensure_process_environment_for_target(&mut self) -> Result<()> {
+        let Some(target) = self.process_info_target.as_ref() else {
+            return Ok(());
+        };
+        if self.process_environment_result_identity.as_ref() == Some(&target.identity)
+            || (self.process_environment_in_flight.as_ref() == Some(&target.identity)
+                && self.process_environment_in_flight_generation
+                    == Some(self.process_info_generation))
+        {
+            return Ok(());
+        }
+        self.request_process_environment_for_target(true, "Loading Environment for")
+    }
+
+    fn request_process_environment_for_target(
+        &mut self,
+        clear_previous_result: bool,
+        status_prefix: &str,
+    ) -> Result<()> {
+        if self.activity() == AppActivity::LogView {
+            self.status = "Environment is unavailable in Log view".to_string();
+            return Ok(());
+        }
+        let Some(target) = self.process_info_target.clone() else {
+            self.status = "No Process Info target".to_string();
+            return Ok(());
+        };
+        if !matches!(target.lifecycle, ProcessLifecycle::Live)
+            || !self.process_info_target_is_currently_live()
+        {
+            self.process_environment_error = Some(ProcessEnvironmentError::ProcessExited);
+            self.status = "Process has exited".to_string();
+            return Ok(());
+        }
+
+        self.process_environment_next_request_id = self
+            .process_environment_next_request_id
+            .wrapping_add(1)
+            .max(1);
+        let request_id = self.process_environment_next_request_id;
+        self.process_environment_worker.request_environment(
+            self.process_info_generation,
+            request_id,
+            target.identity.clone(),
+            target.process.clone(),
+        )?;
+        if clear_previous_result {
+            self.process_environment_result = None;
+            self.process_environment_result_identity = None;
+            self.process_environment_selected = 0;
+            self.process_environment_show_detail = false;
+            self.process_info_environment_scroll.scroll_home();
+        }
+        self.process_environment_error = None;
+        self.process_environment_in_flight = Some(target.identity);
+        self.process_environment_in_flight_generation = Some(self.process_info_generation);
+        self.process_environment_in_flight_request_id = Some(request_id);
+        self.status = format!("{status_prefix} {}", target.process.name);
+        Ok(())
+    }
+
+    pub(crate) fn process_environment_poll_timeout(&self) -> Option<Duration> {
+        self.process_environment_in_flight
+            .as_ref()
+            .map(|_| PROCESS_ENVIRONMENT_IN_FLIGHT_POLL_INTERVAL)
+    }
+
+    pub(crate) fn poll_process_environment_results(&mut self) -> Result<bool> {
+        let mut changed = false;
+        loop {
+            match self.process_environment_worker.try_recv() {
+                Ok(result) => changed |= self.apply_process_environment_result(result),
+                Err(TryRecvError::Empty) => return Ok(changed),
+                Err(TryRecvError::Disconnected) => {
+                    self.process_environment_in_flight = None;
+                    self.process_environment_in_flight_generation = None;
+                    self.process_environment_in_flight_request_id = None;
+                    self.status = "Warning: process environment worker stopped".to_string();
+                    return Ok(true);
+                }
+            }
+        }
+    }
+
+    fn apply_process_environment_result(&mut self, result: ProcessEnvironmentResult) -> bool {
+        if self.process_environment_in_flight.as_ref() != Some(&result.identity)
+            || self.process_environment_in_flight_generation != Some(result.generation)
+            || self.process_environment_in_flight_request_id != Some(result.request_id)
+        {
+            return false;
+        }
+        self.process_environment_in_flight = None;
+        self.process_environment_in_flight_generation = None;
+        self.process_environment_in_flight_request_id = None;
+        if !self.show_process_info_dialog
+            || result.generation != self.process_info_generation
+            || self
+                .process_info_target
+                .as_ref()
+                .map(|target| &target.identity)
+                != Some(&result.identity)
+        {
+            return false;
+        }
+
+        match result.outcome {
+            Ok(report) => {
+                let count = report.entries.len();
+                let process_name = report.process_name.clone();
+                self.process_environment_result_identity = Some(result.identity);
+                self.process_environment_result = Some(report);
+                self.process_environment_error = None;
+                self.clamp_process_environment_selection();
+                self.status = format!("Loaded {count} environment variables for {process_name}");
+            }
+            Err(error) => {
+                self.process_environment_error = Some(error);
+                self.status = format!(
+                    "Environment unavailable for {}: {}",
+                    result.identity.name,
+                    error.message()
+                );
+            }
+        }
+        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let total = crate::ui::process_environment::process_environment_total_rows(self, width);
+        self.process_info_environment_scroll
+            .set_page_size(self.process_info_environment_scroll.page_size, total);
+        true
+    }
+
+    pub(crate) fn move_process_environment_up(&mut self, amount: usize) {
+        self.process_environment_selected =
+            self.process_environment_selected.saturating_sub(amount);
+        self.ensure_selected_process_environment_visible();
+    }
+
+    pub(crate) fn move_process_environment_down(&mut self, amount: usize) {
+        let count = crate::ui::process_environment::filtered_entries(self).len();
+        self.process_environment_selected = self
+            .process_environment_selected
+            .saturating_add(amount)
+            .min(count.saturating_sub(1));
+        self.ensure_selected_process_environment_visible();
+    }
+
+    pub(crate) fn move_process_environment_home(&mut self) {
+        self.process_environment_selected = 0;
+        self.ensure_selected_process_environment_visible();
+    }
+
+    pub(crate) fn move_process_environment_end(&mut self) {
+        self.process_environment_selected = crate::ui::process_environment::filtered_entries(self)
+            .len()
+            .saturating_sub(1);
+        self.ensure_selected_process_environment_visible();
+    }
+
+    pub(crate) fn select_process_environment(&mut self, index: usize) {
+        let count = crate::ui::process_environment::filtered_entries(self).len();
+        if index < count {
+            self.process_environment_selected = index;
+            self.ensure_selected_process_environment_visible();
+        }
+    }
+
+    fn clamp_process_environment_selection(&mut self) {
+        let count = crate::ui::process_environment::filtered_entries(self).len();
+        self.process_environment_selected = self
+            .process_environment_selected
+            .min(count.saturating_sub(1));
+        self.ensure_selected_process_environment_visible();
+    }
+
+    fn ensure_selected_process_environment_visible(&mut self) {
+        let count = crate::ui::process_environment::filtered_entries(self).len();
+        if count == 0 {
+            self.process_environment_selected = 0;
+            self.process_environment_show_detail = false;
+            self.process_info_environment_scroll.scroll_home();
+            return;
+        }
+        if self.process_environment_show_detail {
+            self.process_info_environment_scroll.scroll_home();
+            let width =
+                crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+            let total = crate::ui::process_environment::process_environment_total_rows(self, width);
+            self.process_info_environment_scroll
+                .set_page_size(self.process_info_environment_scroll.page_size, total);
+            return;
+        }
+        let prefix = 4
+            + usize::from(self.process_environment_error.is_some())
+            + self
+                .process_environment_result
+                .as_ref()
+                .map(|report| usize::from(report.malformed_entries > 0))
+                .unwrap_or(0);
+        let selected_line = prefix.saturating_add(self.process_environment_selected);
+        let page_size = self.process_info_environment_scroll.page_size.max(1);
+        if selected_line < self.process_info_environment_scroll.offset {
+            self.process_info_environment_scroll.offset = selected_line;
+        } else if selected_line
+            >= self
+                .process_info_environment_scroll
+                .offset
+                .saturating_add(page_size)
+        {
+            self.process_info_environment_scroll.offset =
+                selected_line.saturating_add(1).saturating_sub(page_size);
+        }
+        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let total = crate::ui::process_environment::process_environment_total_rows(self, width);
+        self.process_info_environment_scroll
+            .set_page_size(page_size, total);
+    }
+
+    pub(crate) fn push_process_environment_filter_char(&mut self, ch: char) {
+        self.process_environment_filter_cursor = self
+            .process_environment_filter_cursor
+            .min(self.process_environment_filter.len());
+        self.process_environment_filter
+            .insert(self.process_environment_filter_cursor, ch);
+        self.process_environment_filter_cursor += ch.len_utf8();
+        self.reset_process_environment_filter_selection();
+    }
+
+    pub(crate) fn pop_process_environment_filter_char(&mut self) {
+        if self.process_environment_filter_cursor > 0 {
+            let previous = self.process_environment_filter
+                [..self.process_environment_filter_cursor]
+                .char_indices()
+                .last()
+                .map(|(index, _)| index)
+                .unwrap_or(0);
+            self.process_environment_filter
+                .drain(previous..self.process_environment_filter_cursor);
+            self.process_environment_filter_cursor = previous;
+        }
+        self.reset_process_environment_filter_selection();
+    }
+
+    pub(crate) fn delete_process_environment_filter_char(&mut self) {
+        if self.process_environment_filter_cursor < self.process_environment_filter.len() {
+            let next = self.process_environment_filter[self.process_environment_filter_cursor..]
+                .chars()
+                .next()
+                .map(|ch| self.process_environment_filter_cursor + ch.len_utf8())
+                .unwrap_or(self.process_environment_filter.len());
+            self.process_environment_filter
+                .drain(self.process_environment_filter_cursor..next);
+        }
+        self.reset_process_environment_filter_selection();
+    }
+
+    pub(crate) fn move_process_environment_filter_cursor_left(&mut self) {
+        if self.process_environment_filter_cursor == 0 {
+            return;
+        }
+        self.process_environment_filter_cursor = self.process_environment_filter
+            [..self.process_environment_filter_cursor]
+            .char_indices()
+            .last()
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+    }
+
+    pub(crate) fn move_process_environment_filter_cursor_right(&mut self) {
+        if self.process_environment_filter_cursor >= self.process_environment_filter.len() {
+            return;
+        }
+        self.process_environment_filter_cursor = self.process_environment_filter
+            [self.process_environment_filter_cursor..]
+            .chars()
+            .next()
+            .map(|ch| self.process_environment_filter_cursor + ch.len_utf8())
+            .unwrap_or(self.process_environment_filter.len());
+    }
+
+    fn reset_process_environment_filter_selection(&mut self) {
+        self.process_environment_selected = 0;
+        self.process_info_environment_scroll.scroll_home();
+        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let total = crate::ui::process_environment::process_environment_total_rows(self, width);
+        self.process_info_environment_scroll
+            .set_page_size(self.process_info_environment_scroll.page_size, total);
     }
 
     pub(crate) fn request_quit_confirmation(&mut self) {
