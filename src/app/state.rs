@@ -72,6 +72,28 @@ const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 14] = [
     MetricColumn::IoWriteBytesPerSec,
 ];
 
+const fn process_info_metric_label(column: MetricColumn) -> &'static str {
+    match column {
+        MetricColumn::CpuPercent => "CPU Usage",
+        MetricColumn::PrivateBytes => "Private Bytes",
+        MetricColumn::WorksetBytes => "Working Set",
+        MetricColumn::WorksetPrivateBytes => "Working Set - Private",
+        MetricColumn::WorksetShareableBytes => "Working Set - Shareable",
+        MetricColumn::WorksetSharedBytes => "Working Set - Shared",
+        MetricColumn::ThreadCount => "Threads",
+        MetricColumn::HandleCount => "Handles",
+        MetricColumn::UserObjectCount => "USER Objects",
+        MetricColumn::GdiObjectCount => "GDI Objects",
+        MetricColumn::GpuPercent => "GPU Usage",
+        MetricColumn::DotNetHeapBytes => ".NET Heap",
+        MetricColumn::GpuDedicatedBytes => "GPU Dedicated Memory",
+        MetricColumn::GpuSharedBytes => "GPU Shared Memory",
+        MetricColumn::IoReadBytesPerSec => "I/O Read Throughput",
+        MetricColumn::IoWriteBytesPerSec => "I/O Write Throughput",
+        MetricColumn::FullPath => "Full Path",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessLifecycle {
     Live,
@@ -4565,7 +4587,7 @@ impl App {
                 let baseline = baseline_sample
                     .and_then(|sample| ProcessMetricValue::from_sample(sample, column));
                 ProcessInfoMetricRow {
-                    label: column.label(),
+                    label: process_info_metric_label(column),
                     value: value
                         .map(ProcessMetricValue::format)
                         .unwrap_or_else(|| "--".to_string()),

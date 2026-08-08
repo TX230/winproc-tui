@@ -137,7 +137,24 @@ The `Image` tab displays these values:
 
 Unavailable values are displayed as one of `<access denied>`, `<exited>`, `<not available>`, `<missing>`, or `--`.
 
-The `Metrics` tab always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded.
+The `Metrics` tab always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded. Unlike the compact Processes column headers, the tab uses descriptive row names:
+
+| Processes column | Metrics row |
+|---|---|
+| `CPU%` | `CPU Usage` |
+| `Private` | `Private Bytes` |
+| `WS` | `Working Set` |
+| `WS Priv` | `Working Set - Private` |
+| `Thrd` | `Threads` |
+| `Hndl` | `Handles` |
+| `USER` | `USER Objects` |
+| `GDI` | `GDI Objects` |
+| `GPU%` | `GPU Usage` |
+| `.NET Heap` | `.NET Heap` |
+| `GPU D` | `GPU Dedicated Memory` |
+| `GPU S` | `GPU Shared Memory` |
+| `IO Read/s` | `I/O Read Throughput` |
+| `IO Write/s` | `I/O Write Throughput` |
 
 The comparison uses the app-wide A/B timestamps set in Graph or Samples:
 

@@ -7155,11 +7155,44 @@ processes = ["api.exe", "worker.exe"]
             current_view
                 .rows
                 .iter()
-                .find(|row| row.label == "Private")
+                .map(|row| row.label)
+                .collect::<Vec<_>>(),
+            vec![
+                "CPU Usage",
+                "Private Bytes",
+                "Working Set",
+                "Working Set - Private",
+                "Threads",
+                "Handles",
+                "USER Objects",
+                "GDI Objects",
+                "GPU Usage",
+                ".NET Heap",
+                "GPU Dedicated Memory",
+                "GPU Shared Memory",
+                "I/O Read Throughput",
+                "I/O Write Throughput",
+            ]
+        );
+        assert_eq!(
+            current_view
+                .rows
+                .iter()
+                .find(|row| row.label == "Private Bytes")
                 .unwrap()
                 .value,
             "388.1 MB"
         );
+        let compact = render_app_to_text(&app, 60, 40);
+        for label in [
+            "Private Bytes",
+            "Working Set - Private",
+            "Handles",
+            "GPU Dedicated Memory",
+            "I/O Write Throughput",
+        ] {
+            assert!(compact.contains(label), "missing {label}: {compact}");
+        }
 
         app.ab_comparison = Some(app::AbComparison {
             a: Some(app::AbComparisonPoint { captured_at: a_at }),
@@ -7171,7 +7204,7 @@ processes = ["api.exe", "worker.exe"]
             a_view
                 .rows
                 .iter()
-                .find(|row| row.label == "CPU%")
+                .find(|row| row.label == "CPU Usage")
                 .unwrap()
                 .delta
                 .as_deref(),
@@ -7181,7 +7214,7 @@ processes = ["api.exe", "worker.exe"]
             a_view
                 .rows
                 .iter()
-                .find(|row| row.label == "Private")
+                .find(|row| row.label == "Private Bytes")
                 .unwrap()
                 .delta
                 .as_deref(),
@@ -7191,7 +7224,7 @@ processes = ["api.exe", "worker.exe"]
             a_view
                 .rows
                 .iter()
-                .find(|row| row.label == "Thrd")
+                .find(|row| row.label == "Threads")
                 .unwrap()
                 .delta
                 .as_deref(),
@@ -7201,13 +7234,17 @@ processes = ["api.exe", "worker.exe"]
             a_view
                 .rows
                 .iter()
-                .find(|row| row.label == "Hndl")
+                .find(|row| row.label == "Handles")
                 .unwrap()
                 .delta
                 .as_deref(),
             Some("+0")
         );
-        let missing = a_view.rows.iter().find(|row| row.label == "GDI").unwrap();
+        let missing = a_view
+            .rows
+            .iter()
+            .find(|row| row.label == "GDI Objects")
+            .unwrap();
         assert_eq!(missing.value, "--");
         assert_eq!(missing.delta.as_deref(), Some("--"));
 
@@ -7222,7 +7259,7 @@ processes = ["api.exe", "worker.exe"]
             ab_view
                 .rows
                 .iter()
-                .find(|row| row.label == "Private")
+                .find(|row| row.label == "Private Bytes")
                 .unwrap()
                 .value,
             "384.4 MB"
@@ -7316,7 +7353,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(
             view.rows
                 .iter()
-                .find(|row| row.label == "Private")
+                .find(|row| row.label == "Private Bytes")
                 .unwrap()
                 .delta
                 .as_deref(),
@@ -7358,7 +7395,7 @@ processes = ["api.exe", "worker.exe"]
                 .unwrap()
                 .rows
                 .iter()
-                .find(|row| row.label == "Private")
+                .find(|row| row.label == "Private Bytes")
                 .unwrap()
                 .value,
             "42.0 MB"
@@ -7382,7 +7419,7 @@ processes = ["api.exe", "worker.exe"]
                 .unwrap()
                 .rows
                 .iter()
-                .find(|row| row.label == "Private")
+                .find(|row| row.label == "Private Bytes")
                 .unwrap()
                 .value,
             "42.0 MB"
@@ -7930,7 +7967,7 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         let rendered = render_app_to_text(&app, screen.width, screen.height);
-        assert!(rendered.contains("IO Write/s"), "{rendered}");
+        assert!(rendered.contains("I/O Write Throughput"), "{rendered}");
         assert!(rendered.contains("[ Close ]"), "{rendered}");
     }
 
