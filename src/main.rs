@@ -8536,7 +8536,7 @@ processes = ["api.exe", "worker.exe"]
         let list = render_app_to_text(&app, 60, 24);
         assert!(list.contains("Name"), "{list}");
         assert!(list.contains("Value"), "{list}");
-        assert!(list.contains("Environment may contain secrets"), "{list}");
+        assert!(!list.contains("Environment may contain secrets"), "{list}");
         assert!(list.contains("2 malformed entries skipped"), "{list}");
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
@@ -8546,6 +8546,55 @@ processes = ["api.exe", "worker.exe"]
         assert!(detail.contains("Environment variable details"), "{detail}");
         assert!(detail.contains("C:\\one;"), "{detail}");
         assert!(detail.contains("Esc/Enter back"), "{detail}");
+    }
+
+    #[test]
+    fn environment_filter_cursor_and_mouse_rows_match_rendered_layout() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Environment;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
+        app.process_environment_result_identity = Some(identity.clone());
+        app.process_environment_result = Some(test_process_environment_report(
+            &identity.name,
+            identity.pid,
+            vec![
+                ProcessEnvironmentEntry {
+                    name: "FIRST".to_string(),
+                    value: "one".to_string(),
+                },
+                ProcessEnvironmentEntry {
+                    name: "SECOND".to_string(),
+                    value: "two".to_string(),
+                },
+            ],
+        ));
+        app.process_environment_filter = "o".to_string();
+        app.process_environment_filter_cursor = 1;
+        let screen = Rect::new(0, 0, 160, 45);
+        let content = ui::process_info_content_area_for_screen(screen);
+        let expected_cursor = Position::new(content.x + "Filter: ".len() as u16 + 1, content.y + 1);
+
+        let backend = TestBackend::new(screen.width, screen.height);
+        let mut terminal = Terminal::new(backend).expect("test terminal should be created");
+        terminal
+            .draw(|frame| ui::draw(frame, &app))
+            .expect("test render should succeed");
+        terminal
+            .backend_mut()
+            .assert_cursor_position(expected_cursor);
+        let buffer = terminal.backend().buffer().clone();
+        let rendered = buffer_to_text(&buffer);
+        let (second_x, second_y) =
+            find_text_position(&buffer, "SECOND").expect("second environment row should render");
+
+        assert!(
+            !rendered.contains("Environment may contain secrets"),
+            "{rendered}"
+        );
+        assert_eq!(second_y, content.y + 4);
+        app.on_mouse(left_click(second_x, second_y), screen);
+        assert_eq!(app.process_environment_selected, 1);
     }
 
     #[test]
