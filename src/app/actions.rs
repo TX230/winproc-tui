@@ -24,16 +24,17 @@ use crate::{
             details_shared_controls_area, details_slot_areas, details_slot_title_area,
             graph_shared_control_areas,
         },
-        log_dir_button_at, log_list_index_at, main_panel_areas_for_app,
-        metric_column_warning_ok_button_area, no_graph_metrics_warning_ok_button_area,
-        process_info_close_button_area_for_screen, process_info_content_area_for_screen,
-        process_info_tab_at, process_kill_button_at, process_metric_column_index_at,
-        process_tracked_only_control_area, quit_confirm_button_at, ram_vram_panel_area_for_screen,
-        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
-        recording_path_button_at, system_activity_panel_area_for_screen,
-        system_info_ok_button_area_for_screen, tracked_list_confirm_button_at,
-        tracked_list_index_at, tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
-        tracked_list_startup_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
+        log_dir_button_at, log_dir_input_area, log_list_button_at, log_list_index_at,
+        main_panel_areas_for_app, metric_column_warning_ok_button_area,
+        no_graph_metrics_warning_ok_button_area, process_info_close_button_area_for_screen,
+        process_info_content_area_for_screen, process_info_tab_at, process_kill_button_at,
+        process_metric_column_index_at, process_tracked_only_control_area, quit_confirm_button_at,
+        ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
+        recording_overwrite_button_at, recording_path_button_at, recording_path_input_area,
+        system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
+        tracked_list_confirm_button_at, tracked_list_index_at, tracked_list_name_button_at,
+        tracked_list_save_name_area_for_screen, tracked_list_startup_area_for_screen,
+        tracked_lists_button_at, tracked_remove_button_at,
     },
 };
 
@@ -306,16 +307,61 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.cancel_recording_path_dialog(),
                 KeyCode::Enter => self.activate_recording_path_selection()?,
-                KeyCode::Backspace => self.pop_recording_path_char(),
-                KeyCode::Delete => self.delete_recording_path_char(),
-                KeyCode::Left => self.move_recording_path_cursor_left(),
-                KeyCode::Right => self.move_recording_path_cursor_right(),
-                KeyCode::Tab => self.complete_recording_path(),
-                KeyCode::Home => self.move_recording_path_cursor_home(),
-                KeyCode::End => self.move_recording_path_cursor_end(),
+                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.focus_previous_recording_path_control()
+                }
+                KeyCode::Tab => self.focus_next_recording_path_control(),
+                KeyCode::BackTab => self.focus_previous_recording_path_control(),
+                KeyCode::Char(' ')
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && self.recording_path_selection
+                            == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.complete_recording_path();
+                }
+                KeyCode::Backspace
+                    if self.recording_path_selection
+                        == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.pop_recording_path_char();
+                }
+                KeyCode::Delete
+                    if self.recording_path_selection
+                        == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.delete_recording_path_char();
+                }
+                KeyCode::Left
+                    if self.recording_path_selection
+                        == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.move_recording_path_cursor_left();
+                }
+                KeyCode::Left => self.focus_previous_recording_path_control(),
+                KeyCode::Right
+                    if self.recording_path_selection
+                        == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.move_recording_path_cursor_right();
+                }
+                KeyCode::Right => self.focus_next_recording_path_control(),
+                KeyCode::Home
+                    if self.recording_path_selection
+                        == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.move_recording_path_cursor_home();
+                }
+                KeyCode::End
+                    if self.recording_path_selection
+                        == crate::app::RecordingPathSelection::Path =>
+                {
+                    self.move_recording_path_cursor_end();
+                }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self.recording_path_selection
+                            == crate::app::RecordingPathSelection::Path =>
                 {
                     self.push_recording_path_char(ch);
                 }
@@ -328,16 +374,43 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.cancel_log_dir_dialog(),
                 KeyCode::Enter => self.activate_log_dir_selection()?,
-                KeyCode::Backspace => self.pop_log_dir_char(),
-                KeyCode::Delete => self.delete_log_dir_char(),
-                KeyCode::Left => self.move_log_dir_cursor_left(),
-                KeyCode::Right => self.move_log_dir_cursor_right(),
-                KeyCode::Tab => self.complete_log_dir(),
-                KeyCode::Home => self.move_log_dir_cursor_home(),
-                KeyCode::End => self.move_log_dir_cursor_end(),
+                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.focus_previous_log_dir_control()
+                }
+                KeyCode::Tab => self.focus_next_log_dir_control(),
+                KeyCode::BackTab => self.focus_previous_log_dir_control(),
+                KeyCode::Char(' ')
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && self.log_dir_selection == crate::app::LogDirSelection::Path =>
+                {
+                    self.complete_log_dir();
+                }
+                KeyCode::Backspace
+                    if self.log_dir_selection == crate::app::LogDirSelection::Path =>
+                {
+                    self.pop_log_dir_char();
+                }
+                KeyCode::Delete if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                    self.delete_log_dir_char();
+                }
+                KeyCode::Left if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                    self.move_log_dir_cursor_left();
+                }
+                KeyCode::Left => self.focus_previous_log_dir_control(),
+                KeyCode::Right if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                    self.move_log_dir_cursor_right();
+                }
+                KeyCode::Right => self.focus_next_log_dir_control(),
+                KeyCode::Home if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                    self.move_log_dir_cursor_home();
+                }
+                KeyCode::End if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                    self.move_log_dir_cursor_end();
+                }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self.log_dir_selection == crate::app::LogDirSelection::Path =>
                 {
                     self.push_log_dir_char(ch);
                 }
@@ -365,7 +438,12 @@ impl App {
         if self.is_log_list_open() {
             match key.code {
                 KeyCode::Esc => self.close_log_list(),
-                KeyCode::Enter => self.load_selected_log(),
+                KeyCode::Enter => self.activate_log_list_control()?,
+                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.focus_previous_log_list_control()
+                }
+                KeyCode::Tab => self.focus_next_log_list_control(),
+                KeyCode::BackTab => self.focus_previous_log_list_control(),
                 KeyCode::Up => self.move_log_list_up(1),
                 KeyCode::Down => self.move_log_list_down(1),
                 KeyCode::PageUp => self.move_log_list_up(self.log_list_scroll.page_size),
@@ -1386,7 +1464,12 @@ impl App {
 
         if self.show_log_dir_dialog {
             if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                if contains_point(log_dir_input_area(screen_area), mouse.column, mouse.row) {
+                    self.log_dir_selection = crate::app::LogDirSelection::Path;
+                    return;
+                }
                 match log_dir_button_at(screen_area, mouse.column, mouse.row) {
+                    Some(crate::app::LogDirSelection::Path) => {}
                     Some(crate::app::LogDirSelection::Apply) => {
                         self.log_dir_selection = crate::app::LogDirSelection::Apply;
                         if let Err(error) = self.confirm_log_dir() {
@@ -1406,6 +1489,18 @@ impl App {
         if self.show_log_list {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(focus) = log_list_button_at(
+                        screen_area,
+                        mouse.column,
+                        mouse.row,
+                        self.log_summaries.len(),
+                    ) {
+                        self.log_list_focus = focus;
+                        if let Err(error) = self.activate_log_list_control() {
+                            self.status = format!("Log action failed: {error}");
+                        }
+                        return;
+                    }
                     if let Some(index) = log_list_index_at(
                         screen_area,
                         mouse.column,
@@ -1413,6 +1508,7 @@ impl App {
                         self.log_list_scroll.offset,
                         self.log_summaries.len(),
                     ) {
+                        self.log_list_focus = crate::app::LogListFocus::List;
                         self.click_log_list_index(index, Instant::now());
                     }
                 }
@@ -1613,7 +1709,16 @@ impl App {
 
         if self.show_recording_path_dialog {
             if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                if contains_point(
+                    recording_path_input_area(screen_area),
+                    mouse.column,
+                    mouse.row,
+                ) {
+                    self.recording_path_selection = crate::app::RecordingPathSelection::Path;
+                    return;
+                }
                 match recording_path_button_at(screen_area, mouse.column, mouse.row) {
+                    Some(crate::app::RecordingPathSelection::Path) => {}
                     Some(crate::app::RecordingPathSelection::Start) => {
                         self.recording_path_selection = crate::app::RecordingPathSelection::Start;
                         if let Err(error) = self.confirm_recording_path() {
@@ -1902,7 +2007,7 @@ impl App {
     }
 
     fn toggle_graph_slot_layout_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
-        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).two_columns else {
+        let Some(area) = graph_shared_control_areas_for_app(self, screen_area).layout else {
             return false;
         };
         if !contains_point(area, x, y) {
@@ -2225,7 +2330,7 @@ fn visible_slot_areas_for_app(app: &App, screen_area: Rect) -> Vec<(usize, Rect)
     let Some(details) = main_panel_areas_for_app(screen_area, app).details else {
         return Vec::new();
     };
-    details_slot_areas(details, indices.len(), app.graph_slot_layout)
+    details_slot_areas(details, indices.len(), app.effective_graph_slot_layout())
         .into_iter()
         .zip(indices)
         .map(|(area, index)| (index, area))

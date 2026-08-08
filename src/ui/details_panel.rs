@@ -42,10 +42,9 @@ pub(crate) fn draw_details_panel(
     theme: Theme,
 ) {
     let slots = app
-        .graph_slots
-        .iter()
-        .enumerate()
-        .filter_map(|(index, slot)| slot.as_ref().map(|slot| (index, slot)))
+        .visible_graph_slot_indices()
+        .into_iter()
+        .filter_map(|index| app.graph_slot(index).map(|slot| (index, slot)))
         .collect::<Vec<_>>();
     if slots.is_empty() {
         let lines = vec![Line::from(Span::styled(
@@ -58,9 +57,10 @@ pub(crate) fn draw_details_panel(
 
     draw_graph_shared_controls(frame, details_shared_controls_area(area), app, theme);
 
+    let visible_slot_count = slots.len();
     let common_y_label_width = graph_y_axis_label_width(app);
     let selected_sample_time = app.selected_details_sample_time();
-    let slot_areas = details_slot_areas(area, slots.len(), app.graph_slot_layout);
+    let slot_areas = details_slot_areas(area, slots.len(), app.effective_graph_slot_layout());
     for ((slot_index, slot), slot_area) in slots.into_iter().zip(slot_areas) {
         let samples = app.graph_slot_samples(slot);
         let peak = app.graph_slot_peak(slot);
@@ -84,7 +84,7 @@ pub(crate) fn draw_details_panel(
             slot.metric_label(),
             app,
             theme,
-            app.active_graph_slot_count() == 1,
+            visible_slot_count == 1,
             common_y_label_width,
             selected_sample_time,
         );
@@ -96,9 +96,9 @@ pub(crate) fn graph_y_axis_label_width(app: &App) -> usize {
         app.effective_graph_time_span_seconds(),
         app.effective_graph_time_offset_seconds(),
     );
-    app.graph_slots
-        .iter()
-        .filter_map(Option::as_ref)
+    app.visible_graph_slot_indices()
+        .into_iter()
+        .filter_map(|index| app.graph_slot(index))
         .map(|slot| {
             let samples = app.graph_slot_samples(slot);
             let metric = slot.value_format();
@@ -674,13 +674,7 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
         "  d: Delta",
         theme,
     );
-    render_graph_toggle(
-        frame,
-        controls.two_columns,
-        app.graph_slot_layout.is_two_columns(),
-        "  l: 2 cols",
-        theme,
-    );
+    render_graph_layout_mode(frame, controls.layout, app.graph_slot_layout.label(), theme);
     render_graph_toggle(
         frame,
         controls.all_samples,
@@ -714,6 +708,26 @@ fn render_graph_toggle(
     ]))
     .style(Style::default().bg(theme.panel));
     frame.render_widget(toggle, toggle_area);
+}
+
+fn render_graph_layout_mode(
+    frame: &mut ratatui::Frame<'_>,
+    area: Option<Rect>,
+    mode: &str,
+    theme: Theme,
+) {
+    let Some(area) = area else {
+        return;
+    };
+    let content = Paragraph::new(Line::from(vec![
+        Span::styled("  l: ", Style::default().fg(theme.muted).bg(theme.panel)),
+        Span::styled(
+            mode.to_string(),
+            Style::default().fg(theme.accent).bg(theme.panel),
+        ),
+    ]))
+    .style(Style::default().bg(theme.panel));
+    frame.render_widget(content, area);
 }
 
 fn details_paragraph<'a>(lines: Vec<Line<'a>>, theme: Theme) -> Paragraph<'a> {

@@ -284,19 +284,19 @@ Environment values can contain passwords, tokens, and other secrets. They are re
 | `z`                        | Toggle the Y-axis lower bound between fixed at 0 and following the visible minimum. |
 | `v`                        | Show or hide the Samples table.                                                     |
 | `d`                        | Show or hide the Delta column in Samples.                                           |
-| `l`                        | Switch Graph slots between one and two columns.                                     |
+| `l`                        | Cycle Graph layout through Auto, one column, and two columns.                       |
 | `a` / `b`                  | Mark the selected sample as point A or point B.                                     |
 | `Shift+A` / `Shift+B`      | Jump to point A or point B.                                                         |
 | `x`                        | Clear the A/B comparison.                                                           |
 
 
-Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, plus the `v: Samples`, `d: Delta`, `l: 2 cols`, `f: Fit all`, and `z: Min 0` checkboxes. The checkboxes can also be clicked. Each slot uses one frame titled `GRAPH#n · item · metric [unit] · B-A: value`, with its Graph and synchronized Samples table grouped inside that frame. Units already present in names such as `CPU%` are not repeated. The title computes `B-A` from that slot's own metric values and shows `--` when either point is unset or the slot has no value at either exact time. The active slot title is emphasized and inactive slot titles are muted.
+Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, plus `v: Samples`, `d: Delta`, the current `l` layout mode, `f: Fit all`, and `z: Min 0`. The controls can also be clicked. Each slot uses one frame titled `GRAPH#n · item · metric [unit] · B-A: value`, with its Graph and synchronized Samples table grouped inside that frame. Units already present in names such as `CPU%` are not repeated. The title computes `B-A` from that slot's own metric values and shows `--` when either point is unset or the slot has no value at either exact time. The active slot title is emphasized and inactive slot titles are muted.
 The shared `v`, `d`, `l`, `f`, and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
 With the Graph part of a process slot focused, `Enter` opens Process Info for that slot's process without changing the selected Processes row. System Graphs do not have process details.
 
-In two-column mode, slots use row-major order: upper left, upper right, lower left, then lower right. A single Graph uses the full width, and three Graphs leave the lower-right cell empty. Two-column mode hides Samples and restores its previous visibility when returning to one column. Enabling Samples with `v` while in two-column mode also switches to one column.
+Auto layout uses one column unless two columns make more assigned slots visible in the current terminal area. In two-column mode, slots use row-major order: upper left, upper right, lower left, then lower right. A single Graph uses the full width, and three Graphs leave the lower-right cell empty. Two-column mode hides Samples and restores its previous visibility when the effective layout returns to one column. Enabling Samples with `v` switches to the fixed one-column mode.
 
-When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph. Byte-based Y-axis ticks use compact adaptive units such as `5.9 MB`; count ticks remain integers. The shared reduced tick width is reclaimed by every plot. Samples, cursor labels, A/B values and deltas, clipboard output, and recording logs retain exact values. If a selected Samples value is outside the current Graph range, the time window moves only as far as needed to reveal it. Switching from one to two columns and adding a Graph are rejected with `Not enough display area.` when the available area is insufficient. Switching from two columns to one removes the highest-numbered Graph slots until the remaining slots fit, using the same behavior as a terminal resize. The same cleanup applies when `v` enables Samples from two-column mode.
+When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph. Byte-based Y-axis ticks use compact adaptive units such as `5.9 MB`; count ticks remain integers. The shared reduced tick width is reclaimed by every plot. Samples, cursor labels, A/B values and deltas, clipboard output, and recording logs retain exact values. If a selected Samples value is outside the current Graph range, the time window moves only as far as needed to reveal it. Adding a Graph or shrinking the terminal never clears an assignment. Slots that do not fit are temporarily hidden from the highest slot number and reappear automatically when space becomes available.
 
 ## Recording and Log View
 
@@ -304,12 +304,12 @@ Press `Ctrl+R` to start or stop recording.
 Recording requires at least one Tracked List entry and saves logs as JSON Lines (with the `.log` extension).
 Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracked List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
-When recording starts, a save-path input dialog opens, and `Tab` completes directory names there.
+When recording starts, a save-path input dialog opens. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
 Log view cannot open during recording, and recording cannot start while Log view is open.
 
 Press `Ctrl+L` to open the log list.
 The list shows `*.log` files from the previous recording directory if available, otherwise from the current directory.
-The `Dir` row shows the directory currently being searched, and `d` lets you choose another directory.
+The compact list shows file names from one directory; the `Dir` row shows that directory, and `d` or the `Directory` button lets you choose another one. `Open`, `Refresh`, and `Close` are also available as mouse-operable buttons.
 Press `Enter` on a selected log to switch to the `LOG` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
 Log view is not a player: Processes keeps showing the last recorded values, while Graph, Samples, and Process Info expose the recorded metric history. Process Info uses recorded fields for static details and shows `--` for details that were not recorded. Press `Esc` to return to the live display.
 
@@ -317,7 +317,7 @@ The recording log format and the meaning of each field are described in [docs/me
 
 ## Saved Settings
 
-The theme, Graph and Samples / Delta visibility, process-table columns, sort, and widths, Tracked Only state, working Tracked List, and saved named lists are saved automatically and restored on the next launch. Tracked Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
+The theme, Graph layout and Samples / Delta visibility, process-table columns, sort, and widths, Tracked Only state, working Tracked List, and saved named lists are saved automatically and restored on the next launch. Tracked Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
 
 ## Developer Docs
 

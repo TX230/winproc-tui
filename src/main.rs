@@ -348,16 +348,13 @@ mod tests {
     }
 
     #[test]
-    fn invalid_graph_column_count_falls_back_to_one_column() {
+    fn invalid_graph_column_count_falls_back_to_auto() {
         let mut config = AppConfig::default();
         config.graphs.columns = 3;
 
         let runtime = build_runtime_config(config).unwrap();
 
-        assert_eq!(
-            runtime.initial_graph_slot_layout,
-            GraphSlotLayout::OneColumn
-        );
+        assert_eq!(runtime.initial_graph_slot_layout, GraphSlotLayout::Auto);
     }
 
     #[test]
@@ -614,6 +611,19 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("columns = 2"), "{rendered}");
         assert!(rendered.contains("samples = true"), "{rendered}");
         assert!(rendered.contains("delta = false"), "{rendered}");
+    }
+
+    #[test]
+    fn app_config_saves_auto_graph_layout() {
+        let app = make_test_app(3, 10);
+        let path = unique_config_path("graph-layout-auto");
+
+        write_app_config(&path, &app).unwrap();
+        let rendered = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(rendered.contains("[graphs]"), "{rendered}");
+        assert!(rendered.contains("columns = 0"), "{rendered}");
     }
 
     #[test]
@@ -1976,7 +1986,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn adding_graph_slot_requires_minimum_display_area() {
+    fn adding_graph_slot_preserves_assignment_when_slot_is_not_visible() {
         let mut app = make_test_app(30, 10);
         app.set_screen_area(Rect::new(0, 0, 120, 45));
 
@@ -1987,14 +1997,14 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
             .unwrap();
 
-        assert!(app.graph_slots[1].is_none());
-        assert!(app.show_display_area_warning);
-        assert_eq!(app.status, "Not enough display area.");
+        assert!(app.graph_slots[1].is_some());
+        assert!(!app.show_display_area_warning);
     }
 
     #[test]
-    fn resizing_closes_high_numbered_graph_slots_that_no_longer_fit() {
+    fn resizing_temporarily_hides_and_restores_graph_slots() {
         let mut app = make_test_app(30, 10);
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
         let identity = app.selected_visible_process_identity().unwrap();
         app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
         app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
@@ -2003,13 +2013,20 @@ processes = ["api.exe", "worker.exe"]
         app.show_details = true;
 
         app.set_screen_area(Rect::new(0, 0, 120, 58));
-        app.close_graph_slots_that_do_not_fit();
+        app.sync_graph_layout_visibility();
 
         assert!(app.graph_slots[0].is_some());
         assert!(app.graph_slots[1].is_some());
-        assert!(app.graph_slots[2].is_none());
+        assert!(app.graph_slots[2].is_some());
+        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1]);
         assert_eq!(app.active_graph_slot_index, 0);
         assert!(app.show_details);
+
+        app.set_screen_area(Rect::new(0, 0, 120, 100));
+        app.sync_graph_layout_visibility();
+
+        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1, 2]);
+        assert!(app.graph_slots[2].is_some());
     }
 
     #[test]
@@ -3079,18 +3096,24 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
 
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+        assert!(app.show_samples_panel);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
+            .unwrap();
+
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
         assert!(!app.show_samples_panel);
         assert!(app.samples_panel_before_two_columns);
         let rendered = render_app_to_text(&app, 120, 60);
         assert!(rendered.contains("☐  v: Samples"), "{rendered}");
-        assert!(rendered.contains("☑  l: 2 cols"), "{rendered}");
+        assert!(rendered.contains("l: 2 cols"), "{rendered}");
         assert!(!rendered.contains("d: Delta"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::Auto);
         assert!(app.show_samples_panel);
 
         app.on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE))
@@ -3099,6 +3122,37 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE))
             .unwrap();
         assert!(!app.show_samples_panel);
+    }
+
+    #[test]
+    fn auto_graph_layout_uses_two_columns_only_when_more_slots_fit() {
+        let mut app = make_test_app(30, 10);
+        let identity = app.selected_visible_process_identity().unwrap();
+        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
+        app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
+        app.graph_slots[2] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        app.graph_slot_layout = GraphSlotLayout::Auto;
+        app.show_details = true;
+
+        app.set_screen_area(Rect::new(0, 0, 120, 58));
+        app.sync_graph_layout_visibility();
+
+        assert_eq!(
+            app.effective_graph_slot_layout(),
+            GraphSlotLayout::TwoColumns
+        );
+        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1, 2]);
+        assert!(!app.show_samples_panel);
+
+        app.set_screen_area(Rect::new(0, 0, 120, 100));
+        app.sync_graph_layout_visibility();
+
+        assert_eq!(
+            app.effective_graph_slot_layout(),
+            GraphSlotLayout::OneColumn
+        );
+        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1, 2]);
+        assert!(app.show_samples_panel);
     }
 
     #[test]
@@ -3114,23 +3168,25 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn switching_to_two_columns_rejects_layout_that_does_not_fit() {
+    fn switching_to_two_columns_keeps_assignments_that_do_not_fit() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
         app.graph_slots[1] = app.graph_slots[0].clone();
         app.focused_panel = FocusedPanel::DetailsGraph;
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
         app.last_screen_area = Rect::new(0, 0, 99, 60);
 
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
         assert_eq!(app.active_graph_slot_count(), 2);
-        assert!(app.show_display_area_warning);
+        assert!(app.visible_graph_slot_indices().len() < 2);
+        assert!(!app.show_display_area_warning);
     }
 
     #[test]
-    fn switching_to_one_column_closes_high_numbered_graph_slots_that_do_not_fit() {
+    fn switching_to_one_column_hides_high_numbered_graph_slots_without_clearing_them() {
         let mut app = make_test_app(30, 10);
         let identity = app.selected_visible_process_identity().unwrap();
         app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
@@ -3147,22 +3203,22 @@ processes = ["api.exe", "worker.exe"]
 
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
+            .unwrap();
 
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
         assert!(app.show_samples_panel);
         assert!(app.graph_slots[0].is_some());
         assert!(app.graph_slots[1].is_some());
-        assert!(app.graph_slots[2].is_none());
+        assert!(app.graph_slots[2].is_some());
+        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1]);
         assert_eq!(app.active_graph_slot_index, 0);
-        assert_eq!(
-            app.status,
-            "Closed Graph#3: not enough display area".to_string()
-        );
+        assert_eq!(app.status, "1 Graph slot hidden: not enough display area");
         assert!(!app.show_display_area_warning);
     }
 
     #[test]
-    fn showing_samples_from_two_columns_closes_graph_slots_that_do_not_fit() {
+    fn showing_samples_from_two_columns_hides_slots_without_clearing_them() {
         let mut app = make_test_app(30, 10);
         let identity = app.selected_visible_process_identity().unwrap();
         app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
@@ -3184,12 +3240,10 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.show_samples_panel);
         assert!(app.graph_slots[0].is_some());
         assert!(app.graph_slots[1].is_some());
-        assert!(app.graph_slots[2].is_none());
+        assert!(app.graph_slots[2].is_some());
+        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1]);
         assert_eq!(app.active_graph_slot_index, 0);
-        assert_eq!(
-            app.status,
-            "Closed Graph#3: not enough display area".to_string()
-        );
+        assert_eq!(app.status, "1 Graph slot hidden: not enough display area");
         assert!(!app.show_display_area_warning);
     }
 
@@ -3202,7 +3256,15 @@ processes = ["api.exe", "worker.exe"]
         app.last_screen_area = screen;
         let initial = render_app_to_buffer(&app, screen.width, screen.height);
         let (layout_x, layout_y) =
-            find_text_position(&initial, "l: 2 cols").expect("layout checkbox should render");
+            find_text_position(&initial, "l: Auto").expect("layout control should render");
+
+        app.on_mouse(left_click(layout_x, layout_y), screen);
+
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+        assert!(app.show_samples_panel);
+        let one_column = render_app_to_buffer(&app, screen.width, screen.height);
+        let (layout_x, layout_y) =
+            find_text_position(&one_column, "l: 1 col").expect("layout control should render");
 
         app.on_mouse(left_click(layout_x, layout_y), screen);
 
@@ -3811,7 +3873,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(rendered.matches("z: Min 0").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("v: Samples").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("d: Delta").count(), 1, "{rendered}");
-        assert_eq!(rendered.matches("l: 2 cols").count(), 1, "{rendered}");
+        assert_eq!(rendered.matches("l: Auto").count(), 1, "{rendered}");
         assert!(!rendered.contains("Samples#1"), "{rendered}");
         assert!(!rendered.contains("Samples#2"), "{rendered}");
         assert!(!rendered.contains("Max:"), "{rendered}");
@@ -5379,7 +5441,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("v/d/l") && rendered.contains("Samples/Delta/2c"),
+            rendered.contains("v/d/l") && rendered.contains("Samples/Delta/mode"),
             "{rendered}"
         );
         assert!(rendered.contains("Toggle recording"), "{rendered}");
@@ -6079,7 +6141,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_path_dialog_tab_tries_completion_without_switching_buttons() {
+    fn recording_path_dialog_tab_moves_focus_to_start_button() {
         let mut app = make_test_app(1, 10);
         app.show_recording_path_dialog = true;
         app.recording_path_draft = std::env::current_dir()
@@ -6092,7 +6154,7 @@ processes = ["api.exe", "worker.exe"]
         app.recording_path_cursor = app.recording_path_draft.len();
         assert_eq!(
             app.recording_path_selection,
-            app::RecordingPathSelection::Start
+            app::RecordingPathSelection::Path
         );
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
@@ -6101,7 +6163,20 @@ processes = ["api.exe", "worker.exe"]
             app.recording_path_selection,
             app::RecordingPathSelection::Start
         );
-        assert_eq!(app.status, "No directory completion match");
+        assert!(app.status.is_empty());
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.recording_path_selection,
+            app::RecordingPathSelection::Cancel
+        );
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(
+            app.recording_path_selection,
+            app::RecordingPathSelection::Start
+        );
 
         let rendered = render_app_to_text(&app, 100, 45);
         assert!(rendered.contains("[ Start ]   [ Cancel ]"), "{rendered}");
@@ -6119,7 +6194,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             app.recording_path_selection,
-            app::RecordingPathSelection::Start
+            app::RecordingPathSelection::Path
         );
         assert!(app.recording_path_cursor < app.recording_path_draft.len());
     }
@@ -6149,7 +6224,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn tab_completes_recording_path_directory() {
+    fn ctrl_space_completes_recording_path_directory() {
         let root = unique_recording_dir("recording-path-complete");
         let target = root.join("alpha");
         let _ = std::fs::remove_dir_all(&root);
@@ -6160,7 +6235,7 @@ processes = ["api.exe", "worker.exe"]
         app.recording_path_draft = format!("{head}{}capture.log", std::path::MAIN_SEPARATOR);
         app.recording_path_cursor = head.len();
 
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL))
             .unwrap();
 
         let expected = format!(
@@ -6292,7 +6367,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("Enter starts · Esc cancels · Tab completes"),
+            rendered.contains("Enter activate · Esc close · Tab focus · Ctrl+Space complete"),
             "{rendered}"
         );
         assert!(rendered.contains("[ Start ]   [ Cancel ]"), "{rendered}");
@@ -6321,9 +6396,23 @@ processes = ["api.exe", "worker.exe"]
             app.recording_path_draft = "C:/logs/example.log".to_string();
             app.recording_path_cursor = app.recording_path_draft.len();
 
+            let hint_buffer = render_app_to_buffer(&app, 100, 45);
+            let (enter_x, hint_y) = find_text_position(&hint_buffer, "Enter activate")
+                .expect("recording shortcut should render");
+            let (activate_x, _) =
+                find_text_position(&hint_buffer, "activate").expect("shortcut label should render");
+            assert_eq!(hint_buffer[(enter_x, hint_y)].fg, theme.muted);
+            assert_eq!(hint_buffer[(activate_x, hint_y)].fg, theme.text);
+
+            app.recording_path_selection = app::RecordingPathSelection::Start;
+
             let path_buffer = render_app_to_buffer(&app, 100, 45);
             let (start_x, start_y) =
                 find_text_position(&path_buffer, "[ Start ]").expect("Start button should render");
+            let (cancel_x, _) = find_text_position(&path_buffer, "[ Cancel ]")
+                .expect("Cancel button should render");
+            let button_midpoint = (start_x as i32 + cancel_x as i32 + 10) / 2;
+            assert!((button_midpoint - 50).abs() <= 1);
             assert_eq!(path_buffer[(start_x, start_y)].bg, theme.accent);
             assert_ne!(path_buffer[(start_x, start_y)].bg, theme.warning);
 
@@ -9999,10 +10088,94 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("d change dir"), "{rendered}");
         assert!(rendered.contains("00:02:05"), "{rendered}");
         assert!(!rendered.contains("app.exe"), "{rendered}");
+        assert!(rendered.contains("winproc-tui-demo.log"), "{rendered}");
         assert!(
-            rendered.contains("C:/logs/winproc-tui-demo.log"),
+            !rendered.contains("C:/logs/winproc-tui-demo.log"),
             "{rendered}"
         );
+        assert!(rendered.contains("[ Open ]"), "{rendered}");
+        assert!(rendered.contains("[ Directory ]"), "{rendered}");
+        assert!(rendered.contains("[ Refresh ]"), "{rendered}");
+        assert!(rendered.contains("[ Close ]"), "{rendered}");
+    }
+
+    #[test]
+    fn logs_dialog_matches_recording_dialog_width() {
+        let screen = Rect::new(0, 0, 120, 45);
+        let mut app = make_test_app(1, 10);
+        app.show_log_list = true;
+        let logs = render_app_to_buffer(&app, screen.width, screen.height);
+        let (logs_x, logs_y) = find_text_position(&logs, "Logs").expect("Logs title should render");
+
+        app.show_log_list = false;
+        app.show_recording_path_dialog = true;
+        let recording = render_app_to_buffer(&app, screen.width, screen.height);
+        let (recording_x, recording_y) =
+            find_text_position(&recording, "Recording").expect("Recording title should render");
+
+        assert_eq!(logs_x, recording_x);
+        assert_eq!(logs[(logs_x - 1, logs_y)].symbol(), "╭");
+        assert_eq!(recording[(recording_x - 1, recording_y)].symbol(), "╭");
+        assert_eq!(logs[(logs_x + 76, logs_y)].symbol(), "╮");
+        assert_eq!(recording[(recording_x + 76, recording_y)].symbol(), "╮");
+    }
+
+    #[test]
+    fn log_list_tab_cycles_list_and_buttons() {
+        let mut app = make_test_app(1, 10);
+        app.show_log_list = true;
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.log_list_focus, app::LogListFocus::Open);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.log_list_focus, app::LogListFocus::Directory);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.log_list_focus, app::LogListFocus::Open);
+    }
+
+    #[test]
+    fn log_list_buttons_activate_with_mouse() {
+        let screen = Rect::new(0, 0, 120, 45);
+        let mut app = make_test_app(1, 10);
+        app.show_log_list = true;
+        app.log_list_dir = Some(std::env::current_dir().unwrap());
+        app.log_summaries = vec![app::logs::LogSummary {
+            path: std::path::PathBuf::from("missing.log"),
+            schema_version: Some(2),
+            session_id: None,
+            started_at: Some(Local::now()),
+            ended_at: None,
+            host: None,
+            tracked_names: Vec::new(),
+            frame_count: 0,
+            error: None,
+        }];
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (open_x, open_y) = find_text_position(&buffer, "[ Open ]").unwrap();
+        app.on_mouse(left_click(open_x + 2, open_y), screen);
+        assert!(app.log_load_worker.is_some());
+        app.log_load_worker = None;
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (directory_x, directory_y) = find_text_position(&buffer, "[ Directory ]").unwrap();
+        app.on_mouse(left_click(directory_x + 2, directory_y), screen);
+        assert!(app.show_log_dir_dialog);
+        app.cancel_log_dir_dialog();
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (refresh_x, refresh_y) = find_text_position(&buffer, "[ Refresh ]").unwrap();
+        app.on_mouse(left_click(refresh_x + 2, refresh_y), screen);
+        assert!(app.log_list_worker.is_some());
+        app.log_list_worker = None;
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (close_x, close_y) = find_text_position(&buffer, "[ Close ]").unwrap();
+        app.on_mouse(left_click(close_x + 2, close_y), screen);
+        assert!(!app.show_log_list);
     }
 
     #[test]
@@ -10139,29 +10312,22 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn log_dir_dialog_shows_instruction_above_directory_input() {
+    fn log_dir_dialog_shows_shortcuts_above_directory_input() {
         let mut app = make_test_app(1, 10);
         app.show_log_list = true;
         app.open_log_dir_dialog().unwrap();
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (_, instruction_y) = find_text_position(
-            &buffer,
-            "Enter a directory containing winproc-tui log files.",
-        )
-        .expect("instruction should render");
-        assert!(
-            find_text_position(&buffer, "Tab completes.").is_some(),
-            "{}",
-            buffer_to_text(&buffer)
-        );
+        let (_, shortcut_y) =
+            find_text_position(&buffer, "Tab focus").expect("focus shortcut should render");
+        assert!(find_text_position(&buffer, "Ctrl+Space complete").is_some());
         let (_, label_y) =
             find_text_position(&buffer, "Directory").expect("directory label should render");
 
-        assert!(instruction_y < label_y);
+        assert!(shortcut_y < label_y);
     }
 
     #[test]
-    fn tab_completes_log_dir_dialog_directory() {
+    fn ctrl_space_completes_log_dir_dialog_directory() {
         let root = unique_recording_dir("log-dir-complete");
         let target = root.join("alpha");
         let _ = std::fs::remove_dir_all(&root);
@@ -10172,7 +10338,7 @@ processes = ["api.exe", "worker.exe"]
         app.log_dir_draft = format!("{}{}al", root.display(), std::path::MAIN_SEPARATOR);
         app.log_dir_cursor = app.log_dir_draft.len();
 
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL))
             .unwrap();
 
         let expected = format!(
@@ -10280,8 +10446,8 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 140, 45);
         app.set_log_list_page_size(ui::log_list_page_size_for_screen(screen));
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "C:/logs/second.log")
-            .expect("second log row should be rendered");
+        let (x, y) =
+            find_text_position(&buffer, "second.log").expect("second log row should be rendered");
 
         app.on_mouse(left_click(x, y), screen);
 
@@ -10321,9 +10487,7 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 180, 45);
         app.set_log_list_page_size(ui::log_list_page_size_for_screen(screen));
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let path_text = path.display().to_string();
-        let (x, y) =
-            find_text_position(&buffer, &path_text).expect("log path row should be rendered");
+        let (x, y) = find_text_position(&buffer, "> v2").expect("log row should be rendered");
 
         app.on_mouse(left_click(x, y), screen);
         app.on_mouse(left_click(x, y), screen);
@@ -10652,7 +10816,7 @@ processes = ["api.exe", "worker.exe"]
                 config_path: None,
                 recording_last_dir: None,
                 initial_theme: "Dark".to_string(),
-                initial_graph_slot_layout: GraphSlotLayout::OneColumn,
+                initial_graph_slot_layout: GraphSlotLayout::Auto,
                 initial_show_samples_panel: true,
                 initial_show_sample_delta: true,
                 column_preset: ColumnPreset::Default,
@@ -10698,7 +10862,7 @@ processes = ["api.exe", "worker.exe"]
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: app::path_completion::PathCompletionState::default(),
-            recording_path_selection: app::RecordingPathSelection::Start,
+            recording_path_selection: app::RecordingPathSelection::Path,
             show_recording_overwrite_confirmation: false,
             recording_overwrite_selection: app::RecordingOverwriteSelection::Cancel,
             show_tracked_remove_confirmation: false,
@@ -10723,6 +10887,7 @@ processes = ["api.exe", "worker.exe"]
                 ..ui::widgets::scrollable_modal::ScrollableModalState::default()
             },
             show_log_list: false,
+            log_list_focus: app::LogListFocus::List,
             log_list_index: 0,
             log_list_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,
@@ -10732,7 +10897,7 @@ processes = ["api.exe", "worker.exe"]
             log_dir_draft: String::new(),
             log_dir_cursor: 0,
             log_dir_completion: app::path_completion::PathCompletionState::default(),
-            log_dir_selection: app::LogDirSelection::Apply,
+            log_dir_selection: app::LogDirSelection::Path,
             log_dir_error: None,
             open_files_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,
@@ -10812,7 +10977,8 @@ processes = ["api.exe", "worker.exe"]
             graph_time_window_right_at: None,
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
-            graph_slot_layout: GraphSlotLayout::OneColumn,
+            graph_slot_layout: GraphSlotLayout::Auto,
+            hidden_graph_slot_count: 0,
             show_samples_panel: true,
             samples_panel_before_two_columns: true,
             show_sample_delta: true,

@@ -573,6 +573,7 @@ impl QuitConfirmSelection {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum GraphSlotLayout {
     #[default]
+    Auto,
     OneColumn,
     TwoColumns,
 }
@@ -580,13 +581,26 @@ pub(crate) enum GraphSlotLayout {
 impl GraphSlotLayout {
     pub(crate) const fn columns(self) -> u8 {
         match self {
+            Self::Auto => 0,
             Self::OneColumn => 1,
             Self::TwoColumns => 2,
         }
     }
 
-    pub(crate) const fn is_two_columns(self) -> bool {
-        matches!(self, Self::TwoColumns)
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::OneColumn => "1 col",
+            Self::TwoColumns => "2 cols",
+        }
+    }
+
+    pub(crate) const fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::OneColumn,
+            Self::OneColumn => Self::TwoColumns,
+            Self::TwoColumns => Self::Auto,
+        }
     }
 }
 
@@ -607,8 +621,27 @@ impl RecordingOverwriteSelection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RecordingPathSelection {
+    Path,
     Start,
     Cancel,
+}
+
+impl RecordingPathSelection {
+    pub(crate) const fn next(self) -> Self {
+        match self {
+            Self::Path => Self::Start,
+            Self::Start => Self::Cancel,
+            Self::Cancel => Self::Path,
+        }
+    }
+
+    pub(crate) const fn previous(self) -> Self {
+        match self {
+            Self::Path => Self::Cancel,
+            Self::Start => Self::Path,
+            Self::Cancel => Self::Start,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -617,10 +650,61 @@ pub(crate) struct LogListClick {
     pub(crate) at: Instant,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum LogListFocus {
+    #[default]
+    List,
+    Open,
+    Directory,
+    Refresh,
+    Close,
+}
+
+impl LogListFocus {
+    pub(crate) const fn next(self) -> Self {
+        match self {
+            Self::List => Self::Open,
+            Self::Open => Self::Directory,
+            Self::Directory => Self::Refresh,
+            Self::Refresh => Self::Close,
+            Self::Close => Self::List,
+        }
+    }
+
+    pub(crate) const fn previous(self) -> Self {
+        match self {
+            Self::List => Self::Close,
+            Self::Open => Self::List,
+            Self::Directory => Self::Open,
+            Self::Refresh => Self::Directory,
+            Self::Close => Self::Refresh,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LogDirSelection {
+    Path,
     Apply,
     Cancel,
+}
+
+impl LogDirSelection {
+    pub(crate) const fn next(self) -> Self {
+        match self {
+            Self::Path => Self::Apply,
+            Self::Apply => Self::Cancel,
+            Self::Cancel => Self::Path,
+        }
+    }
+
+    pub(crate) const fn previous(self) -> Self {
+        match self {
+            Self::Path => Self::Cancel,
+            Self::Apply => Self::Path,
+            Self::Cancel => Self::Apply,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -788,6 +872,7 @@ pub(crate) struct App {
     pub(crate) show_log_list: bool,
     pub(crate) log_list_index: usize,
     pub(crate) log_list_scroll: ScrollableModalState,
+    pub(crate) log_list_focus: LogListFocus,
     pub(crate) show_log_dir_dialog: bool,
     pub(crate) log_dir_draft: String,
     pub(crate) log_dir_cursor: usize,
@@ -858,6 +943,7 @@ pub(crate) struct App {
     pub(crate) graph_show_all_samples: bool,
     pub(crate) graph_y_axis_zero_min: bool,
     pub(crate) graph_slot_layout: GraphSlotLayout,
+    pub(crate) hidden_graph_slot_count: usize,
     pub(crate) show_samples_panel: bool,
     pub(crate) samples_panel_before_two_columns: bool,
     pub(crate) show_sample_delta: bool,
@@ -939,7 +1025,7 @@ impl App {
             tracked_live_identities(&initial.snapshot.processes, &normalized_watch_names);
         let graph_slot_layout = runtime.initial_graph_slot_layout;
         let show_samples_panel =
-            runtime.initial_show_samples_panel && graph_slot_layout == GraphSlotLayout::OneColumn;
+            runtime.initial_show_samples_panel && graph_slot_layout != GraphSlotLayout::TwoColumns;
         let samples_panel_before_two_columns = runtime.initial_show_samples_panel;
         let show_sample_delta = runtime.initial_show_sample_delta;
         let mut app = Self {
@@ -974,7 +1060,7 @@ impl App {
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: PathCompletionState::default(),
-            recording_path_selection: RecordingPathSelection::Start,
+            recording_path_selection: RecordingPathSelection::Path,
             show_recording_overwrite_confirmation: false,
             recording_overwrite_selection: RecordingOverwriteSelection::Cancel,
             show_tracked_remove_confirmation: false,
@@ -1004,11 +1090,12 @@ impl App {
                 page_size: 1,
                 ..ScrollableModalState::default()
             },
+            log_list_focus: LogListFocus::List,
             show_log_dir_dialog: false,
             log_dir_draft: String::new(),
             log_dir_cursor: 0,
             log_dir_completion: PathCompletionState::default(),
-            log_dir_selection: LogDirSelection::Apply,
+            log_dir_selection: LogDirSelection::Path,
             log_dir_error: None,
             open_files_scroll: ScrollableModalState {
                 page_size: 1,
@@ -1089,6 +1176,7 @@ impl App {
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
             graph_slot_layout,
+            hidden_graph_slot_count: 0,
             show_samples_panel,
             samples_panel_before_two_columns,
             show_sample_delta,
@@ -1766,7 +1854,7 @@ impl App {
             self.status = "No metric is selected for graphing.".to_string();
             return;
         }
-        if !self.show_details && !self.graph_slots_fit(self.active_graph_slot_count()) {
+        if !self.show_details && !self.graph_slots_fit(1) {
             self.show_display_area_warning = true;
             self.status = "Not enough display area.".to_string();
             return;
@@ -1808,6 +1896,7 @@ impl App {
     pub(crate) fn clear_graph_slots(&mut self) {
         self.graph_slots = std::array::from_fn(|_| None);
         self.active_graph_slot_index = 0;
+        self.hidden_graph_slot_count = 0;
         self.show_details = false;
         self.ab_comparison = None;
         if matches!(
@@ -1867,7 +1956,7 @@ impl App {
         self.show_samples_panel = true;
         self.samples_panel_before_two_columns = true;
         self.status = "Samples panel shown".to_string();
-        self.close_graph_slots_that_do_not_fit();
+        self.sync_graph_layout_visibility();
     }
 
     pub(crate) fn toggle_sample_delta(&mut self) {
@@ -1884,33 +1973,15 @@ impl App {
     }
 
     pub(crate) fn toggle_graph_slot_layout(&mut self) {
-        let next = if self.graph_slot_layout == GraphSlotLayout::OneColumn {
-            GraphSlotLayout::TwoColumns
-        } else {
-            GraphSlotLayout::OneColumn
-        };
-        match next {
-            GraphSlotLayout::OneColumn => {
-                self.graph_slot_layout = next;
-                self.show_samples_panel = self.samples_panel_before_two_columns;
-                self.status = "Graph layout: 1 column".to_string();
-                self.close_graph_slots_that_do_not_fit();
-            }
-            GraphSlotLayout::TwoColumns => {
-                if !self.graph_slots_fit_for_layout(self.active_graph_slot_count(), next) {
-                    self.show_display_area_warning = true;
-                    self.status = "Not enough display area for 2-column Graph layout.".to_string();
-                    return;
-                }
-                self.samples_panel_before_two_columns = self.show_samples_panel;
-                self.show_samples_panel = false;
-                if self.focused_panel == FocusedPanel::DetailsSamples {
-                    self.focused_panel = FocusedPanel::DetailsGraph;
-                }
-                self.graph_slot_layout = next;
-                self.status = "Graph layout: 2 columns".to_string();
-            }
+        self.graph_slot_layout = self.graph_slot_layout.next();
+        let effective = self.effective_graph_slot_layout();
+        self.show_samples_panel =
+            self.samples_panel_before_two_columns && effective == GraphSlotLayout::OneColumn;
+        if !self.show_samples_panel && self.focused_panel == FocusedPanel::DetailsSamples {
+            self.focused_panel = FocusedPanel::DetailsGraph;
         }
+        self.status = format!("Graph layout: {}", self.graph_slot_layout.label());
+        self.sync_graph_layout_visibility();
     }
 
     pub(crate) fn active_graph_slot_count(&self) -> usize {
@@ -1921,7 +1992,7 @@ impl App {
     }
 
     pub(crate) fn graph_slots_fit(&self, slot_count: usize) -> bool {
-        self.graph_slots_fit_for_layout(slot_count, self.graph_slot_layout)
+        self.graph_slots_fit_for_layout(slot_count, self.effective_graph_slot_layout())
     }
 
     fn graph_slots_fit_for_layout(&self, slot_count: usize, layout: GraphSlotLayout) -> bool {
@@ -1940,15 +2011,41 @@ impl App {
         })
     }
 
+    fn graph_slot_capacity_for_layout(&self, layout: GraphSlotLayout) -> usize {
+        let active = self.active_graph_slot_count();
+        (1..=active)
+            .rev()
+            .find(|count| self.graph_slots_fit_for_layout(*count, layout))
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn effective_graph_slot_layout(&self) -> GraphSlotLayout {
+        match self.graph_slot_layout {
+            GraphSlotLayout::OneColumn => GraphSlotLayout::OneColumn,
+            GraphSlotLayout::TwoColumns => GraphSlotLayout::TwoColumns,
+            GraphSlotLayout::Auto => {
+                let one_column = self.graph_slot_capacity_for_layout(GraphSlotLayout::OneColumn);
+                let two_columns = self.graph_slot_capacity_for_layout(GraphSlotLayout::TwoColumns);
+                if two_columns > one_column {
+                    GraphSlotLayout::TwoColumns
+                } else {
+                    GraphSlotLayout::OneColumn
+                }
+            }
+        }
+    }
+
     pub(crate) fn graph_slot(&self, index: usize) -> Option<&GraphSlot> {
         self.graph_slots.get(index).and_then(Option::as_ref)
     }
 
     pub(crate) fn visible_graph_slot_indices(&self) -> Vec<usize> {
+        let capacity = self.graph_slot_capacity_for_layout(self.effective_graph_slot_layout());
         self.graph_slots
             .iter()
             .enumerate()
             .filter_map(|(index, slot)| slot.as_ref().map(|_| index))
+            .take(capacity)
             .collect()
     }
 
@@ -2043,53 +2140,42 @@ impl App {
             .unwrap_or(0)
     }
 
-    pub(crate) fn close_graph_slots_that_do_not_fit(&mut self) {
-        if !self.show_details {
-            return;
+    pub(crate) fn sync_graph_layout_visibility(&mut self) {
+        let effective = self.effective_graph_slot_layout();
+        self.show_samples_panel =
+            self.samples_panel_before_two_columns && effective == GraphSlotLayout::OneColumn;
+        if !self.show_samples_panel && self.focused_panel == FocusedPanel::DetailsSamples {
+            self.focused_panel = FocusedPanel::DetailsGraph;
         }
 
-        let mut closed = Vec::new();
-        while self.active_graph_slot_count() > 0
-            && !self.graph_slots_fit(self.active_graph_slot_count())
-        {
-            let Some(index) = self.graph_slots.iter().rposition(Option::is_some) else {
-                break;
-            };
-            self.graph_slots[index] = None;
-            closed.push(index + 1);
-        }
-
-        if self.active_graph_slot_count() == 0 {
-            self.show_details = false;
-            self.ab_comparison = None;
-            if matches!(
+        let visible = self.visible_graph_slot_indices();
+        if self.show_details && !visible.contains(&self.active_graph_slot_index) {
+            if let Some(index) = visible.first().copied() {
+                self.active_graph_slot_index = index;
+                if self.focused_panel == FocusedPanel::DetailsSamples && !self.show_samples_panel {
+                    self.focused_panel = FocusedPanel::DetailsGraph;
+                }
+            } else if matches!(
                 self.focused_panel,
                 FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
             ) {
                 self.focused_panel = FocusedPanel::Processes;
             }
-        } else if self.graph_slots[self.active_graph_slot_index].is_none() {
-            self.active_graph_slot_index = self
-                .graph_slots
-                .iter()
-                .position(Option::is_some)
-                .unwrap_or(0);
-            if matches!(
-                self.focused_panel,
-                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-            ) {
-                self.focused_panel = FocusedPanel::DetailsGraph;
-            }
         }
 
-        if !closed.is_empty() {
-            closed.sort_unstable();
-            let labels = closed
-                .into_iter()
-                .map(|index| format!("#{index}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            self.status = format!("Closed Graph{labels}: not enough display area");
+        let hidden = self.active_graph_slot_count().saturating_sub(visible.len());
+        if hidden != self.hidden_graph_slot_count {
+            self.status = if hidden == 0 {
+                "All Graph slots visible".to_string()
+            } else {
+                let slots = if hidden == 1 {
+                    "Graph slot"
+                } else {
+                    "Graph slots"
+                };
+                format!("{hidden} {slots} hidden: not enough display area")
+            };
+            self.hidden_graph_slot_count = hidden;
         }
     }
 
@@ -2137,14 +2223,6 @@ impl App {
             self.clamp_details_sample_selection();
             self.select_details_sample_latest();
             self.status = format!("Graph metric moved to Graph#{}", slot_index + 1);
-            return;
-        }
-
-        let was_empty = self.graph_slots[slot_index].is_none();
-        let next_count = self.active_graph_slot_count() + usize::from(was_empty);
-        if !self.graph_slots_fit(next_count) {
-            self.show_display_area_warning = true;
-            self.status = "Not enough display area.".to_string();
             return;
         }
 
@@ -2477,14 +2555,6 @@ impl App {
                 "Same graph metric is already selected in Graph#{}",
                 duplicate_index + 1
             );
-            return;
-        }
-
-        let was_empty = self.graph_slots[slot_index].is_none();
-        let next_count = self.active_graph_slot_count() + usize::from(was_empty);
-        if !self.graph_slots_fit(next_count) {
-            self.show_display_area_warning = true;
-            self.status = "Not enough display area.".to_string();
             return;
         }
 
@@ -5976,6 +6046,7 @@ impl App {
             return Ok(());
         }
         self.show_log_list = true;
+        self.log_list_focus = LogListFocus::List;
         self.show_log_dir_dialog = false;
         self.log_list_dir = Some(self.default_log_list_dir()?);
         self.log_list_index = self
@@ -5988,6 +6059,7 @@ impl App {
         self.show_log_list = false;
         self.show_log_dir_dialog = false;
         self.log_list_last_click = None;
+        self.log_list_focus = LogListFocus::List;
         self.log_list_scroll.stop_drag();
         if self.activity() == AppActivity::LogView {
             self.exit_log_view();
@@ -6029,7 +6101,7 @@ impl App {
         self.log_dir_draft = dir.display().to_string();
         self.log_dir_cursor = self.log_dir_draft.len();
         self.log_dir_completion.reset();
-        self.log_dir_selection = LogDirSelection::Apply;
+        self.log_dir_selection = LogDirSelection::Path;
         self.log_dir_error = None;
         self.show_log_dir_dialog = true;
         self.status = "Edit log directory".to_string();
@@ -6045,12 +6117,38 @@ impl App {
 
     pub(crate) fn activate_log_dir_selection(&mut self) -> Result<()> {
         match self.log_dir_selection {
-            LogDirSelection::Apply => self.confirm_log_dir(),
+            LogDirSelection::Path | LogDirSelection::Apply => self.confirm_log_dir(),
             LogDirSelection::Cancel => {
                 self.cancel_log_dir_dialog();
                 Ok(())
             }
         }
+    }
+
+    pub(crate) fn focus_next_log_dir_control(&mut self) {
+        self.log_dir_selection = self.log_dir_selection.next();
+    }
+
+    pub(crate) fn focus_previous_log_dir_control(&mut self) {
+        self.log_dir_selection = self.log_dir_selection.previous();
+    }
+
+    pub(crate) fn focus_next_log_list_control(&mut self) {
+        self.log_list_focus = self.log_list_focus.next();
+    }
+
+    pub(crate) fn focus_previous_log_list_control(&mut self) {
+        self.log_list_focus = self.log_list_focus.previous();
+    }
+
+    pub(crate) fn activate_log_list_control(&mut self) -> Result<()> {
+        match self.log_list_focus {
+            LogListFocus::List | LogListFocus::Open => self.load_selected_log(),
+            LogListFocus::Directory => self.open_log_dir_dialog()?,
+            LogListFocus::Refresh => self.refresh_log_list()?,
+            LogListFocus::Close => self.close_log_list(),
+        }
+        Ok(())
     }
 
     pub(crate) fn confirm_log_dir(&mut self) -> Result<()> {

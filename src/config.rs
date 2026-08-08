@@ -60,7 +60,7 @@ pub(crate) struct GraphConfig {
 impl Default for GraphConfig {
     fn default() -> Self {
         Self {
-            columns: 1,
+            columns: 0,
             samples: true,
             delta: true,
         }
@@ -244,10 +244,10 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         config_path: None,
         recording_last_dir: config.recording.last_dir,
         initial_theme: config.general.theme,
-        initial_graph_slot_layout: if config.graphs.columns == 2 {
-            GraphSlotLayout::TwoColumns
-        } else {
-            GraphSlotLayout::OneColumn
+        initial_graph_slot_layout: match config.graphs.columns {
+            1 => GraphSlotLayout::OneColumn,
+            2 => GraphSlotLayout::TwoColumns,
+            _ => GraphSlotLayout::Auto,
         },
         initial_show_samples_panel: config.graphs.samples,
         initial_show_sample_delta: config.graphs.delta,

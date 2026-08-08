@@ -143,9 +143,9 @@ Multiple Graph slots share the visible time span, cursor time, and A/B points. P
 
 Navigation may choose the nearest useful timestamp, but a Graph displays a value only when that series has a sample at the selected captured time. This prevents one slot from presenting another slot's nearby sample as a synchronized value. When the selected sample moves outside the shared visible time window, the window shifts only far enough to include it; selections already inside the window do not move it.
 
-`GraphSlotLayout` selects either a one-column stack or a row-major two-column grid. A single visible slot always uses the full width. Each slot title calculates `B-A` from that slot's exact metric samples and shows `--` when either point or value is unavailable. Two-column mode and the Samples panel are mutually exclusive: entering two-column mode remembers and hides Samples, returning to one column restores that preference, and enabling Samples from two-column mode requests a one-column layout. The layout and Samples / Delta preferences are persisted in `winproc-tui.toml`.
+`GraphSlotLayout` selects Auto, a one-column stack, or a row-major two-column grid. Auto compares the number of assigned slots that fit in each layout and selects two columns only when that makes more slots visible; ties use one column. A single visible slot always uses the full width. Each slot title calculates `B-A` from that slot's exact metric samples and shows `--` when either point or value is unavailable. Effective two-column layout and the Samples panel are mutually exclusive: entering two columns remembers and hides Samples, returning to one column restores that preference, and enabling Samples requests a fixed one-column layout. The layout and Samples / Delta preferences are persisted in `winproc-tui.toml`.
 
-Entering two-column mode and adding a Graph require every active slot to meet the shared minimum slot dimensions; rejected operations preserve the existing slots and layout. Entering one-column mode always applies the layout change, then uses the same cleanup as a terminal resize to remove the highest-numbered Graph slots until the remainder fits. Rendering, focus navigation, chart selection, Samples selection, and mouse hit testing all consume the same ordered slot rectangles.
+Graph assignment is independent from current terminal geometry. A resize or layout change computes a visible prefix of assigned slots that meets the shared minimum slot dimensions, temporarily hides higher-numbered slots that do not fit, and restores them when enough space returns. Hidden assignments remain in application state. Rendering, focus navigation, chart selection, Samples selection, and mouse hit testing all consume the same ordered visible slot rectangles.
 
 Process Info applies the stricter same-time invariant to every metric: it resolves each A, B, or displayed-current sample once by exact `ProcessIdentity` and exact `captured_at`, then derives all metric rows from those resolved samples. Display accessors keep paused and loaded-log histories separate from the updating live history.
 
@@ -207,7 +207,7 @@ The most important implementation invariants are:
 - the built-in empty Tracked List must remain virtual and must not be stored among saved named definitions;
 - drawing and hit testing must use the same layout geometry;
 - dynamic Processes sizing must reserve a visible Tracked Total row and give reclaimed height to Graphs without changing the full-height Graphs-hidden layout;
-- terminal resizes and one-column transitions may remove only the highest-numbered Graph slots required to restore a valid layout;
+- terminal resizes and layout transitions must preserve Graph assignments, temporarily hiding higher-numbered slots that do not fit and restoring them when space returns;
 - two-column Graph layout must not display the Samples panel;
 - Graph shared state must not replace per-slot sample-availability checks;
 - Process Info comparisons must not substitute a nearby time or a different process identity;
