@@ -55,7 +55,7 @@ pub(crate) fn draw_recording_path_dialog(
         input_area,
     );
     frame.render_widget(
-        Paragraph::new("Missing directories will be created automatically.")
+        Paragraph::new("Enter a log file path. Missing parent directories will be created.")
             .style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y.saturating_add(3), content.width, 1),
     );

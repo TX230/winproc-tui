@@ -6363,7 +6363,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("C:/logs/example.log"), "{rendered}");
         assert!(rendered.contains("Path"), "{rendered}");
         assert!(
-            rendered.contains("Missing directories will be created automatically."),
+            rendered.contains("Enter a log file path. Missing parent directories will be created."),
             "{rendered}"
         );
         assert!(
@@ -6454,6 +6454,59 @@ processes = ["api.exe", "worker.exe"]
 
         app.stop_recording().unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recording_directory_path_is_rejected() {
+        let directory = unique_recording_dir("directory-path");
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = directory.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.recording_path_selection = app::RecordingPathSelection::Start;
+
+        app.confirm_recording_path().unwrap();
+
+        assert!(app.show_recording_path_dialog);
+        assert!(!app.show_recording_overwrite_confirmation);
+        assert!(app.recording_session.is_none());
+        assert_eq!(
+            app.recording_path_selection,
+            app::RecordingPathSelection::Path
+        );
+        assert_eq!(app.status, "Recording path must be a file, not a directory");
+        assert!(directory.is_dir());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn recording_overwrite_rechecks_directory_path() {
+        let directory = unique_recording_dir("overwrite-directory-path");
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.show_recording_overwrite_confirmation = true;
+        app.recording_overwrite_selection = app::RecordingOverwriteSelection::Overwrite;
+        app.recording_path_draft = directory.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+
+        app.confirm_recording_overwrite().unwrap();
+
+        assert!(app.show_recording_path_dialog);
+        assert!(!app.show_recording_overwrite_confirmation);
+        assert!(app.recording_session.is_none());
+        assert_eq!(
+            app.recording_path_selection,
+            app::RecordingPathSelection::Path
+        );
+        assert_eq!(app.status, "Recording path must be a file, not a directory");
+        assert!(directory.is_dir());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

@@ -169,6 +169,9 @@ impl App {
         }
 
         let path = PathBuf::from(draft);
+        if self.reject_recording_directory_path(&path) {
+            return Ok(());
+        }
         if path.exists() {
             self.show_recording_overwrite_confirmation = true;
             self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
@@ -212,7 +215,22 @@ impl App {
 
     pub(crate) fn confirm_recording_overwrite(&mut self) -> Result<()> {
         let path = PathBuf::from(self.recording_path_draft.trim());
+        if self.reject_recording_directory_path(&path) {
+            return Ok(());
+        }
         self.start_recording(path, true)
+    }
+
+    fn reject_recording_directory_path(&mut self, path: &Path) -> bool {
+        if !path.is_dir() {
+            return false;
+        }
+
+        self.show_recording_overwrite_confirmation = false;
+        self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
+        self.recording_path_selection = RecordingPathSelection::Path;
+        self.status = "Recording path must be a file, not a directory".to_string();
+        true
     }
 
     pub(crate) fn activate_recording_overwrite_selection(&mut self) -> Result<()> {

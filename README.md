@@ -304,7 +304,7 @@ Press `Ctrl+R` to start or stop recording.
 Recording requires at least one Tracked List entry and saves logs as JSON Lines (with the `.log` extension).
 Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracked List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
-When recording starts, a save-path input dialog opens. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
+When recording starts, a save-path input dialog opens. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
 Log view cannot open during recording, and recording cannot start while Log view is open.
 
 Press `Ctrl+L` to open the log list.
