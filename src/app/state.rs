@@ -4852,7 +4852,8 @@ impl App {
             self.status = "Graphed process is unavailable".to_string();
             return Ok(());
         };
-        self.open_process_info_dialog(target, ProcessInfoTab::Metrics)
+        let initial_tab = self.process_info_tab;
+        self.open_process_info_dialog(target, initial_tab)
     }
 
     pub(crate) fn open_selected_process_info_dialog(&mut self) -> Result<()> {
@@ -4860,7 +4861,8 @@ impl App {
             self.status = "No process selected".to_string();
             return Ok(());
         };
-        self.open_process_info_dialog(target, ProcessInfoTab::Metrics)
+        let initial_tab = self.process_info_tab;
+        self.open_process_info_dialog(target, initial_tab)
     }
 
     fn selected_process_info_target(&self) -> Option<ProcessInfoDialogTarget> {

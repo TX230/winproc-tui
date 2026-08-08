@@ -2282,6 +2282,10 @@ processes = ["api.exe", "worker.exe"]
     fn graph_enter_opens_info_for_graphed_process_without_changing_selection() {
         let mut app = make_test_app(3, 10);
         let selected_identity = app.selected_visible_process_identity().unwrap();
+        app.open_selected_process_info_dialog().unwrap();
+        app.activate_process_info_tab(app::ProcessInfoTab::Image)
+            .unwrap();
+        app.close_process_info_dialog();
         let graph_identity = ProcessIdentity::from_row(&app.snapshot.processes[2]);
         app.graph_slots[0] = Some(GraphSlot::process(
             graph_identity.clone(),
@@ -2297,6 +2301,7 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.show_process_info_dialog);
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Image);
         assert_eq!(
             ProcessIdentity::from_row(app.process_info_target_process().unwrap()),
             graph_identity
@@ -7396,6 +7401,7 @@ processes = ["api.exe", "worker.exe"]
             process_info_worker,
             open_files_worker,
         );
+        app.process_info_tab = app::ProcessInfoTab::Environment;
 
         app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
             .unwrap();
@@ -7880,6 +7886,22 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.selected_visible_process().unwrap().name, "proc-1");
         assert_eq!(app.process_info_for_selected().unwrap().name, "proc-0");
         assert!(app.pending_process_info.is_none());
+    }
+
+    #[test]
+    fn process_info_dialog_reopens_on_last_active_tab() {
+        let mut app = make_test_app(2, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.activate_process_info_tab(app::ProcessInfoTab::Image)
+            .unwrap();
+        app.close_process_info_dialog();
+        app.move_selection_down(1);
+
+        app.open_selected_process_info_dialog().unwrap();
+
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Image);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        assert_eq!(app.process_info_target_process().unwrap().name, "proc-1");
     }
 
     #[test]
@@ -8659,7 +8681,7 @@ processes = ["api.exe", "worker.exe"]
         };
         app.close_process_info_dialog();
         app.open_selected_process_info_dialog().unwrap();
-        activate_process_environment_tab(&mut app);
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Environment);
         let (new_generation, new_request_id) = match request_rx.try_recv().unwrap() {
             ProcessEnvironmentRequest::Collect {
                 generation,
