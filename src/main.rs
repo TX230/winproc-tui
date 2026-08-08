@@ -7127,17 +7127,20 @@ processes = ["api.exe", "worker.exe"]
         a.thread_count = Some(1_036);
         a.handle_count = Some(20);
         a.gdi_object_count = Some(5);
+        a.io_read_bytes_per_sec = Some(50_000);
         let mut b = a.clone();
         b.cpu_percent = Some(11.7);
         b.private_bytes = Some(384_400_000);
         b.thread_count = Some(1_030);
         b.handle_count = Some(20);
+        b.io_read_bytes_per_sec = Some(75_000);
         let mut current = a.clone();
         current.cpu_percent = Some(12.3);
         current.private_bytes = Some(388_100_000);
         current.thread_count = Some(1_024);
         current.handle_count = Some(20);
         current.gdi_object_count = None;
+        current.io_read_bytes_per_sec = Some(100_000);
         app.snapshot.processes[0] = current.clone();
         app.process_history
             .record_snapshot_unbounded(a_at, &[a.clone()]);
@@ -7182,6 +7185,15 @@ processes = ["api.exe", "worker.exe"]
                 .unwrap()
                 .value,
             "388.1 MB"
+        );
+        assert_eq!(
+            current_view
+                .rows
+                .iter()
+                .find(|row| row.label == "I/O Read Throughput")
+                .unwrap()
+                .value,
+            "800 Kbps"
         );
         let compact = render_app_to_text(&app, 60, 40);
         for label in [
@@ -7240,6 +7252,16 @@ processes = ["api.exe", "worker.exe"]
                 .as_deref(),
             Some("+0")
         );
+        assert_eq!(
+            a_view
+                .rows
+                .iter()
+                .find(|row| row.label == "I/O Read Throughput")
+                .unwrap()
+                .delta
+                .as_deref(),
+            Some("+400 Kbps")
+        );
         let missing = a_view
             .rows
             .iter()
@@ -7264,6 +7286,13 @@ processes = ["api.exe", "worker.exe"]
                 .value,
             "384.4 MB"
         );
+        let io_read = ab_view
+            .rows
+            .iter()
+            .find(|row| row.label == "I/O Read Throughput")
+            .unwrap();
+        assert_eq!(io_read.value, "600 Kbps");
+        assert_eq!(io_read.delta.as_deref(), Some("+200 Kbps"));
 
         app.ab_comparison = Some(app::AbComparison {
             a: None,

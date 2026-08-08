@@ -34,8 +34,8 @@ use crate::{
     ui::{
         THEMES, Theme, column_picker_row_for_index, column_picker_scroll_max_for_page_size,
         format::{
-            format_compact_bytes, format_integer, format_mbps, format_signed_compact_bytes,
-            format_signed_integer, format_signed_mbps,
+            format_compact_bytes, format_integer, format_io_rate, format_signed_compact_bytes,
+            format_signed_integer, format_signed_io_rate,
         },
         help_scroll_max_for_page_size, log_list_total_rows_for_count, theme_index_by_name,
         widgets::scrollable_modal::ScrollableModalState,
@@ -166,6 +166,7 @@ pub(crate) enum GraphValueFormat {
     Bytes,
     Count,
     Percent,
+    AdaptiveBitsPerSec,
     MegabitsPerSec,
     MegabytesPerSec,
     QueueLength,
@@ -175,7 +176,7 @@ impl GraphValueFormat {
     pub(crate) fn from_details_metric(metric: DetailsMetric) -> Self {
         match metric {
             DetailsMetric::CpuPercent | DetailsMetric::GpuPercent => Self::Percent,
-            DetailsMetric::IoRead | DetailsMetric::IoWrite => Self::MegabitsPerSec,
+            DetailsMetric::IoRead | DetailsMetric::IoWrite => Self::AdaptiveBitsPerSec,
             DetailsMetric::Private
             | DetailsMetric::Workset
             | DetailsMetric::WorksetPrivate
@@ -196,6 +197,7 @@ impl GraphValueFormat {
             Self::Bytes => "B",
             Self::Count => "count",
             Self::Percent => "%",
+            Self::AdaptiveBitsPerSec => "Kbps/Mbps",
             Self::MegabitsPerSec => "Mbps",
             Self::MegabytesPerSec => "MB/s",
             Self::QueueLength => "requests",
@@ -332,7 +334,7 @@ impl ProcessMetricValue {
             Self::Percent(value) => format!("{value:.1}%"),
             Self::Bytes(value) => format_compact_bytes(value),
             Self::Count(value) => format_integer(value),
-            Self::IoRate(value) => format_mbps(value),
+            Self::IoRate(value) => format_io_rate(value),
         }
     }
 
@@ -347,9 +349,9 @@ impl ProcessMetricValue {
             (Self::Count(value), Self::Count(baseline)) => Some(format_signed_integer(
                 i128::from(value) - i128::from(baseline),
             )),
-            (Self::IoRate(value), Self::IoRate(baseline)) => {
-                Some(format_signed_mbps(i128::from(value) - i128::from(baseline)))
-            }
+            (Self::IoRate(value), Self::IoRate(baseline)) => Some(format_signed_io_rate(
+                i128::from(value) - i128::from(baseline),
+            )),
             _ => None,
         }
     }

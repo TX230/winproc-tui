@@ -119,9 +119,27 @@ pub(crate) fn format_mbps(bytes_per_sec: u64) -> String {
     )
 }
 
+pub(crate) fn format_io_rate(bytes_per_sec: u64) -> String {
+    if bytes_per_sec < 125_000 {
+        let kbps = ((bytes_per_sec as f64 * 8.0) / 1_000.0).round() as u64;
+        format!("{} Kbps", format_integer(kbps))
+    } else {
+        format_mbps(bytes_per_sec)
+    }
+}
+
 pub(crate) fn format_signed_mbps(bytes_per_sec: i128) -> String {
     let mbps = ((bytes_per_sec as f64 * 8.0) / 1_000_000.0).round() as i128;
     format!("{} Mbps", format_signed_integer(mbps))
+}
+
+pub(crate) fn format_signed_io_rate(bytes_per_sec: i128) -> String {
+    if bytes_per_sec.unsigned_abs() < 125_000 {
+        let kbps = ((bytes_per_sec as f64 * 8.0) / 1_000.0).round() as i128;
+        format!("{} Kbps", format_signed_integer(kbps))
+    } else {
+        format_signed_mbps(bytes_per_sec)
+    }
 }
 
 pub(crate) fn format_mb_per_sec(bytes_per_sec: u64) -> String {
@@ -153,5 +171,15 @@ mod tests {
         assert_eq!(format_signed_compact_bytes(0), "+0 B");
         assert_eq!(format_signed_mbps(-1_000_000), "-8 Mbps");
         assert_eq!(format_signed_mbps(0), "+0 Mbps");
+    }
+
+    #[test]
+    fn io_rates_use_kbps_below_one_mbps() {
+        assert_eq!(format_io_rate(62_500), "500 Kbps");
+        assert_eq!(format_io_rate(124_999), "1,000 Kbps");
+        assert_eq!(format_io_rate(125_000), "1 Mbps");
+        assert_eq!(format_signed_io_rate(-62_500), "-500 Kbps");
+        assert_eq!(format_signed_io_rate(0), "+0 Kbps");
+        assert_eq!(format_signed_io_rate(125_000), "+1 Mbps");
     }
 }

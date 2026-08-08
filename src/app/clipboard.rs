@@ -5,8 +5,8 @@ use crate::{
     app::{FocusedPanel, GraphValueFormat},
     model::{MetricColumn, ProcessRow, history::SystemMetric},
     ui::format::{
-        format_integer, format_mb, format_mb_per_sec, format_mbps, format_signed_integer,
-        ratio_optional,
+        format_integer, format_io_rate, format_mb, format_mb_per_sec, format_mbps,
+        format_signed_integer, format_signed_io_rate, ratio_optional,
     },
 };
 
@@ -314,11 +314,11 @@ fn format_process_metric_column(process: &ProcessRow, column: MetricColumn) -> S
         MetricColumn::GpuSharedBytes => format_optional_integer(process.gpu_shared_bytes),
         MetricColumn::IoReadBytesPerSec => process
             .io_read_bytes_per_sec
-            .map(format_mbps)
+            .map(format_io_rate)
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::IoWriteBytesPerSec => process
             .io_write_bytes_per_sec
-            .map(format_mbps)
+            .map(format_io_rate)
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::FullPath => process
             .executable_path
@@ -333,6 +333,7 @@ fn format_graph_sample_value(value: Option<f64>, value_format: GraphValueFormat)
     };
     match value_format {
         GraphValueFormat::Percent => format!("{value:.1}%"),
+        GraphValueFormat::AdaptiveBitsPerSec => format_io_rate(value.round().max(0.0) as u64),
         GraphValueFormat::MegabitsPerSec => format_mbps(value.round().max(0.0) as u64),
         GraphValueFormat::MegabytesPerSec => format_mb_per_sec(value.round().max(0.0) as u64),
         GraphValueFormat::QueueLength => format!("{value:.1}"),
@@ -359,6 +360,7 @@ fn format_details_sample_delta(
 fn format_details_delta(delta: f64, value_format: GraphValueFormat) -> String {
     match value_format {
         GraphValueFormat::Percent => format!("{delta:+.1}%"),
+        GraphValueFormat::AdaptiveBitsPerSec => format_signed_io_rate(delta.round() as i128),
         GraphValueFormat::MegabitsPerSec => {
             let mbps = ((delta * 8.0) / 1_000_000.0).round() as i128;
             format_signed_integer(mbps) + " Mbps"

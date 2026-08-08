@@ -11,7 +11,7 @@ use crate::{
     model::{MetricColumn, ProcessColumnWidths, ProcessRow, SortColumn, SortDirection},
     ui::{
         Theme,
-        format::{format_compact_bytes, format_integer, format_mbps},
+        format::{format_compact_bytes, format_integer, format_io_rate},
         graph_slot::graph_slot_marker_span,
         layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
@@ -1041,11 +1041,11 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn, column_widt
         MetricColumn::GpuSharedBytes => format_optional_compact_bytes(process.gpu_shared_bytes),
         MetricColumn::IoReadBytesPerSec => process
             .io_read_bytes_per_sec
-            .map(format_mbps)
+            .map(format_io_rate)
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::IoWriteBytesPerSec => process
             .io_write_bytes_per_sec
-            .map(format_mbps)
+            .map(format_io_rate)
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::FullPath => process
             .executable_path

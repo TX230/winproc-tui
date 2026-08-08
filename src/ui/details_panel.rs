@@ -20,7 +20,7 @@ use crate::{
         Theme,
         format::{
             format_compact_bytes, format_compact_bytes_with_precision, format_integer,
-            format_mb_per_sec, format_signed_integer,
+            format_io_rate, format_mb_per_sec, format_signed_integer, format_signed_io_rate,
         },
         layout::{
             DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, details_graph_area, details_graph_rows,
@@ -919,6 +919,7 @@ fn format_metric_exact_value(value: f64, metric: GraphValueFormat) -> String {
             format_integer(value.round().max(0.0) as u64)
         }
         GraphValueFormat::Percent => format!("{value:.1}%"),
+        GraphValueFormat::AdaptiveBitsPerSec => format_io_rate(value.round().max(0.0) as u64),
         GraphValueFormat::MegabitsPerSec => {
             format!("{} Mbps", ((value * 8.0) / 1_000_000.0).round() as u64)
         }
@@ -1015,6 +1016,7 @@ fn format_ab_delta(delta: f64, metric: GraphValueFormat) -> String {
             format_signed_integer(delta.round() as i128)
         }
         GraphValueFormat::Percent => format!("{delta:+.1}%"),
+        GraphValueFormat::AdaptiveBitsPerSec => format_signed_io_rate(delta.round() as i128),
         GraphValueFormat::MegabitsPerSec => {
             let mbps = ((delta * 8.0) / 1_000_000.0).round() as i128;
             format_signed_integer(mbps) + " Mbps"
@@ -1748,6 +1750,26 @@ mod tests {
     }
 
     #[test]
+    fn process_io_graph_values_switch_units_below_one_mbps() {
+        assert_eq!(
+            format_metric_exact_value(62_500.0, GraphValueFormat::AdaptiveBitsPerSec),
+            "500 Kbps"
+        );
+        assert_eq!(
+            format_metric_exact_value(125_000.0, GraphValueFormat::AdaptiveBitsPerSec),
+            "1 Mbps"
+        );
+        assert_eq!(
+            format_ab_delta(-62_500.0, GraphValueFormat::AdaptiveBitsPerSec),
+            "-500 Kbps"
+        );
+        assert_eq!(
+            format_metric_exact_value(62_500.0, GraphValueFormat::MegabitsPerSec),
+            "1 Mbps"
+        );
+    }
+
+    #[test]
     fn sample_max_line_reports_max_value_and_time() {
         let first = chrono::Local
             .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
@@ -2381,7 +2403,7 @@ mod tests {
         );
         assert_eq!(
             GraphSlot::process(identity.clone(), crate::app::DetailsMetric::IoRead).metric_title(),
-            "IO Read/s [Mbps]"
+            "IO Read/s [Kbps/Mbps]"
         );
         assert_eq!(
             GraphSlot::process(identity, crate::app::DetailsMetric::ThreadCount).value_format(),
