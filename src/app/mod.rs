@@ -48,6 +48,7 @@ pub(crate) use state::GraphSlot;
 pub(crate) use state::GraphSlotLayout;
 pub(crate) use state::GraphValueFormat;
 pub(crate) use state::LogDirSelection;
+pub(crate) use state::LogListFocus;
 #[cfg(test)]
 pub(crate) use state::PROCESS_INFO_DEBOUNCE;
 pub(crate) use state::ProcessInfoFocus;
@@ -258,7 +259,7 @@ impl LoopTrace {
 
 pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.set_screen_area(screen_area);
-    app.close_graph_slots_that_do_not_fit();
+    app.sync_graph_layout_visibility();
     let panels = main_panel_areas_for_app(screen_area, app);
     app.set_process_page_size(panels.processes.page_size);
     app.set_details_sample_page_size(details_samples_page_size_for_app(&panels, app));
@@ -275,11 +276,11 @@ fn details_samples_page_size_for_app(panels: &MainPanelAreas, app: &App) -> usiz
     if !app.show_samples_panel {
         return 1;
     }
-    let slot_count = app.active_graph_slot_count().max(1);
+    let slot_count = app.visible_graph_slot_indices().len().max(1);
     let Some(details) = panels.details else {
         return 1;
     };
-    let slot_areas = details_slot_areas(details, slot_count, app.graph_slot_layout);
+    let slot_areas = details_slot_areas(details, slot_count, app.effective_graph_slot_layout());
     let Some(slot) = slot_areas.get(app.active_graph_visible_index()).copied() else {
         return 1;
     };
@@ -287,6 +288,6 @@ fn details_samples_page_size_for_app(panels: &MainPanelAreas, app: &App) -> usiz
     details_samples_row_capacity(
         samples.height,
         app.active_ab_comparison().is_some(),
-        app.active_graph_slot_count() <= 1,
+        slot_count <= 1,
     )
 }

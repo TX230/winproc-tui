@@ -54,8 +54,8 @@ pub(crate) use layout::{
 pub(crate) use layout::{main_panel_areas, main_panel_areas_for_app, screen_layout};
 use log_list::{draw_log_dir_dialog, draw_log_list};
 pub(crate) use log_list::{
-    log_dir_button_at, log_list_index_at, log_list_page_size_for_screen,
-    log_list_total_rows_for_count,
+    log_dir_button_at, log_dir_input_area, log_list_button_at, log_list_index_at,
+    log_list_page_size_for_screen, log_list_total_rows_for_count,
 };
 pub(crate) use open_files::open_files_total_rows;
 use process_info_dialog::draw_process_info_dialog;
@@ -82,6 +82,7 @@ use recording_dialog::{
 };
 pub(crate) use recording_dialog::{
     recording_no_tracked_ok_button_area, recording_overwrite_button_at, recording_path_button_at,
+    recording_path_input_area,
 };
 #[cfg(test)]
 pub(crate) use system_panel::{

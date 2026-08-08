@@ -103,37 +103,27 @@ pub(crate) fn selected_entry(app: &App) -> Option<&ProcessEnvironmentEntry> {
 }
 
 fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>> {
-    let warning = Line::from(Span::styled(
-        "Environment may contain secrets · not recorded",
-        Style::default().fg(theme.warning),
-    ));
     if app.activity() == AppActivity::LogView {
-        return vec![
-            warning,
-            Line::from(Span::styled(
-                "Not recorded in Log view.",
-                Style::default().fg(theme.muted),
-            )),
-        ];
+        return vec![Line::from(Span::styled(
+            "Not recorded in Log view.",
+            Style::default().fg(theme.muted),
+        ))];
     }
     let Some(report) = &app.process_environment_result else {
-        return vec![
-            warning,
-            Line::from(Span::styled(
-                app.process_environment_error
-                    .map(|error| error.message())
-                    .unwrap_or("Loading..."),
-                Style::default().fg(if app.process_environment_error.is_some() {
-                    theme.danger
-                } else {
-                    theme.muted
-                }),
-            )),
-        ];
+        return vec![Line::from(Span::styled(
+            app.process_environment_error
+                .map(|error| error.message())
+                .unwrap_or("Loading..."),
+            Style::default().fg(if app.process_environment_error.is_some() {
+                theme.danger
+            } else {
+                theme.muted
+            }),
+        ))];
     };
 
     if app.process_environment_show_detail {
-        return process_environment_detail_lines(app, theme, width, warning);
+        return process_environment_detail_lines(app, theme, width);
     }
 
     let entries = filtered_entries(app);
@@ -143,29 +133,26 @@ fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>
     } else {
         format!("shown {}/{total}", entries.len())
     };
-    let mut lines = vec![
-        warning,
-        Line::from(Span::styled(
-            format!(
-                "{} / PID {}  Captured {}{}  {}{}",
-                report.process_name,
-                report.pid,
-                report.captured_at.format("%Y-%m-%d %H:%M:%S"),
-                if app.process_info_target_is_currently_live() {
-                    ""
-                } else {
-                    " · process exited"
-                },
-                count_text,
-                if app.process_environment_in_flight.is_some() {
-                    "  refreshing..."
-                } else {
-                    ""
-                }
-            ),
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-        )),
-    ];
+    let mut lines = vec![Line::from(Span::styled(
+        format!(
+            "{} / PID {}  Captured {}{}  {}{}",
+            report.process_name,
+            report.pid,
+            report.captured_at.format("%Y-%m-%d %H:%M:%S"),
+            if app.process_info_target_is_currently_live() {
+                ""
+            } else {
+                " · process exited"
+            },
+            count_text,
+            if app.process_environment_in_flight.is_some() {
+                "  refreshing..."
+            } else {
+                ""
+            }
+        ),
+        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+    ))];
     lines.push(Line::from(vec![
         Span::styled("Filter: ", Style::default().fg(theme.muted)),
         Span::styled(
@@ -226,37 +213,26 @@ fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>
     lines
 }
 
-fn process_environment_detail_lines(
-    app: &App,
-    theme: Theme,
-    width: usize,
-    warning: Line<'static>,
-) -> Vec<Line<'static>> {
+fn process_environment_detail_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>> {
     let Some(entry) = selected_entry(app) else {
-        return vec![
-            warning,
-            Line::from(Span::styled(
-                "No environment variable selected.",
-                Style::default().fg(theme.muted),
-            )),
-        ];
+        return vec![Line::from(Span::styled(
+            "No environment variable selected.",
+            Style::default().fg(theme.muted),
+        ))];
     };
-    let mut lines = vec![
-        warning,
-        Line::from(Span::styled(
-            "Environment variable details",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-        )),
-    ];
+    let mut lines = vec![Line::from(Span::styled(
+        "Environment variable details",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+    ))];
     lines.extend(detail_lines("Name", &entry.name, width, theme));
     lines.extend(detail_lines("Value", &entry.value, width, theme));
     lines
 }
 
 fn entry_row_prefix(app: &App) -> usize {
-    4 + usize::from(app.process_environment_error.is_some())
+    3 + usize::from(app.process_environment_error.is_some())
         + app
             .process_environment_result
             .as_ref()

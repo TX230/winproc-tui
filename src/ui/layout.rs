@@ -8,7 +8,7 @@ use crate::{
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
 pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 15;
 pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 13;
-pub(crate) const GRAPH_TWO_COLUMNS_TOGGLE_WIDTH: u16 = 15;
+pub(crate) const GRAPH_LAYOUT_TOGGLE_WIDTH: u16 = 15;
 pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 15;
 pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 13;
 pub(crate) const DETAILS_SHARED_CONTROLS_HEIGHT: u16 = 1;
@@ -135,7 +135,7 @@ pub(crate) fn details_slot_areas(
     }
 
     let column_count = match slot_layout {
-        GraphSlotLayout::OneColumn => 1,
+        GraphSlotLayout::Auto | GraphSlotLayout::OneColumn => 1,
         GraphSlotLayout::TwoColumns => slot_count.min(2),
     };
     let row_count = slot_count.div_ceil(column_count);
@@ -295,7 +295,7 @@ pub(crate) struct GraphSharedControlAreas {
     pub(crate) status: Rect,
     pub(crate) samples: Option<Rect>,
     pub(crate) delta: Option<Rect>,
-    pub(crate) two_columns: Option<Rect>,
+    pub(crate) layout: Option<Rect>,
     pub(crate) all_samples: Option<Rect>,
     pub(crate) y_axis: Option<Rect>,
 }
@@ -317,7 +317,7 @@ pub(crate) fn graph_shared_control_areas(
 
     let y_axis = reserve(GRAPH_Y_AXIS_TOGGLE_WIDTH);
     let all_samples = reserve(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH);
-    let two_columns = reserve(GRAPH_TWO_COLUMNS_TOGGLE_WIDTH);
+    let layout = reserve(GRAPH_LAYOUT_TOGGLE_WIDTH);
     let delta = show_samples_panel
         .then(|| reserve(GRAPH_DELTA_TOGGLE_WIDTH))
         .flatten();
@@ -328,7 +328,7 @@ pub(crate) fn graph_shared_control_areas(
         status,
         samples,
         delta,
-        two_columns,
+        layout,
         all_samples,
         y_axis,
     }
@@ -564,8 +564,8 @@ mod tests {
         let without_delta = graph_shared_control_areas(area, false);
 
         assert!(with_delta.samples.unwrap().x < with_delta.delta.unwrap().x);
-        assert!(with_delta.delta.unwrap().x < with_delta.two_columns.unwrap().x);
-        assert!(with_delta.two_columns.unwrap().x < with_delta.all_samples.unwrap().x);
+        assert!(with_delta.delta.unwrap().x < with_delta.layout.unwrap().x);
+        assert!(with_delta.layout.unwrap().x < with_delta.all_samples.unwrap().x);
         assert!(with_delta.all_samples.unwrap().x < with_delta.y_axis.unwrap().x);
         assert!(without_delta.delta.is_none());
         assert!(without_delta.samples.unwrap().x > with_delta.samples.unwrap().x);

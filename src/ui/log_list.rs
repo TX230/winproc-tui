@@ -8,23 +8,26 @@ use ratatui::{
 
 use crate::{
     App,
-    app::LogDirSelection,
     app::logs::LogSummary,
+    app::{LogDirSelection, LogListFocus},
     ui::{
         Theme,
         widgets::{confirm_dialog, scrollable_modal::ScrollableModal},
     },
 };
 
-const SHORTCUT_ITEMS: [(&str, &str); 5] = [
-    ("Up/Down", "move"),
+const SHORTCUT_ITEMS: [(&str, &str); 6] = [
+    ("Up/Down", "select"),
     ("Enter", "open"),
     ("d", "change dir"),
     ("r", "refresh"),
     ("Esc", "close"),
+    ("Tab", "focus"),
 ];
 pub(crate) const LOG_LIST_HEADER_LINE_COUNT: u16 = 2;
-const FOOTER_HEIGHT: u16 = 0;
+const FOOTER_HEIGHT: u16 = 1;
+const LOG_LIST_CONTENT_WIDTH: u16 = 74;
+const LOG_LIST_BUTTONS: [&str; 4] = [" Open ", " Directory ", " Refresh ", " Close "];
 const LOG_DIR_DIALOG_WIDTH: u16 = 78;
 const LOG_DIR_DIALOG_HEIGHT: u16 = 8;
 const LOG_DIR_INPUT_ROW: u16 = 2;
@@ -32,8 +35,10 @@ const LOG_DIR_ERROR_ROW: u16 = 3;
 const LOG_DIR_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 5;
 
 pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    let modal = log_list_modal(app);
+    let content_width = modal.layout(area).content.width as usize;
     let mut lines = vec![Line::from(log_list_shortcut_spans(theme))];
-    lines.push(log_dir_line(app, theme));
+    lines.push(log_dir_line(app, content_width, theme));
 
     if app.log_summaries.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -46,11 +51,11 @@ pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &Ap
         )));
     } else {
         for (index, summary) in app.log_summaries.iter().enumerate() {
-            lines.push(log_summary_line(index, summary, app, theme));
+            lines.push(log_summary_line(index, summary, app, content_width, theme));
         }
     }
 
-    log_list_modal(app).render(
+    let layout = modal.render(
         frame,
         area,
         Text::from(lines),
@@ -58,6 +63,13 @@ pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &Ap
         false,
         theme,
     );
+    if !layout.footer.is_empty() {
+        frame.render_widget(
+            Paragraph::new(log_list_button_line(app.log_list_focus, theme))
+                .alignment(Alignment::Center),
+            layout.footer,
+        );
+    }
 }
 
 pub(crate) fn draw_log_dir_dialog(
@@ -85,8 +97,15 @@ pub(crate) fn draw_log_dir_dialog(
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
-        Paragraph::new("Enter a directory containing winproc-tui log files. Tab completes.")
-            .style(Style::default().fg(theme.muted)),
+        Paragraph::new(Line::from(shortcut_spans(
+            &[
+                ("Tab", "focus"),
+                ("Ctrl+Space", "complete"),
+                ("Enter", "activate"),
+                ("Esc", "close"),
+            ],
+            theme,
+        ))),
         Rect::new(content.x, content.y, content.width, 1),
     );
     frame.render_widget(
@@ -116,7 +135,7 @@ pub(crate) fn draw_log_dir_dialog(
             ],
             theme,
         ))
-        .alignment(Alignment::Right),
+        .alignment(Alignment::Center),
         Rect::new(
             content.x,
             content
@@ -126,10 +145,27 @@ pub(crate) fn draw_log_dir_dialog(
             1,
         ),
     );
-    frame.set_cursor_position(Position::new(
-        input_area.x.saturating_add(cursor_x as u16),
-        input_area.y,
-    ));
+    if app.log_dir_selection == LogDirSelection::Path {
+        frame.set_cursor_position(Position::new(
+            input_area.x.saturating_add(cursor_x as u16),
+            input_area.y,
+        ));
+    }
+}
+
+pub(crate) fn log_dir_input_area(area: Rect) -> Rect {
+    let popup =
+        confirm_dialog::centered_dialog_rect(area, LOG_DIR_DIALOG_WIDTH, LOG_DIR_DIALOG_HEIGHT);
+    let content = popup.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    Rect::new(
+        content.x,
+        content.y.saturating_add(LOG_DIR_INPUT_ROW),
+        content.width,
+        1,
+    )
 }
 
 pub(crate) fn log_dir_button_at(area: Rect, x: u16, y: u16) -> Option<LogDirSelection> {
@@ -139,7 +175,7 @@ pub(crate) fn log_dir_button_at(area: Rect, x: u16, y: u16) -> Option<LogDirSele
         vertical: 1,
         horizontal: 1,
     });
-    let buttons = confirm_dialog::right_aligned_button_areas(
+    let buttons = confirm_dialog::button_areas(
         content,
         LOG_DIR_BUTTON_ROW_FROM_CONTENT_TOP,
         &[" Apply ", " Cancel "],
@@ -189,7 +225,13 @@ pub(crate) fn log_list_total_rows_for_count(summary_count: usize) -> usize {
     LOG_LIST_HEADER_LINE_COUNT as usize + summary_count.max(1)
 }
 
-fn log_summary_line(index: usize, summary: &LogSummary, app: &App, theme: Theme) -> Line<'static> {
+fn log_summary_line(
+    index: usize,
+    summary: &LogSummary,
+    app: &App,
+    width: usize,
+    theme: Theme,
+) -> Line<'static> {
     let selected = index == app.log_list_index;
     let style = if selected {
         Style::default()
@@ -211,19 +253,27 @@ fn log_summary_line(index: usize, summary: &LogSummary, app: &App, theme: Theme)
         .map(format_time)
         .unwrap_or_else(|| "--".to_string());
     let duration = log_duration(summary).unwrap_or_else(|| "--".to_string());
-    let path = summary.path.display().to_string();
-    let error = summary
-        .error
-        .as_ref()
-        .map(|value| format!("  {value}"))
-        .unwrap_or_default();
+    let name = summary
+        .path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| summary.path.display().to_string());
+    let prefix = format!("{cursor} {schema:<2} {started:<19} {duration:>8} ");
+    let suffix = if summary.error.is_some() {
+        " [invalid]"
+    } else {
+        ""
+    };
+    let name_width = width
+        .saturating_sub(prefix.chars().count())
+        .saturating_sub(suffix.chars().count());
     Line::from(Span::styled(
-        format!("{cursor} {schema:<2} {started:<19} {duration:>8} {path}{error}"),
+        format!("{prefix}{}{suffix}", compact_path(&name, name_width)),
         style,
     ))
 }
 
-fn log_dir_line(app: &App, theme: Theme) -> Line<'static> {
+fn log_dir_line(app: &App, width: usize, theme: Theme) -> Line<'static> {
     let dir = app
         .log_list_dir
         .as_ref()
@@ -236,7 +286,10 @@ fn log_dir_line(app: &App, theme: Theme) -> Line<'static> {
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(compact_path(&dir, 120), Style::default().fg(theme.text)),
+        Span::styled(
+            compact_path(&dir, width.saturating_sub(4)),
+            Style::default().fg(theme.text),
+        ),
     ])
 }
 
@@ -304,16 +357,18 @@ fn path_input_view(value: &str, cursor: usize, width: usize) -> (String, usize) 
 }
 
 fn log_list_shortcut_spans(theme: Theme) -> Vec<Span<'static>> {
+    shortcut_spans(&SHORTCUT_ITEMS, theme)
+}
+
+fn shortcut_spans(items: &[(&str, &str)], theme: Theme) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
-    for (index, (key, label)) in SHORTCUT_ITEMS.iter().enumerate() {
+    for (index, (key, label)) in items.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(
-            *key,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
+            (*key).to_string(),
+            Style::default().fg(theme.muted),
         ));
         spans.push(Span::styled(
             format!(" {label}"),
@@ -330,8 +385,40 @@ fn log_list_modal(app: &App) -> ScrollableModal {
 fn log_list_modal_for_height(content_height: u16) -> ScrollableModal {
     ScrollableModal::new(
         "Logs",
-        150,
+        LOG_LIST_CONTENT_WIDTH,
         content_height.max(LOG_LIST_HEADER_LINE_COUNT + 1),
         FOOTER_HEIGHT,
     )
+}
+
+fn log_list_button_line(focus: LogListFocus, theme: Theme) -> Line<'static> {
+    confirm_dialog::button_line(
+        &[
+            (LOG_LIST_BUTTONS[0], focus == LogListFocus::Open),
+            (LOG_LIST_BUTTONS[1], focus == LogListFocus::Directory),
+            (LOG_LIST_BUTTONS[2], focus == LogListFocus::Refresh),
+            (LOG_LIST_BUTTONS[3], focus == LogListFocus::Close),
+        ],
+        theme,
+    )
+}
+
+pub(crate) fn log_list_button_at(
+    area: Rect,
+    x: u16,
+    y: u16,
+    summary_count: usize,
+) -> Option<LogListFocus> {
+    let layout =
+        log_list_modal_for_height(log_list_total_rows_for_count(summary_count) as u16).layout(area);
+    confirm_dialog::button_areas(layout.footer, 0, &LOG_LIST_BUTTONS)
+        .into_iter()
+        .enumerate()
+        .find(|(_, area)| x >= area.x && x < area.right() && y >= area.y && y < area.bottom())
+        .map(|(index, _)| match index {
+            0 => LogListFocus::Open,
+            1 => LogListFocus::Directory,
+            2 => LogListFocus::Refresh,
+            _ => LogListFocus::Close,
+        })
 }

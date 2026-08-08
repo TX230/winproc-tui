@@ -55,13 +55,20 @@ pub(crate) fn draw_recording_path_dialog(
         input_area,
     );
     frame.render_widget(
-        Paragraph::new("Missing directories will be created automatically.")
+        Paragraph::new("Enter a log file path. Missing parent directories will be created.")
             .style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y.saturating_add(3), content.width, 1),
     );
     frame.render_widget(
-        Paragraph::new("Enter starts · Esc cancels · Tab completes")
-            .style(Style::default().fg(theme.muted)),
+        Paragraph::new(shortcut_line(
+            &[
+                ("Enter", "activate"),
+                ("Esc", "close"),
+                ("Tab", "focus"),
+                ("Ctrl+Space", "complete"),
+            ],
+            theme,
+        )),
         Rect::new(content.x, content.y.saturating_add(4), content.width, 1),
     );
     frame.render_widget(
@@ -69,7 +76,7 @@ pub(crate) fn draw_recording_path_dialog(
             app.recording_path_selection,
             theme,
         ))
-        .alignment(Alignment::Right),
+        .alignment(Alignment::Center),
         Rect::new(
             content.x,
             content
@@ -79,10 +86,27 @@ pub(crate) fn draw_recording_path_dialog(
             1,
         ),
     );
-    frame.set_cursor_position(Position::new(
-        input_area.x.saturating_add(cursor_x as u16),
-        input_area.y,
-    ));
+    if app.recording_path_selection == RecordingPathSelection::Path {
+        frame.set_cursor_position(Position::new(
+            input_area.x.saturating_add(cursor_x as u16),
+            input_area.y,
+        ));
+    }
+}
+
+pub(crate) fn recording_path_input_area(area: Rect) -> Rect {
+    let popup =
+        confirm_dialog::centered_dialog_rect(area, RECORDING_PATH_WIDTH, RECORDING_PATH_HEIGHT);
+    let content = popup.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    Rect::new(
+        content.x,
+        content.y.saturating_add(RECORDING_PATH_INPUT_ROW),
+        content.width,
+        1,
+    )
 }
 
 pub(crate) fn recording_path_button_at(
@@ -96,7 +120,7 @@ pub(crate) fn recording_path_button_at(
         vertical: 1,
         horizontal: 1,
     });
-    let buttons = confirm_dialog::right_aligned_button_areas(
+    let buttons = confirm_dialog::button_areas(
         content,
         RECORDING_PATH_BUTTON_ROW_FROM_CONTENT_TOP,
         &[" Start ", " Cancel "],
@@ -232,6 +256,24 @@ fn recording_path_button_line(selection: RecordingPathSelection, theme: Theme) -
             theme,
         ),
     ])
+}
+
+fn shortcut_line(items: &[(&str, &str)], theme: Theme) -> Line<'static> {
+    let mut spans = Vec::new();
+    for (index, (key, label)) in items.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+        }
+        spans.push(Span::styled(
+            (*key).to_string(),
+            Style::default().fg(theme.muted),
+        ));
+        spans.push(Span::styled(
+            format!(" {label}"),
+            Style::default().fg(theme.text),
+        ));
+    }
+    Line::from(spans)
 }
 
 fn overwrite_button_line(selection: RecordingOverwriteSelection, theme: Theme) -> Line<'static> {

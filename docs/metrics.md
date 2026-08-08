@@ -34,8 +34,8 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | `.NET Heap` | `dotnet_heap_bytes` | Total .NET CLR managed heap size. | PDH `\.NET CLR Memory(*)\# Bytes in all Heaps` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
-| `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | `Mbps` |
-| `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | `Mbps` |
+| `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | Whole-number `Kbps` below 1 Mbps; otherwise whole-number `Mbps` |
+| `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | Whole-number `Kbps` below 1 Mbps; otherwise whole-number `Mbps` |
 | `Full Path` | `path` | Executable path. Used to distinguish same-name processes from different build or working directories. | `sysinfo::Process::exe()` | Path text, shortened from the start when the cell is narrow |
 
 When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
@@ -137,7 +137,24 @@ The `Image` tab displays these values:
 
 Unavailable values are displayed as one of `<access denied>`, `<exited>`, `<not available>`, `<missing>`, or `--`.
 
-The `Metrics` tab always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded.
+The `Metrics` tab always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded. Unlike the compact Processes column headers, the tab uses descriptive row names:
+
+| Processes column | Metrics row |
+|---|---|
+| `CPU%` | `CPU Usage` |
+| `Private` | `Private Bytes` |
+| `WS` | `Working Set` |
+| `WS Priv` | `Working Set - Private` |
+| `Thrd` | `Threads` |
+| `Hndl` | `Handles` |
+| `USER` | `USER Objects` |
+| `GDI` | `GDI Objects` |
+| `GPU%` | `GPU Usage` |
+| `.NET Heap` | `.NET Heap` |
+| `GPU D` | `GPU Dedicated Memory` |
+| `GPU S` | `GPU Shared Memory` |
+| `IO Read/s` | `I/O Read Throughput` |
+| `IO Write/s` | `I/O Write Throughput` |
 
 The comparison uses the app-wide A/B timestamps set in Graph or Samples:
 
@@ -150,7 +167,7 @@ The comparison uses the app-wide A/B timestamps set in Graph or Samples:
 
 For each point, the process identity (PID, name, and start time) and `captured_at` must match exactly. Nearby samples, the latest sample of an exited ghost row, and samples from a reused PID are not substituted. A missing point or metric is displayed as `--`, and a delta is calculated only when both values exist.
 
-Metrics use the same compact decimal byte units and `Mbps` conversion as Processes. Counts use thousands separators. Every calculated delta, including zero, has an explicit sign and is enclosed in parentheses by the dialog.
+Metrics use the same compact decimal byte units and process I/O `Kbps` / `Mbps` conversion as Processes. Counts use thousands separators. Every calculated delta, including zero, has an explicit sign and is enclosed in parentheses by the dialog.
 
 In `DISPLAY PAUSED`, both the current Snapshot and history come from the paused display state. In Log view, Current is the final recorded Snapshot, metric history comes from the loaded recording, and no live Process Info worker request is made. Static fields that are absent from the recording are displayed as `--`.
 
@@ -234,13 +251,13 @@ When start time is available, it is included in the identity to avoid mixing his
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |
-| I/O speed | `Mbps`. |
+| Process I/O speed | Whole-number `Kbps` below 1 Mbps; otherwise whole-number `Mbps`. |
 | CPU% | 1 decimal place. |
 | GPU% | 1 decimal place. |
 | Missing value | `--`. |
 
-`GB`, `MB`, and `Mbps` are rounded using a base of 1,000.
-Graph slot titles append concise unit metadata such as `[B]`, `[count]`, `[Mbps]`, or `[MB/s]`. A unit already present in the metric name is not repeated, so `CPU%` and `GPU%` remain unchanged while `CPU Usage` is shown as `CPU Usage [%]`.
+`GB`, `MB`, `Kbps`, and `Mbps` are rounded using a base of 1,000.
+Graph slot titles append concise unit metadata such as `[B]`, `[count]`, `[Kbps/Mbps]`, `[Mbps]`, or `[MB/s]`. A unit already present in the metric name is not repeated, so `CPU%` and `GPU%` remain unchanged while `CPU Usage` is shown as `CPU Usage [%]`.
 Percent, throughput, and disk queue-length Y-axis ticks retain their metric-specific formats.
 The `B-A` value in each Graph slot title uses the same metric-specific format as the A/B comparison. It is `--` unless both points are set and that Graph has values at both exact captured times.
 

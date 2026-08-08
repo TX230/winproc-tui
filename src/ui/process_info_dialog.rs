@@ -28,6 +28,11 @@ const PROCESS_INFO_MODAL: ScrollableModal = ScrollableModal::new("", 138, 20, 2)
 const CLOSE_BUTTON: &str = "[ Close ]";
 const TAB_HORIZONTAL_PADDING: u16 = 2;
 const IMAGE_LABEL_WIDTH: usize = 16;
+const METRIC_LABEL_WIDTH: usize = 22;
+const METRIC_VALUE_WIDTH: usize = 20;
+const METRIC_DELTA_WIDTH: usize = 24;
+const METRIC_WIDE_LAYOUT_WIDTH: u16 =
+    (METRIC_LABEL_WIDTH + METRIC_VALUE_WIDTH + METRIC_DELTA_WIDTH) as u16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProcessInfoDialogLayout {
@@ -350,16 +355,16 @@ fn metric_header_line(
     let header_style = Style::default()
         .fg(theme.text)
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
-    if width >= 62 {
+    if width >= METRIC_WIDE_LAYOUT_WIDTH {
         let mut spans = vec![Span::styled("Metrics", header_style)];
-        spans.push(Span::raw(" ".repeat(18 - "Metrics".len())));
+        spans.push(Span::raw(" ".repeat(METRIC_LABEL_WIDTH - "Metrics".len())));
         spans.push(Span::raw(
-            " ".repeat(20usize.saturating_sub(value_heading.len())),
+            " ".repeat(METRIC_VALUE_WIDTH.saturating_sub(value_heading.len())),
         ));
         spans.push(Span::styled(value_heading.to_string(), header_style));
         if let Some(delta_heading) = delta_heading {
             spans.push(Span::raw(
-                " ".repeat(24usize.saturating_sub(delta_heading.len())),
+                " ".repeat(METRIC_DELTA_WIDTH.saturating_sub(delta_heading.len())),
             ));
             spans.push(Span::styled(delta_heading.to_string(), header_style));
         }
@@ -381,15 +386,21 @@ fn metric_value_line(
     width: u16,
     theme: Theme,
 ) -> Line<'static> {
-    let text = if width >= 62 {
+    let label_width = METRIC_LABEL_WIDTH;
+    let text = if width >= METRIC_WIDE_LAYOUT_WIDTH {
+        let value_width = METRIC_VALUE_WIDTH;
+        let delta_width = METRIC_DELTA_WIDTH;
         match delta {
-            Some(delta) => format!("{label:<18}{value:>20}{:>24}", format!("({delta})")),
-            None => format!("{label:<18}{value:>20}"),
+            Some(delta) => {
+                let delta = format!("({delta})");
+                format!("{label:<label_width$}{value:>value_width$}{delta:>delta_width$}")
+            }
+            None => format!("{label:<label_width$}{value:>value_width$}"),
         }
     } else {
         match delta {
-            Some(delta) => format!("{label:<18}{value} ({delta})"),
-            None => format!("{label:<18}{value}"),
+            Some(delta) => format!("{label:<label_width$}{value} ({delta})"),
+            None => format!("{label:<label_width$}{value}"),
         }
     };
     Line::from(Span::styled(text, Style::default().fg(theme.text)))

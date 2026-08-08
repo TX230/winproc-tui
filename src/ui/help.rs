@@ -224,7 +224,7 @@ const GRAPH_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "v/d/l",
-        label: "Samples/Delta/2c",
+        label: "Samples/Delta/mode",
     },
 ];
 
