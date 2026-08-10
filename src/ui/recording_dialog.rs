@@ -53,7 +53,7 @@ pub(crate) fn draw_recording_path_dialog(
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
-        Paragraph::new("Path").style(Style::default().fg(theme.muted)),
+        Paragraph::new("Log file").style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y, content.width, 1),
     );
     frame.render_widget(
@@ -61,7 +61,7 @@ pub(crate) fn draw_recording_path_dialog(
         input_area,
     );
     frame.render_widget(
-        Paragraph::new("Enter a log file path. Missing parent directories will be created.")
+        Paragraph::new("Records JSON Lines (.log). Open later with Ctrl+L; creates parent dirs.")
             .style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y.saturating_add(3), content.width, 1),
     );

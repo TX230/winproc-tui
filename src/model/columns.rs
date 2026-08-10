@@ -170,7 +170,7 @@ impl MetricColumn {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::CpuPercent => "CPU%",
-            Self::PrivateBytes => "Private",
+            Self::PrivateBytes => "PrivBytes",
             Self::WorksetBytes => "WS",
             Self::WorksetPrivateBytes => "WS Priv",
             Self::WorksetShareableBytes => "WS Shrbl",
@@ -221,8 +221,8 @@ impl MetricColumn {
             | Self::HandleCount
             | Self::UserObjectCount
             | Self::GdiObjectCount => 8,
-            Self::PrivateBytes
-            | Self::WorksetBytes
+            Self::PrivateBytes => 11,
+            Self::WorksetBytes
             | Self::WorksetPrivateBytes
             | Self::WorksetShareableBytes
             | Self::WorksetSharedBytes
@@ -345,7 +345,7 @@ impl FromStr for MetricColumn {
             .replace([' ', '-', '_'], "");
         match normalized.as_str() {
             "cpu%" | "cpu" | "cpupercent" => Ok(Self::CpuPercent),
-            "private" | "privatebytes" => Ok(Self::PrivateBytes),
+            "private" | "privatebytes" | "privbytes" => Ok(Self::PrivateBytes),
             "ws" | "workingset" | "workset" => Ok(Self::WorksetBytes),
             "wspriv" | "workingsetprivate" | "worksetprivate" => Ok(Self::WorksetPrivateBytes),
             "wsshrbl" | "wsshareable" | "worksetshareable" => Ok(Self::WorksetShareableBytes),
@@ -607,6 +607,14 @@ mod tests {
     }
 
     #[test]
+    fn private_bytes_uses_compact_label_and_accepts_legacy_aliases() {
+        assert_eq!(MetricColumn::PrivateBytes.label(), "PrivBytes");
+        for alias in ["Private", "Private Bytes", "PrivBytes"] {
+            assert_eq!(alias.parse(), Ok(MetricColumn::PrivateBytes));
+        }
+    }
+
+    #[test]
     fn custom_preset_effective_columns_fall_back_to_default() {
         assert_eq!(
             ColumnPreset::Custom.effective_columns(),
@@ -747,8 +755,13 @@ mod tests {
 
     #[test]
     fn compact_byte_columns_use_dense_header_safe_widths() {
+        assert_eq!(MetricColumn::PrivateBytes.width(), 11);
+        assert!(
+            MetricColumn::PrivateBytes.label().chars().count() + 2
+                <= MetricColumn::PrivateBytes.width() as usize
+        );
+
         for column in [
-            MetricColumn::PrivateBytes,
             MetricColumn::WorksetBytes,
             MetricColumn::WorksetPrivateBytes,
             MetricColumn::WorksetShareableBytes,

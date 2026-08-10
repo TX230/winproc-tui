@@ -24,8 +24,8 @@ use crate::{
 
 const DIALOG_WIDTH: u16 = 68;
 const DIALOG_HEIGHT: u16 = 18;
-const HEADER_ROWS: u16 = 2;
-const LIST_HEIGHT: u16 = 10;
+const HEADER_ROWS: u16 = 3;
+const LIST_HEIGHT: u16 = 9;
 const BUTTON_ROW: u16 = 14;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +46,14 @@ impl StartupTrackedListChoice {
                 list.processes.len(),
                 if list.processes.len() == 1 { "" } else { "es" }
             ),
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::ResumeLast => "Keep the last working Tracking List.",
+            Self::StartEmpty => "Start without tracked process names.",
+            Self::Saved(_) => "Load this saved Tracking List.",
         }
     }
 }
@@ -193,9 +201,13 @@ fn draw_startup_choice(
         row(content, 0),
     );
     frame.render_widget(
+        Paragraph::new(choices[selected].description()).style(Style::default().fg(theme.text)),
+        row(content, 1),
+    );
+    frame.render_widget(
         Paragraph::new("Up/Down move · Enter start · Esc resume last")
             .style(Style::default().fg(theme.muted)),
-        row(content, 1),
+        row(content, 2),
     );
 
     let lines = choices
@@ -301,6 +313,36 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn render_startup_choice(selected: usize) -> String {
+        let config = AppConfig::default();
+        let choices = startup_choices(&config);
+        let backend = TestBackend::new(80, 30);
+        let mut terminal = Terminal::new(backend).expect("test terminal should be created");
+        terminal
+            .draw(|frame| draw_startup_choice(frame, &choices, selected, 0, THEMES[0]))
+            .expect("startup dialog should render");
+        let buffer = terminal.backend().buffer();
+
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn startup_choice_explains_resume_and_empty_effects() {
+        let resume = render_startup_choice(0);
+        assert!(resume.contains("Keep the last working Tracking List."));
+
+        let empty = render_startup_choice(1);
+        assert!(empty.contains("Start without tracked process names."));
+    }
 
     #[test]
     fn saved_startup_choice_replaces_active_working_list() {
