@@ -207,12 +207,10 @@ pub(crate) fn graph_workspace_layout(area: Rect, app: &App) -> GraphWorkspaceLay
     };
     let mut visible_rows = total_rows.min(row_capacity);
     let mut max_scroll_row = total_rows.saturating_sub(visible_rows);
-    if max_scroll_row > 0
-        && columns == 2
-        && graph_viewport.width.saturating_sub(1) < GRAPH_SLOT_MIN_WIDTH.saturating_mul(2)
-    {
-        columns = 1;
-        total_rows = entry_count;
+    if max_scroll_row > 0 {
+        columns = columns
+            .min(usize::from(graph_viewport.width.saturating_sub(1) / GRAPH_SLOT_MIN_WIDTH).max(1));
+        total_rows = entry_count.div_ceil(columns);
         visible_rows = total_rows.min(row_capacity);
         max_scroll_row = total_rows.saturating_sub(visible_rows);
     }
@@ -316,15 +314,14 @@ pub(crate) fn effective_graph_columns(
     if entry_count <= 1 {
         return 1;
     }
-    match layout {
+    let requested = match layout {
         GraphSlotLayout::OneColumn => 1,
-        GraphSlotLayout::Auto | GraphSlotLayout::TwoColumns
-            if width >= GRAPH_SLOT_MIN_WIDTH.saturating_mul(2) =>
-        {
-            2
-        }
-        GraphSlotLayout::Auto | GraphSlotLayout::TwoColumns => 1,
-    }
+        GraphSlotLayout::TwoColumns => 2,
+        GraphSlotLayout::Auto | GraphSlotLayout::ThreeColumns => 3,
+    };
+    requested
+        .min(entry_count)
+        .min(usize::from(width / GRAPH_SLOT_MIN_WIDTH).max(1))
 }
 
 fn graph_card_layouts(

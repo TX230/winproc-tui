@@ -350,11 +350,24 @@ mod tests {
     #[test]
     fn invalid_graph_column_count_falls_back_to_auto() {
         let mut config = AppConfig::default();
-        config.graphs.columns = 3;
+        config.graphs.columns = 4;
 
         let runtime = build_runtime_config(config).unwrap();
 
         assert_eq!(runtime.initial_graph_slot_layout, GraphSlotLayout::Auto);
+    }
+
+    #[test]
+    fn build_runtime_config_restores_three_column_graph_layout() {
+        let mut config = AppConfig::default();
+        config.graphs.columns = 3;
+
+        let runtime = build_runtime_config(config).unwrap();
+
+        assert_eq!(
+            runtime.initial_graph_slot_layout,
+            GraphSlotLayout::ThreeColumns
+        );
     }
 
     #[test]
@@ -3451,6 +3464,14 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
 
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::ThreeColumns);
+        assert!(app.show_samples_panel);
+        let rendered = render_app_to_text(&app, 180, 60);
+        assert!(rendered.contains("l: 3 cols"), "{rendered}");
+
+        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
+            .unwrap();
+
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::Auto);
         assert!(app.show_samples_panel);
 
@@ -3476,6 +3497,11 @@ processes = ["api.exe", "worker.exe"]
         let details = main_panel_areas_for_app(wide, &app).details.unwrap();
         assert_eq!(ui::layout::graph_workspace_layout(details, &app).columns, 2);
 
+        let extra_wide = Rect::new(0, 0, 220, 80);
+        app::sync_layout_state(&mut app, extra_wide);
+        let details = main_panel_areas_for_app(extra_wide, &app).details.unwrap();
+        assert_eq!(ui::layout::graph_workspace_layout(details, &app).columns, 3);
+
         let narrow = Rect::new(0, 0, 80, 80);
         app::sync_layout_state(&mut app, narrow);
         let details = main_panel_areas_for_app(narrow, &app).details.unwrap();
@@ -3490,6 +3516,7 @@ processes = ["api.exe", "worker.exe"]
             for mode in [
                 GraphSlotLayout::OneColumn,
                 GraphSlotLayout::TwoColumns,
+                GraphSlotLayout::ThreeColumns,
                 GraphSlotLayout::Auto,
             ] {
                 let mut app = make_test_app(1, 10);
@@ -3501,10 +3528,10 @@ processes = ["api.exe", "worker.exe"]
                 app::sync_layout_state(&mut app, screen);
                 let details = main_panel_areas_for_app(screen, &app).details.unwrap();
                 let layout = ui::layout::graph_workspace_layout(details, &app);
-                let expected_columns = if mode == GraphSlotLayout::OneColumn || count == 1 {
-                    1
-                } else {
-                    2
+                let expected_columns = match mode {
+                    GraphSlotLayout::OneColumn => 1,
+                    GraphSlotLayout::TwoColumns => count.min(2),
+                    GraphSlotLayout::ThreeColumns | GraphSlotLayout::Auto => count.min(3),
                 };
                 assert_eq!(
                     layout.columns, expected_columns,
@@ -4188,6 +4215,11 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
         assert!(!app.show_samples_panel);
+
+        let (layout_x, layout_y) =
+            find_text_position(&two_columns, "l: 2 cols").expect("layout control should render");
+        app.on_mouse(left_click(layout_x, layout_y), screen);
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::ThreeColumns);
     }
 
     #[test]

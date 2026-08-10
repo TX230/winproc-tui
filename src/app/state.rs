@@ -597,6 +597,7 @@ pub(crate) enum GraphSlotLayout {
     Auto,
     OneColumn,
     TwoColumns,
+    ThreeColumns,
 }
 
 impl GraphSlotLayout {
@@ -605,6 +606,7 @@ impl GraphSlotLayout {
             Self::Auto => 0,
             Self::OneColumn => 1,
             Self::TwoColumns => 2,
+            Self::ThreeColumns => 3,
         }
     }
 
@@ -613,6 +615,7 @@ impl GraphSlotLayout {
             Self::Auto => "Auto",
             Self::OneColumn => "1 col",
             Self::TwoColumns => "2 cols",
+            Self::ThreeColumns => "3 cols",
         }
     }
 
@@ -620,7 +623,8 @@ impl GraphSlotLayout {
         match self {
             Self::Auto => Self::OneColumn,
             Self::OneColumn => Self::TwoColumns,
-            Self::TwoColumns => Self::Auto,
+            Self::TwoColumns => Self::ThreeColumns,
+            Self::ThreeColumns => Self::Auto,
         }
     }
 }

@@ -247,6 +247,7 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         initial_graph_slot_layout: match config.graphs.columns {
             1 => GraphSlotLayout::OneColumn,
             2 => GraphSlotLayout::TwoColumns,
+            3 => GraphSlotLayout::ThreeColumns,
             _ => GraphSlotLayout::Auto,
         },
         initial_show_samples_panel: config.graphs.samples,
