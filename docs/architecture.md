@@ -51,7 +51,7 @@ Expensive process extras and GPU values are collected every five base samples an
 
 ### 2.4 Separate tracking intent from process identity
 
-The Tracked List stores case-insensitive process names because PIDs change when applications restart and one name may have multiple live instances. Histories and selections use `ProcessIdentity { pid, name, start_time }` so PID reuse or a restarted process does not merge unrelated samples.
+The Tracking List stores case-insensitive process names because PIDs change when applications restart and one name may have multiple live instances. Histories and selections use `ProcessIdentity { pid, name, start_time }` so PID reuse or a restarted process does not merge unrelated samples.
 
 Exited tracked processes remain available as Ghost Rows with their retained histories. Non-tracked processes do not receive the same long-lived retention.
 
@@ -84,10 +84,10 @@ The record types, fields, units, and missing-value rules are specified in [metri
 ### 4.1 Startup and shutdown
 
 1. `main` parses the CLI, installs the Windows console control handler, and resolves and loads `winproc-tui.toml`.
-2. Startup mode either resumes the previous working Tracked List, clears it, or opens a chooser for the previous session, an empty list, or a saved named list. The chooser completes before `RuntimeConfig` is built and before any sample is collected.
+2. Startup mode either resumes the previous working Tracking List, clears it, or opens a chooser for the previous session, an empty list, or a saved named list. The chooser completes before `RuntimeConfig` is built and before any sample is collected.
 3. `App::new` performs one synchronous initial collection so the first screen has data, initializes histories and selection state, and then spawns `SamplingWorker` for subsequent samples.
 4. `main` enters raw mode and the alternate screen, then calls `run_tui`.
-5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Tracked List startup changes and explicit Save, Save As, Rename, and Delete actions for named Tracked Lists persist immediately.
+5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Tracking List startup changes and explicit Save, Save As, Rename, and Delete actions for named Tracking Lists persist immediately.
 
 Interactive quit goes through application cleanup. If recording is active, the end record is attempted and the writer is flushed and closed before exit. Windows console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` set a termination request that enters the same cleanup path; close-class events wait for a bounded period so the main loop and workers can finish. Dropping `SamplingWorker` sends `Stop` and joins its thread.
 
@@ -125,17 +125,17 @@ Column selection and sorting are modeled separately through `MetricColumn`, `Sor
 
 - sampling progress, the current live snapshot, freshness, and warning state;
 - process-table selection, filtering, sorting, columns, and visible-row caches;
-- the working Tracked List, saved named lists, startup mode, process/system histories, and exited tracked rows;
+- the working Tracking List, saved named lists, startup mode, process/system histories, and exited tracked rows;
 - the ordered Graph collection, active Graph, shared time/cursor/A/B state, and Graph-specific display state;
 - modal and asynchronous investigation state;
 - display-pause, recording, Log list, and Log view state;
 - runtime settings, theme, and transient action feedback.
 
-Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracked List is empty.
+Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracking List is empty.
 
 Process Info is one responsive modal with tab-specific scroll and collection state. Opening it fixes a `ProcessInfoDialogTarget` containing `ProcessIdentity`, the opening `ProcessRow`, and lifecycle. Every tab and worker request uses that target rather than consulting the current Processes selection again. The active tab remains session state after the dialog closes and is reused by ordinary Process Info opens; the direct Files action explicitly selects Files. Filters belong to one dialog session: tab switches and explicit refreshes preserve them, while opening a new Process Info session clears them. Files and DLL filtering use the full displayed path. DLL and Environment tabs separate their selectable lists from keyboard-scrollable detail views so complete metadata and values remain reachable on narrow terminals. A monotonically changing dialog generation accompanies Process Image, Files, DLL, and Environment requests, and DLL and Environment refreshes also have request ids, so a result from a closed, reopened, or superseded dialog request cannot update a newer session even when the same PID and identity are involved. DLL and Environment collection have independent workers from sampling, Image, and Open Files. All live collectors reject a target that exits or changes identity during collection. Environment's PEB offsets, pointer-width handling, memory-region validation, 4 MiB cap, and UTF-16 parser remain inside the platform-facing collector; UI and recording code receive only typed entries or typed errors. Environment results are cleared when the dialog closes and never enter recording state. Log view uses recorded display state for Metrics and Image fallbacks and never starts live Process Info collection.
 
-The working Tracked List is separate from saved named definitions. Plain `t` edits only the working copy, while `Shift+T` changes the independent `tracked_only` state. The Tracked Lists dialog prepends a virtual `Empty (default)` entry to the saved definitions; it is active only when no named definition is active and the working list is empty, and it is never persisted, renamed, deleted, or overwritten. Loading either the virtual empty entry or a saved list replaces the working copy without changing `tracked_only`, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
+The working Tracking List is separate from saved named definitions. Plain `t` edits only the working copy, while `Shift+T` changes the independent `tracked_only` state. The Tracking Lists dialog prepends a virtual `Empty (default)` entry to the saved definitions; it is active only when no named definition is active and the working list is empty, and it is never persisted, renamed, deleted, or overwritten. Loading either the virtual empty entry or a saved list replaces the working copy without changing `tracked_only`, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
 
 ### 5.3 Graph and Samples state
 
@@ -193,7 +193,7 @@ stateDiagram-v2
     Exiting --> [*]
 ```
 
-Starting recording requires at least one configured Tracked List name. It does not require a current live match: each frame still records system metrics and writes an empty `processes` array until a matching process appears. Stopping or quitting attempts an `end` record, flushes the buffer, and closes the file.
+Starting recording requires at least one configured Tracking List name. It does not require a current live match: each frame still records system metrics and writes an empty `processes` array until a matching process appears. Stopping or quitting attempts an `end` record, flushes the buffer, and closes the file.
 
 Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
 
@@ -208,8 +208,8 @@ The most important implementation invariants are:
 - Recording and Log view must never be active together;
 - stopping or quitting Recording must flush and close the log;
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
-- the working Tracked List must not overwrite a saved named definition without an explicit save action;
-- the built-in empty Tracked List must remain virtual and must not be stored among saved named definitions;
+- the working Tracking List must not overwrite a saved named definition without an explicit save action;
+- the built-in empty Tracking List must remain virtual and must not be stored among saved named definitions;
 - drawing and hit testing must use the same layout geometry;
 - dynamic Processes sizing must reserve a visible Tracked Total row, keep at least one process row when available, and give reclaimed height to Graphs without changing the full-height Graphs-hidden layout;
 - terminal resizes, Tracked-only changes, and layout transitions must preserve the ordered Graph collection, active ID, and comparison state while keeping every Graph reachable by row scrolling;

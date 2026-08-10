@@ -35,7 +35,7 @@ pub(crate) fn draw_tracked_remove_confirm(
     let discarded = format_integer(app.tracked_remove_discarded_samples as u64);
     let lines = Text::from(vec![
         Line::from(Span::styled(
-            "Remove from Tracked List?",
+            "Remove from Tracking List?",
             Style::default()
                 .fg(theme.warning)
                 .add_modifier(Modifier::BOLD),

@@ -196,7 +196,7 @@ const TRACKING_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+T",
-        label: "Open/load Tracked Lists",
+        label: "Open/load Tracking Lists",
     },
 ];
 

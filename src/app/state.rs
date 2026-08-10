@@ -3361,7 +3361,7 @@ impl App {
     pub(crate) fn toggle_watch_list(&mut self) {
         if self.watch_list.is_empty() {
             self.watch_enabled = false;
-            self.status = "Tracked List is empty".to_string();
+            self.status = "Tracking List is empty".to_string();
             return;
         }
 
@@ -3430,7 +3430,7 @@ impl App {
         self.reset_tracked_remove_confirmation();
         self.remove_process_name_from_tracked_list(name.clone());
         self.status =
-            format!("Removed from Tracked List: {name}; discarded {discarded} older samples");
+            format!("Removed from Tracking List: {name}; discarded {discarded} older samples");
     }
 
     pub(crate) fn cancel_tracked_remove_confirmation(&mut self) {
@@ -3469,7 +3469,7 @@ impl App {
         }
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
-        self.status = format!("Added to Tracked List: {name}");
+        self.status = format!("Added to Tracking List: {name}");
     }
 
     #[cfg(test)]
@@ -3494,15 +3494,15 @@ impl App {
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
         self.status = if self.watch_list.len() == before {
-            format!("Not in Tracked List: {name}")
+            format!("Not in Tracking List: {name}")
         } else {
-            format!("Removed from Tracked List: {name}")
+            format!("Removed from Tracking List: {name}")
         };
     }
 
     pub(crate) fn open_tracked_lists(&mut self) {
         if self.activity() == AppActivity::LogView {
-            self.status = "Tracked Lists are unavailable in Log view".to_string();
+            self.status = "Tracking Lists are unavailable in Log view".to_string();
             return;
         }
         let index = self
@@ -3537,7 +3537,7 @@ impl App {
             hovered_button: None,
         });
         self.ensure_tracked_list_selection_visible();
-        self.status = "Tracked Lists".to_string();
+        self.status = "Tracking Lists".to_string();
     }
 
     pub(crate) fn close_tracked_lists(&mut self) {
@@ -3720,7 +3720,7 @@ impl App {
         let previous = self.runtime.tracked_list_startup;
         self.runtime.tracked_list_startup = startup;
         if self.persist_tracked_list_changes() {
-            self.status = format!("Tracked List startup: {}", startup.label());
+            self.status = format!("Tracking List startup: {}", startup.label());
         } else {
             self.runtime.tracked_list_startup = previous;
         }
@@ -3793,11 +3793,11 @@ impl App {
             return;
         }
         let Some(index) = self.selected_saved_tracked_list_index() else {
-            self.status = "No saved Tracked List selected".to_string();
+            self.status = "No saved Tracking List selected".to_string();
             return;
         };
         let Some(list) = self.runtime.saved_tracked_lists.get(index).cloned() else {
-            self.status = "No saved Tracked List selected".to_string();
+            self.status = "No saved Tracking List selected".to_string();
             return;
         };
         self.request_tracked_list_switch(Some(list.name), list.processes);
@@ -3953,7 +3953,7 @@ impl App {
                 ));
             }
             self.ensure_tracked_list_selection_visible();
-            self.status = format!("Saved Tracked List: {saved_name}");
+            self.status = format!("Saved Tracking List: {saved_name}");
         } else {
             self.runtime.saved_tracked_lists = previous_lists;
             self.runtime.active_tracked_list = previous_active;
@@ -3976,7 +3976,7 @@ impl App {
             .map(|list| list.name.clone())
             .unwrap_or_default();
         if draft.is_empty() {
-            self.status = "No saved Tracked List selected".to_string();
+            self.status = "No saved Tracking List selected".to_string();
             return;
         }
         let cursor = draft.len();
@@ -3993,7 +3993,7 @@ impl App {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             dialog.view = TrackedListsView::Browse;
         }
-        self.status = "Tracked Lists".to_string();
+        self.status = "Tracking Lists".to_string();
     }
 
     pub(crate) fn push_tracked_list_name_char(&mut self, ch: char) {
@@ -4164,7 +4164,7 @@ impl App {
             .get(index)
             .map(|list| list.name.clone())
         else {
-            self.set_tracked_list_name_error("No saved Tracked List selected.");
+            self.set_tracked_list_name_error("No saved Tracking List selected.");
             return;
         };
         if self
@@ -4176,7 +4176,9 @@ impl App {
                 saved_index != index && list.name.eq_ignore_ascii_case(&name)
             })
         {
-            self.set_tracked_list_name_error("A saved Tracked List with that name already exists.");
+            self.set_tracked_list_name_error(
+                "A saved Tracking List with that name already exists.",
+            );
             return;
         }
         let previous_lists = self.runtime.saved_tracked_lists.clone();
@@ -4194,7 +4196,7 @@ impl App {
             if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
                 dialog.view = TrackedListsView::Browse;
             }
-            self.status = format!("Renamed Tracked List: {name}");
+            self.status = format!("Renamed Tracking List: {name}");
         } else {
             self.runtime.saved_tracked_lists = previous_lists;
             self.runtime.active_tracked_list = previous_active;
@@ -4212,7 +4214,7 @@ impl App {
             .get(index)
             .map(|list| list.name.clone())
         else {
-            self.status = "No saved Tracked List selected".to_string();
+            self.status = "No saved Tracking List selected".to_string();
             return;
         };
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
@@ -4295,7 +4297,7 @@ impl App {
                 dialog.view = TrackedListsView::Browse;
             }
             self.ensure_tracked_list_selection_visible();
-            self.status = format!("Deleted Tracked List: {name}");
+            self.status = format!("Deleted Tracking List: {name}");
         } else {
             self.runtime.saved_tracked_lists = previous_lists;
             self.runtime.active_tracked_list = previous_active;
@@ -4340,7 +4342,7 @@ impl App {
                     selection: TrackedListConfirmSelection::Cancel,
                 };
             }
-            self.status = "Loading this Tracked List will discard older samples".to_string();
+            self.status = "Loading this Tracking List will discard older samples".to_string();
         } else {
             self.apply_tracked_list_switch(pending);
         }
@@ -4367,8 +4369,8 @@ impl App {
         self.tracked_lists_dialog = None;
         self.status = pending
             .target_name
-            .map(|name| format!("Loaded Tracked List: {name}"))
-            .unwrap_or_else(|| "Started with an empty Tracked List".to_string());
+            .map(|name| format!("Loaded Tracking List: {name}"))
+            .unwrap_or_else(|| "Started with an empty Tracking List".to_string());
     }
 
     fn persist_tracked_list_changes(&mut self) -> bool {
@@ -4378,7 +4380,7 @@ impl App {
         match crate::config::write_app_config(&path, self) {
             Ok(()) => true,
             Err(error) => {
-                self.status = format!("Failed to save Tracked Lists: {error}");
+                self.status = format!("Failed to save Tracking Lists: {error}");
                 false
             }
         }

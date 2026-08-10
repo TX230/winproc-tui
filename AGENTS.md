@@ -120,9 +120,9 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Unavailable values should generally be displayed as `--` in the UI and omitted from recording logs rather than written as `null`.
 - The config file is `winproc-tui.toml`. It saves session state on exit and restores it on the next launch.
 - Do not save Filter input state to the config file.
-- Treat `tracked_only` as an independent state. Do not infer it from whether the tracked list is non-empty.
-- Treat the working Tracked List and saved named Tracked Lists as separate state. `Space` changes only the working list; saved definitions change only through explicit Save, Save As, Rename, or Delete actions.
-- When startup mode requires a Tracked List choice, resolve it before the initial sample so tracked-history retention applies from the first capture.
+- Treat `tracked_only` as an independent state. Do not infer it from whether the Tracking List is non-empty.
+- Treat the working Tracking List and saved named Tracking Lists as separate state. `Space` changes only the working list; saved definitions change only through explicit Save, Save As, Rename, or Delete actions.
+- When startup mode requires a Tracking List choice, resolve it before the initial sample so tracked-history retention applies from the first capture.
 
 ## User-Facing Behavior Rules
 
@@ -134,7 +134,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Live and Recording show no normal freshness text. At 3 seconds without a successfully applied sample, the header adds `STALE Ns` until another sample succeeds.
 - `DISPLAY PAUSED` freezes only the displayed snapshot. Sampling and Recording continue, and display pause is unavailable in Log view.
 - `Recording` and `Log view` are mutually exclusive.
-- Starting recording requires at least one configured Tracked List entry.
+- Starting recording requires at least one configured Tracking List entry.
 - Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array until a matching process appears.
 - Recording is unavailable in Log view, and Log view is unavailable during Recording.
 - Stopping recording must flush and close the recording log.
@@ -148,7 +148,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - DLL enumeration and file metadata collection must stay on its independent worker and occur only on initial tab activation or explicit refresh, never in normal sampling.
 - Environment remote-memory reads must stay on their independent worker, enforce the 4 MiB limit, never enter recording/export data, and never expose values through status or error text.
 - Log view must not start live Process Info Image, Files, DLL, or Environment collection. Dynamic tabs display their not-recorded state inside the shared Process Info dialog.
-- Loading a named Tracked List may prune older retained history for names removed from the working list. Confirm before discarding those older samples.
+- Loading a named Tracking List may prune older retained history for names removed from the working list. Confirm before discarding those older samples.
 
 ## UI / UX Guide
 

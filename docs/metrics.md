@@ -62,7 +62,7 @@ The `RAM/VRAM` panel and system details use four metrics.
 | `GPU Dedicated` | Dedicated GPU memory usage and capacity. | GPU PDH counters, DXGI adapter description | `used / total MB` |
 | `GPU Shared` | Shared GPU memory usage and capacity. | GPU PDH counters, DXGI adapter description | `used / total MB` |
 
-`RAM/VRAM` metrics always retain 7,200 samples and do not have a Tracked List display.
+`RAM/VRAM` metrics always retain 7,200 samples and do not have a Tracking List display.
 When the `RAM/VRAM` panel has focus, `Space` adds or removes the selected metric in the Graph Workspace. Double-clicking the same metric adds it or reveals its existing Graph without removing it.
 
 ## CPU Panel
@@ -287,7 +287,7 @@ Session record fields:
 | `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
 | `started_at` | string | RFC 3339 timestamp. |
 | `interval_seconds` | number | Fixed sampling interval metadata. Currently `1`. This is a recording-log field, not a user setting. |
-| `tracked_names` | string array | Tracked List at session start. |
+| `tracked_names` | string array | Tracking List at session start. |
 | `columns` | string array | Process metric columns currently displayed. |
 | `sort` | object | Sort column / direction. |
 | `system` | object | Supporting information such as CPU / GPU names. |
@@ -300,9 +300,9 @@ Frame record fields:
 | `record_type` | string | `frame`. |
 | `session_id` | string | Same ID as the session record. |
 | `captured_at` | string | RFC 3339 timestamp. |
-| `tracked_names` | string array | Tracked List at frame creation time. |
+| `tracked_names` | string array | Tracking List at frame creation time. |
 | `system_metrics` | object | System metrics recorded with the frame, including RAM/VRAM, CPU average, and System Activity values. |
-| `processes` | object array | Live processes matching the Tracked List. This can be empty when the configured tracked names have no live match. |
+| `processes` | object array | Live processes matching the Tracking List. This can be empty when the configured tracked names have no live match. |
 
 Process object fields:
 
@@ -314,8 +314,8 @@ Process object fields:
 | `start_time` | number | Present only when available. |
 | `metrics` | object | Only metrics that were collected. |
 
-A `frame` record outputs system metrics and the live processes matching the Tracked List.
-System metrics are recorded even when no live process currently matches the Tracked List.
+A `frame` record outputs system metrics and the live processes matching the Tracking List.
+System metrics are recorded even when no live process currently matches the Tracking List.
 System Activity fields are optional for compatibility with older logs and with systems where a PDH counter is unavailable.
 
 ```json

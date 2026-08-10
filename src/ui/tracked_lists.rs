@@ -82,13 +82,13 @@ pub(crate) fn draw_tracked_lists(
 
 fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let popup = tracked_lists_dialog_area(area);
-    let block = panel_block_focused(panel_title("TRACKED LISTS"), theme, true);
+    let block = panel_block_focused(panel_title("TRACKING LISTS"), theme, true);
     let content = block.inner(popup);
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
 
     let load_area = load_area(content);
-    let load_block = panel_block(panel_title("LOAD TRACKED LIST"), theme);
+    let load_block = panel_block(panel_title("LOAD TRACKING LIST"), theme);
     let load_content = load_block.inner(load_area);
     frame.render_widget(load_block, load_area);
     frame.render_widget(
@@ -142,7 +142,7 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     frame.render_widget(Paragraph::new(lines), list_area);
 
     let save_area = save_area(content);
-    let save_block = panel_block(panel_title("SAVE CURRENT TRACKED LIST"), theme);
+    let save_block = panel_block(panel_title("SAVE CURRENT TRACKING LIST"), theme);
     let save_content = save_block.inner(save_area);
     frame.render_widget(save_block, save_area);
     let current = app
@@ -190,7 +190,7 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("Tracked List startup  ", Style::default().fg(theme.muted)),
+            Span::styled("Tracking List startup  ", Style::default().fg(theme.muted)),
             Span::styled(
                 format!("< {} >", app.runtime.tracked_list_startup.label()),
                 startup_style,
@@ -381,7 +381,7 @@ fn draw_name_input(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
         return;
     };
     let popup = centered_dialog_rect(area, NAME_DIALOG_WIDTH, NAME_DIALOG_HEIGHT);
-    let block = panel_block_focused(panel_title("RENAME TRACKED LIST"), theme, true);
+    let block = panel_block_focused(panel_title("RENAME TRACKING LIST"), theme, true);
     let content = block.inner(popup);
     let input_area = row(content, NAME_INPUT_ROW);
     let (input, cursor_x) = input_view(draft, *cursor, input_area.width as usize);
@@ -420,8 +420,8 @@ fn draw_delete_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, th
     draw_confirm(
         frame,
         area,
-        "DELETE SAVED TRACKED LIST?",
-        &format!("Delete \"{name}\"? The working Tracked List is kept."),
+        "DELETE SAVED TRACKING LIST?",
+        &format!("Delete \"{name}\"? The working Tracking List is kept."),
         "This cannot be undone.",
         " Delete ",
         *selection,
@@ -437,7 +437,7 @@ fn draw_switch_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, th
     draw_confirm(
         frame,
         area,
-        "LOAD TRACKED LIST?",
+        "LOAD TRACKING LIST?",
         &format!(
             "This removes {} tracked name{}.",
             pending.removed_name_count,

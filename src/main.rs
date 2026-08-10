@@ -3986,9 +3986,9 @@ processes = ["api.exe", "worker.exe"]
 
             app.open_tracked_lists();
             let tracked_lists = render_app_to_buffer(&app, screen.width, screen.height);
-            assert_dialog_title_style(&tracked_lists, "TRACKED LISTS", theme);
-            assert_title_style(&tracked_lists, "LOAD TRACKED LIST", theme.border);
-            assert_title_style(&tracked_lists, "SAVE CURRENT TRACKED LIST", theme.border);
+            assert_dialog_title_style(&tracked_lists, "TRACKING LISTS", theme);
+            assert_title_style(&tracked_lists, "LOAD TRACKING LIST", theme.border);
+            assert_title_style(&tracked_lists, "SAVE CURRENT TRACKING LIST", theme.border);
             app.close_tracked_lists();
 
             app.show_display_area_warning = true;
@@ -4551,7 +4551,7 @@ processes = ["api.exe", "worker.exe"]
         app.open_tracked_lists();
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let (x, y) = find_text_position(&buffer, "[ Close ]")
-            .expect("Tracked Lists close button should render");
+            .expect("Tracking Lists close button should render");
 
         app.on_mouse(left_click(x + 2, y), screen);
 
@@ -4567,17 +4567,20 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("LOAD TRACKED LIST"), "{rendered}");
+        assert!(rendered.contains("LOAD TRACKING LIST"), "{rendered}");
         assert!(
             rendered
                 .contains("Up/Down selects · Enter loads · Click Empty loads · F2/Del saved only"),
             "{rendered}"
         );
         assert!(rendered.contains("Empty (default)"), "{rendered}");
-        assert!(rendered.contains("SAVE CURRENT TRACKED LIST"), "{rendered}");
+        assert!(
+            rendered.contains("SAVE CURRENT TRACKING LIST"),
+            "{rendered}"
+        );
         assert!(rendered.contains("Current: Browser"), "{rendered}");
         assert!(rendered.contains("List name:  Browser"), "{rendered}");
-        assert!(rendered.contains("Tracked List startup"), "{rendered}");
+        assert!(rendered.contains("Tracking List startup"), "{rendered}");
         assert!(rendered.contains("< Resume last >"), "{rendered}");
         assert!(!rendered.contains("[ Rename ]"), "{rendered}");
         assert!(!rendered.contains("[ Delete ]"), "{rendered}");
@@ -4597,7 +4600,7 @@ processes = ["api.exe", "worker.exe"]
         let row = rendered
             .lines()
             .find(|line| line.contains("Browser (*)"))
-            .expect("saved Tracked List row should render");
+            .expect("saved Tracking List row should render");
 
         assert!(row.contains("chrome.exe, node.exe"), "{row}");
         assert!(!row.contains("2 processes"), "{row}");
@@ -4955,7 +4958,7 @@ processes = ["api.exe", "worker.exe"]
         app.request_delete_selected_tracked_list();
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let (x, y) = find_text_position(&buffer, "[ Delete ]")
-            .expect("Tracked List delete button should render");
+            .expect("Tracking List delete button should render");
 
         app.on_mouse(left_click(x + 2, y), screen);
 
@@ -10836,7 +10839,10 @@ processes = ["api.exe", "worker.exe"]
         );
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("Remove from Tracked List?"), "{rendered}");
+        assert!(
+            rendered.contains("Remove from Tracking List?"),
+            "{rendered}"
+        );
         assert!(
             rendered.contains("target.exe has 121 in-memory samples."),
             "{rendered}"

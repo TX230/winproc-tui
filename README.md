@@ -29,7 +29,7 @@ Immediately after a GitHub Release, the latest version may take time to appear i
 
 The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
 
-RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracked List applies only to process names.
+RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names.
 
 ### 2. Graph Process Metrics
 
@@ -46,16 +46,16 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 
 ### 4. Track and Record a Process
 
-1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `t` to add the name to the Tracked List. `t` toggles the registration.
-2. For targets you use repeatedly, press `Ctrl+T` and save the Tracked List with a name.
+1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `t` to add the name to the Tracking List. `t` toggles the registration.
+2. For targets you use repeatedly, press `Ctrl+T` and save the Tracking List with a name.
 3. If needed, press `Shift+T` to switch between All processes and Tracked-only. Tracked-only view is not required for recording.
 4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
 5. Press `Ctrl+R` again to stop recording and close the log.
 6. Press `Ctrl+L` to select and inspect a saved log.
 
-Recording requires at least one process name in the Tracked List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
+Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
 
-The Tracked Lists dialog is split into an upper area for loading a list and a lower area for saving the current Tracked List. The upper area always starts with the built-in `Empty (default)` entry, followed by saved named lists. Select a row and press `Enter` to load it; clicking `Empty (default)` also loads it directly. Loading that entry empties only the working Tracked List, preserves the independent Tracked-only setting, and uses the same confirmation as a named-list load when older retained history would be discarded. The active entry has a `(*)` suffix. The built-in entry is active only when the working list is empty and no named list is active. It is never persisted and cannot be renamed with `F2`, deleted with `Delete`, or overwritten by `Save`. Saved-list rows preview their process names on the right; when they do not fit, the preview keeps leading names and shows the remaining count. In the lower area, the list-name field is prefilled with the current named Tracked List. `Save` stores the currently tracked processes under that name, creating a new list or updating an existing one. The save result appears directly below the name field. Use `Tab` / `Shift+Tab` to move focus between the list, name field, and buttons. Moving the mouse over a button also highlights that target.
+The Tracking Lists dialog is split into an upper area for loading a list and a lower area for saving the current Tracking List. The upper area always starts with the built-in `Empty (default)` entry, followed by saved named lists. Select a row and press `Enter` to load it; clicking `Empty (default)` also loads it directly. Loading that entry empties only the working Tracking List, preserves the independent Tracked-only setting, and uses the same confirmation as a named-list load when older retained history would be discarded. The active entry has a `(*)` suffix. The built-in entry is active only when the working list is empty and no named list is active. It is never persisted and cannot be renamed with `F2`, deleted with `Delete`, or overwritten by `Save`. Saved-list rows preview their process names on the right; when they do not fit, the preview keeps leading names and shows the remaining count. In the lower area, the list-name field is prefilled with the current named Tracking List. `Save` stores the currently tracked processes under that name, creating a new list or updating an existing one. The save result appears directly below the name field. Use `Tab` / `Shift+Tab` to move focus between the list, name field, and buttons. Moving the mouse over a button also highlights that target.
 
 ### Essential Keys
 
@@ -64,9 +64,9 @@ The Tracked Lists dialog is split into an upper area for loading a list and a lo
 | `Tab` / `Shift+Tab` | Move between panels.                        |
 | Arrow keys          | Select a row, column, or sample.            |
 | `Space`             | Add/remove the selected metric Graph.       |
-| `t`                 | Add/remove a process name in Tracked List.  |
+| `t`                 | Add/remove a process name in Tracking List. |
 | `Shift+T`           | Switch between All processes / Tracked-only. |
-| `Ctrl+T`            | Open named Tracked Lists.                   |
+| `Ctrl+T`            | Open named Tracking Lists.                  |
 | `Ctrl+F`            | Filter the process list.                    |
 | `Ctrl+R`            | Start/stop recording.                       |
 | `Ctrl+L`            | Open a saved log.                           |
@@ -77,7 +77,7 @@ The Tracked Lists dialog is split into an upper area for loading a list and a lo
 
 - **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Keeps up to 16 selected metrics in an ordered, scrollable Graph Workspace with one synchronized Samples inspector. General process history keeps about 120 seconds, while tracked-process and system-metric history (RAM / VRAM, System Activity, and CPU average) keeps about 7,200 seconds.
-- **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
+- **Tracking Lists**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
 - **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Process investigation**: Opens a responsive, tabbed Process Info dialog for metrics, executable details, and files currently open by the selected live process.
@@ -232,7 +232,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
 | `Ctrl+L`            | Open the log list.                                                  |
-| `Ctrl+T`            | Open Tracked Lists to load the built-in empty list, manage named lists, and set startup behavior. |
+| `Ctrl+T`            | Open Tracking Lists to load the built-in empty list, manage named lists, and set startup behavior. |
 | `Ctrl+R`            | Start / stop recording.                                             |
 | `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
 | `Ctrl+Wheel`        | Change the Windows Terminal zoom level.                             |
@@ -254,7 +254,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Ctrl+Space`        | Add or remove the current live process row from the multi-selection.                  |
 | `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
 | `w` / `Shift+W`     | Widen or narrow the selected column by one cell.                                      |
-| `t`                 | Add or remove the selected process name from the Tracked List.                        |
+| `t`                 | Add or remove the selected process name from the Tracking List.                       |
 | `Shift+T`           | Toggle Tracked-only display.                                                          |
 | `d` / `Delete`      | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
 | `Enter`             | Open Process Info for the selected process.                                          |
@@ -311,8 +311,8 @@ When multiple Graphs are shown, the visible time span, cursor position, selected
 ## Recording and Log View
 
 Press `Ctrl+R` to start or stop recording.
-Recording requires at least one Tracked List entry and saves logs as JSON Lines (with the `.log` extension).
-Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracked List.
+Recording requires at least one Tracking List entry and saves logs as JSON Lines (with the `.log` extension).
+Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
 When recording starts, a save-path input dialog opens. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
 Log view cannot open during recording, and recording cannot start while Log view is open.
@@ -327,7 +327,7 @@ The recording log format and the meaning of each field are described in [docs/me
 
 ## Saved Settings
 
-The theme, Graph layout and Samples / Delta visibility, process-table columns, sort, and widths, Tracked-only state, working Tracked List, and saved named lists are saved automatically and restored on the next launch. Tracked Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
+The theme, Graph layout and Samples / Delta visibility, process-table columns, sort, and widths, Tracked-only state, working Tracking List, and saved named lists are saved automatically and restored on the next launch. Tracking Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
 
 ## Developer Docs
 

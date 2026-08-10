@@ -183,12 +183,12 @@ fn draw_startup_choice(
         area,
     );
     let popup = startup_dialog_area(area);
-    let block = panel_block_focused("Choose Tracked List", theme, true);
+    let block = panel_block_focused("Choose Tracking List", theme, true);
     let content = block.inner(popup);
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
-        Paragraph::new("Choose the Tracked List to apply before the first sample.")
+        Paragraph::new("Choose the Tracking List to apply before the first sample.")
             .style(Style::default().fg(theme.muted)),
         row(content, 0),
     );
