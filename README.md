@@ -81,7 +81,7 @@ The Tracking Lists dialog is split into an upper area for loading a list and a l
 - **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Process investigation**: Opens a responsive, tabbed Process Info dialog for metrics, executable details, and files currently open by the selected live process.
-- **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, `F2` switches themes, and mouse-based row selection and scrollbars are supported.
+- **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, and mouse-based row selection and scrollbars are supported.
 
 ## When This Helps
 
@@ -236,7 +236,6 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Ctrl+R`            | Start / stop recording.                                             |
 | `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
 | `Ctrl+Wheel`        | Change the Windows Terminal zoom level.                             |
-| `F2`                | Switch theme.                                                       |
 
 
 ### Process Controls

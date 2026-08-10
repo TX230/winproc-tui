@@ -46,10 +46,6 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Move focus",
     },
     HelpItem {
-        key: "F2",
-        label: "Toggle theme",
-    },
-    HelpItem {
         key: "Ctrl+C",
         label: "Copy selected row",
     },

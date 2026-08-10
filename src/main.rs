@@ -1350,6 +1350,18 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn f2_does_not_switch_the_application_theme() {
+        let mut app = make_test_app(3, 10);
+        let initial_theme_index = app.theme_index;
+
+        app.on_key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.theme_index, initial_theme_index);
+        assert!(app.status.is_empty());
+    }
+
+    #[test]
     fn ctrl_f_starts_filter_editing() {
         let mut app = make_test_app(3, 10);
 

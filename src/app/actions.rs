@@ -15,8 +15,8 @@ use crate::{
     },
     platform::{send_terminal_zoom_shortcut, shift_key_is_down},
     ui::{
-        THEMES, TrackedListNameButton, column_picker_close_button_area_for_screen,
-        column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
+        TrackedListNameButton, column_picker_close_button_area_for_screen, column_picker_index_at,
+        column_picker_scrollbar_area, cpu_panel_area_for_screen,
         details_panel::graph_y_axis_label_width,
         display_area_warning_ok_button_area, help_area, help_close_button_area,
         help_scrollbar_area,
@@ -1331,10 +1331,6 @@ impl App {
             }
             KeyCode::Char('-') => {
                 self.status = "Sampling interval is fixed at 1s".to_string();
-            }
-            KeyCode::F(2) => {
-                self.theme_index = (self.theme_index + 1) % THEMES.len();
-                self.status = format!("Theme switched to {}", self.theme().name);
             }
             KeyCode::Char('?') => {
                 self.toggle_help();
