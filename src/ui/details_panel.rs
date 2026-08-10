@@ -191,11 +191,8 @@ fn render_graph_card(
         );
     }
     frame.render_widget(
-        Paragraph::new(format!(" {} ", card.remove_label)).style(
-            Style::default()
-                .fg(if active { theme.warning } else { theme.muted })
-                .bg(theme.panel),
-        ),
+        Paragraph::new(format!(" {} ", card.remove_label))
+            .style(Style::default().fg(theme.muted).bg(theme.panel)),
         card.remove,
     );
 }
@@ -613,7 +610,7 @@ fn draw_graph_content(
             Dataset::default()
                 .marker(Marker::Braille)
                 .graph_type(GraphType::Line)
-                .style(Style::default().fg(theme.warning))
+                .style(Style::default().fg(theme.accent))
                 .data(&a_line),
         );
     }
@@ -622,7 +619,7 @@ fn draw_graph_content(
             Dataset::default()
                 .marker(Marker::Braille)
                 .graph_type(GraphType::Line)
-                .style(Style::default().fg(theme.warning))
+                .style(Style::default().fg(theme.accent))
                 .data(&b_line),
         );
     }
@@ -1040,15 +1037,15 @@ fn sample_ab_summary_lines(
             .unwrap_or_else(|| "--".to_string());
         vec![
             Line::from(vec![
-                Span::styled("A: ", Style::default().fg(theme.warning)),
+                Span::styled("A: ", Style::default().fg(theme.accent)),
                 Span::styled(a_value, Style::default().fg(theme.text)),
             ]),
             Line::from(vec![
-                Span::styled("B: ", Style::default().fg(theme.warning)),
+                Span::styled("B: ", Style::default().fg(theme.accent)),
                 Span::styled(b_value, Style::default().fg(theme.text)),
             ]),
             Line::from(vec![
-                Span::styled("B-A: ", Style::default().fg(theme.warning)),
+                Span::styled("B-A: ", Style::default().fg(theme.accent)),
                 Span::styled(delta, Style::default().fg(theme.text)),
             ]),
         ]
@@ -1196,7 +1193,7 @@ fn graph_slot_title_line(
         Style::default().fg(theme.muted)
     };
     let comparison_style = if active {
-        Style::default().fg(theme.warning)
+        Style::default().fg(theme.accent)
     } else {
         Style::default().fg(theme.muted)
     };
@@ -1392,7 +1389,7 @@ impl Widget for GraphAbAxisLabels<'_> {
         };
 
         let label_y = area.bottom().saturating_sub(1);
-        let style = Style::default().fg(self.theme.warning).bg(self.theme.panel);
+        let style = Style::default().fg(self.theme.accent).bg(self.theme.panel);
         for (label, point) in [("A", comparison.a), ("B", comparison.b)] {
             let Some(point) = point else {
                 continue;
@@ -2046,9 +2043,9 @@ mod tests {
         .render(Rect::new(0, 0, 20, 5), &mut buffer);
 
         assert_eq!(buffer[(11, 4)].symbol(), "A");
-        assert_eq!(buffer[(11, 4)].fg, theme.warning);
+        assert_eq!(buffer[(11, 4)].fg, theme.accent);
         assert_eq!(buffer[(19, 4)].symbol(), "B");
-        assert_eq!(buffer[(19, 4)].fg, theme.warning);
+        assert_eq!(buffer[(19, 4)].fg, theme.accent);
         assert_eq!(buffer[(4, 3)].symbol(), "x");
     }
 
@@ -2168,18 +2165,23 @@ mod tests {
             sample(second, Some(1_500), None),
         ];
         let refs = samples.to_vec();
-        let rendered =
-            sample_ab_summary_lines(Some(&comparison), &refs, GraphValueFormat::Bytes, THEMES[0])
-                .iter()
-                .map(|line| {
-                    line.spans
-                        .iter()
-                        .map(|span| span.content.as_ref())
-                        .collect::<Vec<_>>()
-                        .join("")
-                })
-                .collect::<Vec<_>>();
+        let lines =
+            sample_ab_summary_lines(Some(&comparison), &refs, GraphValueFormat::Bytes, THEMES[0]);
+        let rendered = lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<Vec<_>>()
+                    .join("")
+            })
+            .collect::<Vec<_>>();
 
+        assert!(lines.iter().all(|line| {
+            line.spans[0].style.fg == Some(THEMES[0].accent)
+                && line.spans[0].style.fg != Some(THEMES[0].warning)
+        }));
         assert_eq!(
             rendered,
             vec!["A: 10:00:00 1,000", "B: 10:00:05 1,500", "B-A: +500 (+5s)"]
@@ -2383,11 +2385,13 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "Slot#1 · Private · app.exe · B-A: --");
+        assert_eq!(rendered, "Slot#1 · PrivBytes · app.exe · B-A: --");
         assert!(
             line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
                 && line.spans[0].style.add_modifier.contains(Modifier::BOLD)
         );
+        assert_eq!(line.spans[5].style.fg, Some(crate::ui::THEMES[0].accent));
+        assert_ne!(line.spans[5].style.fg, Some(crate::ui::THEMES[0].warning));
         assert!(
             !line.spans[2]
                 .style

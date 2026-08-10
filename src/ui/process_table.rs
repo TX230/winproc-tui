@@ -1165,8 +1165,8 @@ mod tests {
     #[test]
     fn header_cells_use_quiet_neutral_surfaces() {
         let theme = crate::ui::theme::THEMES[0];
-        let ordinary = header_cell("Private", Alignment::Right, false, theme);
-        let focused = header_cell("Private", Alignment::Right, true, theme);
+        let ordinary = header_cell("PrivBytes", Alignment::Right, false, theme);
+        let focused = header_cell("PrivBytes", Alignment::Right, true, theme);
 
         let ordinary_style = Styled::style(&ordinary);
         let focused_style = Styled::style(&focused);
@@ -1185,7 +1185,7 @@ mod tests {
         let value_width = column_width - GRAPH_SLOT_NUMBER_WIDTH - GRAPH_SLOT_NUMBER_GAP;
         let value = compact_graph_cell_value(format_compact_bytes(999_900_000), value_width);
 
-        assert_eq!(value, "999.9MB");
+        assert_eq!(value, "999.9 MB");
         assert_eq!(value.chars().count(), value_width);
     }
 
@@ -1363,7 +1363,7 @@ mod tests {
         );
         assert_eq!(
             full_path_column_render_width(&visible, &rects),
-            Some(MetricColumn::FullPath.width() + 63)
+            Some(MetricColumn::FullPath.width() + 62)
         );
     }
 
@@ -1446,7 +1446,7 @@ mod tests {
                 Constraint::Min(60),
             ]
         );
-        assert_eq!(full_path_column_render_width(&visible, &rects), Some(129));
+        assert_eq!(full_path_column_render_width(&visible, &rects), Some(128));
 
         let without_full_path = vec![(0, MetricColumn::PrivateBytes)];
         assert_eq!(

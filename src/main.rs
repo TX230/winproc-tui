@@ -661,7 +661,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(rendered.contains("PID = 8"), "{rendered}");
-        assert!(rendered.contains("Private = 14"), "{rendered}");
+        assert!(rendered.contains("PrivBytes = 14"), "{rendered}");
         assert!(!rendered.contains("Process = 18"), "{rendered}");
         assert_eq!(runtime.process_column_widths.resolved(SortColumn::Pid), 8);
         assert_eq!(
@@ -4042,8 +4042,13 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(layout.graph_cards.len(), 1);
         assert_eq!(layout.graph_cards[0].remove.width, 5);
         assert_eq!(layout.graph_cards[0].remove_label, "[x]");
-        let rendered = render_app_to_text(&app, screen.width, screen.height);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let rendered = buffer_to_text(&buffer);
         assert!(rendered.contains("[x]"), "{rendered}");
+        let (remove_x, remove_y) =
+            find_text_position(&buffer, "[x]").expect("remove control should render");
+        assert_eq!(buffer[(remove_x, remove_y)].fg, THEMES[0].muted);
+        assert_ne!(buffer[(remove_x, remove_y)].fg, THEMES[0].warning);
     }
 
     #[test]
@@ -5003,8 +5008,8 @@ processes = ["api.exe", "worker.exe"]
         let graph = details_graph_area_for_app(screen, &app).unwrap();
         let (_, value_y) = find_text_position_in_area(&buffer, graph, "424,242")
             .expect("selected graph value should render in graph");
-        let a_labels = find_styled_symbol_positions_in_area(&buffer, graph, "A", THEMES[0].warning);
-        let b_labels = find_styled_symbol_positions_in_area(&buffer, graph, "B", THEMES[0].warning);
+        let a_labels = find_styled_symbol_positions_in_area(&buffer, graph, "A", THEMES[0].accent);
+        let b_labels = find_styled_symbol_positions_in_area(&buffer, graph, "B", THEMES[0].accent);
         let graph_rows = ui::layout::details_graph_rows(graph);
         let expected_label_y = graph_rows[1].bottom().saturating_sub(1);
 
@@ -5034,12 +5039,12 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(!rendered.contains("Slot#1/"), "{rendered}");
         assert!(
-            rendered.contains("Slot#1 · Private · proc-0 · B-A: --"),
+            rendered.contains("Slot#1 · PrivBytes · proc-0 · B-A: --"),
             "{rendered}"
         );
         assert!(rendered.contains("SAMPLES · Slot#1"), "{rendered}");
         assert!(!rendered.contains("SAMPLES · Slot#1/"), "{rendered}");
-        assert!(rendered.contains("A/B Time      Private"), "{rendered}");
+        assert!(rendered.contains("A/B Time      PrivBytes"), "{rendered}");
         assert!(rendered.contains("MA5:"), "{rendered}");
         assert!(!rendered.contains("Details"), "{rendered}");
         assert!(!rendered.contains("A/B not set"), "{rendered}");
@@ -5066,7 +5071,10 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 140, 80);
 
-        assert!(rendered.contains("Slot#1 · Private · proc-0"), "{rendered}");
+        assert!(
+            rendered.contains("Slot#1 · PrivBytes · proc-0"),
+            "{rendered}"
+        );
         assert!(rendered.contains("Slot#2 · WS · proc-0"), "{rendered}");
         assert_eq!(rendered.matches("B-A: --").count(), 2, "{rendered}");
         assert_eq!(rendered.matches("f: Fit all").count(), 1, "{rendered}");
@@ -5083,7 +5091,7 @@ processes = ["api.exe", "worker.exe"]
         let buffer = render_app_to_buffer(&app, 140, 80);
         let (active_x, active_y) =
             find_text_position(&buffer, "Slot#2 · WS").expect("active Graph title should render");
-        let (inactive_x, inactive_y) = find_text_position(&buffer, "Slot#1 · Private")
+        let (inactive_x, inactive_y) = find_text_position(&buffer, "Slot#1 · PrivBytes")
             .expect("inactive Graph title should render");
         assert_eq!(buffer[(active_x + 9, active_y)].fg, THEMES[0].text);
         assert_eq!(buffer[(inactive_x + 9, inactive_y)].fg, THEMES[0].muted);
@@ -5146,7 +5154,7 @@ processes = ["api.exe", "worker.exe"]
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let rendered = buffer_to_text(&buffer);
-        assert!(rendered.contains("Slot#1 · Private"), "{rendered}");
+        assert!(rendered.contains("Slot#1 · PrivBytes"), "{rendered}");
         assert!(rendered.contains("Slot#2 · Hndl"), "{rendered}");
         assert!(rendered.contains("5.9 MB"), "{rendered}");
         assert!(rendered.contains("5,900,000"), "{rendered}");
@@ -5185,7 +5193,7 @@ processes = ["api.exe", "worker.exe"]
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let rendered = buffer_to_text(&buffer);
-        assert!(rendered.contains("Slot#1 · Private"), "{rendered}");
+        assert!(rendered.contains("Slot#1 · PrivBytes"), "{rendered}");
         assert!(rendered.contains("Slot#2 · Hndl"), "{rendered}");
         assert!(rendered.contains("5.9 MB"), "{rendered}");
 
@@ -5571,7 +5579,7 @@ processes = ["api.exe", "worker.exe"]
             let (intersection_x, intersection_y) = find_text_position(&buffer, "987.7 MB")
                 .expect("selected row and column intersection should be rendered");
             let (header_x, header_y) =
-                find_text_position(&buffer, "Private").expect("selected header should render");
+                find_text_position(&buffer, "PrivBytes").expect("selected header should render");
 
             assert_eq!(buffer[(row_x, row_y)].bg, theme.table_selection_surface);
             assert_eq!(
@@ -5603,7 +5611,7 @@ processes = ["api.exe", "worker.exe"]
                 direction: SortDirection::Desc,
             };
             let buffer = render_app_to_buffer(&app, 100, 30);
-            let (x, y) = find_text_position(&buffer, "Private ↓")
+            let (x, y) = find_text_position(&buffer, "PrivBytes ↓")
                 .expect("sorted process header should be rendered");
             let (pid_x, pid_y) =
                 find_text_position(&buffer, "PID").expect("ordinary process header should render");
@@ -5611,7 +5619,7 @@ processes = ["api.exe", "worker.exe"]
             assert_eq!(buffer[(pid_x, pid_y)].bg, theme.panel);
             assert_eq!(buffer[(x, y)].bg, theme.table_selection_surface);
 
-            for offset in 0.."Private".len() as u16 {
+            for offset in 0.."PrivBytes".len() as u16 {
                 assert!(
                     buffer[(x + offset, y)]
                         .modifier
@@ -5619,7 +5627,7 @@ processes = ["api.exe", "worker.exe"]
                 );
             }
             assert!(
-                !buffer[(x + "Private ".len() as u16, y)]
+                !buffer[(x + "PrivBytes ".len() as u16, y)]
                     .modifier
                     .contains(ratatui::style::Modifier::UNDERLINED)
             );
@@ -5705,7 +5713,7 @@ processes = ["api.exe", "worker.exe"]
         app.show_details = false;
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (value_x, value_y) = find_text_position(&buffer, "107.4GB")
+        let (value_x, value_y) = find_text_position(&buffer, "107.4 GB")
             .expect("graphed private bytes should be rendered");
         let (name_x, name_y) =
             find_text_position(&buffer, "target.exe").expect("tracked name should be rendered");
@@ -8201,7 +8209,7 @@ processes = ["api.exe", "worker.exe"]
             app::clipboard::last_copied_text().as_deref(),
             Some("10:00:01\t1,234\t+1,134")
         );
-        assert_eq!(app.status, "Copied row: 10:00:01 Private=1,234");
+        assert_eq!(app.status, "Copied row: 10:00:01 PrivBytes=1,234");
     }
 
     #[test]
@@ -11140,7 +11148,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app_with_worker(5, 10, sampling_worker);
         app.select_last_row();
         app.sampling_in_progress = true;
-        app.status = "Selected column: Private".to_string();
+        app.status = "Selected column: PrivBytes".to_string();
 
         result_tx
             .send(CollectSnapshotResult {
@@ -11154,7 +11162,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.snapshot.process_count, 2);
         assert_eq!(app.visible_process_count(), 2);
         assert_eq!(app.process_table_state.selected(), Some(1));
-        assert_eq!(app.status, "Selected column: Private");
+        assert_eq!(app.status, "Selected column: PrivBytes");
         assert_eq!(app.process_history.len(), 2);
     }
 
@@ -12193,10 +12201,10 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(
-            rendered.contains("Slot#1 · Private · app.exe"),
+            rendered.contains("Slot#1 · PrivBytes · app.exe"),
             "{rendered}"
         );
-        assert!(rendered.contains("A/B Time      Private"), "{rendered}");
+        assert!(rendered.contains("A/B Time      PrivBytes"), "{rendered}");
         assert!(rendered.contains("1,024"), "{rendered}");
     }
 

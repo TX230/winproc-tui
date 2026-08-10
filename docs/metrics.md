@@ -23,7 +23,7 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
 | `CPU%` | `cpu_percent` | CPU usage for the target process, shown as a percentage of total logical CPU capacity. | PDH `\Process(*)\% Processor Time` | `%` with 1 decimal place |
-| `Private` | `private_bytes` | Committed memory owned by the process. This corresponds to Windows Commit size. | PDH `Private Bytes`; fallback is `sysinfo::virtual_memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `PrivBytes` | `private_bytes` | Committed memory owned by the process. This corresponds to Windows Commit size. | PDH `Private Bytes`; fallback is `sysinfo::virtual_memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `WS` | `workset_bytes` | Working Set currently resident in physical memory. | PDH `Working Set`; fallback is `sysinfo::memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `WS Priv` | `workset_private_bytes` | Private part of the Working Set that is not shared with other processes. | PDH `Working Set - Private` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `Thrd` | `thread_count` | Thread count. Used to spot unexpected growth. | ToolHelp process snapshot | Integer |
@@ -142,7 +142,7 @@ The `Metrics` tab always lists the 14 numeric selectable process metrics in `Met
 | Processes column | Metrics row |
 |---|---|
 | `CPU%` | `CPU Usage` |
-| `Private` | `Private Bytes` |
+| `PrivBytes` | `Private Bytes` |
 | `WS` | `Working Set` |
 | `WS Priv` | `Working Set - Private` |
 | `Thrd` | `Threads` |
