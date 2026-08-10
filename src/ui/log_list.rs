@@ -45,7 +45,7 @@ pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &Ap
             if app.log_list_worker.is_some() {
                 "Loading..."
             } else {
-                "No .log files found."
+                "No .log files here. Close and use Ctrl+R to record, or choose Directory."
             },
             Style::default().fg(theme.muted),
         )));

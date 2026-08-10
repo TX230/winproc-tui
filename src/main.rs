@@ -7686,9 +7686,11 @@ processes = ["api.exe", "worker.exe"]
         let rendered = buffer_to_text(terminal.backend().buffer());
 
         assert!(rendered.contains("C:/logs/example.log"), "{rendered}");
-        assert!(rendered.contains("Path"), "{rendered}");
+        assert!(rendered.contains("Log file"), "{rendered}");
         assert!(
-            rendered.contains("Enter a log file path. Missing parent directories will be created."),
+            rendered.contains(
+                "Records JSON Lines (.log). Open later with Ctrl+L; creates parent dirs."
+            ),
             "{rendered}"
         );
         assert!(
@@ -11634,6 +11636,22 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("[ Directory ]"), "{rendered}");
         assert!(rendered.contains("[ Refresh ]"), "{rendered}");
         assert!(rendered.contains("[ Close ]"), "{rendered}");
+    }
+
+    #[test]
+    fn empty_log_list_explains_how_to_record_or_change_directory() {
+        let mut app = make_test_app(1, 10);
+        app.show_log_list = true;
+        app.log_list_dir = Some(std::path::PathBuf::from("C:/logs"));
+
+        let rendered = render_app_to_text(&app, 120, 45);
+
+        assert!(
+            rendered.contains(
+                "No .log files here. Close and use Ctrl+R to record, or choose Directory."
+            ),
+            "{rendered}"
+        );
     }
 
     #[test]
