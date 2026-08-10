@@ -243,9 +243,10 @@ pub(crate) fn column_picker_row_for_index(index: usize) -> usize {
 
 fn column_picker_modal() -> ScrollableModal {
     ScrollableModal::new(
-        "Columns",
+        "COLUMNS",
         column_picker_content_width(),
         column_picker_content_height(),
         CLOSE_AREA_HEIGHT,
     )
+    .with_bold_title()
 }

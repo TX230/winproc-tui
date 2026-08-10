@@ -51,7 +51,7 @@ pub(crate) fn draw_process_info_dialog(
     let layout = process_info_dialog_layout_for_screen(screen);
     frame.render_widget(Clear, layout.area);
     frame.render_widget(
-        panel_block_focused(process_info_title(app), theme, true),
+        panel_block_focused(process_info_title(app, theme), theme, true),
         layout.area,
     );
     draw_tabs(frame, layout, app.process_info_tab, theme);
@@ -161,10 +161,20 @@ pub(crate) fn process_info_scrollbar_area_for_screen(screen: Rect, app: &App) ->
     )
 }
 
-fn process_info_title(app: &App) -> String {
-    app.process_info_target_process()
-        .map(|process| format!("Process Info · {} · PID {}", process.name, process.pid))
-        .unwrap_or_else(|| "Process Info".to_string())
+fn process_info_title(app: &App, theme: Theme) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        "PROCESS INFO",
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
+    if let Some(process) = app.process_info_target_process() {
+        spans.push(Span::styled(
+            format!(" · {} · PID {}", process.name, process.pid),
+            Style::default()
+                .fg(theme.muted)
+                .remove_modifier(Modifier::BOLD),
+        ));
+    }
+    Line::from(spans)
 }
 
 fn draw_tabs(

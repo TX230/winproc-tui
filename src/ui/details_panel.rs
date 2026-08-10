@@ -55,7 +55,12 @@ pub(crate) fn draw_details_panel(
         panel_block_focused("", theme, app.panel_has_focus(FocusedPanel::DetailsGraph)),
         layout.graph_slots,
     );
-    draw_graph_navigator(frame, &layout, theme);
+    draw_graph_navigator(
+        frame,
+        &layout,
+        app.panel_has_focus(FocusedPanel::DetailsGraph),
+        theme,
+    );
 
     let visible_indices = layout
         .graph_cards
@@ -199,12 +204,17 @@ fn render_graph_card(
 fn draw_graph_navigator(
     frame: &mut ratatui::Frame<'_>,
     layout: &GraphWorkspaceLayout,
+    focused: bool,
     theme: Theme,
 ) {
     frame.render_widget(
         Paragraph::new(layout.navigator_prefix_label.clone()).style(
             Style::default()
-                .fg(theme.text)
+                .fg(if focused {
+                    theme.focus_border
+                } else {
+                    theme.border
+                })
                 .bg(theme.panel)
                 .add_modifier(Modifier::BOLD),
         ),
@@ -274,10 +284,7 @@ fn draw_active_samples_inspector(
         return;
     };
     let title = Line::from(vec![
-        Span::styled(
-            "Samples",
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-        ),
+        Span::styled("SAMPLES", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(
             format!(
                 " · Slot#{}/{} · {} · {}",

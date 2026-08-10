@@ -9,8 +9,12 @@ use crate::{
     app::{App, RecordingOverwriteSelection, RecordingPathSelection},
     ui::{
         Theme,
+        footer::shortcut_spans,
         layout::centered_rect,
-        widgets::{block::panel_block_focused, confirm_dialog},
+        widgets::{
+            block::{panel_block_focused, panel_title},
+            confirm_dialog,
+        },
     },
 };
 
@@ -18,6 +22,8 @@ const RECORDING_PATH_WIDTH: u16 = 78;
 const RECORDING_PATH_HEIGHT: u16 = 8;
 const RECORDING_PATH_INPUT_ROW: u16 = 1;
 const RECORDING_PATH_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 5;
+const RECORDING_OVERWRITE_WIDTH: u16 = 48;
+const RECORDING_OVERWRITE_HEIGHT: u16 = 8;
 const OVERWRITE_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 4;
 const NO_TRACKED_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 4;
 
@@ -29,7 +35,7 @@ pub(crate) fn draw_recording_path_dialog(
 ) {
     let popup =
         confirm_dialog::centered_dialog_rect(area, RECORDING_PATH_WIDTH, RECORDING_PATH_HEIGHT);
-    let block = recording_block("Recording", theme);
+    let block = recording_block(panel_title("RECORDING"), theme);
     let content = block.inner(popup);
     let input_area = Rect::new(
         content.x,
@@ -144,7 +150,7 @@ pub(crate) fn draw_recording_overwrite_confirm(
     app: &App,
     theme: Theme,
 ) {
-    let popup = centered_rect(48, 16, area);
+    let popup = recording_overwrite_dialog_area(area);
     let lines = Text::from(vec![
         Line::from(Span::styled(
             "Overwrite existing log?",
@@ -157,15 +163,15 @@ pub(crate) fn draw_recording_overwrite_confirm(
         )),
         Line::from(""),
         overwrite_button_line(app.recording_overwrite_selection, theme),
-        Line::from(Span::styled(
-            "Enter selects / Esc cancels / y overwrites",
-            Style::default().fg(theme.muted),
+        Line::from(shortcut_spans(
+            &[("Enter", "Select"), ("Esc", "Cancel"), ("y", "Overwrite")],
+            theme,
         )),
     ]);
 
     frame.render_widget(Clear, popup);
     let dialog = Paragraph::new(lines)
-        .block(recording_block("Confirm", theme))
+        .block(recording_block(panel_title("CONFIRM"), theme))
         .alignment(Alignment::Center);
     frame.render_widget(dialog, popup);
 }
@@ -192,7 +198,7 @@ pub(crate) fn draw_recording_no_tracked_warning(
 
     frame.render_widget(Clear, popup);
     let dialog = Paragraph::new(lines)
-        .block(recording_block("Warning", theme))
+        .block(recording_block(panel_title("WARNING"), theme))
         .alignment(Alignment::Center);
     frame.render_widget(dialog, popup);
 }
@@ -202,7 +208,7 @@ pub(crate) fn recording_overwrite_button_at(
     x: u16,
     y: u16,
 ) -> Option<RecordingOverwriteSelection> {
-    let popup = centered_rect(48, 16, area);
+    let popup = recording_overwrite_dialog_area(area);
     let content = popup.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
@@ -225,6 +231,14 @@ pub(crate) fn recording_overwrite_button_at(
         })
 }
 
+fn recording_overwrite_dialog_area(area: Rect) -> Rect {
+    confirm_dialog::centered_dialog_rect(
+        area,
+        RECORDING_OVERWRITE_WIDTH,
+        RECORDING_OVERWRITE_HEIGHT,
+    )
+}
+
 pub(crate) fn recording_no_tracked_ok_button_area(area: Rect) -> Option<Rect> {
     let popup = centered_rect(52, 16, area);
     let content = popup.inner(ratatui::layout::Margin {
@@ -236,7 +250,7 @@ pub(crate) fn recording_no_tracked_ok_button_area(area: Rect) -> Option<Rect> {
         .next()
 }
 
-fn recording_block(title: &'static str, theme: Theme) -> ratatui::widgets::Block<'static> {
+fn recording_block<'a>(title: impl Into<Line<'a>>, theme: Theme) -> ratatui::widgets::Block<'a> {
     panel_block_focused(title, theme, true)
 }
 

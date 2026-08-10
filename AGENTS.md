@@ -155,6 +155,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Keep the TUI compact and low-noise. Do not add unnecessary borders, spacing, explanatory text, or decoration.
 - Keep clipboard output raw and minimal so it can be pasted as-is. Do not add unnecessary headers or explanations.
 - Buttons such as OK / Cancel at the bottom of dialogs must be operable by mouse click as well as keyboard.
+- Format shortcut guidance inside confirmation dialogs exactly like the screen footer: show each key first in the muted style, its action label in the normal text style, and separate bindings with two spaces. Do not use prose-like slash-separated copy such as `Enter selects / Esc cancels`.
 - Detailed user-facing controls and UI behavior belong in README, Help, Footer, tests, and implementation. Metric definitions belong in `docs/metrics.md`; design-level boundaries and invariants belong in `docs/architecture.md`.
 - When changing controls or UI behavior, update the canonical user-facing documentation and tests together. Help, Footer, README, tests, and actual key handling must stay aligned.
 

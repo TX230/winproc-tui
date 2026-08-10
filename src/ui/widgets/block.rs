@@ -1,10 +1,17 @@
 use ratatui::{
-    prelude::Style,
-    text::Line,
+    prelude::{Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders},
 };
 
 use crate::ui::Theme;
+
+pub(crate) fn panel_title(title: &'static str) -> Line<'static> {
+    Line::from(Span::styled(
+        title,
+        Style::default().add_modifier(Modifier::BOLD),
+    ))
+}
 
 pub(crate) fn panel_block<'a>(title: impl Into<Line<'a>>, theme: Theme) -> Block<'a> {
     Block::default()

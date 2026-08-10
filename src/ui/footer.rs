@@ -125,7 +125,10 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
     shortcut_spans(&items, theme)
 }
 
-fn shortcut_spans(items: &[(&'static str, &'static str)], theme: Theme) -> Vec<Span<'static>> {
+pub(crate) fn shortcut_spans(
+    items: &[(&'static str, &'static str)],
+    theme: Theme,
+) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for (index, (key, label)) in items.iter().enumerate() {
         if index > 0 {

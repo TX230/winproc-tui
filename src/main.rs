@@ -99,7 +99,7 @@ use ui::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES, details_graph_area_for_app,
     details_samples_area_for_app, details_shared_controls_area_for_app, main_panel_areas,
     main_panel_areas_for_app, process_kill_button_at, process_kill_dialog_area,
-    process_table_visible_column_count, screen_layout,
+    process_table_visible_column_count, screen_layout, tracked_remove_dialog_area,
 };
 #[cfg(test)]
 use ui::{
@@ -1140,6 +1140,10 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(popup.height, 11);
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        assert!(
+            find_text_position(&buffer, "Enter Select  Esc Cancel  y Kill").is_some(),
+            "process-kill shortcuts should follow footer formatting"
+        );
         let (kill_x, kill_y) =
             find_text_position(&buffer, "[ Kill ]").expect("kill button should render");
 
@@ -3592,6 +3596,148 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn top_level_panel_titles_follow_their_border_color_in_both_themes() {
+        let screen = Rect::new(0, 0, 180, 60);
+        for theme_index in 0..ui::THEMES.len() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+            assign_private_graph(&mut app);
+            app.show_samples_panel = true;
+            app::sync_layout_state(&mut app, screen);
+
+            let main_panels = main_panel_areas_for_app(screen, &app);
+            let graph_layout = ui::layout::graph_workspace_layout(
+                main_panels.details.expect("Graph Workspace should render"),
+                &app,
+            );
+            let titled_panels = [
+                (
+                    FocusedPanel::System,
+                    ui::ram_vram_panel_area_for_screen(screen, &app),
+                    "RAM/VRAM",
+                ),
+                (
+                    FocusedPanel::SystemActivity,
+                    ui::system_activity_panel_area_for_screen(screen, &app),
+                    "NW/DISK",
+                ),
+                (
+                    FocusedPanel::Cpu,
+                    ui::cpu_panel_area_for_screen(screen, &app),
+                    "CPUS",
+                ),
+                (
+                    FocusedPanel::Processes,
+                    main_panels.processes.area,
+                    "PROCESSES",
+                ),
+                (
+                    FocusedPanel::DetailsGraph,
+                    graph_layout.navigator_prefix,
+                    "Slot#1/1",
+                ),
+                (
+                    FocusedPanel::DetailsSamples,
+                    graph_layout.samples.expect("Samples should render"),
+                    "SAMPLES",
+                ),
+            ];
+
+            for (focused_panel, _, _) in titled_panels {
+                app.focused_panel = focused_panel;
+                let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+                for (panel, area, title) in titled_panels {
+                    let (x, y) = find_text_position_in_area(&buffer, area, title)
+                        .unwrap_or_else(|| panic!("missing title {title}"));
+                    let expected = if panel == focused_panel {
+                        app.theme().focus_border
+                    } else {
+                        app.theme().border
+                    };
+                    assert_eq!(
+                        buffer[(x, y)].fg,
+                        expected,
+                        "theme={theme_index}, focus={focused_panel:?}, title={title}"
+                    );
+                    assert!(
+                        buffer[(x, y)].modifier.contains(Modifier::BOLD),
+                        "top-level panel title should be bold: theme={theme_index}, focus={focused_panel:?}, title={title}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn panel_and_dialog_title_names_are_uppercase_and_bold_in_both_themes() {
+        let screen = Rect::new(0, 0, 180, 60);
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+
+            app.show_help = true;
+            let help = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&help, "HELP", theme);
+            app.show_help = false;
+
+            app.show_column_picker = true;
+            let columns = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&columns, "COLUMNS", theme);
+            app.show_column_picker = false;
+
+            app.show_system_info_dialog = true;
+            let system_info = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&system_info, "SYSTEM INFO", theme);
+            app.show_system_info_dialog = false;
+
+            app.show_log_dir_dialog = true;
+            let log_directory = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&log_directory, "LOG DIRECTORY", theme);
+            app.show_log_dir_dialog = false;
+
+            app.open_selected_process_info_dialog().unwrap();
+            let process_info = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&process_info, "PROCESS INFO", theme);
+            let (metadata_x, metadata_y) = find_text_position(&process_info, "proc-0 · PID 0")
+                .expect("Process Info target metadata should render");
+            assert_eq!(process_info[(metadata_x, metadata_y)].fg, theme.muted);
+            assert!(
+                !process_info[(metadata_x, metadata_y)]
+                    .modifier
+                    .contains(Modifier::BOLD),
+                "Process Info target metadata should use normal weight"
+            );
+            app.close_process_info_dialog();
+
+            app.show_recording_path_dialog = true;
+            let recording = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&recording, "RECORDING", theme);
+            app.show_recording_path_dialog = false;
+
+            app.show_log_list = true;
+            let logs = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&logs, "LOGS", theme);
+            app.show_log_list = false;
+
+            app.open_tracked_lists();
+            let tracked_lists = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_dialog_title_style(&tracked_lists, "TRACKED LISTS", theme);
+            assert_title_style(&tracked_lists, "LOAD TRACKED LIST", theme.border);
+            assert_title_style(&tracked_lists, "SAVE CURRENT TRACKED LIST", theme.border);
+            app.close_tracked_lists();
+
+            app.show_display_area_warning = true;
+            let warning = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_title_style(&warning, "WARNING", theme.warning);
+            app.show_display_area_warning = false;
+
+            app.show_quit_confirmation = true;
+            let confirm = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_title_style(&confirm, "CONFIRM", theme.warning);
+        }
+    }
+
+    #[test]
     fn clicking_graph_slots_outer_frame_moves_focus_to_graphs() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
@@ -4139,14 +4285,14 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("Load Tracked List"), "{rendered}");
+        assert!(rendered.contains("LOAD TRACKED LIST"), "{rendered}");
         assert!(
             rendered
                 .contains("Up/Down selects · Enter loads · Click Empty loads · F2/Del saved only"),
             "{rendered}"
         );
         assert!(rendered.contains("Empty (default)"), "{rendered}");
-        assert!(rendered.contains("Save Current Tracked List"), "{rendered}");
+        assert!(rendered.contains("SAVE CURRENT TRACKED LIST"), "{rendered}");
         assert!(rendered.contains("Current: Browser"), "{rendered}");
         assert!(rendered.contains("List name:  Browser"), "{rendered}");
         assert!(rendered.contains("Tracked List startup"), "{rendered}");
@@ -4628,7 +4774,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("Samples · Slot#1/1 · proc-0 · Private"),
+            rendered.contains("SAMPLES · Slot#1/1 · proc-0 · Private"),
             "{rendered}"
         );
         assert!(rendered.contains("M  Time      Private"), "{rendered}");
@@ -4667,7 +4813,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(rendered.matches("d: Delta").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("l: Auto").count(), 1, "{rendered}");
         assert_eq!(
-            rendered.matches("Samples · Slot#2/2").count(),
+            rendered.matches("SAMPLES · Slot#2/2").count(),
             1,
             "{rendered}"
         );
@@ -6915,6 +7061,10 @@ processes = ["api.exe", "worker.exe"]
         app.show_recording_path_dialog = true;
         app.show_recording_overwrite_confirmation = true;
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        assert!(
+            find_text_position(&buffer, "Enter Select  Esc Cancel  y Overwrite").is_some(),
+            "overwrite shortcuts should follow footer formatting"
+        );
         let (x, y) =
             find_text_position(&buffer, "[ Cancel ]").expect("Cancel button should render");
 
@@ -7092,6 +7242,39 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(!app.show_tracked_remove_confirmation);
         assert_eq!(app.status, "Tracked removal canceled");
+    }
+
+    #[test]
+    fn tracked_remove_confirmation_is_compact_left_aligned_and_uses_footer_shortcuts() {
+        let screen = Rect::new(0, 0, 120, 45);
+        let mut app = make_test_app(1, 10);
+        app.show_tracked_remove_confirmation = true;
+        app.tracked_remove_name = "target.exe".to_string();
+        app.tracked_remove_total_samples = 143;
+        app.tracked_remove_discarded_samples = 23;
+
+        let popup = tracked_remove_dialog_area(screen);
+        assert_eq!(popup.width, 74);
+        assert_eq!(popup.height, 10);
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let message = "target.exe has 143 in-memory samples.";
+        let (message_x, _) =
+            find_text_position(&buffer, message).expect("confirmation message should render");
+        assert_eq!(
+            message_x,
+            popup.x + 1,
+            "message body should be left aligned"
+        );
+
+        let shortcut = "Enter Select  Esc Cancel  y Remove";
+        assert!(find_text_position(&buffer, shortcut).is_some());
+        assert!(find_text_position(&buffer, "Enter selects / Esc cancels / y removes").is_none());
+
+        let (enter_x, enter_y) =
+            find_text_position(&buffer, shortcut).expect("shortcut line should render");
+        assert_eq!(buffer[(enter_x, enter_y)].fg, app.theme().muted);
+        assert_eq!(buffer[(enter_x + 6, enter_y)].fg, app.theme().text);
     }
 
     #[test]
@@ -7732,7 +7915,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.pending_process_info.is_none());
 
         let rendered = render_app_to_text(&app, 100, 20);
-        assert_eq!(rendered.matches("System Info").count(), 1, "{rendered}");
+        assert_eq!(rendered.matches("SYSTEM INFO").count(), 1, "{rendered}");
         assert!(!rendered.contains("System Activity"), "{rendered}");
         assert!(!rendered.contains("CPUS"), "{rendered}");
         assert!(!rendered.contains("CPU Usage ["), "{rendered}");
@@ -10332,7 +10515,7 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(rendered.contains("Continue?"), "{rendered}");
         assert!(
-            rendered.contains("Enter selects / Esc cancels / y removes"),
+            rendered.contains("Enter Select  Esc Cancel  y Remove"),
             "{rendered}"
         );
     }
@@ -11137,13 +11320,13 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.show_log_list = true;
         let logs = render_app_to_buffer(&app, screen.width, screen.height);
-        let (logs_x, logs_y) = find_text_position(&logs, "Logs").expect("Logs title should render");
+        let (logs_x, logs_y) = find_text_position(&logs, "LOGS").expect("Logs title should render");
 
         app.show_log_list = false;
         app.show_recording_path_dialog = true;
         let recording = render_app_to_buffer(&app, screen.width, screen.height);
         let (recording_x, recording_y) =
-            find_text_position(&recording, "Recording").expect("Recording title should render");
+            find_text_position(&recording, "RECORDING").expect("Recording title should render");
 
         assert_eq!(logs_x, recording_x);
         assert_eq!(logs[(logs_x - 1, logs_y)].symbol(), "┏");
@@ -11741,6 +11924,25 @@ processes = ["api.exe", "worker.exe"]
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn assert_dialog_title_style(buffer: &ratatui::buffer::Buffer, title: &str, theme: ui::Theme) {
+        assert_title_style(buffer, title, theme.focus_border);
+    }
+
+    fn assert_title_style(
+        buffer: &ratatui::buffer::Buffer,
+        title: &str,
+        expected_color: ratatui::style::Color,
+    ) {
+        let (x, y) = find_text_position(buffer, title)
+            .unwrap_or_else(|| panic!("dialog title should render: {title}"));
+        let cell = &buffer[(x, y)];
+        assert_eq!(cell.fg, expected_color, "dialog title: {title}");
+        assert!(
+            cell.modifier.contains(Modifier::BOLD),
+            "dialog title should be bold: {title}"
+        );
     }
 
     fn find_text_position(buffer: &ratatui::buffer::Buffer, needle: &str) -> Option<(u16, u16)> {

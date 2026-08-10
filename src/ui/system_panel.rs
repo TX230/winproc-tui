@@ -15,7 +15,7 @@ use crate::{
         format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
         graph_slot::graph_slot_number_span,
         layout::system_panel_area_for_screen,
-        widgets::block::panel_block_focused,
+        widgets::block::{panel_block_focused, panel_title},
     },
 };
 
@@ -40,7 +40,10 @@ pub(crate) fn draw_system_panel(
     frame.render_widget(left, memory_inner);
 
     let activity_block = panel_block_focused(
-        "NW/DISK",
+        Line::from(Span::styled(
+            "NW/DISK",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
         theme,
         app.panel_has_focus(FocusedPanel::SystemActivity),
     );
@@ -62,7 +65,7 @@ pub(crate) fn draw_system_info_dialog(
 ) {
     let popup = system_info_dialog_area(area);
     frame.render_widget(Clear, popup);
-    let block = panel_block_focused("System Info", theme, true);
+    let block = panel_block_focused(panel_title("SYSTEM INFO"), theme, true);
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
@@ -126,9 +129,7 @@ fn system_info_ok_button_area_in_popup(popup: Rect) -> Option<Rect> {
 fn ram_vram_title(app: &App, theme: Theme) -> Line<'static> {
     let mut spans = vec![Span::styled(
         "RAM/VRAM",
-        Style::default()
-            .fg(theme.text)
-            .add_modifier(ratatui::style::Modifier::BOLD),
+        Style::default().add_modifier(ratatui::style::Modifier::BOLD),
     )];
     if app.activity() == AppActivity::LogView {
         spans.push(Span::styled(" | ", Style::default().fg(theme.muted)));

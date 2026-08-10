@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Alignment, Rect},
-    prelude::Style,
-    text::Text,
+    prelude::{Modifier, Style},
+    text::{Line, Span, Text},
     widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
@@ -12,6 +12,7 @@ const HORIZONTAL_CONTENT_PADDING: u16 = 1;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ScrollableModal {
     pub(crate) title: &'static str,
+    pub(crate) title_bold: bool,
     pub(crate) content_width: u16,
     pub(crate) content_height: u16,
     pub(crate) footer_height: u16,
@@ -47,10 +48,16 @@ impl ScrollableModal {
     ) -> Self {
         Self {
             title,
+            title_bold: false,
             content_width,
             content_height,
             footer_height,
         }
+    }
+
+    pub(crate) const fn with_bold_title(mut self) -> Self {
+        self.title_bold = true;
+        self
     }
 
     pub(crate) fn layout(self, area: Rect) -> ScrollableModalLayout {
@@ -139,7 +146,19 @@ impl ScrollableModal {
         let rows = layout.content.height.max(1) as usize;
         let offset = offset.min(text.lines.len().saturating_sub(rows));
         frame.render_widget(Clear, layout.area);
-        frame.render_widget(panel_block_focused(self.title, theme, true), layout.area);
+        let title_style = if self.title_bold {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        frame.render_widget(
+            panel_block_focused(
+                Line::from(Span::styled(self.title, title_style)),
+                theme,
+                true,
+            ),
+            layout.area,
+        );
 
         let mut paragraph = Paragraph::new(text)
             .alignment(Alignment::Left)

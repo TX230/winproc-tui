@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    prelude::Style,
+    prelude::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::Paragraph,
 };
@@ -13,7 +13,14 @@ use crate::{
 };
 
 pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let block = panel_block_focused("CPUS", theme, app.panel_has_focus(FocusedPanel::Cpu));
+    let block = panel_block_focused(
+        Line::from(Span::styled(
+            "CPUS",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        theme,
+        app.panel_has_focus(FocusedPanel::Cpu),
+    );
     let inner = block.inner(area);
     frame.render_widget(block, area);
 

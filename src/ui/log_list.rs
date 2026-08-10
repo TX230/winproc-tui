@@ -12,7 +12,7 @@ use crate::{
     app::{LogDirSelection, LogListFocus},
     ui::{
         Theme,
-        widgets::{confirm_dialog, scrollable_modal::ScrollableModal},
+        widgets::{block::panel_title, confirm_dialog, scrollable_modal::ScrollableModal},
     },
 };
 
@@ -80,7 +80,8 @@ pub(crate) fn draw_log_dir_dialog(
 ) {
     let popup =
         confirm_dialog::centered_dialog_rect(area, LOG_DIR_DIALOG_WIDTH, LOG_DIR_DIALOG_HEIGHT);
-    let block = crate::ui::widgets::block::panel_block_focused("Log directory", theme, true);
+    let block =
+        crate::ui::widgets::block::panel_block_focused(panel_title("LOG DIRECTORY"), theme, true);
     let content = block.inner(popup);
     let input_area = Rect::new(
         content.x,
@@ -384,11 +385,12 @@ fn log_list_modal(app: &App) -> ScrollableModal {
 
 fn log_list_modal_for_height(content_height: u16) -> ScrollableModal {
     ScrollableModal::new(
-        "Logs",
+        "LOGS",
         LOG_LIST_CONTENT_WIDTH,
         content_height.max(LOG_LIST_HEADER_LINE_COUNT + 1),
         FOOTER_HEIGHT,
     )
+    .with_bold_title()
 }
 
 fn log_list_button_line(focus: LogListFocus, theme: Theme) -> Line<'static> {

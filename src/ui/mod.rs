@@ -106,6 +106,8 @@ pub(crate) use tracked_lists::{
 };
 use tracked_remove_confirm::draw_tracked_remove_confirm;
 pub(crate) use tracked_remove_confirm::tracked_remove_button_at;
+#[cfg(test)]
+pub(crate) use tracked_remove_confirm::tracked_remove_dialog_area;
 
 pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     let area = frame.area();
@@ -194,7 +196,7 @@ fn draw_display_area_warning(
     let popup = widgets::confirm_dialog::centered_dialog_rect(area, 38, 4);
     frame.render_widget(Clear, popup);
     let dialog = widgets::confirm_dialog::warning_message_dialog(
-        "Warning",
+        "WARNING",
         "Not enough display area.",
         widgets::confirm_dialog::button_line(&[(" OK ", true)], theme),
         theme,
@@ -216,7 +218,7 @@ fn draw_metric_column_warning(
     let popup = widgets::confirm_dialog::centered_dialog_rect(area, 58, 4);
     frame.render_widget(Clear, popup);
     let dialog = widgets::confirm_dialog::warning_message_dialog(
-        "Warning",
+        "WARNING",
         "Select a graphable metric cell.",
         widgets::confirm_dialog::button_line(&[(" OK ", true)], theme),
         theme,
@@ -238,7 +240,7 @@ fn draw_no_graph_metrics_warning(
     let popup = widgets::confirm_dialog::centered_dialog_rect(area, 82, 5);
     frame.render_widget(Clear, popup);
     let dialog = widgets::confirm_dialog::warning_dialog(
-        "Warning",
+        "WARNING",
         "No metric is selected for graphing.",
         "Select a metric, then press Space or double-click it.",
         widgets::confirm_dialog::button_line(&[(" OK ", true)], theme),

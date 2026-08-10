@@ -637,9 +637,10 @@ fn column_line_count(sections: &[HelpSection]) -> usize {
 
 fn help_modal() -> ScrollableModal {
     ScrollableModal::new(
-        "Help",
+        "HELP",
         help_content_width(),
         help_content_line_count(),
         CLOSE_AREA_HEIGHT,
     )
+    .with_bold_title()
 }

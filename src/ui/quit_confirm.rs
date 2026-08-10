@@ -48,14 +48,14 @@ pub(crate) fn draw_quit_confirm(
     frame.render_widget(Clear, popup);
     let dialog = if recording {
         warning_dialog(
-            "Confirm",
+            "CONFIRM",
             message,
             "The log will be flushed before exit.",
             buttons,
             theme,
         )
     } else {
-        warning_message_dialog("Confirm", message, buttons, theme)
+        warning_message_dialog("CONFIRM", message, buttons, theme)
     };
     frame.render_widget(dialog, popup);
 }

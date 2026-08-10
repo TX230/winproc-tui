@@ -803,7 +803,7 @@ fn process_table_title(app: &App, theme: Theme) -> Line<'static> {
     let filter = app.active_filter_text();
     let mut spans = vec![Span::styled(
         PROCESS_TITLE,
-        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        Style::default().add_modifier(Modifier::BOLD),
     )];
     if app.is_filter_editing() {
         spans.push(title_separator(theme));

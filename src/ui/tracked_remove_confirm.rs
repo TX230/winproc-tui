@@ -10,12 +10,17 @@ use crate::{
     model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY,
     ui::{
         Theme,
+        footer::shortcut_spans,
         format::format_integer,
-        layout::centered_rect,
-        widgets::{block::panel_block_focused, confirm_dialog},
+        widgets::{
+            block::{panel_block_focused, panel_title},
+            confirm_dialog,
+        },
     },
 };
 
+const POPUP_WIDTH: u16 = 74;
+const POPUP_HEIGHT: u16 = 10;
 const BUTTON_ROW_FROM_CONTENT_TOP: u16 = 6;
 
 pub(crate) fn draw_tracked_remove_confirm(
@@ -24,7 +29,7 @@ pub(crate) fn draw_tracked_remove_confirm(
     app: &App,
     theme: Theme,
 ) {
-    let popup = centered_rect(68, 26, area);
+    let popup = tracked_remove_dialog_area(area);
     let retained = format_integer(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as u64);
     let total = format_integer(app.tracked_remove_total_samples as u64);
     let discarded = format_integer(app.tracked_remove_discarded_samples as u64);
@@ -34,7 +39,8 @@ pub(crate) fn draw_tracked_remove_confirm(
             Style::default()
                 .fg(theme.warning)
                 .add_modifier(Modifier::BOLD),
-        )),
+        ))
+        .alignment(Alignment::Center),
         Line::from(""),
         Line::from(Span::styled(
             format!("{} has {total} in-memory samples.", app.tracked_remove_name),
@@ -48,17 +54,17 @@ pub(crate) fn draw_tracked_remove_confirm(
         )),
         Line::from(Span::styled("Continue?", Style::default().fg(theme.text))),
         Line::from(""),
-        button_line(app.tracked_remove_selection, theme),
-        Line::from(Span::styled(
-            "Enter selects / Esc cancels / y removes",
-            Style::default().fg(theme.muted),
-        )),
+        button_line(app.tracked_remove_selection, theme).alignment(Alignment::Center),
+        Line::from(shortcut_spans(
+            &[("Enter", "Select"), ("Esc", "Cancel"), ("y", "Remove")],
+            theme,
+        ))
+        .alignment(Alignment::Center),
     ]);
 
     frame.render_widget(Clear, popup);
-    let dialog = Paragraph::new(lines)
-        .block(panel_block_focused("Confirm", theme, true))
-        .alignment(Alignment::Center);
+    let dialog =
+        Paragraph::new(lines).block(panel_block_focused(panel_title("CONFIRM"), theme, true));
     frame.render_widget(dialog, popup);
 }
 
@@ -67,7 +73,7 @@ pub(crate) fn tracked_remove_button_at(
     x: u16,
     y: u16,
 ) -> Option<TrackedRemoveSelection> {
-    let popup = centered_rect(68, 26, area);
+    let popup = tracked_remove_dialog_area(area);
     let content = popup.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
@@ -88,6 +94,10 @@ pub(crate) fn tracked_remove_button_at(
                 TrackedRemoveSelection::Cancel
             }
         })
+}
+
+pub(crate) fn tracked_remove_dialog_area(area: Rect) -> Rect {
+    confirm_dialog::centered_dialog_rect(area, POPUP_WIDTH, POPUP_HEIGHT)
 }
 
 fn button_line(selection: TrackedRemoveSelection, theme: Theme) -> Line<'static> {

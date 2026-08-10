@@ -9,7 +9,11 @@ use crate::{
     app::{App, ProcessKillSelection, distinct_process_kill_image_names},
     ui::{
         Theme,
-        widgets::{block::panel_block_focused, confirm_dialog},
+        footer::shortcut_spans,
+        widgets::{
+            block::{panel_block_focused, panel_title},
+            confirm_dialog,
+        },
     },
 };
 
@@ -49,15 +53,15 @@ pub(crate) fn draw_process_kill_confirm(
         Line::from(Span::styled("Continue?", Style::default().fg(theme.text))),
         Line::from(""),
         button_line(app.process_kill_selection, theme),
-        Line::from(Span::styled(
-            "Enter selects / Esc cancels / y kills",
-            Style::default().fg(theme.muted),
+        Line::from(shortcut_spans(
+            &[("Enter", "Select"), ("Esc", "Cancel"), ("y", "Kill")],
+            theme,
         )),
     ]);
 
     frame.render_widget(Clear, popup);
     let dialog = Paragraph::new(lines)
-        .block(panel_block_focused("Confirm", theme, true))
+        .block(panel_block_focused(panel_title("CONFIRM"), theme, true))
         .alignment(Alignment::Center);
     frame.render_widget(dialog, popup);
 }
