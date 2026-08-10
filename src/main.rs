@@ -2713,74 +2713,6 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn shift_wheel_encodings_change_span_with_graph_focus_outside_graph_viewport() {
-        let mut app = make_test_app(8, 10);
-        let ids = (0..8)
-            .map(|index| add_test_graph(&mut app, index))
-            .collect::<Vec<_>>();
-        app.show_samples_panel = false;
-        app.graph_slot_layout = GraphSlotLayout::OneColumn;
-        app.graph_time_span_seconds = 120;
-        let screen = Rect::new(0, 0, 100, 45);
-        app::sync_layout_state(&mut app, screen);
-        assert!(app.set_active_graph(ids[0]));
-        app.focused_panel = FocusedPanel::DetailsGraph;
-
-        app.on_mouse(
-            MouseEvent {
-                kind: MouseEventKind::ScrollUp,
-                column: 0,
-                row: 0,
-                modifiers: KeyModifiers::SHIFT,
-            },
-            screen,
-        );
-
-        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.graph_time_span_seconds, 60);
-        assert_eq!(app.graph_scroll_row, 0);
-
-        app.on_mouse(
-            MouseEvent {
-                kind: MouseEventKind::ScrollDown,
-                column: 0,
-                row: 0,
-                modifiers: KeyModifiers::SHIFT,
-            },
-            screen,
-        );
-
-        assert_eq!(app.graph_time_span_seconds, 120);
-        assert_eq!(app.graph_scroll_row, 0);
-
-        app.on_mouse(
-            MouseEvent {
-                kind: MouseEventKind::ScrollLeft,
-                column: 0,
-                row: 0,
-                modifiers: KeyModifiers::SHIFT,
-            },
-            screen,
-        );
-
-        assert_eq!(app.graph_time_span_seconds, 60);
-        assert_eq!(app.graph_scroll_row, 0);
-
-        app.on_mouse(
-            MouseEvent {
-                kind: MouseEventKind::ScrollRight,
-                column: 0,
-                row: 0,
-                modifiers: KeyModifiers::SHIFT,
-            },
-            screen,
-        );
-
-        assert_eq!(app.graph_time_span_seconds, 120);
-        assert_eq!(app.graph_scroll_row, 0);
-    }
-
-    #[test]
     fn graph_right_button_drag_pans_visible_range() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
@@ -6779,8 +6711,8 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("Click panel"), "{rendered}");
         assert!(rendered.contains("Samples auto-scroll"), "{rendered}");
-        assert!(rendered.contains("Shift+Wheel"), "{rendered}");
-        assert!(rendered.contains("Change Graph time span"), "{rendered}");
+        assert!(rendered.contains("PageUp/PageDown"), "{rendered}");
+        assert!(rendered.contains("Change time span"), "{rendered}");
 
         assert!(!rendered.contains("Details panel"), "{rendered}");
         assert!(!rendered.contains("Dialogs"), "{rendered}");
@@ -7012,7 +6944,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(graph.contains("→ Newer"), "{graph}");
         assert!(graph.contains("Enter Info"), "{graph}");
         assert!(graph.contains("Ctrl+←/→ Pan"), "{graph}");
-        assert!(graph.contains("PgUp/PgDn/Shift+Wheel Span"), "{graph}");
+        assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
         assert!(graph.contains("f/z Fit/Min 0"), "{graph}");
         assert!(graph.contains("a/b Set A/B"), "{graph}");
         assert!(graph.contains("Shift+A/B Jump A/B"), "{graph}");

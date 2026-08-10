@@ -234,10 +234,6 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Change time span",
     },
     HelpItem {
-        key: "Shift+Wheel",
-        label: "Change time span",
-    },
-    HelpItem {
         key: "f/z",
         label: "Fit all / compact Min0",
     },
@@ -317,10 +313,6 @@ const MOUSE_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Wheel",
         label: "Scroll / Move selection",
-    },
-    HelpItem {
-        key: "Shift+Wheel",
-        label: "Change Graph time span",
     },
     HelpItem {
         key: "Ctrl+Wheel",

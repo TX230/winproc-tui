@@ -93,7 +93,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
                 ("→", "Newer"),
                 ("Del", "Remove Graph"),
                 ("a/b", "Set A/B"),
-                ("PgUp/PgDn/Shift+Wheel", "Span"),
+                ("PgUp/PgDn", "Span"),
                 ("Ctrl+←/→", "Pan"),
                 ("Enter", "Info"),
                 ("f/z", "Fit/Min 0"),
