@@ -15,7 +15,7 @@ use winapi::{
         },
         winuser::{
             GetAsyncKeyState, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
-            VK_CONTROL, VK_OEM_MINUS, VK_OEM_PLUS,
+            VK_CONTROL, VK_OEM_MINUS, VK_OEM_PLUS, VK_SHIFT,
         },
     },
 };
@@ -109,6 +109,10 @@ pub(crate) fn send_terminal_zoom_shortcut(zoom_in: bool) -> std::io::Result<()> 
     } else {
         Err(std::io::Error::last_os_error())
     }
+}
+
+pub(crate) fn shift_key_is_down() -> bool {
+    unsafe { GetAsyncKeyState(VK_SHIFT) < 0 }
 }
 
 fn control_key_is_down() -> bool {

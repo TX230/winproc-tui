@@ -2314,6 +2314,21 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
         assert_eq!(app.details_sample_offset, 5);
         assert_eq!(app.details_sample_selected, 6);
+
+        let graph_span = app.graph_time_span_seconds;
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 70,
+                row: 20,
+                modifiers: KeyModifiers::SHIFT,
+            },
+            Rect::new(0, 0, 100, 30),
+        );
+
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
+        assert_eq!(app.details_sample_selected, 7);
+        assert_eq!(app.graph_time_span_seconds, graph_span);
     }
 
     #[test]
@@ -2456,6 +2471,40 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
         assert_eq!(app.active_graph_id, Some(ids[1]));
         assert_eq!(app.details_sample_selected, 2);
+    }
+
+    #[test]
+    fn samples_page_keys_scroll_the_list_without_changing_graph_span() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in 0..12 {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.set_details_sample_page_size(4);
+        app.select_details_sample_latest();
+        app.focused_panel = FocusedPanel::DetailsSamples;
+        let graph_span = app.graph_time_span_seconds;
+
+        assert_eq!(app.details_sample_selected, 11);
+        assert_eq!(app.details_sample_offset, 8);
+
+        app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.details_sample_selected, 7);
+        assert_eq!(app.details_sample_offset, 4);
+        assert_eq!(app.graph_time_span_seconds, graph_span);
+
+        app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.details_sample_selected, 11);
+        assert_eq!(app.details_sample_offset, 8);
+        assert_eq!(app.graph_time_span_seconds, graph_span);
     }
 
     #[test]
@@ -2636,6 +2685,74 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
         assert_eq!(app.graph_time_span_seconds, 120);
         assert_eq!(app.graph_scroll_row, 1);
+    }
+
+    #[test]
+    fn shift_wheel_encodings_change_span_with_graph_focus_outside_graph_viewport() {
+        let mut app = make_test_app(8, 10);
+        let ids = (0..8)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.show_samples_panel = false;
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
+        app.graph_time_span_seconds = 120;
+        let screen = Rect::new(0, 0, 100, 45);
+        app::sync_layout_state(&mut app, screen);
+        assert!(app.set_active_graph(ids[0]));
+        app.focused_panel = FocusedPanel::DetailsGraph;
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollUp,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::SHIFT,
+            },
+            screen,
+        );
+
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.graph_time_span_seconds, 60);
+        assert_eq!(app.graph_scroll_row, 0);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::SHIFT,
+            },
+            screen,
+        );
+
+        assert_eq!(app.graph_time_span_seconds, 120);
+        assert_eq!(app.graph_scroll_row, 0);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollLeft,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::SHIFT,
+            },
+            screen,
+        );
+
+        assert_eq!(app.graph_time_span_seconds, 60);
+        assert_eq!(app.graph_scroll_row, 0);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollRight,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::SHIFT,
+            },
+            screen,
+        );
+
+        assert_eq!(app.graph_time_span_seconds, 120);
+        assert_eq!(app.graph_scroll_row, 0);
     }
 
     #[test]
@@ -6615,6 +6732,8 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("Click panel"), "{rendered}");
         assert!(rendered.contains("Samples auto-scroll"), "{rendered}");
+        assert!(rendered.contains("Shift+Wheel"), "{rendered}");
+        assert!(rendered.contains("Change Graph time span"), "{rendered}");
 
         assert!(!rendered.contains("Details panel"), "{rendered}");
         assert!(!rendered.contains("Dialogs"), "{rendered}");
@@ -6846,7 +6965,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(graph.contains("→ Newer"), "{graph}");
         assert!(graph.contains("Enter Info"), "{graph}");
         assert!(graph.contains("Ctrl+←/→ Pan"), "{graph}");
-        assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
+        assert!(graph.contains("PgUp/PgDn/Shift+Wheel Span"), "{graph}");
         assert!(graph.contains("f/z Fit/Min 0"), "{graph}");
         assert!(graph.contains("a/b Set A/B"), "{graph}");
         assert!(graph.contains("Shift+A/B Jump A/B"), "{graph}");
@@ -6856,7 +6975,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(samples.contains("↑/← Older"), "{samples}");
         assert!(samples.contains("↓/→ Newer"), "{samples}");
         assert!(samples.contains("Del Remove Graph"), "{samples}");
-        assert!(samples.contains("PgUp/PgDn Span"), "{samples}");
+        assert!(samples.contains("PgUp/PgDn Scroll"), "{samples}");
         assert!(samples.contains("Home/End Edge"), "{samples}");
         assert!(samples.contains("f/z Fit/Min 0"), "{samples}");
         assert!(samples.contains("Shift+A/B Jump A/B"), "{samples}");

@@ -2613,6 +2613,28 @@ impl App {
         self.status = "Samples selection moved newer".to_string();
     }
 
+    pub(crate) fn select_details_sample_page_older(&mut self) {
+        let amount = self.details_sample_page_size.max(1);
+        self.details_sample_selected = self.details_sample_selected.saturating_sub(amount);
+        self.details_sample_offset = self.details_sample_offset.saturating_sub(amount);
+        self.clamp_details_sample_selection();
+        self.ensure_details_sample_visible();
+        self.details_live = false;
+        self.ensure_selected_sample_in_graph_window();
+        self.status = "Samples selection moved one page older".to_string();
+    }
+
+    pub(crate) fn select_details_sample_page_newer(&mut self) {
+        let amount = self.details_sample_page_size.max(1);
+        self.details_sample_selected = self.details_sample_selected.saturating_add(amount);
+        self.details_sample_offset = self.details_sample_offset.saturating_add(amount);
+        self.clamp_details_sample_selection();
+        self.ensure_details_sample_visible();
+        self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
+        self.ensure_selected_sample_in_graph_window();
+        self.status = "Samples selection moved one page newer".to_string();
+    }
+
     pub(crate) fn set_details_sample_offset(&mut self, offset: usize) {
         let sample_count = self.selected_sample_count();
         if sample_count == 0 {

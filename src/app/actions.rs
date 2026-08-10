@@ -13,7 +13,7 @@ use crate::{
         RecordingOverwriteSelection, TrackedListConfirmSelection, TrackedListsButton,
         TrackedListsView, TrackedRemoveSelection,
     },
-    platform::send_terminal_zoom_shortcut,
+    platform::{send_terminal_zoom_shortcut, shift_key_is_down},
     ui::{
         THEMES, TrackedListNameButton, column_picker_close_button_area_for_screen,
         column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
@@ -863,11 +863,11 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::PageUp => {
-                    self.zoom_graph_time_span(true);
+                    self.select_details_sample_page_older();
                     return Ok(());
                 }
                 KeyCode::PageDown => {
-                    self.zoom_graph_time_span(false);
+                    self.select_details_sample_page_newer();
                     return Ok(());
                 }
                 KeyCode::Left => {
@@ -1346,6 +1346,14 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, mouse: MouseEvent, screen_area: Rect) {
+        // Terminal mouse reports may omit Shift even while the physical key is held.
+        let shift_wheel = matches!(
+            mouse.kind,
+            MouseEventKind::ScrollUp
+                | MouseEventKind::ScrollDown
+                | MouseEventKind::ScrollLeft
+                | MouseEventKind::ScrollRight
+        ) && mouse_wheel_has_shift(&mouse, shift_key_is_down());
         if self.has_modal_focus() {
             self.clear_graph_source_click();
         }
@@ -1907,21 +1915,17 @@ impl App {
                     self.reset_graph_to_live_edge();
                 }
             }
-            MouseEventKind::ScrollUp => self.scroll_at(
-                mouse.column,
-                mouse.row,
-                screen_area,
-                true,
-                mouse.modifiers.contains(KeyModifiers::SHIFT),
-            ),
+            MouseEventKind::ScrollUp => {
+                self.scroll_at(mouse.column, mouse.row, screen_area, true, shift_wheel)
+            }
             MouseEventKind::ScrollDown => {
-                self.scroll_at(
-                    mouse.column,
-                    mouse.row,
-                    screen_area,
-                    false,
-                    mouse.modifiers.contains(KeyModifiers::SHIFT),
-                );
+                self.scroll_at(mouse.column, mouse.row, screen_area, false, shift_wheel);
+            }
+            MouseEventKind::ScrollLeft if shift_wheel => {
+                self.scroll_at(mouse.column, mouse.row, screen_area, true, true)
+            }
+            MouseEventKind::ScrollRight if shift_wheel => {
+                self.scroll_at(mouse.column, mouse.row, screen_area, false, true)
             }
             MouseEventKind::ScrollLeft => {
                 self.pan_graph_at(mouse.column, mouse.row, screen_area, true, true);
@@ -2360,7 +2364,12 @@ impl App {
         self.select_system_activity_metric_index(usize::from(y - first_row_y));
     }
 
-    fn scroll_at(&mut self, x: u16, y: u16, screen_area: Rect, up: bool, _shift: bool) {
+    fn scroll_at(&mut self, x: u16, y: u16, screen_area: Rect, up: bool, shift: bool) {
+        if shift && self.focused_panel == FocusedPanel::DetailsGraph && self.show_details {
+            self.zoom_graph_time_span(up);
+            return;
+        }
+
         if let Some((slot_index, _)) = samples_area_at(self, screen_area, x, y) {
             self.select_graph_index(slot_index);
             self.focused_panel = FocusedPanel::DetailsSamples;
@@ -2373,7 +2382,10 @@ impl App {
         }
 
         if graph_viewport_at(self, screen_area, x, y) {
-            if up {
+            if shift {
+                self.focused_panel = FocusedPanel::DetailsGraph;
+                self.zoom_graph_time_span(up);
+            } else if up {
                 self.scroll_graph_rows_up(1);
             } else {
                 self.scroll_graph_rows_down(1);
@@ -2848,6 +2860,10 @@ fn terminal_zoom_direction(mouse: &MouseEvent) -> Option<bool> {
     }
 }
 
+fn mouse_wheel_has_shift(mouse: &MouseEvent, physical_shift_down: bool) -> bool {
+    mouse.modifiers.contains(KeyModifiers::SHIFT) || physical_shift_down
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2907,6 +2923,24 @@ mod tests {
             }),
             None
         );
+    }
+
+    #[test]
+    fn mouse_wheel_shift_uses_event_modifier_or_physical_key_state() {
+        let without_modifier = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
+        let with_modifier = MouseEvent {
+            modifiers: KeyModifiers::SHIFT,
+            ..without_modifier
+        };
+
+        assert!(mouse_wheel_has_shift(&with_modifier, false));
+        assert!(mouse_wheel_has_shift(&without_modifier, true));
+        assert!(!mouse_wheel_has_shift(&without_modifier, false));
     }
 
     #[test]

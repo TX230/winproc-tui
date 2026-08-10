@@ -238,6 +238,10 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Change time span",
     },
     HelpItem {
+        key: "Shift+Wheel",
+        label: "Change time span",
+    },
+    HelpItem {
         key: "f/z",
         label: "Fit all / compact Min0",
     },
@@ -262,7 +266,7 @@ const SAMPLES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "PageUp/PageDown",
-        label: "Change Graph time span",
+        label: "Move sample selection by page",
     },
     HelpItem {
         key: "Home/End",
@@ -317,6 +321,10 @@ const MOUSE_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Wheel",
         label: "Scroll / Move selection",
+    },
+    HelpItem {
+        key: "Shift+Wheel",
+        label: "Change Graph time span",
     },
     HelpItem {
         key: "Ctrl+Wheel",
