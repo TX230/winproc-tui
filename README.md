@@ -10,9 +10,9 @@ Languages: [English](README.md) | [Japanese](README.ja.md)
 It shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other Windows process metrics. Up to 16 Graphs, A/B comparison, recording, and saved-log review support resource-behavior investigations during development and verification.
 Rather than providing the broad system inspection of Process Explorer or System Informer, it focuses on quickly following changes in a specific process. It is built with Rust/Ratatui.
 
-![winproc-tui main screen showing a four-card Graph Workspace, Samples, and A/B comparison](assets/screenshots/main-screen.png)
+![winproc-tui main screen showing system and process metrics, five Graphs, Samples, and A/B comparison](assets/screenshots/main-screen.png)
 
-_Example investigation of a process's private memory using tracking, display pause, and A/B comparison._
+_Investigating private memory growth alongside system activity and comparing two points with A/B markers._
 
 ## Quick Start
 

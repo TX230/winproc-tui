@@ -10,9 +10,9 @@
 Windows アプリのメモリ、ハンドル、GUI リソース、GPU メモリ、I/O などの現在値と時間変化をターミナルで確認できます。最大 16 個の Graph、A/B 比較、ログ記録と保存ログ表示により、開発・検証時のリソース挙動を調査できます。
 Process Explorer や System Informer のような網羅的なシステム調査ではなく、対象プロセスの変化を素早く追うことに特化しています。Rust/Ratatui で作られています。
 
-![winproc-tui のメイン画面。4 枚の Graph カード、Samples、A/B 比較を表示している](assets/screenshots/main-screen.png)
+![winproc-tui のメイン画面。システムとプロセスのメトリクス、5 枚の Graph、Samples、A/B 比較を表示している](assets/screenshots/main-screen.png)
 
-_追跡、表示の一時停止、A/B 比較を使用してプロセスのプライベートメモリを調査している例です。_
+_システムの状態とともにプロセスのプライベートメモリ増加を確認し、A/B マーカーで 2 時点を比較している例です。_
 
 ## クイックスタート
 
