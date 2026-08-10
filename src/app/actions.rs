@@ -4,13 +4,14 @@ use anyhow::Result;
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::layout::Rect;
+use ratatui::layout::{Margin, Rect};
 
 use crate::{
     app::{
-        App, AppActivity, FocusedPanel, GraphPanDrag, GraphPanDragButton, ProcessInfoFocus,
-        ProcessKillSelection, QuitConfirmSelection, RecordingOverwriteSelection,
-        TrackedListConfirmSelection, TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
+        App, AppActivity, DetailsMetric, FocusedPanel, GraphId, GraphPanDrag, GraphPanDragButton,
+        GraphSlot, ProcessInfoFocus, ProcessKillSelection, QuitConfirmSelection,
+        RecordingOverwriteSelection, TrackedListConfirmSelection, TrackedListsButton,
+        TrackedListsView, TrackedRemoveSelection,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
@@ -20,9 +21,8 @@ use crate::{
         display_area_warning_ok_button_area, help_area, help_close_button_area,
         help_scrollbar_area,
         layout::{
-            ProcessTableLayout, details_graph_area, details_graph_chart_area, details_samples_area,
-            details_shared_controls_area, details_slot_areas, details_slot_title_area,
-            graph_shared_control_areas,
+            GraphWorkspaceLayout, ProcessTableLayout, details_graph_chart_area,
+            graph_shared_control_areas, graph_workspace_layout,
         },
         log_dir_button_at, log_dir_input_area, log_list_button_at, log_list_index_at,
         main_panel_areas_for_app, metric_column_warning_ok_button_area,
@@ -46,6 +46,7 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return Ok(());
         }
+        self.clear_graph_source_click();
 
         if self.show_display_area_warning {
             match key.code {
@@ -762,12 +763,6 @@ impl App {
                     self.move_selection_down(1);
                 }
                 KeyCode::Backspace => self.pop_filter_char(),
-                KeyCode::Char(' ')
-                    if !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT) =>
-                {
-                    self.add_selected_process_to_watch_list();
-                }
                 KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.push_filter_char(ch);
                 }
@@ -795,12 +790,29 @@ impl App {
             return Ok(());
         }
 
+        if is_ctrl_t(key) {
+            self.open_tracked_lists();
+            return Ok(());
+        }
+        if self.focused_panel == FocusedPanel::Processes && is_shift_t(key) {
+            self.toggle_watch_list();
+            return Ok(());
+        }
+        if self.focused_panel == FocusedPanel::Processes && is_plain_t(key) {
+            self.toggle_selected_process_tracking();
+            return Ok(());
+        }
+
         if matches!(
             self.focused_panel,
             FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
         ) && self.show_details
         {
             match key.code {
+                KeyCode::Delete => {
+                    self.remove_active_graph();
+                    return Ok(());
+                }
                 KeyCode::Char(ch)
                     if ch.eq_ignore_ascii_case(&'z')
                         && !key.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -851,11 +863,27 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::PageUp => {
-                    self.select_details_sample_older(self.details_sample_page_size);
+                    self.zoom_graph_time_span(true);
                     return Ok(());
                 }
                 KeyCode::PageDown => {
-                    self.select_details_sample_newer(self.details_sample_page_size);
+                    self.zoom_graph_time_span(false);
+                    return Ok(());
+                }
+                KeyCode::Left => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        self.shift_graph_time_window(true);
+                    } else {
+                        self.select_details_sample_older(1);
+                    }
+                    return Ok(());
+                }
+                KeyCode::Right => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        self.shift_graph_time_window(false);
+                    } else {
+                        self.select_details_sample_newer(1);
+                    }
                     return Ok(());
                 }
                 KeyCode::Home => {
@@ -876,6 +904,14 @@ impl App {
 
         if self.focused_panel == FocusedPanel::DetailsGraph && self.show_details {
             match key.code {
+                KeyCode::Up => {
+                    self.select_previous_graph();
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    self.select_next_graph();
+                    return Ok(());
+                }
                 KeyCode::Enter => {
                     self.open_active_graph_process_info_dialog()?;
                     return Ok(());
@@ -941,11 +977,16 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Char(' ') => {
-                    self.status = "RAM/VRAM metrics keep 7200 samples automatically".to_string();
+                    self.toggle_selected_system_graph();
                     return Ok(());
                 }
                 KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
-                    self.toggle_selected_system_metric_for_graph_slot((ch as u8 - b'1') as usize);
+                    let _ = ch;
+                    self.status = "Use Space or double-click to graph this metric".to_string();
+                    return Ok(());
+                }
+                KeyCode::Char('0') if key.modifiers.is_empty() => {
+                    self.status = "Remove Graphs with Delete or the remove button".to_string();
                     return Ok(());
                 }
                 _ => {}
@@ -977,14 +1018,16 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Char(' ') => {
-                    self.status =
-                        "System Activity metrics keep 7200 samples automatically".to_string();
+                    self.toggle_selected_system_activity_graph();
                     return Ok(());
                 }
                 KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
-                    self.toggle_selected_system_activity_metric_for_graph_slot(
-                        (ch as u8 - b'1') as usize,
-                    );
+                    let _ = ch;
+                    self.status = "Use Space or double-click to graph this metric".to_string();
+                    return Ok(());
+                }
+                KeyCode::Char('0') if key.modifiers.is_empty() => {
+                    self.status = "Remove Graphs with Delete or the remove button".to_string();
                     return Ok(());
                 }
                 _ => {}
@@ -998,11 +1041,16 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Char(' ') => {
-                    self.status = "CPU average keeps 7200 samples automatically".to_string();
+                    self.toggle_cpu_average_graph();
                     return Ok(());
                 }
                 KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
-                    self.toggle_cpu_average_for_graph_slot((ch as u8 - b'1') as usize);
+                    let _ = ch;
+                    self.status = "Use Space or double-click to graph this metric".to_string();
+                    return Ok(());
+                }
+                KeyCode::Char('0') if key.modifiers.is_empty() => {
+                    self.status = "Remove Graphs with Delete or the remove button".to_string();
                     return Ok(());
                 }
                 _ => {}
@@ -1107,19 +1155,18 @@ impl App {
             }
             KeyCode::Char(ch @ '1'..='4') => {
                 if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() {
-                    self.toggle_selected_metric_for_graph_slot((ch as u8 - b'1') as usize);
+                    let _ = ch;
+                    self.status = "Use Space or double-click to graph this metric".to_string();
                 }
             }
             KeyCode::Char('0') => {
                 if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() {
-                    self.clear_graph_slots();
+                    self.status = "Remove Graphs with Delete or the remove button".to_string();
                 }
             }
             KeyCode::Delete => {
                 if self.focused_panel == FocusedPanel::Processes {
-                    if !self.request_process_kill_confirmation()
-                        && !self.clear_selected_graph_metric()
-                    {
+                    if !self.request_process_kill_confirmation() {
                         self.hide_selected_ghost_row();
                     }
                 }
@@ -1129,8 +1176,7 @@ impl App {
                     && key.modifiers.is_empty()
                     && self.focused_panel == FocusedPanel::Processes =>
             {
-                if !self.request_process_kill_confirmation() && !self.clear_selected_graph_metric()
-                {
+                if !self.request_process_kill_confirmation() {
                     self.hide_selected_ghost_row();
                 }
             }
@@ -1168,21 +1214,45 @@ impl App {
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'a')
                     && key.modifiers.contains(KeyModifiers::SHIFT)
-                    && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(
+                        self.focused_panel,
+                        FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+                    )
+                    && self.show_details =>
             {
                 self.jump_to_ab_point_a();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'b')
                     && key.modifiers.contains(KeyModifiers::SHIFT)
-                    && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(
+                        self.focused_panel,
+                        FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+                    )
+                    && self.show_details =>
             {
                 self.jump_to_ab_point_b();
             }
-            KeyCode::Char('a') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('a')
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(
+                        self.focused_panel,
+                        FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+                    )
+                    && self.show_details =>
+            {
                 self.set_ab_point_a();
             }
-            KeyCode::Char('b') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('b')
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(
+                        self.focused_panel,
+                        FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+                    )
+                    && self.show_details =>
+            {
                 self.set_ab_point_b();
             }
             KeyCode::Char('x') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1200,13 +1270,8 @@ impl App {
                     && !key.modifiers.contains(KeyModifiers::CONTROL)
                     && !key.modifiers.contains(KeyModifiers::ALT)
                 {
-                    self.toggle_selected_process_tracking();
+                    self.toggle_selected_process_graph();
                 }
-            }
-            KeyCode::Char('t')
-                if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() =>
-            {
-                self.toggle_watch_list();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'f')
@@ -1249,13 +1314,6 @@ impl App {
                 self.toggle_display_pause();
             }
             KeyCode::Char(ch)
-                if ch.eq_ignore_ascii_case(&'t')
-                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                self.open_tracked_lists();
-            }
-            KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'l')
                     && key.modifiers.contains(KeyModifiers::CONTROL)
                     && !key.modifiers.contains(KeyModifiers::ALT) =>
@@ -1288,6 +1346,19 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, mouse: MouseEvent, screen_area: Rect) {
+        if self.has_modal_focus() {
+            self.clear_graph_source_click();
+        }
+        if matches!(
+            mouse.kind,
+            MouseEventKind::ScrollUp
+                | MouseEventKind::ScrollDown
+                | MouseEventKind::ScrollLeft
+                | MouseEventKind::ScrollRight
+                | MouseEventKind::Drag(_)
+        ) {
+            self.clear_graph_source_click();
+        }
         if let Some(zoom_in) = terminal_zoom_direction(&mouse) {
             if let Err(error) = send_terminal_zoom_shortcut(zoom_in) {
                 self.status = format!("Terminal zoom failed: {error}");
@@ -1737,25 +1808,15 @@ impl App {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(slot_index) =
-                    graph_item_area_at(self, screen_area, mouse.column, mouse.row)
+                if let Some(id) = graph_remove_at(self, screen_area, mouse.column, mouse.row) {
+                    self.remove_graph(id);
+                    return;
+                }
+                if let Some(id) =
+                    graph_navigator_item_at(self, screen_area, mouse.column, mouse.row)
                 {
-                    self.active_graph_slot_index = slot_index;
-                    if let Some(slot) = self.graph_slot(slot_index).cloned() {
-                        if let Some(identity) = slot.process_identity() {
-                            let identity = identity.clone();
-                            self.focused_panel = FocusedPanel::Processes;
-                            self.select_process_identity(&identity);
-                        } else {
-                            self.focused_panel = if slot.system_metric()
-                                == Some(crate::model::SystemMetric::CpuAverage)
-                            {
-                                FocusedPanel::Cpu
-                            } else {
-                                FocusedPanel::System
-                            };
-                        }
-                    }
+                    self.select_graph(id);
+                    self.focused_panel = FocusedPanel::DetailsGraph;
                     return;
                 }
                 if process_tracked_only_control_area_for_screen(screen_area, self)
@@ -1763,6 +1824,9 @@ impl App {
                 {
                     self.focused_panel = FocusedPanel::Processes;
                     self.toggle_watch_list();
+                    return;
+                }
+                if self.start_graph_scrollbar_drag(mouse.column, mouse.row, screen_area) {
                     return;
                 }
                 if self.start_samples_scrollbar_drag(mouse.column, mouse.row, screen_area) {
@@ -1799,10 +1863,31 @@ impl App {
                 self.select_process_row_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_from_graph_at(mouse.column, mouse.row, screen_area);
+                let source = process_graph_source_at(self, screen_area, mouse.column, mouse.row)
+                    .map(|source| (source, FocusedPanel::Processes))
+                    .or_else(|| {
+                        ram_vram_graph_source_at(self, screen_area, mouse.column, mouse.row)
+                            .map(|source| (source, FocusedPanel::System))
+                    })
+                    .or_else(|| {
+                        system_activity_graph_source_at(self, screen_area, mouse.column, mouse.row)
+                            .map(|source| (source, FocusedPanel::SystemActivity))
+                    })
+                    .or_else(|| {
+                        cpu_graph_source_at(self, screen_area, mouse.column, mouse.row)
+                            .map(|source| (source, FocusedPanel::Cpu))
+                    });
+                if let Some((source, return_focus)) = source {
+                    self.register_graph_source_click(source, Instant::now(), return_focus);
+                } else {
+                    self.clear_graph_source_click();
+                }
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.samples_scrollbar_dragging = false;
                 self.samples_scrollbar_grab_offset = 0;
+                self.graph_scrollbar_dragging = false;
+                self.graph_scrollbar_grab_offset = 0;
                 self.stop_graph_pan_drag(GraphPanDragButton::Left);
             }
             MouseEventKind::Down(MouseButton::Right) => {
@@ -1817,7 +1902,7 @@ impl App {
                 if let Some((slot_index, _)) =
                     samples_area_at(self, screen_area, mouse.column, mouse.row)
                 {
-                    self.active_graph_slot_index = slot_index;
+                    self.select_graph_index(slot_index);
                     self.focused_panel = FocusedPanel::DetailsSamples;
                     self.enter_details_live_mode();
                 }
@@ -1860,10 +1945,14 @@ impl App {
                     self.drag_samples_scrollbar(mouse.column, mouse.row, screen_area);
                     return;
                 }
+                if self.graph_scrollbar_dragging {
+                    self.drag_graph_scrollbar(mouse.row, screen_area);
+                    return;
+                }
                 if let Some((slot_index, _)) =
                     graph_area_at(self, screen_area, mouse.column, mouse.row)
                 {
-                    self.active_graph_slot_index = slot_index;
+                    self.select_graph_index(slot_index);
                     self.focused_panel = FocusedPanel::DetailsGraph;
                     self.select_details_sample_from_graph_at(mouse.column, mouse.row, screen_area);
                 }
@@ -1943,7 +2032,7 @@ impl App {
             return false;
         };
 
-        self.active_graph_slot_index = slot_index;
+        self.select_graph_index(slot_index);
         self.samples_scrollbar_dragging = true;
         self.samples_scrollbar_grab_offset = samples_scrollbar_grab_offset_at(
             scrollbar,
@@ -1955,6 +2044,33 @@ impl App {
         .unwrap_or(0);
         self.focused_panel = FocusedPanel::DetailsSamples;
         self.drag_samples_scrollbar(x, y, screen_area);
+        true
+    }
+
+    fn start_graph_scrollbar_drag(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
+        let Some(layout) = graph_workspace_layout_for_app(self, screen_area) else {
+            self.graph_scrollbar_dragging = false;
+            return false;
+        };
+        let Some(scrollbar) = layout.graph_scrollbar else {
+            self.graph_scrollbar_dragging = false;
+            return false;
+        };
+        if !contains_point(scrollbar, x, y) {
+            self.graph_scrollbar_dragging = false;
+            return false;
+        }
+        self.graph_scrollbar_dragging = true;
+        self.graph_scrollbar_grab_offset = samples_scrollbar_grab_offset_at(
+            scrollbar,
+            y,
+            layout.total_rows,
+            layout.visible_rows,
+            self.graph_scroll_row,
+        )
+        .unwrap_or(0);
+        self.focused_panel = FocusedPanel::DetailsGraph;
+        self.drag_graph_scrollbar(y, screen_area);
         true
     }
 
@@ -2035,6 +2151,26 @@ impl App {
         }
     }
 
+    fn drag_graph_scrollbar(&mut self, y: u16, screen_area: Rect) {
+        let Some(layout) = graph_workspace_layout_for_app(self, screen_area) else {
+            self.graph_scrollbar_dragging = false;
+            return;
+        };
+        let Some(scrollbar) = layout.graph_scrollbar else {
+            self.graph_scrollbar_dragging = false;
+            return;
+        };
+        if let Some(offset) = samples_scrollbar_offset_at(
+            scrollbar,
+            y,
+            layout.total_rows,
+            layout.visible_rows,
+            self.graph_scrollbar_grab_offset,
+        ) {
+            self.set_graph_scroll_row(offset);
+        }
+    }
+
     fn start_graph_pan_drag(
         &mut self,
         x: u16,
@@ -2046,7 +2182,7 @@ impl App {
             self.stop_graph_pan_drag(button);
             return false;
         };
-        self.active_graph_slot_index = slot_index;
+        self.select_graph_index(slot_index);
         self.focused_panel = FocusedPanel::DetailsGraph;
         self.graph_pan_drag = Some(GraphPanDrag {
             button,
@@ -2134,17 +2270,39 @@ impl App {
             return;
         }
 
-        if let Some((slot_index, _)) = graph_area_at(self, screen_area, x, y) {
-            self.active_graph_slot_index = slot_index;
+        if let Some((slot_index, id)) = graph_card_at(self, screen_area, x, y) {
+            self.select_graph(id);
             self.focused_panel = FocusedPanel::DetailsGraph;
-            self.status = format!("Focus: Graph#{}", slot_index + 1);
+            self.status = format!(
+                "Focus: Graph {}/{}",
+                slot_index + 1,
+                self.graph_entries.len()
+            );
             return;
         }
 
-        if let Some((slot_index, _)) = samples_area_at(self, screen_area, x, y) {
-            self.active_graph_slot_index = slot_index;
+        if graph_workspace_layout_for_app(self, screen_area)
+            .is_some_and(|layout| contains_point(layout.graph_slots, x, y))
+        {
+            self.focused_panel = FocusedPanel::DetailsGraph;
+            self.status = format!(
+                "Focus: Graph {}/{}",
+                self.active_graph_index().map_or(0, |index| index + 1),
+                self.graph_entries.len()
+            );
+            return;
+        }
+
+        if graph_workspace_layout_for_app(self, screen_area)
+            .and_then(|layout| layout.samples)
+            .is_some_and(|area| contains_point(area, x, y))
+        {
             self.focused_panel = FocusedPanel::DetailsSamples;
-            self.status = format!("Focus: Samples#{}", slot_index + 1);
+            self.status = format!(
+                "Focus: Samples · Graph {}/{}",
+                self.active_graph_index().map_or(0, |index| index + 1),
+                self.graph_entries.len()
+            );
         }
     }
 
@@ -2210,15 +2368,8 @@ impl App {
     }
 
     fn scroll_at(&mut self, x: u16, y: u16, screen_area: Rect, up: bool, _shift: bool) {
-        if let Some((slot_index, _)) = graph_area_at(self, screen_area, x, y) {
-            self.active_graph_slot_index = slot_index;
-            self.focused_panel = FocusedPanel::DetailsGraph;
-            self.zoom_graph_time_span(up);
-            return;
-        }
-
         if let Some((slot_index, _)) = samples_area_at(self, screen_area, x, y) {
-            self.active_graph_slot_index = slot_index;
+            self.select_graph_index(slot_index);
             self.focused_panel = FocusedPanel::DetailsSamples;
             if up {
                 self.select_details_sample_older(1);
@@ -2228,8 +2379,12 @@ impl App {
             return;
         }
 
-        if self.focused_panel == FocusedPanel::DetailsGraph && self.show_details {
-            self.zoom_graph_time_span(up);
+        if graph_viewport_at(self, screen_area, x, y) {
+            if up {
+                self.scroll_graph_rows_up(1);
+            } else {
+                self.scroll_graph_rows_down(1);
+            }
             return;
         }
 
@@ -2257,7 +2412,7 @@ impl App {
         allow_focused: bool,
     ) {
         if let Some((slot_index, _)) = graph_area_at(self, screen_area, x, y) {
-            self.active_graph_slot_index = slot_index;
+            self.select_graph_index(slot_index);
             self.focused_panel = FocusedPanel::DetailsGraph;
             self.shift_graph_time_window(older);
         } else if allow_focused
@@ -2287,7 +2442,7 @@ impl App {
         let Some(index) = sample_row_index_at(area, y, view_state.offset, total, rows) else {
             return;
         };
-        self.active_graph_slot_index = slot_index;
+        self.select_graph_index(slot_index);
         self.set_details_sample_selected(index);
     }
 
@@ -2295,7 +2450,7 @@ impl App {
         let Some((slot_index, area)) = graph_chart_area_at(self, screen_area, x, y) else {
             return;
         };
-        self.active_graph_slot_index = slot_index;
+        self.select_graph_index(slot_index);
         let plot_width = area.width.saturating_sub(1).max(1);
         let x_offset = x.saturating_sub(area.x).min(plot_width);
         let left_age = i64::from(
@@ -2313,6 +2468,79 @@ impl App {
     }
 }
 
+fn process_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {
+    let layout = main_panel_areas_for_app(screen_area, app).processes;
+    let row = process_row_index_at(layout, y, app.process_table_state.offset())?;
+    if row >= app.visible_process_count() {
+        return None;
+    }
+    let identity = app.visible_process_identity_at(row)?;
+    let selected_column = process_metric_column_index_at(
+        layout.area,
+        x,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    )?;
+    let metric_column = *app.process_columns.get(selected_column.checked_sub(2)?)?;
+    let metric = DetailsMetric::from_graphable_column(metric_column)?;
+    Some(GraphSlot::process(identity, metric))
+}
+
+fn ram_vram_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {
+    let area = ram_vram_panel_area_for_screen(screen_area, app);
+    if !contains_point(area, x, y) {
+        return None;
+    }
+    let first_row_y = area.y.saturating_add(1);
+    let last_row_y = area.bottom().saturating_sub(1);
+    if y < first_row_y || y >= last_row_y {
+        return None;
+    }
+    let row = usize::from(y - first_row_y);
+    if row == RAM_VRAM_SEPARATOR_ROW {
+        return None;
+    }
+    let index = if row > RAM_VRAM_SEPARATOR_ROW {
+        row.saturating_sub(1)
+    } else {
+        row
+    };
+    crate::model::SystemMetric::RAM_VRAM_PANEL
+        .get(index)
+        .copied()
+        .map(GraphSlot::system)
+}
+
+fn system_activity_graph_source_at(
+    app: &App,
+    screen_area: Rect,
+    x: u16,
+    y: u16,
+) -> Option<GraphSlot> {
+    let area = system_activity_panel_area_for_screen(screen_area, app);
+    if !contains_point(area, x, y) {
+        return None;
+    }
+    let first_row_y = area.y.saturating_add(1);
+    let last_row_y = area.bottom().saturating_sub(1);
+    if y < first_row_y || y >= last_row_y {
+        return None;
+    }
+    crate::model::SystemMetric::SYSTEM_ACTIVITY_PANEL
+        .get(usize::from(y - first_row_y))
+        .copied()
+        .map(GraphSlot::system)
+}
+
+fn cpu_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {
+    let area = cpu_panel_area_for_screen(screen_area, app).inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    contains_point(area, x, y).then(|| GraphSlot::system(crate::model::SystemMetric::CpuAverage))
+}
+
 fn contains_point(area: Rect, x: u16, y: u16) -> bool {
     x >= area.x && x < area.right() && y >= area.y && y < area.bottom()
 }
@@ -2325,46 +2553,58 @@ fn process_row_index_at(layout: ProcessTableLayout, y: u16, offset: usize) -> Op
     (y >= first_row_y && y < last_row_y).then(|| offset + (y - first_row_y) as usize)
 }
 
-fn visible_slot_areas_for_app(app: &App, screen_area: Rect) -> Vec<(usize, Rect)> {
-    let indices = app.visible_graph_slot_indices();
+fn graph_workspace_layout_for_app(app: &App, screen_area: Rect) -> Option<GraphWorkspaceLayout> {
     let Some(details) = main_panel_areas_for_app(screen_area, app).details else {
-        return Vec::new();
+        return None;
     };
-    details_slot_areas(details, indices.len(), app.effective_graph_slot_layout())
-        .into_iter()
-        .zip(indices)
-        .map(|(area, index)| (index, area))
-        .collect()
+    Some(graph_workspace_layout(details, app))
 }
 
 fn graph_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, Rect)> {
-    visible_slot_areas_for_app(app, screen_area)
+    graph_workspace_layout_for_app(app, screen_area)?
+        .graph_cards
         .into_iter()
-        .map(|(index, slot)| {
-            (
-                index,
-                details_graph_area(slot, app.show_samples_panel, app.show_sample_delta),
-            )
-        })
-        .find(|(_, area)| contains_point(*area, x, y))
+        .find(|card| contains_point(card.plot, x, y))
+        .map(|card| (card.ordinal, card.plot))
+}
+
+fn graph_card_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, GraphId)> {
+    graph_workspace_layout_for_app(app, screen_area)?
+        .graph_cards
+        .into_iter()
+        .find(|card| contains_point(card.area, x, y))
+        .map(|card| (card.ordinal, card.id))
+}
+
+fn graph_remove_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphId> {
+    graph_workspace_layout_for_app(app, screen_area)?
+        .graph_cards
+        .into_iter()
+        .find(|card| contains_point(card.remove, x, y))
+        .map(|card| card.id)
+}
+
+fn graph_navigator_item_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphId> {
+    graph_workspace_layout_for_app(app, screen_area)?
+        .navigator_items
+        .into_iter()
+        .find(|item| contains_point(item.area, x, y))
+        .map(|item| item.id)
+}
+
+fn graph_viewport_at(app: &App, screen_area: Rect, x: u16, y: u16) -> bool {
+    graph_workspace_layout_for_app(app, screen_area)
+        .is_some_and(|layout| contains_point(layout.graph_viewport, x, y))
 }
 
 fn samples_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, Rect)> {
-    if !app.show_samples_panel {
-        return None;
-    }
-    visible_slot_areas_for_app(app, screen_area)
-        .into_iter()
-        .map(|(index, slot)| (index, details_samples_area(slot, app.show_sample_delta)))
-        .find(|(_, area)| contains_point(*area, x, y))
-}
-
-fn graph_item_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<usize> {
-    visible_slot_areas_for_app(app, screen_area)
-        .into_iter()
-        .find_map(|(index, slot)| {
-            contains_point(details_slot_title_area(slot), x, y).then_some(index)
-        })
+    let samples = graph_workspace_layout_for_app(app, screen_area)?
+        .samples?
+        .inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+    contains_point(samples, x, y).then(|| app.active_graph_index().map(|index| (index, samples)))?
 }
 
 fn process_tracked_only_control_area_for_screen(screen_area: Rect, app: &App) -> Option<Rect> {
@@ -2373,13 +2613,14 @@ fn process_tracked_only_control_area_for_screen(screen_area: Rect, app: &App) ->
 }
 
 fn active_samples_area_for_screen(app: &App, screen_area: Rect) -> Option<Rect> {
-    if !app.show_samples_panel {
-        return None;
-    }
-    visible_slot_areas_for_app(app, screen_area)
-        .into_iter()
-        .find(|(index, _)| *index == app.active_graph_slot_index)
-        .map(|(_, slot)| details_samples_area(slot, app.show_sample_delta))
+    graph_workspace_layout_for_app(app, screen_area)?
+        .samples
+        .map(|area| {
+            area.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            })
+        })
 }
 
 fn samples_scrollbar_area_for_screen(samples: Rect, total: usize, rows: usize) -> Option<Rect> {
@@ -2412,58 +2653,47 @@ fn samples_scrollbar_area_at(
     x: u16,
     y: u16,
 ) -> Option<(usize, Rect)> {
-    if !app.show_samples_panel {
-        return None;
-    }
-    visible_slot_areas_for_app(app, screen_area)
-        .into_iter()
-        .find_map(|(index, slot)| {
-            let samples = details_samples_area(slot, app.show_sample_delta);
-            let rows = details_sample_page_size_for_samples_area(
-                samples,
-                app.active_ab_comparison().is_some(),
-                app.active_graph_slot_count() <= 1,
-            );
-            let total = app
-                .graph_slot(index)
-                .map(|slot| app.graph_slot_samples(slot).len())
-                .unwrap_or(0);
-            let scrollbar = samples_scrollbar_area_for_screen(samples, total, rows)?;
-            contains_point(scrollbar, x, y).then_some((index, scrollbar))
-        })
+    let index = app.active_graph_index()?;
+    let samples = active_samples_area_for_screen(app, screen_area)?;
+    let rows = details_sample_page_size_for_samples_area(
+        samples,
+        app.active_ab_comparison().is_some(),
+        true,
+    );
+    let total = app
+        .active_graph_slot()
+        .map(|slot| app.graph_slot_samples(slot).len())?;
+    let scrollbar = samples_scrollbar_area_for_screen(samples, total, rows)?;
+    contains_point(scrollbar, x, y).then_some((index, scrollbar))
 }
 
 fn graph_chart_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usize, Rect)> {
-    visible_slot_areas_for_app(app, screen_area)
+    graph_workspace_layout_for_app(app, screen_area)?
+        .graph_cards
         .into_iter()
-        .filter_map(|(index, slot)| {
-            let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let area = details_graph_chart_area(graph, app.graph_plot_left_padding())?;
-            contains_point(area, x, y).then_some((index, area))
+        .find_map(|card| {
+            let area = details_graph_chart_area(card.plot, app.graph_plot_left_padding())?;
+            contains_point(area, x, y).then_some((card.ordinal, area))
         })
-        .next()
 }
 
 fn active_graph_chart_area_for_screen(app: &App, screen_area: Rect) -> Option<Rect> {
-    visible_slot_areas_for_app(app, screen_area)
+    let active_id = app.active_graph_id?;
+    graph_workspace_layout_for_app(app, screen_area)?
+        .graph_cards
         .into_iter()
-        .find_map(|(index, slot)| {
-            (index == app.active_graph_slot_index).then(|| {
-                let graph = details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-                details_graph_chart_area(graph, app.graph_plot_left_padding())
-            })?
-        })
+        .find(|card| card.id == active_id)
+        .and_then(|card| details_graph_chart_area(card.plot, app.graph_plot_left_padding()))
 }
 
 fn graph_shared_control_areas_for_app(
     app: &App,
     screen_area: Rect,
 ) -> crate::ui::layout::GraphSharedControlAreas {
-    let controls = main_panel_areas_for_app(screen_area, app)
-        .details
-        .map(details_shared_controls_area)
+    let controls = graph_workspace_layout_for_app(app, screen_area)
+        .map(|layout| layout.controls)
         .unwrap_or_default();
-    graph_shared_control_areas(controls, app.show_samples_panel)
+    graph_shared_control_areas(controls, app.effective_show_samples_panel())
 }
 
 fn details_sample_page_size_for_samples_area(
@@ -2603,6 +2833,23 @@ fn samples_scrollbar_offset_at(
         ((thumb_start.min(max_thumb_start) * max_offset + max_thumb_start / 2) / max_thumb_start)
             .min(max_offset),
     )
+}
+
+fn is_ctrl_t(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'t'))
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && !key.modifiers.contains(KeyModifiers::ALT)
+}
+
+fn is_shift_t(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'t'))
+        && !key.modifiers.contains(KeyModifiers::CONTROL)
+        && !key.modifiers.contains(KeyModifiers::ALT)
+        && (key.modifiers.contains(KeyModifiers::SHIFT) || matches!(key.code, KeyCode::Char('T')))
+}
+
+fn is_plain_t(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('t')) && key.modifiers.is_empty()
 }
 
 fn terminal_zoom_direction(mouse: &MouseEvent) -> Option<bool> {

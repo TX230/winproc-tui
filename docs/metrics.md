@@ -63,14 +63,14 @@ The `RAM/VRAM` panel and system details use four metrics.
 | `GPU Shared` | Shared GPU memory usage and capacity. | GPU PDH counters, DXGI adapter description | `used / total MB` |
 
 `RAM/VRAM` metrics always retain 7,200 samples and do not have a Tracked List display.
-When the `RAM/VRAM` panel has focus, `1` / `2` / `3` / `4` assign the selected metric to the corresponding Graph slot.
+When the `RAM/VRAM` panel has focus, `Space` adds or removes the selected metric in the Graph Workspace. Double-clicking the same metric adds it or reveals its existing Graph without removing it.
 
 ## CPU Panel
 
 The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after `RAM/VRAM` and `NW/DISK`.
 It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
-When the `CPUs` panel has focus, `1` / `2` / `3` / `4` assign `CPU Usage` to the corresponding Graph slot.
-The left edge of the panel content reserves two character cells for the Graph slot number, matching the RAM/VRAM summary rows.
+When the `CPUs` panel has focus, `Space` adds or removes `CPU Usage` in the Graph Workspace. Double-clicking the CPU Usage row adds it or reveals its existing Graph without removing it.
+The left edge of the panel content reserves two character cells for a `G` marker, matching the RAM/VRAM summary rows. The marker is accented when that source is the active Graph and muted when it is registered but inactive.
 
 | Display | Description | Primary source | Format |
 |---|---|---|---|
@@ -87,7 +87,7 @@ The per-logical-CPU cells are intended for quick visual pressure checks, not rec
 The middle of the top panel shows `NW/DISK`, a compact System Activity view for network and disk counters.
 Pressing `i` opens `System Info` as a dialog instead of replacing this panel.
 These values are sampled once per screen update and are stored in recording frames so Log view can show the recorded values.
-When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `1` / `2` / `3` / `4` assign it to the corresponding Graph slot, matching the `RAM/VRAM` panel behavior.
+When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `Space` adds or removes it in the Graph Workspace, matching the `RAM/VRAM` behavior. Double-click adds or reveals the metric without removing an existing Graph.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
@@ -257,9 +257,9 @@ When start time is available, it is included in the identity to avoid mixing his
 | Missing value | `--`. |
 
 `GB`, `MB`, `Kbps`, and `Mbps` are rounded using a base of 1,000.
-Graph slot titles append concise unit metadata such as `[B]`, `[count]`, `[Kbps/Mbps]`, `[Mbps]`, or `[MB/s]`. A unit already present in the metric name is not repeated, so `CPU%` and `GPU%` remain unchanged while `CPU Usage` is shown as `CPU Usage [%]`.
+Graph card titles append concise unit metadata such as `[B]`, `[count]`, `[Kbps/Mbps]`, `[Mbps]`, or `[MB/s]`. A unit already present in the metric name is not repeated, so `CPU%` and `GPU%` remain unchanged while `CPU Usage` is shown as `CPU Usage [%]`.
 Percent, throughput, and disk queue-length Y-axis ticks retain their metric-specific formats.
-The `B-A` value in each Graph slot title uses the same metric-specific format as the A/B comparison. It is `--` unless both points are set and that Graph has values at both exact captured times.
+The `B-A` value in each Graph card title uses the same metric-specific format as the A/B comparison. It is `--` unless both points are set and that Graph has values at both exact captured times.
 
 ## Metrics in Recording Logs
 

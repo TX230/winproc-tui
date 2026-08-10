@@ -47,11 +47,13 @@ pub(crate) use help::{
     help_scrollbar_area,
 };
 #[cfg(test)]
+pub(crate) use layout::main_panel_areas;
+#[cfg(test)]
 pub(crate) use layout::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_graph_area_for_app,
-    details_samples_area_for_app, details_shared_controls_area_for_app, details_slot_areas_for_app,
+    details_samples_area_for_app, details_shared_controls_area_for_app,
 };
-pub(crate) use layout::{main_panel_areas, main_panel_areas_for_app, screen_layout};
+pub(crate) use layout::{main_panel_areas_for_app, screen_layout};
 use log_list::{draw_log_dir_dialog, draw_log_list};
 pub(crate) use log_list::{
     log_dir_button_at, log_dir_input_area, log_list_button_at, log_list_index_at,
@@ -215,7 +217,7 @@ fn draw_metric_column_warning(
     frame.render_widget(Clear, popup);
     let dialog = widgets::confirm_dialog::warning_message_dialog(
         "Warning",
-        "Move to a metric cell before pressing 1-4.",
+        "Select a graphable metric cell.",
         widgets::confirm_dialog::button_line(&[(" OK ", true)], theme),
         theme,
     );
@@ -238,7 +240,7 @@ fn draw_no_graph_metrics_warning(
     let dialog = widgets::confirm_dialog::warning_dialog(
         "Warning",
         "No metric is selected for graphing.",
-        "Select a metric, then press 1-4 to show it in Graph#1-#4.",
+        "Select a metric, then press Space or double-click it.",
         widgets::confirm_dialog::button_line(&[(" OK ", true)], theme),
         theme,
     );

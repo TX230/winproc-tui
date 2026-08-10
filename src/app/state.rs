@@ -45,9 +45,10 @@ use crate::{
 const GRAPH_TIME_SPAN_MIN_SECONDS: u16 = 60;
 const LIVE_GRAPH_TIME_MAX_SECONDS: u32 = TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u32;
 const FIXED_PROCESS_COLUMN_COUNT: usize = 2;
-pub(crate) const GRAPH_SLOT_COUNT: usize = 4;
+pub(crate) const GRAPH_LIMIT: usize = 16;
 pub(crate) const GRAPH_SLOT_MIN_HEIGHT: u16 = 13;
 pub(crate) const GRAPH_SLOT_MIN_WIDTH: u16 = 50;
+pub(crate) const GRAPH_SOURCE_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 pub(crate) const PROCESS_INFO_DEBOUNCE: Duration = Duration::from_millis(200);
 const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -189,18 +190,6 @@ impl GraphValueFormat {
             | DetailsMetric::HandleCount
             | DetailsMetric::UserObjectCount
             | DetailsMetric::GdiObjectCount => Self::Count,
-        }
-    }
-
-    pub(crate) fn unit_label(self) -> &'static str {
-        match self {
-            Self::Bytes => "B",
-            Self::Count => "count",
-            Self::Percent => "%",
-            Self::AdaptiveBitsPerSec => "Kbps/Mbps",
-            Self::MegabitsPerSec => "Mbps",
-            Self::MegabytesPerSec => "MB/s",
-            Self::QueueLength => "requests",
         }
     }
 }
@@ -368,6 +357,27 @@ pub(crate) enum GraphSlot {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct GraphId(pub(crate) u64);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphEntry {
+    pub(crate) id: GraphId,
+    pub(crate) source: GraphSlot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GraphSourceState {
+    pub(crate) ordinal: usize,
+    pub(crate) active: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GraphSourceClick {
+    pub(crate) source: GraphSlot,
+    pub(crate) clicked_at: Instant,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GraphSample {
     pub(crate) captured_at: DateTime<Local>,
@@ -411,34 +421,10 @@ impl GraphSlot {
         }
     }
 
-    pub(crate) fn process_metric(&self) -> Option<DetailsMetric> {
-        match self {
-            Self::Process { metric, .. } => Some(*metric),
-            Self::System { .. } => None,
-        }
-    }
-
-    pub(crate) fn system_metric(&self) -> Option<SystemMetric> {
-        match self {
-            Self::Process { .. } => None,
-            Self::System { metric } => Some(*metric),
-        }
-    }
-
     pub(crate) fn metric_label(&self) -> &'static str {
         match self {
             Self::Process { metric, .. } => metric.label(),
             Self::System { metric } => metric.label(),
-        }
-    }
-
-    pub(crate) fn metric_title(&self) -> String {
-        let label = self.metric_label();
-        let unit = self.value_format().unit_label();
-        if label.contains(unit) {
-            label.to_string()
-        } else {
-            format!("{label} [{unit}]")
         }
     }
 
@@ -447,6 +433,10 @@ impl GraphSlot {
             Self::Process { identity, .. } => identity.name.clone(),
             Self::System { metric } => metric.panel_label().to_string(),
         }
+    }
+
+    pub(crate) fn description(&self) -> String {
+        format!("{} · {}", self.item_label(), self.metric_label())
     }
 
     pub(crate) fn value_format(&self) -> GraphValueFormat {
@@ -951,8 +941,14 @@ pub(crate) struct App {
     pub(crate) log_view_normalized_watch_names: HashSet<String>,
     pub(crate) focused_panel: FocusedPanel,
     pub(crate) show_details: bool,
-    pub(crate) graph_slots: [Option<GraphSlot>; GRAPH_SLOT_COUNT],
-    pub(crate) active_graph_slot_index: usize,
+    pub(crate) graph_entries: Vec<GraphEntry>,
+    pub(crate) active_graph_id: Option<GraphId>,
+    pub(crate) next_graph_id: u64,
+    pub(crate) graph_scroll_row: usize,
+    pub(crate) graph_scrollbar_dragging: bool,
+    pub(crate) graph_scrollbar_grab_offset: usize,
+    pub(crate) graph_return_focus: FocusedPanel,
+    pub(crate) graph_source_last_click: Option<GraphSourceClick>,
     pub(crate) details_target: DetailsTarget,
     pub(crate) details_metric: DetailsMetric,
     pub(crate) details_sample_selected: usize,
@@ -967,9 +963,9 @@ pub(crate) struct App {
     pub(crate) graph_show_all_samples: bool,
     pub(crate) graph_y_axis_zero_min: bool,
     pub(crate) graph_slot_layout: GraphSlotLayout,
-    pub(crate) hidden_graph_slot_count: usize,
+    /// User-requested Samples visibility. Width/height-based collapse is separate.
     pub(crate) show_samples_panel: bool,
-    pub(crate) samples_panel_before_two_columns: bool,
+    pub(crate) samples_temporarily_collapsed: bool,
     pub(crate) show_sample_delta: bool,
     pub(crate) details_live: bool,
     pub(crate) column_preset: ColumnPreset,
@@ -1048,9 +1044,7 @@ impl App {
         let last_tracked_live_identities =
             tracked_live_identities(&initial.snapshot.processes, &normalized_watch_names);
         let graph_slot_layout = runtime.initial_graph_slot_layout;
-        let show_samples_panel =
-            runtime.initial_show_samples_panel && graph_slot_layout != GraphSlotLayout::TwoColumns;
-        let samples_panel_before_two_columns = runtime.initial_show_samples_panel;
+        let show_samples_panel = runtime.initial_show_samples_panel;
         let show_sample_delta = runtime.initial_show_sample_delta;
         let mut app = Self {
             theme_index: theme_index_by_name(&runtime.initial_theme),
@@ -1184,8 +1178,14 @@ impl App {
             log_view_normalized_watch_names: HashSet::new(),
             focused_panel: FocusedPanel::Processes,
             show_details: false,
-            graph_slots: std::array::from_fn(|_| None),
-            active_graph_slot_index: 0,
+            graph_entries: Vec::new(),
+            active_graph_id: None,
+            next_graph_id: 1,
+            graph_scroll_row: 0,
+            graph_scrollbar_dragging: false,
+            graph_scrollbar_grab_offset: 0,
+            graph_return_focus: FocusedPanel::Processes,
+            graph_source_last_click: None,
             details_target: DetailsTarget::Process,
             details_metric: DetailsMetric::Private,
             details_sample_selected: 0,
@@ -1200,9 +1200,8 @@ impl App {
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
             graph_slot_layout,
-            hidden_graph_slot_count: 0,
             show_samples_panel,
-            samples_panel_before_two_columns,
+            samples_temporarily_collapsed: false,
             show_sample_delta,
             details_live: true,
             column_preset,
@@ -1361,7 +1360,9 @@ impl App {
             self.focused_panel = FocusedPanel::Processes;
             return;
         }
-        if self.focused_panel == FocusedPanel::DetailsSamples && !self.show_samples_panel {
+        if self.focused_panel == FocusedPanel::DetailsSamples
+            && !self.effective_show_samples_panel()
+        {
             self.focused_panel = FocusedPanel::DetailsGraph;
             return;
         }
@@ -1370,7 +1371,7 @@ impl App {
                 self.focused_panel,
                 FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
             )
-            && self.visible_graph_slot_indices().is_empty()
+            && self.graph_entries.is_empty()
         {
             self.focused_panel = FocusedPanel::Processes;
         }
@@ -1878,11 +1879,6 @@ impl App {
             self.status = "No metric is selected for graphing.".to_string();
             return;
         }
-        if !self.show_details && !self.graph_slots_fit(1) {
-            self.show_display_area_warning = true;
-            self.status = "Not enough display area.".to_string();
-            return;
-        }
         self.show_details = !self.show_details;
         if !self.show_details
             && matches!(
@@ -1917,10 +1913,12 @@ impl App {
         self.status = "Ready".to_string();
     }
 
-    pub(crate) fn clear_graph_slots(&mut self) {
-        self.graph_slots = std::array::from_fn(|_| None);
-        self.active_graph_slot_index = 0;
-        self.hidden_graph_slot_count = 0;
+    fn clear_graph_workspace_state(&mut self) {
+        self.graph_entries.clear();
+        self.active_graph_id = None;
+        self.graph_scroll_row = 0;
+        self.graph_scrollbar_dragging = false;
+        self.graph_scrollbar_grab_offset = 0;
         self.show_details = false;
         self.ab_comparison = None;
         if matches!(
@@ -1929,46 +1927,56 @@ impl App {
         ) {
             self.focused_panel = FocusedPanel::Processes;
         }
-        self.status = "Graph metrics cleared".to_string();
     }
 
-    pub(crate) fn clear_selected_graph_metric(&mut self) -> bool {
-        let Some(index) = self.selected_process_graph_slot_index() else {
+    pub(crate) fn remove_active_graph(&mut self) -> bool {
+        let Some(id) = self.active_graph_id else {
             return false;
         };
-        self.clear_graph_slot(index);
-        self.status = format!("Graph#{} cleared", index + 1);
-        true
+        self.remove_graph(id)
     }
 
-    fn clear_graph_slot(&mut self, slot_index: usize) {
-        if slot_index >= GRAPH_SLOT_COUNT {
-            return;
-        }
-        self.graph_slots[slot_index] = None;
-        if self.active_graph_slot_index == slot_index {
-            self.active_graph_slot_index = self
-                .graph_slots
-                .iter()
-                .position(Option::is_some)
-                .unwrap_or(0);
-        }
-        if self.active_graph_slot_count() == 0 {
-            self.show_details = false;
-            self.ab_comparison = None;
-            if matches!(
-                self.focused_panel,
-                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-            ) {
-                self.focused_panel = FocusedPanel::Processes;
+    pub(crate) fn remove_graph(&mut self, id: GraphId) -> bool {
+        let Some(index) = self.graph_entries.iter().position(|entry| entry.id == id) else {
+            return false;
+        };
+        let selected_time = self.selected_details_sample_time();
+        let description = self.graph_entries[index].source.description();
+        let removed_active = self.active_graph_id == Some(id);
+        self.graph_entries.remove(index);
+
+        if self.graph_entries.is_empty() {
+            let return_focus = self.graph_return_focus;
+            self.clear_graph_workspace_state();
+            self.focused_panel = match return_focus {
+                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples => {
+                    FocusedPanel::Processes
+                }
+                panel => panel,
+            };
+        } else if removed_active {
+            let next_index = index.min(self.graph_entries.len() - 1);
+            self.active_graph_id = Some(self.graph_entries[next_index].id);
+            if let Some(time) = selected_time {
+                self.align_details_sample_selection_to_time(time);
+            } else {
+                self.select_details_sample_latest();
             }
         }
+        if !self.graph_entries.is_empty() {
+            self.sync_graph_layout_visibility();
+            if removed_active {
+                self.reveal_active_graph();
+            }
+        }
+        self.status = format!("Graph removed: {description}");
+        true
     }
 
     pub(crate) fn toggle_samples_panel(&mut self) {
         if self.show_samples_panel {
             self.show_samples_panel = false;
-            self.samples_panel_before_two_columns = false;
+            self.samples_temporarily_collapsed = false;
             if self.focused_panel == FocusedPanel::DetailsSamples {
                 self.focused_panel = FocusedPanel::DetailsGraph;
             }
@@ -1976,15 +1984,14 @@ impl App {
             return;
         }
 
-        self.graph_slot_layout = GraphSlotLayout::OneColumn;
         self.show_samples_panel = true;
-        self.samples_panel_before_two_columns = true;
         self.status = "Samples panel shown".to_string();
         self.sync_graph_layout_visibility();
+        self.reveal_active_graph();
     }
 
     pub(crate) fn toggle_sample_delta(&mut self) {
-        if !self.show_samples_panel {
+        if !self.effective_show_samples_panel() {
             self.status = "Delta is unavailable while Samples are hidden".to_string();
             return;
         }
@@ -1998,79 +2005,38 @@ impl App {
 
     pub(crate) fn toggle_graph_slot_layout(&mut self) {
         self.graph_slot_layout = self.graph_slot_layout.next();
-        let effective = self.effective_graph_slot_layout();
-        self.show_samples_panel =
-            self.samples_panel_before_two_columns && effective == GraphSlotLayout::OneColumn;
-        if !self.show_samples_panel && self.focused_panel == FocusedPanel::DetailsSamples {
-            self.focused_panel = FocusedPanel::DetailsGraph;
-        }
         self.status = format!("Graph layout: {}", self.graph_slot_layout.label());
         self.sync_graph_layout_visibility();
+        self.reveal_active_graph();
     }
 
     pub(crate) fn active_graph_slot_count(&self) -> usize {
-        self.graph_slots
-            .iter()
-            .filter(|slot| slot.is_some())
-            .count()
+        self.graph_entries.len()
     }
 
-    pub(crate) fn graph_slots_fit(&self, slot_count: usize) -> bool {
-        self.graph_slots_fit_for_layout(slot_count, self.effective_graph_slot_layout())
-    }
-
-    fn graph_slots_fit_for_layout(&self, slot_count: usize, layout: GraphSlotLayout) -> bool {
-        if slot_count == 0 {
-            return true;
-        }
-        crate::ui::main_panel_areas(
-            self.last_screen_area,
-            true,
-            self.visible_process_count(),
-            self.has_visible_tracked_total_row(),
-        )
-        .details
-        .is_some_and(|area| {
-            !crate::ui::layout::details_slot_areas(area, slot_count, layout).is_empty()
-        })
-    }
-
-    fn graph_slot_capacity_for_layout(&self, layout: GraphSlotLayout) -> usize {
-        let active = self.active_graph_slot_count();
-        (1..=active)
-            .rev()
-            .find(|count| self.graph_slots_fit_for_layout(*count, layout))
-            .unwrap_or(0)
-    }
-
-    pub(crate) fn effective_graph_slot_layout(&self) -> GraphSlotLayout {
-        match self.graph_slot_layout {
-            GraphSlotLayout::OneColumn => GraphSlotLayout::OneColumn,
-            GraphSlotLayout::TwoColumns => GraphSlotLayout::TwoColumns,
-            GraphSlotLayout::Auto => {
-                let one_column = self.graph_slot_capacity_for_layout(GraphSlotLayout::OneColumn);
-                let two_columns = self.graph_slot_capacity_for_layout(GraphSlotLayout::TwoColumns);
-                if two_columns > one_column {
-                    GraphSlotLayout::TwoColumns
-                } else {
-                    GraphSlotLayout::OneColumn
-                }
-            }
-        }
+    pub(crate) fn effective_show_samples_panel(&self) -> bool {
+        self.show_samples_panel && !self.samples_temporarily_collapsed
     }
 
     pub(crate) fn graph_slot(&self, index: usize) -> Option<&GraphSlot> {
-        self.graph_slots.get(index).and_then(Option::as_ref)
+        self.graph_entries.get(index).map(|entry| &entry.source)
     }
 
-    pub(crate) fn visible_graph_slot_indices(&self) -> Vec<usize> {
-        let capacity = self.graph_slot_capacity_for_layout(self.effective_graph_slot_layout());
-        self.graph_slots
-            .iter()
-            .enumerate()
-            .filter_map(|(index, slot)| slot.as_ref().map(|_| index))
-            .take(capacity)
-            .collect()
+    pub(crate) fn graph_entry(&self, index: usize) -> Option<&GraphEntry> {
+        self.graph_entries.get(index)
+    }
+
+    pub(crate) fn graph_entry_by_id(&self, id: GraphId) -> Option<&GraphEntry> {
+        self.graph_entries.iter().find(|entry| entry.id == id)
+    }
+
+    pub(crate) fn graph_index_by_id(&self, id: GraphId) -> Option<usize> {
+        self.graph_entries.iter().position(|entry| entry.id == id)
+    }
+
+    pub(crate) fn active_graph_index(&self) -> Option<usize> {
+        self.active_graph_id
+            .and_then(|id| self.graph_index_by_id(id))
     }
 
     pub(crate) fn graph_slot_samples(&self, slot: &GraphSlot) -> Vec<GraphSample> {
@@ -2106,8 +2072,10 @@ impl App {
     }
 
     pub(crate) fn active_graph_slot(&self) -> Option<&GraphSlot> {
-        self.graph_slot(self.active_graph_slot_index)
-            .or_else(|| self.graph_slots.iter().find_map(Option::as_ref))
+        self.active_graph_id
+            .and_then(|id| self.graph_entry_by_id(id))
+            .map(|entry| &entry.source)
+            .or_else(|| self.graph_entries.first().map(|entry| &entry.source))
     }
 
     pub(crate) fn selected_details_sample_time(&self) -> Option<DateTime<Local>> {
@@ -2128,7 +2096,7 @@ impl App {
             return None;
         }
         let selected = self.details_sample_selected.min(samples.len() - 1);
-        if slot_index == self.active_graph_slot_index {
+        if Some(slot_index) == self.active_graph_index() {
             return Some(DetailsSampleViewState {
                 selected_index: selected,
                 selected_exact: true,
@@ -2155,119 +2123,246 @@ impl App {
         })
     }
 
-    pub(crate) fn active_graph_visible_index(&self) -> usize {
-        self.graph_slots
-            .iter()
-            .enumerate()
-            .filter(|(_, slot)| slot.is_some())
-            .position(|(index, _)| index == self.active_graph_slot_index)
-            .unwrap_or(0)
-    }
-
     pub(crate) fn sync_graph_layout_visibility(&mut self) {
-        let effective = self.effective_graph_slot_layout();
-        self.show_samples_panel =
-            self.samples_panel_before_two_columns && effective == GraphSlotLayout::OneColumn;
-        if !self.show_samples_panel && self.focused_panel == FocusedPanel::DetailsSamples {
+        if self.graph_entries.is_empty() {
+            self.active_graph_id = None;
+            self.graph_scroll_row = 0;
+            self.samples_temporarily_collapsed = self.show_samples_panel;
+        } else if self
+            .active_graph_id
+            .is_none_or(|id| self.graph_entry_by_id(id).is_none())
+        {
+            self.active_graph_id = self.graph_entries.first().map(|entry| entry.id);
+        }
+        if let Some(details) =
+            crate::ui::main_panel_areas_for_app(self.last_screen_area, self).details
+        {
+            let layout = crate::ui::layout::graph_workspace_layout(details, self);
+            self.samples_temporarily_collapsed =
+                self.show_samples_panel && layout.samples.is_none();
+            self.graph_scroll_row = self.graph_scroll_row.min(layout.max_scroll_row);
+            if layout.max_scroll_row == 0 {
+                self.graph_scrollbar_dragging = false;
+                self.graph_scrollbar_grab_offset = 0;
+            }
+        } else {
+            self.samples_temporarily_collapsed = self.show_samples_panel;
+            self.graph_scroll_row = 0;
+        }
+        if !self.effective_show_samples_panel()
+            && self.focused_panel == FocusedPanel::DetailsSamples
+        {
             self.focused_panel = FocusedPanel::DetailsGraph;
         }
+    }
 
-        let visible = self.visible_graph_slot_indices();
-        if self.show_details && !visible.contains(&self.active_graph_slot_index) {
-            if let Some(index) = visible.first().copied() {
-                self.active_graph_slot_index = index;
-                if self.focused_panel == FocusedPanel::DetailsSamples && !self.show_samples_panel {
-                    self.focused_panel = FocusedPanel::DetailsGraph;
-                }
-            } else if matches!(
-                self.focused_panel,
-                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-            ) {
-                self.focused_panel = FocusedPanel::Processes;
-            }
-        }
-
-        let hidden = self.active_graph_slot_count().saturating_sub(visible.len());
-        if hidden != self.hidden_graph_slot_count {
-            self.status = if hidden == 0 {
-                "All Graph slots visible".to_string()
-            } else {
-                let slots = if hidden == 1 {
-                    "Graph slot"
-                } else {
-                    "Graph slots"
-                };
-                format!("{hidden} {slots} hidden: not enough display area")
-            };
-            self.hidden_graph_slot_count = hidden;
+    pub(crate) fn reveal_active_graph(&mut self) {
+        let Some(active_index) = self.active_graph_index() else {
+            return;
+        };
+        let Some(details) =
+            crate::ui::main_panel_areas_for_app(self.last_screen_area, self).details
+        else {
+            return;
+        };
+        let layout = crate::ui::layout::graph_workspace_layout(details, self);
+        let active_row = active_index / layout.columns.max(1);
+        if active_row < self.graph_scroll_row {
+            self.graph_scroll_row = active_row;
+        } else if active_row
+            >= self
+                .graph_scroll_row
+                .saturating_add(layout.visible_rows.max(1))
+        {
+            self.graph_scroll_row = active_row
+                .saturating_add(1)
+                .saturating_sub(layout.visible_rows.max(1))
+                .min(layout.max_scroll_row);
         }
     }
 
-    pub(crate) fn toggle_selected_metric_for_graph_slot(&mut self, slot_index: usize) {
-        if slot_index >= GRAPH_SLOT_COUNT {
+    pub(crate) fn set_graph_scroll_row(&mut self, row: usize) {
+        let Some(details) =
+            crate::ui::main_panel_areas_for_app(self.last_screen_area, self).details
+        else {
+            self.graph_scroll_row = 0;
             return;
-        }
+        };
+        let layout = crate::ui::layout::graph_workspace_layout(details, self);
+        self.graph_scroll_row = row.min(layout.max_scroll_row);
+    }
+
+    pub(crate) fn scroll_graph_rows_up(&mut self, rows: usize) {
+        self.set_graph_scroll_row(self.graph_scroll_row.saturating_sub(rows));
+    }
+
+    pub(crate) fn scroll_graph_rows_down(&mut self, rows: usize) {
+        self.set_graph_scroll_row(self.graph_scroll_row.saturating_add(rows));
+    }
+
+    pub(crate) fn selected_process_graph_source(&self) -> Option<GraphSlot> {
+        let identity = self.selected_visible_process_identity()?;
+        let column = self.selected_process_metric_column()?;
+        let metric = DetailsMetric::from_graphable_column(column)?;
+        Some(GraphSlot::process(identity, metric))
+    }
+
+    pub(crate) fn toggle_selected_process_graph(&mut self) {
         if self.focused_panel != FocusedPanel::Processes {
-            self.status = "Graph slots require Processes focus".to_string();
+            self.status = "Graph registration requires Processes focus".to_string();
             return;
         }
-        let Some(identity) = self.selected_visible_process_identity() else {
+        if self.selected_visible_process_identity().is_none() {
             self.status = "No process selected".to_string();
             return;
-        };
-        let Some(column) = self.selected_process_metric_column() else {
-            self.show_metric_column_warning = true;
-            self.status = "Select a metric cell before pressing 1-4".to_string();
-            return;
-        };
-        let Some(metric) = DetailsMetric::from_graphable_column(column) else {
-            self.show_metric_column_warning = true;
-            self.status = "Full Path cannot be graphed".to_string();
-            return;
-        };
-        let next_slot = GraphSlot::process(identity, metric);
-        if self.graph_slots[slot_index].as_ref() == Some(&next_slot) {
-            self.clear_graph_slot(slot_index);
-            self.status = format!("Graph#{} cleared", slot_index + 1);
-            return;
         }
-
-        if let Some(duplicate_index) =
-            self.graph_slots
-                .iter()
-                .enumerate()
-                .find_map(|(index, slot)| {
-                    (index != slot_index && slot.as_ref() == Some(&next_slot)).then_some(index)
-                })
-        {
-            self.graph_slots[duplicate_index] = None;
-            self.graph_slots[slot_index] = Some(next_slot);
-            self.active_graph_slot_index = slot_index;
-            self.show_details = true;
-            self.clamp_details_sample_selection();
-            self.select_details_sample_latest();
-            self.status = format!("Graph metric moved to Graph#{}", slot_index + 1);
+        let Some(source) = self.selected_process_graph_source() else {
+            self.status = "Select a graphable metric cell".to_string();
             return;
-        }
-
-        self.graph_slots[slot_index] = Some(next_slot);
-        self.active_graph_slot_index = slot_index;
-        self.show_details = true;
-        self.clamp_details_sample_selection();
-        self.select_details_sample_latest();
-        self.status = format!("Graph#{} metric selected", slot_index + 1);
+        };
+        self.toggle_graph_source(source, FocusedPanel::Processes);
     }
 
-    fn selected_process_graph_slot_index(&self) -> Option<usize> {
-        if self.focused_panel != FocusedPanel::Processes {
-            return None;
-        }
-        let identity = self.selected_visible_process_identity()?;
-        let metric = DetailsMetric::from_graphable_column(self.selected_process_metric_column()?)?;
-        let selected_slot = GraphSlot::process(identity, metric);
-        self.graph_slots
+    pub(crate) fn graph_id_for_source(&self, source: &GraphSlot) -> Option<GraphId> {
+        self.graph_entries
             .iter()
-            .position(|slot| slot.as_ref() == Some(&selected_slot))
+            .find(|entry| &entry.source == source)
+            .map(|entry| entry.id)
+    }
+
+    pub(crate) fn graph_source_state(&self, source: &GraphSlot) -> Option<GraphSourceState> {
+        self.graph_entries
+            .iter()
+            .enumerate()
+            .find(|(_, entry)| &entry.source == source)
+            .map(|(ordinal, entry)| GraphSourceState {
+                ordinal,
+                active: self.active_graph_id == Some(entry.id),
+            })
+    }
+
+    pub(crate) fn set_active_graph(&mut self, id: GraphId) -> bool {
+        if self.graph_entry_by_id(id).is_none() {
+            return false;
+        }
+        let selected_time = self.selected_details_sample_time();
+        self.active_graph_id = Some(id);
+        if let Some(time) = selected_time {
+            self.align_details_sample_selection_to_time(time);
+        } else {
+            self.select_details_sample_latest();
+        }
+        self.show_details = true;
+        self.sync_graph_layout_visibility();
+        self.reveal_active_graph();
+        true
+    }
+
+    pub(crate) fn select_graph(&mut self, id: GraphId) -> bool {
+        if !self.set_active_graph(id) {
+            return false;
+        }
+        if let Some(entry) = self.graph_entry_by_id(id) {
+            self.status = format!("Graph selected: {}", entry.source.description());
+        }
+        true
+    }
+
+    pub(crate) fn select_graph_index(&mut self, index: usize) -> bool {
+        self.graph_entries
+            .get(index)
+            .map(|entry| entry.id)
+            .is_some_and(|id| self.select_graph(id))
+    }
+
+    pub(crate) fn select_previous_graph(&mut self) {
+        let Some(active) = self.active_graph_index() else {
+            return;
+        };
+        let next = active.saturating_sub(1);
+        self.select_graph_index(next);
+    }
+
+    pub(crate) fn select_next_graph(&mut self) {
+        let Some(active) = self.active_graph_index() else {
+            return;
+        };
+        let next = active
+            .saturating_add(1)
+            .min(self.graph_entries.len().saturating_sub(1));
+        self.select_graph_index(next);
+    }
+
+    fn add_graph_source(&mut self, source: GraphSlot, return_focus: FocusedPanel) -> bool {
+        if self.graph_entries.len() >= GRAPH_LIMIT {
+            self.status = format!("Graph limit reached ({GRAPH_LIMIT})");
+            return false;
+        }
+        let selected_time = self.selected_details_sample_time();
+        let id = GraphId(self.next_graph_id);
+        self.next_graph_id = self
+            .next_graph_id
+            .checked_add(1)
+            .expect("GraphId space exhausted");
+        let description = source.description();
+        self.graph_entries.push(GraphEntry { id, source });
+        self.active_graph_id = Some(id);
+        self.graph_return_focus = return_focus;
+        self.show_details = true;
+        if let Some(time) = selected_time {
+            self.align_details_sample_selection_to_time(time);
+        } else {
+            self.select_details_sample_latest();
+        }
+        self.sync_graph_layout_visibility();
+        self.reveal_active_graph();
+        self.status = format!("Graph added: {description}");
+        true
+    }
+
+    pub(crate) fn toggle_graph_source(
+        &mut self,
+        source: GraphSlot,
+        return_focus: FocusedPanel,
+    ) -> bool {
+        if let Some(id) = self.graph_id_for_source(&source) {
+            return self.remove_graph(id);
+        }
+        self.add_graph_source(source, return_focus)
+    }
+
+    pub(crate) fn add_or_reveal_graph_source(
+        &mut self,
+        source: GraphSlot,
+        return_focus: FocusedPanel,
+    ) -> bool {
+        if let Some(id) = self.graph_id_for_source(&source) {
+            return self.select_graph(id);
+        }
+        self.add_graph_source(source, return_focus)
+    }
+
+    pub(crate) fn register_graph_source_click(
+        &mut self,
+        source: GraphSlot,
+        clicked_at: Instant,
+        return_focus: FocusedPanel,
+    ) {
+        let is_double_click = self.graph_source_last_click.as_ref().is_some_and(|last| {
+            last.source == source
+                && clicked_at.saturating_duration_since(last.clicked_at)
+                    <= GRAPH_SOURCE_DOUBLE_CLICK_WINDOW
+        });
+        if is_double_click {
+            self.graph_source_last_click = None;
+            self.add_or_reveal_graph_source(source, return_focus);
+        } else {
+            self.graph_source_last_click = Some(GraphSourceClick { source, clicked_at });
+        }
+    }
+
+    pub(crate) fn clear_graph_source_click(&mut self) {
+        self.graph_source_last_click = None;
     }
 
     #[cfg(test)]
@@ -2288,118 +2383,65 @@ impl App {
     }
 
     pub(crate) fn cycle_focus(&mut self) {
-        let selected_time = self.selected_details_sample_time();
-        let next = self.next_focus_target();
-        self.focused_panel = next.0;
-        if let Some(slot_index) = next.1 {
-            self.active_graph_slot_index = slot_index;
-            if let Some(time) = selected_time {
-                self.align_details_sample_selection_to_time(time);
-            }
-        }
+        self.focused_panel = self.next_focus_target();
         self.status = self.focus_status();
     }
 
     pub(crate) fn cycle_focus_previous(&mut self) {
-        let selected_time = self.selected_details_sample_time();
-        let previous = self.previous_focus_target();
-        self.focused_panel = previous.0;
-        if let Some(slot_index) = previous.1 {
-            self.active_graph_slot_index = slot_index;
-            if let Some(time) = selected_time {
-                self.align_details_sample_selection_to_time(time);
-            }
-        }
+        self.focused_panel = self.previous_focus_target();
         self.status = self.focus_status();
     }
 
-    fn next_focus_target(&self) -> (FocusedPanel, Option<usize>) {
-        let slots = self.visible_graph_slot_indices();
-        if !self.show_details || slots.is_empty() {
-            return (self.focused_panel.next(false), None);
+    fn next_focus_target(&self) -> FocusedPanel {
+        if !self.show_details || self.graph_entries.is_empty() {
+            return self.focused_panel.next(false);
         }
 
         match self.focused_panel {
-            FocusedPanel::System => (FocusedPanel::SystemActivity, None),
-            FocusedPanel::SystemActivity => (FocusedPanel::Cpu, None),
-            FocusedPanel::Cpu => (FocusedPanel::Processes, None),
-            FocusedPanel::Processes => (FocusedPanel::DetailsGraph, slots.first().copied()),
-            FocusedPanel::DetailsGraph => {
-                if self.show_samples_panel {
-                    (
-                        FocusedPanel::DetailsSamples,
-                        Some(self.active_graph_slot_index),
-                    )
-                } else {
-                    let next_slot = slots
-                        .iter()
-                        .copied()
-                        .find(|index| *index > self.active_graph_slot_index);
-                    next_slot
-                        .map(|index| (FocusedPanel::DetailsGraph, Some(index)))
-                        .unwrap_or((FocusedPanel::System, None))
-                }
+            FocusedPanel::System => FocusedPanel::SystemActivity,
+            FocusedPanel::SystemActivity => FocusedPanel::Cpu,
+            FocusedPanel::Cpu => FocusedPanel::Processes,
+            FocusedPanel::Processes => FocusedPanel::DetailsGraph,
+            FocusedPanel::DetailsGraph if self.effective_show_samples_panel() => {
+                FocusedPanel::DetailsSamples
             }
-            FocusedPanel::DetailsSamples => {
-                let next_slot = slots
-                    .iter()
-                    .copied()
-                    .find(|index| *index > self.active_graph_slot_index);
-                next_slot
-                    .map(|index| (FocusedPanel::DetailsGraph, Some(index)))
-                    .unwrap_or((FocusedPanel::System, None))
-            }
+            FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples => FocusedPanel::System,
         }
     }
 
-    fn previous_focus_target(&self) -> (FocusedPanel, Option<usize>) {
-        let slots = self.visible_graph_slot_indices();
-        if !self.show_details || slots.is_empty() {
-            return (self.focused_panel.previous(false), None);
+    fn previous_focus_target(&self) -> FocusedPanel {
+        if !self.show_details || self.graph_entries.is_empty() {
+            return self.focused_panel.previous(false);
         }
 
         match self.focused_panel {
-            FocusedPanel::System => (
-                if self.show_samples_panel {
-                    FocusedPanel::DetailsSamples
-                } else {
-                    FocusedPanel::DetailsGraph
-                },
-                slots.last().copied(),
-            ),
-            FocusedPanel::SystemActivity => (FocusedPanel::System, None),
-            FocusedPanel::Cpu => (FocusedPanel::SystemActivity, None),
-            FocusedPanel::Processes => (FocusedPanel::Cpu, None),
-            FocusedPanel::DetailsGraph => {
-                let previous_slot = slots
-                    .iter()
-                    .rev()
-                    .copied()
-                    .find(|index| *index < self.active_graph_slot_index);
-                if self.show_samples_panel {
-                    previous_slot
-                        .map(|index| (FocusedPanel::DetailsSamples, Some(index)))
-                        .unwrap_or((FocusedPanel::Processes, None))
-                } else {
-                    previous_slot
-                        .map(|index| (FocusedPanel::DetailsGraph, Some(index)))
-                        .unwrap_or((FocusedPanel::Processes, None))
-                }
+            FocusedPanel::System if self.effective_show_samples_panel() => {
+                FocusedPanel::DetailsSamples
             }
-            FocusedPanel::DetailsSamples => (
-                FocusedPanel::DetailsGraph,
-                Some(self.active_graph_slot_index),
-            ),
+            FocusedPanel::System => FocusedPanel::DetailsGraph,
+            FocusedPanel::SystemActivity => FocusedPanel::System,
+            FocusedPanel::Cpu => FocusedPanel::SystemActivity,
+            FocusedPanel::Processes => FocusedPanel::Cpu,
+            FocusedPanel::DetailsGraph => FocusedPanel::Processes,
+            FocusedPanel::DetailsSamples => FocusedPanel::DetailsGraph,
         }
     }
 
     fn focus_status(&self) -> String {
         match self.focused_panel {
             FocusedPanel::DetailsGraph => {
-                format!("Focus: Graph#{}", self.active_graph_slot_index + 1)
+                format!(
+                    "Focus: Graph {}/{}",
+                    self.active_graph_index().map_or(0, |index| index + 1),
+                    self.graph_entries.len()
+                )
             }
             FocusedPanel::DetailsSamples => {
-                format!("Focus: Samples#{}", self.active_graph_slot_index + 1)
+                format!(
+                    "Focus: Samples · Graph {}/{}",
+                    self.active_graph_index().map_or(0, |index| index + 1),
+                    self.graph_entries.len()
+                )
             }
             panel => format!("Focus: {}", panel.label()),
         }
@@ -2503,91 +2545,37 @@ impl App {
         self.status = format!("NW/DISK metric selected: {}", metric.label());
     }
 
-    pub(crate) fn toggle_selected_system_metric_for_graph_slot(&mut self, slot_index: usize) {
-        self.toggle_system_metric_for_graph_slot(
-            slot_index,
-            self.selected_system_metric(),
+    pub(crate) fn toggle_selected_system_graph(&mut self) {
+        if self.focused_panel != FocusedPanel::System {
+            self.status = "Graph registration requires RAM/VRAM focus".to_string();
+            return;
+        }
+        self.toggle_graph_source(
+            GraphSlot::system(self.selected_system_metric()),
             FocusedPanel::System,
         );
     }
 
-    pub(crate) fn toggle_selected_system_activity_metric_for_graph_slot(
-        &mut self,
-        slot_index: usize,
-    ) {
-        self.toggle_system_metric_for_graph_slot(
-            slot_index,
-            self.selected_system_activity_metric(),
+    pub(crate) fn toggle_selected_system_activity_graph(&mut self) {
+        if self.focused_panel != FocusedPanel::SystemActivity {
+            self.status = "Graph registration requires NW/DISK focus".to_string();
+            return;
+        }
+        self.toggle_graph_source(
+            GraphSlot::system(self.selected_system_activity_metric()),
             FocusedPanel::SystemActivity,
         );
     }
 
-    pub(crate) fn toggle_cpu_average_for_graph_slot(&mut self, slot_index: usize) {
-        self.toggle_system_metric_for_graph_slot(
-            slot_index,
-            SystemMetric::CpuAverage,
+    pub(crate) fn toggle_cpu_average_graph(&mut self) {
+        if self.focused_panel != FocusedPanel::Cpu {
+            self.status = "Graph registration requires CPUs focus".to_string();
+            return;
+        }
+        self.toggle_graph_source(
+            GraphSlot::system(SystemMetric::CpuAverage),
             FocusedPanel::Cpu,
         );
-    }
-
-    fn toggle_system_metric_for_graph_slot(
-        &mut self,
-        slot_index: usize,
-        metric: SystemMetric,
-        required_focus: FocusedPanel,
-    ) {
-        if slot_index >= GRAPH_SLOT_COUNT {
-            return;
-        }
-        if self.focused_panel != required_focus {
-            self.status = format!("Graph slots require {} focus", required_focus.label());
-            return;
-        }
-        let next_slot = GraphSlot::system(metric);
-        if self.graph_slots[slot_index].as_ref() == Some(&next_slot) {
-            self.graph_slots[slot_index] = None;
-            if self.active_graph_slot_index == slot_index {
-                self.active_graph_slot_index = self
-                    .graph_slots
-                    .iter()
-                    .position(Option::is_some)
-                    .unwrap_or(0);
-            }
-            if self.active_graph_slot_count() == 0 {
-                self.show_details = false;
-                self.ab_comparison = None;
-                if matches!(
-                    self.focused_panel,
-                    FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-                ) {
-                    self.focused_panel = FocusedPanel::Processes;
-                }
-            }
-            self.status = format!("Graph#{} cleared", slot_index + 1);
-            return;
-        }
-
-        if let Some(duplicate_index) =
-            self.graph_slots
-                .iter()
-                .enumerate()
-                .find_map(|(index, slot)| {
-                    (index != slot_index && slot.as_ref() == Some(&next_slot)).then_some(index)
-                })
-        {
-            self.status = format!(
-                "Same graph metric is already selected in Graph#{}",
-                duplicate_index + 1
-            );
-            return;
-        }
-
-        self.graph_slots[slot_index] = Some(next_slot);
-        self.active_graph_slot_index = slot_index;
-        self.show_details = true;
-        self.clamp_details_sample_selection();
-        self.select_details_sample_latest();
-        self.status = format!("Graph#{} metric selected", slot_index + 1);
     }
 
     pub(crate) fn apply_selected_system_metric_to_visible_details(&mut self) {
@@ -3361,6 +3349,7 @@ impl App {
         };
     }
 
+    #[cfg(test)]
     pub(crate) fn add_selected_process_to_watch_list(&mut self) {
         let Some(name) = self.selected_visible_process_name() else {
             self.status = "No process selected".to_string();
@@ -4864,7 +4853,7 @@ impl App {
     }
 
     pub(crate) fn open_active_graph_process_info_dialog(&mut self) -> Result<()> {
-        let Some(slot) = self.graph_slot(self.active_graph_slot_index) else {
+        let Some(slot) = self.active_graph_slot() else {
             self.status = "No active Graph selected".to_string();
             return Ok(());
         };
@@ -6454,9 +6443,7 @@ impl App {
         });
         self.show_log_list = false;
         self.paused_display = None;
-        self.graph_slots = std::array::from_fn(|_| None);
-        self.show_details = false;
-        self.ab_comparison = None;
+        self.clear_graph_workspace_state();
         self.process_table_state.select(Some(0));
         self.selected_process_identity = None;
         self.rebuild_visible_process_cache();
@@ -6477,9 +6464,7 @@ impl App {
         self.log_view_display = None;
         self.log_view_watch_list.clear();
         self.log_view_normalized_watch_names.clear();
-        self.graph_slots = std::array::from_fn(|_| None);
-        self.show_details = false;
-        self.ab_comparison = None;
+        self.clear_graph_workspace_state();
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
         self.status = "Log view closed".to_string();

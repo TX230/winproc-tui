@@ -7,12 +7,12 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{FocusedPanel, ProcessLifecycle, VisibleProcessRow},
+    app::{FocusedPanel, GraphSourceState, ProcessLifecycle, VisibleProcessRow},
     model::{MetricColumn, ProcessColumnWidths, ProcessRow, SortColumn, SortDirection},
     ui::{
         Theme,
         format::{format_compact_bytes, format_integer, format_io_rate},
-        graph_slot::graph_slot_marker_span,
+        graph_slot::graph_slot_number_span,
         layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
     },
@@ -25,6 +25,8 @@ const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
 const PROCESS_TITLE: &str = "PROCESSES";
 const TITLE_SEPARATOR: &str = " · ";
 const TRUNCATION_MARKER: &str = "⋯";
+const GRAPH_SLOT_NUMBER_WIDTH: usize = 2;
+const GRAPH_SLOT_NUMBER_GAP: usize = 1;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ProcessTitleSegmentKind {
@@ -331,7 +333,7 @@ fn process_table_block<'a>(
         );
     }
     if input_active {
-        block.border_style(Style::default().fg(theme.accent))
+        block.border_style(Style::default().fg(theme.focus_border))
     } else {
         block
     }
@@ -433,10 +435,10 @@ fn process_table_row(
         let table_column_index = column_index + FIXED_SELECTABLE_COLUMN_COUNT;
         let selected_column = table_column_index == selected_table_column_index;
         let selected_cell = row_selected && selected_column;
-        let graph_slot_numbers = if row.is_tracked_total {
+        let graph_state = if row.is_tracked_total {
             None
         } else {
-            graph_slot_numbers_for_cell(app, process, *column)
+            graph_state_for_cell(app, process, *column)
         };
         let column_width = if *column == MetricColumn::FullPath {
             full_path_width.unwrap_or_else(|| {
@@ -454,7 +456,7 @@ fn process_table_row(
             app,
             selected_column,
             selected_cell,
-            graph_slot_numbers.as_deref(),
+            graph_state,
             text_style,
             theme,
         ));
@@ -469,16 +471,16 @@ fn process_metric_cell(
     app: &App,
     selected: bool,
     selected_cell: bool,
-    graph_slot_numbers: Option<&str>,
+    graph_state: Option<GraphSourceState>,
     text_style: Style,
     theme: Theme,
 ) -> Cell<'static> {
-    if let Some(graph_slot_numbers) = graph_slot_numbers {
-        let mut cell = Cell::from(process_metric_line_with_graph_slots(
+    if let Some(state) = graph_state {
+        let mut cell = Cell::from(process_metric_line_with_graph_slot_number(
             process,
             column,
             column_width,
-            graph_slot_numbers,
+            state,
             theme,
             text_style,
         ));
@@ -505,27 +507,14 @@ fn process_metric_cell(
     cell
 }
 
-fn graph_slot_numbers_for_cell(
+fn graph_state_for_cell(
     app: &App,
     process: &ProcessRow,
     column: MetricColumn,
-) -> Option<String> {
+) -> Option<GraphSourceState> {
     let identity = crate::model::ProcessIdentity::from_row(process);
-    let numbers = app
-        .graph_slots
-        .iter()
-        .enumerate()
-        .filter_map(|(index, slot)| {
-            slot.as_ref()
-                .is_some_and(|slot| {
-                    slot.process_metric()
-                        .is_some_and(|metric| metric.column() == column)
-                        && slot.process_identity() == Some(&identity)
-                })
-                .then(|| char::from(b'1' + index as u8))
-        })
-        .collect::<String>();
-    (!numbers.is_empty()).then_some(numbers)
+    let metric = crate::app::DetailsMetric::from_graphable_column(column)?;
+    app.graph_source_state(&crate::app::GraphSlot::process(identity, metric))
 }
 
 fn process_row_style(selected: bool, multi_selected: bool, theme: Theme) -> Style {
@@ -562,24 +551,40 @@ fn process_metric_line(
     line.alignment(process_metric_alignment(column))
 }
 
-fn process_metric_line_with_graph_slots(
+fn process_metric_line_with_graph_slot_number(
     process: &ProcessRow,
     column: MetricColumn,
     column_width: u16,
-    graph_slot_numbers: &str,
+    state: GraphSourceState,
     theme: Theme,
     text_style: Style,
 ) -> Line<'static> {
-    let value = format_process_column(process, column, column_width);
     let column_width = column_width as usize;
-    let number_width = graph_slot_numbers.chars().count().min(column_width);
-    let value_width = value.chars().count();
-    let spacing = column_width.saturating_sub(number_width + value_width);
+    let marker_width = GRAPH_SLOT_NUMBER_WIDTH.min(column_width);
+    let gap_width = GRAPH_SLOT_NUMBER_GAP.min(column_width.saturating_sub(marker_width));
+    let value_width = column_width.saturating_sub(marker_width + gap_width);
+    let value = compact_graph_cell_value(
+        format_process_column(process, column, value_width as u16),
+        value_width,
+    );
+    let spacing = value_width.saturating_sub(value.chars().count());
     Line::from(vec![
-        graph_slot_marker_span(graph_slot_numbers, number_width, theme),
-        Span::raw(" ".repeat(spacing)),
+        graph_slot_number_span(Some(state), marker_width, theme),
+        Span::raw(" ".repeat(gap_width + spacing)),
         Span::styled(value, text_style),
     ])
+}
+
+fn compact_graph_cell_value(value: String, width: usize) -> String {
+    if value.chars().count() <= width {
+        return value;
+    }
+    let compact = value.replace(' ', "");
+    if compact.chars().count() <= width {
+        compact
+    } else {
+        compact.chars().take(width).collect()
+    }
 }
 
 fn tracked_cell(row: &VisibleProcessRow<'_>, theme: Theme) -> Cell<'static> {
@@ -862,24 +867,7 @@ fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: 
 
 fn process_tracked_only_title_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
     let label_style = process_title_segment_style(ProcessTitleSegmentKind::TrackedOnly, app, theme);
-    vec![
-        Span::styled(
-            if app.watch_enabled {
-                "☑ Tracked only("
-            } else {
-                "☐ Tracked only("
-            },
-            label_style,
-        ),
-        Span::styled(
-            "T",
-            Style::default()
-                .fg(theme.background)
-                .bg(theme.tracked)
-                .remove_modifier(Modifier::BOLD),
-        ),
-        Span::styled(")", label_style),
-    ]
+    vec![Span::styled(process_tracked_only_label(app), label_style)]
 }
 
 fn filter_title_spans(filter: &str, theme: Theme) -> Vec<Span<'static>> {
@@ -991,9 +979,9 @@ pub(crate) fn process_tracked_only_control_area(area: Rect, app: &App) -> Option
 
 fn process_tracked_only_label(app: &App) -> &'static str {
     if app.watch_enabled {
-        "☑ Tracked only(T)"
+        "☑ Tracked-only(Shift+T)"
     } else {
-        "☐ Tracked only(T)"
+        "☐ Tracked-only(Shift+T)"
     }
 }
 
@@ -1194,13 +1182,13 @@ mod tests {
     }
 
     #[test]
-    fn compact_byte_column_width_keeps_graph_marker_separate_from_max_value() {
-        let value = format_compact_bytes(999_900_000);
-        let marker_width = 1usize;
-        let spacing = MetricColumn::PrivateBytes.width() as usize - marker_width - value.len();
+    fn compact_byte_column_width_keeps_two_digit_slot_separate_from_max_value() {
+        let column_width = MetricColumn::PrivateBytes.width() as usize;
+        let value_width = column_width - GRAPH_SLOT_NUMBER_WIDTH - GRAPH_SLOT_NUMBER_GAP;
+        let value = compact_graph_cell_value(format_compact_bytes(999_900_000), value_width);
 
-        assert_eq!(value, "999.9 MB");
-        assert_eq!(spacing, 1);
+        assert_eq!(value, "999.9MB");
+        assert_eq!(value.chars().count(), value_width);
     }
 
     #[test]

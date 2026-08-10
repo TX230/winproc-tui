@@ -292,7 +292,7 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
         },
         graphs: GraphConfig {
             columns: app.graph_slot_layout.columns(),
-            samples: app.samples_panel_before_two_columns,
+            samples: app.show_samples_panel,
             delta: app.show_sample_delta,
         },
         process_table: ProcessTableConfig {

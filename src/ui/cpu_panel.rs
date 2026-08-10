@@ -7,9 +7,9 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{FocusedPanel, GraphSlot},
+    app::{FocusedPanel, GraphSlot, GraphSourceState},
     model::{CpuCoreKind, CpuLogicalProcessorSample, Snapshot, SystemMetric},
-    ui::{Theme, graph_slot::graph_slot_marker_span, widgets::block::panel_block_focused},
+    ui::{Theme, graph_slot::graph_slot_number_span, widgets::block::panel_block_focused},
 };
 
 pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
@@ -28,7 +28,7 @@ pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &A
 
 pub(crate) fn cpu_panel_lines_for_app(app: &App, theme: Theme, height: u16) -> Vec<Line<'static>> {
     cpu_panel_lines(
-        &cpu_average_graph_slot_numbers(app),
+        cpu_average_graph_state(app),
         app.display_snapshot(),
         theme,
         height,
@@ -36,42 +36,34 @@ pub(crate) fn cpu_panel_lines_for_app(app: &App, theme: Theme, height: u16) -> V
 }
 
 fn cpu_panel_lines(
-    cpu_average_graph_slot_numbers: &str,
+    cpu_average_graph_state: Option<GraphSourceState>,
     snapshot: &Snapshot,
     theme: Theme,
     height: u16,
 ) -> Vec<Line<'static>> {
     if height <= 1 {
-        return vec![cpu_panel_line(
-            cpu_average_graph_slot_numbers,
-            snapshot,
-            theme,
-        )];
+        return vec![cpu_panel_line(cpu_average_graph_state, snapshot, theme)];
     }
 
     if snapshot.cpu_logical_processors.is_empty() {
         if height >= 3 {
             return vec![
-                cpu_average_bar_line(cpu_average_graph_slot_numbers, snapshot, theme),
+                cpu_average_bar_line(cpu_average_graph_state, snapshot, theme),
                 cpu_frequency_line(snapshot, theme),
                 cpu_no_cores_line(theme),
             ];
         }
-        return vec![cpu_panel_line(
-            cpu_average_graph_slot_numbers,
-            snapshot,
-            theme,
-        )];
+        return vec![cpu_panel_line(cpu_average_graph_state, snapshot, theme)];
     }
 
     let mut lines = if height >= 4 {
         vec![
-            cpu_average_bar_line(cpu_average_graph_slot_numbers, snapshot, theme),
+            cpu_average_bar_line(cpu_average_graph_state, snapshot, theme),
             cpu_frequency_line(snapshot, theme),
         ]
     } else {
         vec![cpu_panel_summary_line(
-            cpu_average_graph_slot_numbers,
+            cpu_average_graph_state,
             snapshot,
             theme,
         )]
@@ -86,11 +78,11 @@ fn cpu_panel_lines(
 }
 
 fn cpu_panel_line(
-    cpu_average_graph_slot_numbers: &str,
+    cpu_average_graph_state: Option<GraphSourceState>,
     snapshot: &Snapshot,
     theme: Theme,
 ) -> Line<'static> {
-    let mut spans = cpu_panel_summary_spans(cpu_average_graph_slot_numbers, snapshot, theme);
+    let mut spans = cpu_panel_summary_spans(cpu_average_graph_state, snapshot, theme);
 
     if snapshot.cpu_logical_processors.is_empty() {
         spans.push(Span::raw("  "));
@@ -104,24 +96,24 @@ fn cpu_panel_line(
 }
 
 fn cpu_panel_summary_line(
-    cpu_average_graph_slot_numbers: &str,
+    cpu_average_graph_state: Option<GraphSourceState>,
     snapshot: &Snapshot,
     theme: Theme,
 ) -> Line<'static> {
     Line::from(cpu_panel_summary_spans(
-        cpu_average_graph_slot_numbers,
+        cpu_average_graph_state,
         snapshot,
         theme,
     ))
 }
 
 fn cpu_average_bar_line(
-    cpu_average_graph_slot_numbers: &str,
+    cpu_average_graph_state: Option<GraphSourceState>,
     snapshot: &Snapshot,
     theme: Theme,
 ) -> Line<'static> {
     let mut spans = vec![
-        cpu_average_graph_slot_span(cpu_average_graph_slot_numbers, theme),
+        cpu_average_graph_slot_span(cpu_average_graph_state, theme),
         Span::styled("CPU Usage [", Style::default().fg(theme.muted)),
     ];
     spans.extend(cpu_average_bar_spans(
@@ -150,12 +142,12 @@ fn cpu_no_cores_line(theme: Theme) -> Line<'static> {
 }
 
 fn cpu_panel_summary_spans(
-    cpu_average_graph_slot_numbers: &str,
+    cpu_average_graph_state: Option<GraphSourceState>,
     snapshot: &Snapshot,
     theme: Theme,
 ) -> Vec<Span<'static>> {
     let mut spans = vec![
-        cpu_average_graph_slot_span(cpu_average_graph_slot_numbers, theme),
+        cpu_average_graph_slot_span(cpu_average_graph_state, theme),
         Span::styled("CPU Usage ", Style::default().fg(theme.muted)),
         Span::styled(
             format_cpu_average(snapshot.cpu_total_usage_percent),
@@ -259,22 +251,17 @@ fn cpu_core_grouped_bar_line(cores: &[CpuLogicalProcessorSample], theme: Theme) 
     Line::from(spans)
 }
 
-fn cpu_average_graph_slot_span(numbers: &str, theme: Theme) -> Span<'static> {
-    graph_slot_marker_span(numbers, 2, theme)
+fn cpu_average_graph_slot_span(
+    graph_state: Option<GraphSourceState>,
+    theme: Theme,
+) -> Span<'static> {
+    graph_slot_number_span(graph_state, 2, theme)
 }
 
-fn cpu_average_graph_slot_numbers(app: &App) -> String {
-    app.graph_slots
-        .iter()
-        .enumerate()
-        .filter_map(|(index, slot)| match slot.as_ref() {
-            Some(GraphSlot::System {
-                metric: SystemMetric::CpuAverage,
-            }) => Some((index + 1).to_string()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("")
+fn cpu_average_graph_state(app: &App) -> Option<GraphSourceState> {
+    app.graph_source_state(&GraphSlot::System {
+        metric: SystemMetric::CpuAverage,
+    })
 }
 
 fn cpu_frequency_spans(snapshot: &Snapshot, theme: Theme) -> Vec<Span<'static>> {
@@ -461,7 +448,7 @@ mod tests {
     #[test]
     fn cpu_average_bar_line_shows_number_after_bar() {
         let snapshot = snapshot_with_cores(Vec::new());
-        let text = cpu_average_bar_line("", &snapshot, crate::ui::THEMES[0])
+        let text = cpu_average_bar_line(None, &snapshot, crate::ui::THEMES[0])
             .spans
             .iter()
             .map(|span| span.content.as_ref())
@@ -487,7 +474,7 @@ mod tests {
             },
         ]);
 
-        let text = cpu_panel_line("", &snapshot, crate::ui::THEMES[0])
+        let text = cpu_panel_line(None, &snapshot, crate::ui::THEMES[0])
             .spans
             .iter()
             .map(|span| span.content.as_ref())
@@ -507,7 +494,7 @@ mod tests {
         snapshot.cpu_p_core_frequency_mhz = None;
         snapshot.cpu_e_core_frequency_mhz = None;
 
-        let text = cpu_panel_line("", &snapshot, crate::ui::THEMES[0])
+        let text = cpu_panel_line(None, &snapshot, crate::ui::THEMES[0])
             .spans
             .iter()
             .map(|span| span.content.as_ref())
@@ -525,7 +512,7 @@ mod tests {
         }]);
 
         for theme in crate::ui::THEMES {
-            let line = cpu_panel_line("", &snapshot, theme);
+            let line = cpu_panel_line(None, &snapshot, theme);
             let usage_span = line
                 .spans
                 .iter()
@@ -554,7 +541,7 @@ mod tests {
             },
         ]);
 
-        let text = cpu_panel_lines("", &snapshot, crate::ui::THEMES[0], 4)
+        let text = cpu_panel_lines(None, &snapshot, crate::ui::THEMES[0], 4)
             .into_iter()
             .map(|line| {
                 line.spans
@@ -575,7 +562,7 @@ mod tests {
             usage_percent: 99,
             kind: None,
         }]);
-        let text = cpu_panel_lines("", &snapshot, crate::ui::THEMES[0], 4)
+        let text = cpu_panel_lines(None, &snapshot, crate::ui::THEMES[0], 4)
             .into_iter()
             .map(|line| {
                 line.spans
@@ -603,7 +590,7 @@ mod tests {
                 kind: Some(CpuCoreKind::Efficiency),
             },
         ]);
-        let text = cpu_panel_lines("", &snapshot, crate::ui::THEMES[0], 5)
+        let text = cpu_panel_lines(None, &snapshot, crate::ui::THEMES[0], 5)
             .into_iter()
             .map(|line| {
                 line.spans

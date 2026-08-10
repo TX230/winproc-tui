@@ -7,13 +7,13 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{AppActivity, FocusedPanel},
+    app::{AppActivity, FocusedPanel, GraphSourceState},
     model::{DiskUsageSample, SystemMetric},
     ui::{
         Theme,
         cpu_panel::draw_cpu_panel,
         format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
-        graph_slot::graph_slot_marker_span,
+        graph_slot::graph_slot_number_span,
         layout::system_panel_area_for_screen,
         widgets::block::panel_block_focused,
     },
@@ -152,7 +152,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             SystemMetric::NetworkReceived,
             render_summary_graph_slot_value_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::NetworkReceived),
+                system_metric_graph_state(app, SystemMetric::NetworkReceived),
                 "Net Rx",
                 &format_optional_mbps(snapshot.network_received_bytes_per_sec),
                 theme,
@@ -161,7 +161,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             SystemMetric::NetworkSent,
             render_summary_graph_slot_value_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::NetworkSent),
+                system_metric_graph_state(app, SystemMetric::NetworkSent),
                 "Net Tx",
                 &format_optional_mbps(snapshot.network_sent_bytes_per_sec),
                 theme,
@@ -170,7 +170,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             SystemMetric::DiskRead,
             render_summary_graph_slot_value_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::DiskRead),
+                system_metric_graph_state(app, SystemMetric::DiskRead),
                 "Disk R",
                 &format_optional_whole_mb_per_sec(snapshot.disk_read_bytes_per_sec),
                 theme,
@@ -179,7 +179,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             SystemMetric::DiskWrite,
             render_summary_graph_slot_value_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::DiskWrite),
+                system_metric_graph_state(app, SystemMetric::DiskWrite),
                 "Disk W",
                 &format_optional_whole_mb_per_sec(snapshot.disk_write_bytes_per_sec),
                 theme,
@@ -188,7 +188,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             SystemMetric::DiskQueueLength,
             render_summary_graph_slot_value_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::DiskQueueLength),
+                system_metric_graph_state(app, SystemMetric::DiskQueueLength),
                 "Disk Q",
                 &format_optional_queue_length(snapshot.disk_queue_length),
                 theme,
@@ -250,13 +250,13 @@ fn system_info_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
 }
 
 fn render_summary_graph_slot_value_line(
-    slot_numbers: Option<String>,
+    graph_state: Option<GraphSourceState>,
     label: &'static str,
     value: &str,
     theme: Theme,
 ) -> Line<'static> {
     Line::from(vec![
-        graph_slot_prefix_span(slot_numbers, theme),
+        graph_slot_prefix_span(graph_state, theme),
         Span::styled(format!("{label:<8}"), Style::default().fg(theme.muted)),
         Span::styled(
             value.to_string(),
@@ -267,9 +267,8 @@ fn render_summary_graph_slot_value_line(
     ])
 }
 
-fn graph_slot_prefix_span(graph_slot_numbers: Option<String>, theme: Theme) -> Span<'static> {
-    let label = graph_slot_numbers.unwrap_or_default();
-    graph_slot_marker_span(&label, 2, theme)
+fn graph_slot_prefix_span(graph_state: Option<GraphSourceState>, theme: Theme) -> Span<'static> {
+    graph_slot_number_span(graph_state, 2, theme)
 }
 
 pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
@@ -319,7 +318,7 @@ fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             Some(SystemMetric::PhysicalMemory),
             render_summary_graph_slot_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::PhysicalMemory),
+                system_metric_graph_state(app, SystemMetric::PhysicalMemory),
                 "Physical Memory",
                 Some(snapshot.used_memory),
                 Some(snapshot.total_memory),
@@ -330,7 +329,7 @@ fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             Some(SystemMetric::Committed),
             render_summary_graph_slot_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::Committed),
+                system_metric_graph_state(app, SystemMetric::Committed),
                 "Committed",
                 snapshot.committed_memory,
                 snapshot.commit_limit,
@@ -341,7 +340,7 @@ fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             Some(SystemMetric::GpuDedicated),
             render_summary_graph_slot_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::GpuDedicated),
+                system_metric_graph_state(app, SystemMetric::GpuDedicated),
                 "GPU Dedicated",
                 snapshot.gpu_dedicated_used,
                 snapshot.gpu_dedicated_total,
@@ -352,7 +351,7 @@ fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         (
             Some(SystemMetric::GpuShared),
             render_summary_graph_slot_line(
-                system_metric_graph_slot_numbers(app, SystemMetric::GpuShared),
+                system_metric_graph_state(app, SystemMetric::GpuShared),
                 "GPU Shared",
                 snapshot.gpu_shared_used,
                 snapshot.gpu_shared_total,
@@ -390,18 +389,8 @@ fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
         .collect()
 }
 
-fn system_metric_graph_slot_numbers(app: &App, metric: SystemMetric) -> Option<String> {
-    let numbers = app
-        .graph_slots
-        .iter()
-        .enumerate()
-        .filter_map(|(index, slot)| {
-            slot.as_ref()
-                .is_some_and(|slot| slot.system_metric() == Some(metric))
-                .then(|| char::from(b'1' + index as u8))
-        })
-        .collect::<String>();
-    (!numbers.is_empty()).then_some(numbers)
+fn system_metric_graph_state(app: &App, metric: SystemMetric) -> Option<GraphSourceState> {
+    app.graph_source_state(&crate::app::GraphSlot::system(metric))
 }
 
 fn memory_panel_width_for_lines(area_width: u16, lines: &[Line<'_>]) -> u16 {
@@ -603,15 +592,14 @@ pub(crate) fn render_summary_line(
 }
 
 fn render_summary_graph_slot_line(
-    graph_slot_numbers: Option<String>,
+    graph_state: Option<GraphSourceState>,
     title: &str,
     used: Option<u64>,
     total: Option<u64>,
     suffix: Option<&str>,
     theme: Theme,
 ) -> Line<'static> {
-    let label = graph_slot_numbers.unwrap_or_default();
-    let mut spans = vec![graph_slot_marker_span(&label, 2, theme)];
+    let mut spans = vec![graph_slot_number_span(graph_state, 2, theme)];
     spans.extend(render_summary_line(title, used, total, suffix, theme).spans);
     Line::from(spans)
 }

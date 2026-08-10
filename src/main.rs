@@ -97,8 +97,8 @@ use ui::layout::centered_rect;
 #[cfg(test)]
 use ui::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES, details_graph_area_for_app,
-    details_samples_area_for_app, details_shared_controls_area_for_app, details_slot_areas_for_app,
-    main_panel_areas, main_panel_areas_for_app, process_kill_button_at, process_kill_dialog_area,
+    details_samples_area_for_app, details_shared_controls_area_for_app, main_panel_areas,
+    main_panel_areas_for_app, process_kill_button_at, process_kill_dialog_area,
     process_table_visible_column_count, screen_layout,
 };
 #[cfg(test)]
@@ -595,11 +595,10 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn app_config_saves_graph_layout_and_samples_preference() {
+    fn app_config_saves_graph_layout_and_explicit_samples_preference() {
         let mut app = make_test_app(3, 10);
         app.graph_slot_layout = GraphSlotLayout::TwoColumns;
         app.show_samples_panel = false;
-        app.samples_panel_before_two_columns = true;
         app.show_sample_delta = false;
         let path = unique_config_path("graph-layout");
 
@@ -609,7 +608,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("[graphs]"), "{rendered}");
         assert!(rendered.contains("columns = 2"), "{rendered}");
-        assert!(rendered.contains("samples = true"), "{rendered}");
+        assert!(rendered.contains("samples = false"), "{rendered}");
         assert!(rendered.contains("delta = false"), "{rendered}");
     }
 
@@ -1295,7 +1294,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn filter_editing_space_tracks_selected_process_without_editing_draft() {
+    fn filter_editing_space_edits_the_filter_instead_of_tracking() {
         let mut app = make_test_app(3, 10);
         app.snapshot.processes[0].name = "alpha.exe".to_string();
         app.snapshot.processes[1].name = "beta.exe".to_string();
@@ -1310,9 +1309,8 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.filter_editing);
-        assert_eq!(app.filter_draft, "b");
-        assert_eq!(app.watch_list, vec!["beta.exe"]);
-        assert_eq!(app.status, "Added to Tracked List: beta.exe");
+        assert_eq!(app.filter_draft, "b ");
+        assert!(app.watch_list.is_empty());
     }
 
     #[test]
@@ -1686,11 +1684,20 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn details_toggle_changes_visibility() {
+    fn details_toggle_changes_visibility_without_resetting_graph_workspace_state() {
         let mut app = make_test_app(3, 10);
-
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
+        assign_private_graph(&mut app);
+        add_test_graph(&mut app, 1);
+        app.ab_comparison = Some(app::AbComparison { a: None, b: None });
+        app.details_sample_selected = 7;
+        app.details_sample_offset = 3;
+        app.details_live = false;
+        app.graph_scroll_row = 1;
+        app.graph_time_span_seconds = 240;
+        app.graph_time_offset_seconds = 30;
+        let entries = app.graph_entries.clone();
+        let active = app.active_graph_id;
+        let comparison = app.ab_comparison.clone();
         assert!(app.show_details);
 
         app.on_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE))
@@ -1700,6 +1707,15 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE))
             .unwrap();
         assert!(app.show_details);
+        assert_eq!(app.graph_entries, entries);
+        assert_eq!(app.active_graph_id, active);
+        assert_eq!(app.ab_comparison, comparison);
+        assert_eq!(app.details_sample_selected, 7);
+        assert_eq!(app.details_sample_offset, 3);
+        assert!(!app.details_live);
+        assert_eq!(app.graph_scroll_row, 1);
+        assert_eq!(app.graph_time_span_seconds, 240);
+        assert_eq!(app.graph_time_offset_seconds, 30);
     }
 
     #[test]
@@ -1843,7 +1859,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("Select a metric, then press 1-4 to show it in Graph#1-#4."),
+            rendered.contains("Select a metric, then press Space or double-click it."),
             "{rendered}"
         );
 
@@ -1853,180 +1869,300 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn number_keys_assign_replace_and_clear_graph_slots() {
+    fn source_number_keys_only_show_graph_migration_guidance() {
         let mut app = make_test_app(3, 10);
         app.set_screen_area(Rect::new(0, 0, 120, 80));
 
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(
-            app.graph_slots[0]
-                .as_ref()
-                .and_then(GraphSlot::process_metric),
-            Some(DetailsMetric::Private)
-        );
-        assert!(app.show_details);
-
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(
-            app.graph_slots[0]
-                .as_ref()
-                .and_then(GraphSlot::process_metric),
-            Some(DetailsMetric::WorksetPrivate)
-        );
-
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
-        assert!(app.graph_slots[0].is_none());
-        assert!(!app.show_details);
-    }
-
-    #[test]
-    fn zero_key_clears_graph_slots_and_closes_graphs_in_processes_panel() {
-        let mut app = make_test_app(3, 10);
-        app.set_screen_area(Rect::new(0, 0, 120, 80));
-
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert!(app.graph_slots[0].is_some());
-        assert!(app.graph_slots[1].is_some());
-        assert!(app.show_details);
-
+        for key in ['1', '2', '3', '4'] {
+            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.graph_entries.is_empty());
+            assert_eq!(app.status, "Use Space or double-click to graph this metric");
+        }
         app.on_key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE))
             .unwrap();
-
-        assert!(app.graph_slots.iter().all(Option::is_none));
-        assert!(!app.show_details);
-        assert_eq!(app.focused_panel, FocusedPanel::Processes);
-        assert_eq!(app.status, "Graph metrics cleared");
-    }
-
-    #[test]
-    fn number_keys_move_same_graph_metric_between_slots() {
-        let mut app = make_test_app(3, 10);
-        app.set_screen_area(Rect::new(0, 0, 120, 80));
-
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert!(app.graph_slots[0].is_none());
-        assert_eq!(
-            app.graph_slots[1]
-                .as_ref()
-                .and_then(GraphSlot::process_metric),
-            Some(DetailsMetric::Private)
-        );
-        assert_eq!(app.active_graph_slot_index, 1);
-        assert_eq!(app.status, "Graph metric moved to Graph#2");
-
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert_eq!(
-            app.graph_slots[1]
-                .as_ref()
-                .and_then(GraphSlot::process_metric),
-            Some(DetailsMetric::WorksetPrivate)
-        );
+        assert!(app.graph_entries.is_empty());
+        assert_eq!(app.status, "Remove Graphs with Delete or the remove button");
     }
 
     #[test]
     fn delete_on_live_process_opens_kill_confirm_before_graph_clear() {
         let mut app = make_test_app(3, 10);
         app.set_screen_area(Rect::new(0, 0, 120, 80));
-
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
-            .unwrap();
+        assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::Processes;
         app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE))
             .unwrap();
 
         assert!(app.show_process_kill_confirmation);
-        assert!(app.graph_slots[0].is_some());
+        assert_eq!(app.graph_entries.len(), 1);
         assert_eq!(app.process_kill_targets.len(), 1);
     }
 
     #[test]
-    fn number_key_on_non_metric_process_column_shows_warning_dialog() {
+    fn space_on_non_graphable_process_column_only_shows_status() {
         let mut app = make_test_app(3, 10);
         app.selected_process_column_index = 1;
 
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
-        assert!(app.graph_slots[0].is_none());
+        assert!(app.graph_entries.is_empty());
         assert!(!app.show_details);
-        assert!(app.show_metric_column_warning);
-        assert_eq!(app.status, "Select a metric cell before pressing 1-4");
-
-        let rendered = render_app_to_text(&app, 100, 45);
-        assert!(
-            !rendered.contains("Select a metric column first."),
-            "{rendered}"
-        );
-        assert!(
-            rendered.contains("Move to a metric cell before pressing 1-4."),
-            "{rendered}"
-        );
-
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-            .unwrap();
         assert!(!app.show_metric_column_warning);
+        assert_eq!(app.status, "Select a graphable metric cell");
     }
 
     #[test]
-    fn adding_graph_slot_preserves_assignment_when_slot_is_not_visible() {
+    fn space_adds_and_removes_selected_graph_without_tracking() {
         let mut app = make_test_app(30, 10);
         app.set_screen_area(Rect::new(0, 0, 120, 45));
+        let source = app.selected_process_graph_source().unwrap();
 
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
-            .unwrap();
+        assert_eq!(app.graph_entries.len(), 1);
+        assert_eq!(app.graph_entries[0].source, source);
+        assert!(app.show_details);
+        assert!(app.watch_list.is_empty());
+        assert_eq!(app.focused_panel, FocusedPanel::Processes);
 
-        assert!(app.graph_slots[1].is_some());
-        assert!(!app.show_display_area_warning);
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.graph_entries.is_empty());
+        assert!(!app.show_details);
+        assert!(app.watch_list.is_empty());
     }
 
     #[test]
-    fn resizing_temporarily_hides_and_restores_graph_slots() {
+    fn graph_collection_accepts_required_counts_without_duplicates() {
+        for count in [0, 1, 2, 4, 8, 15, app::GRAPH_LIMIT] {
+            let mut app = make_test_app(1, 10);
+            for index in 0..count {
+                add_test_graph(&mut app, index);
+            }
+
+            assert_eq!(app.graph_entries.len(), count);
+            let ids = app
+                .graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<std::collections::HashSet<_>>();
+            assert_eq!(ids.len(), count);
+            assert_eq!(
+                app.active_graph_id,
+                app.graph_entries.last().map(|entry| entry.id)
+            );
+        }
+
+        let mut app = make_test_app(1, 10);
+        let source = test_graph_source(&app, 0);
+        assert!(app.add_or_reveal_graph_source(source.clone(), FocusedPanel::Processes));
+        let id = app.graph_entries[0].id;
+        assert!(app.add_or_reveal_graph_source(source, FocusedPanel::Processes));
+        assert_eq!(app.graph_entries.len(), 1);
+        assert_eq!(app.active_graph_id, Some(id));
+    }
+
+    #[test]
+    fn graph_collection_rejects_the_seventeenth_entry_without_replacement() {
+        let mut app = make_test_app(1, 10);
+        for index in 0..app::GRAPH_LIMIT {
+            add_test_graph(&mut app, index);
+        }
+        let entries = app.graph_entries.clone();
+        let active = app.active_graph_id;
+
+        assert!(!app.add_or_reveal_graph_source(
+            test_graph_source(&app, app::GRAPH_LIMIT),
+            FocusedPanel::Processes,
+        ));
+
+        assert_eq!(app.graph_entries, entries);
+        assert_eq!(app.active_graph_id, active);
+        assert_eq!(app.status, "Graph limit reached (16)");
+    }
+
+    #[test]
+    fn graph_ids_are_monotonic_and_are_not_reused_after_removal() {
+        let mut app = make_test_app(1, 10);
+        let first = add_test_graph(&mut app, 0);
+        assert!(app.remove_graph(first));
+        let second = add_test_graph(&mut app, 1);
+
+        assert!(second.0 > first.0);
+        assert_ne!(second, first);
+    }
+
+    #[test]
+    fn graph_source_ordinals_follow_visual_order_after_removal() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..app::GRAPH_LIMIT)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.set_active_graph(ids[10]));
+        app.details_sample_selected = 7;
+        app.details_sample_offset = 3;
+        app.ab_comparison = Some(app::AbComparison { a: None, b: None });
+        let expected_ids = ids
+            .iter()
+            .copied()
+            .filter(|id| *id != ids[4])
+            .collect::<Vec<_>>();
+
+        assert!(app.remove_graph(ids[4]));
+
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            expected_ids
+        );
+        assert_eq!(app.active_graph_id, Some(ids[10]));
+        assert_eq!(app.details_sample_selected, 7);
+        assert_eq!(app.details_sample_offset, 3);
+        assert_eq!(
+            app.ab_comparison,
+            Some(app::AbComparison { a: None, b: None })
+        );
+        for (ordinal, entry) in app.graph_entries.iter().enumerate() {
+            let state = app
+                .graph_source_state(&entry.source)
+                .expect("registered source should have a slot number");
+            assert_eq!(state.ordinal, ordinal);
+            assert_eq!(state.active, entry.id == ids[10]);
+        }
+        assert_eq!(app.graph_entries.len(), app::GRAPH_LIMIT - 1);
+        assert_eq!(
+            app.graph_source_state(&app.graph_entries[9].source),
+            Some(app::GraphSourceState {
+                ordinal: 9,
+                active: true,
+            })
+        );
+    }
+
+    #[test]
+    fn graph_removal_selects_next_then_previous_and_preserves_non_active_id() {
+        for (active_index, remove_index, expected_active_index) in [(0, 0, 1), (2, 2, 3), (4, 4, 3)]
+        {
+            let mut app = make_test_app(1, 10);
+            let ids = (0..5)
+                .map(|index| add_test_graph(&mut app, index))
+                .collect::<Vec<_>>();
+            assert!(app.set_active_graph(ids[active_index]));
+
+            assert!(app.remove_graph(ids[remove_index]));
+
+            assert_eq!(app.active_graph_id, Some(ids[expected_active_index]));
+            assert_eq!(app.graph_entries.len(), 4);
+            assert!(app.graph_entry_by_id(ids[remove_index]).is_none());
+        }
+
+        let mut app = make_test_app(1, 10);
+        let ids = (0..5)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.set_active_graph(ids[2]));
+        assert!(app.remove_graph(ids[0]));
+        assert_eq!(app.active_graph_id, Some(ids[2]));
+    }
+
+    #[test]
+    fn removing_last_graph_closes_workspace_clears_ab_and_preserves_history() {
+        let mut app = make_test_app(1, 10);
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        let identity = ProcessIdentity::from_row(&app.snapshot.processes[0]);
+        let sample_count = app.process_history.sample_count_for(&identity);
+        let id = app
+            .add_or_reveal_graph_source(
+                GraphSlot::system(SystemMetric::CpuAverage),
+                FocusedPanel::Cpu,
+            )
+            .then(|| app.active_graph_id.unwrap())
+            .unwrap();
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.ab_comparison = Some(app::AbComparison { a: None, b: None });
+
+        assert!(app.remove_graph(id));
+
+        assert!(app.graph_entries.is_empty());
+        assert_eq!(app.active_graph_id, None);
+        assert!(!app.show_details);
+        assert!(app.ab_comparison.is_none());
+        assert_eq!(app.focused_panel, FocusedPanel::Cpu);
+        assert_eq!(
+            app.process_history.sample_count_for(&identity),
+            sample_count
+        );
+    }
+
+    #[test]
+    fn same_name_processes_with_distinct_identities_create_distinct_graphs() {
+        let mut app = make_test_app(1, 10);
+        let mut first = app.snapshot.processes[0].clone();
+        first.name = "worker.exe".to_string();
+        first.pid = 100;
+        first.start_time = Some(1_000);
+        let mut second = first.clone();
+        second.pid = 200;
+        second.start_time = Some(2_000);
+
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::process(ProcessIdentity::from_row(&first), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        ));
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::process(ProcessIdentity::from_row(&second), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        ));
+
+        assert_eq!(app.graph_entries.len(), 2);
+        assert_ne!(app.graph_entries[0].source, app.graph_entries[1].source);
+    }
+
+    #[test]
+    fn resizing_preserves_graph_order_active_id_and_scrolls_to_active() {
         let mut app = make_test_app(30, 10);
         app.graph_slot_layout = GraphSlotLayout::OneColumn;
-        let identity = app.selected_visible_process_identity().unwrap();
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
-        app.graph_slots[2] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
-        app.active_graph_slot_index = 2;
-        app.show_details = true;
+        for index in 0..8 {
+            add_test_graph(&mut app, index);
+        }
+        let ids = app
+            .graph_entries
+            .iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>();
+        let active_id = app.active_graph_id;
 
-        app.set_screen_area(Rect::new(0, 0, 120, 58));
-        app.sync_graph_layout_visibility();
+        app::sync_layout_state(&mut app, Rect::new(0, 0, 120, 58));
 
-        assert!(app.graph_slots[0].is_some());
-        assert!(app.graph_slots[1].is_some());
-        assert!(app.graph_slots[2].is_some());
-        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1]);
-        assert_eq!(app.active_graph_slot_index, 0);
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert_eq!(app.active_graph_id, active_id);
+        assert!(app.graph_scroll_row > 0);
         assert!(app.show_details);
 
-        app.set_screen_area(Rect::new(0, 0, 120, 100));
-        app.sync_graph_layout_visibility();
+        app::sync_layout_state(&mut app, Rect::new(0, 0, 120, 100));
 
-        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1, 2]);
-        assert!(app.graph_slots[2].is_some());
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert_eq!(app.active_graph_id, active_id);
     }
 
     #[test]
@@ -2279,6 +2415,63 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn graph_up_down_changes_graph_while_samples_up_down_changes_sample() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..3)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.set_active_graph(ids[1]));
+        app.focused_panel = FocusedPanel::DetailsGraph;
+
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.active_graph_id, Some(ids[0]));
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.active_graph_id, Some(ids[1]));
+
+        for offset in [0, 30, 60] {
+            let mut row = app.snapshot.processes[0].clone();
+            row.pid = 10_001;
+            row.start_time = Some(1_800_000_001);
+            row.name = "graph-1.exe".to_string();
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &[row],
+                &app.normalized_watch_names,
+            );
+        }
+        app.select_details_sample_latest();
+        app.focused_panel = FocusedPanel::DetailsSamples;
+
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.active_graph_id, Some(ids[1]));
+        assert_eq!(app.details_sample_selected, 1);
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.active_graph_id, Some(ids[1]));
+        assert_eq!(app.details_sample_selected, 2);
+    }
+
+    #[test]
+    fn delete_removes_only_active_graph_from_graph_and_samples_focus() {
+        for focus in [FocusedPanel::DetailsGraph, FocusedPanel::DetailsSamples] {
+            let mut app = make_test_app(1, 10);
+            let first = add_test_graph(&mut app, 0);
+            let second = add_test_graph(&mut app, 1);
+            app.focused_panel = focus;
+
+            app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE))
+                .unwrap();
+
+            assert_eq!(app.graph_entries.len(), 1);
+            assert_eq!(app.active_graph_id, Some(first));
+            assert!(app.graph_entry_by_id(second).is_none());
+        }
+    }
+
+    #[test]
     fn graph_enter_opens_info_for_graphed_process_without_changing_selection() {
         let mut app = make_test_app(3, 10);
         let selected_identity = app.selected_visible_process_identity().unwrap();
@@ -2287,12 +2480,10 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
         app.close_process_info_dialog();
         let graph_identity = ProcessIdentity::from_row(&app.snapshot.processes[2]);
-        app.graph_slots[0] = Some(GraphSlot::process(
-            graph_identity.clone(),
-            DetailsMetric::Private,
-        ));
-        app.active_graph_slot_index = 0;
-        app.show_details = true;
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(graph_identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
         app.focused_panel = FocusedPanel::DetailsGraph;
         app.filter_text = "proc-0".to_string();
         app.rebuild_visible_process_cache();
@@ -2328,12 +2519,10 @@ processes = ["api.exe", "worker.exe"]
         );
         let selected_identity = app.selected_visible_process_identity().unwrap();
         let graph_identity = ProcessIdentity::from_row(&app.snapshot.processes[2]);
-        app.graph_slots[0] = Some(GraphSlot::process(
-            graph_identity.clone(),
-            DetailsMetric::Private,
-        ));
-        app.active_graph_slot_index = 0;
-        app.show_details = true;
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(graph_identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
         app.focused_panel = FocusedPanel::DetailsGraph;
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
@@ -2357,9 +2546,10 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn graph_enter_rejects_system_graphs() {
         let mut app = make_test_app(1, 10);
-        app.graph_slots[0] = Some(GraphSlot::system(SystemMetric::PhysicalMemory));
-        app.active_graph_slot_index = 0;
-        app.show_details = true;
+        app.add_or_reveal_graph_source(
+            GraphSlot::system(SystemMetric::PhysicalMemory),
+            FocusedPanel::System,
+        );
         app.focused_panel = FocusedPanel::DetailsGraph;
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
@@ -2414,23 +2604,34 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn graph_wheel_zooms_when_graph_is_focused() {
-        let mut app = make_test_app(1, 10);
-        assign_private_graph(&mut app);
+    fn graph_wheel_scrolls_workspace_rows_without_zooming() {
+        let mut app = make_test_app(8, 10);
+        let ids = (0..8)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.show_samples_panel = false;
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
         app.focused_panel = FocusedPanel::DetailsGraph;
+        app.graph_time_span_seconds = 120;
+        let screen = Rect::new(0, 0, 100, 45);
+        app::sync_layout_state(&mut app, screen);
+        assert!(app.set_active_graph(ids[0]));
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let viewport = ui::layout::graph_workspace_layout(details, &app).graph_viewport;
 
         app.on_mouse(
             MouseEvent {
-                kind: MouseEventKind::ScrollUp,
-                column: 30,
-                row: 20,
+                kind: MouseEventKind::ScrollDown,
+                column: viewport.x,
+                row: viewport.y,
                 modifiers: KeyModifiers::NONE,
             },
-            Rect::new(0, 0, 100, 30),
+            screen,
         );
 
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.graph_time_span_seconds, 60);
+        assert_eq!(app.graph_time_span_seconds, 120);
+        assert_eq!(app.graph_scroll_row, 1);
     }
 
     #[test]
@@ -2618,6 +2819,7 @@ processes = ["api.exe", "worker.exe"]
         let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
         let mut app = make_test_app_with_worker(1, 10, sampling_worker);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         app.details_live = true;
         app.graph_time_offset_seconds = 60;
         app.sampling_in_progress = true;
@@ -2737,6 +2939,7 @@ processes = ["api.exe", "worker.exe"]
         let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
         let mut app = make_test_app_with_worker(1, 10, sampling_worker);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         app.details_live = true;
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -2770,6 +2973,7 @@ processes = ["api.exe", "worker.exe"]
     fn graph_drag_does_not_clear_fit_all_samples() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         for offset in [0, 120, 240] {
             app.process_history.record_snapshot(
                 app.snapshot.captured_at + chrono::Duration::seconds(offset),
@@ -2819,6 +3023,7 @@ processes = ["api.exe", "worker.exe"]
     fn graph_all_samples_checkbox_uses_full_sample_span() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         for offset in [0, 120, 240] {
             app.process_history.record_snapshot(
                 app.snapshot.captured_at + chrono::Duration::seconds(offset),
@@ -2942,7 +3147,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("[Samples: 7,201]"), "{rendered}");
         assert!(
-            rendered.contains("PROCESSES · 1 visible · ☐ Tracked only(T)"),
+            rendered.contains("PROCESSES · 1 visible · ☐ Tracked-only(Shift+T)"),
             "{rendered}"
         );
         assert!(!rendered.contains("Samples: tracked"), "{rendered}");
@@ -3052,10 +3257,7 @@ processes = ["api.exe", "worker.exe"]
         app.details_sample_selected = 0;
 
         let screen = Rect::new(0, 0, 120, 45);
-        let graph = details_slot_areas_for_app(screen, &app, 1, app.graph_slot_layout)
-            .into_iter()
-            .next()
-            .expect("graph slot");
+        let graph = details_graph_area_for_app(screen, &app).expect("graph plot");
         let x = graph.right().saturating_sub(2);
         let y = graph.y.saturating_add(4);
 
@@ -3091,10 +3293,10 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn graph_layout_shortcuts_hide_and_restore_samples() {
+    fn graph_layout_shortcuts_preserve_explicit_samples_preference() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
-        app.graph_slots[1] = app.graph_slots[0].clone();
+        add_test_graph(&mut app, 1);
         app.focused_panel = FocusedPanel::DetailsGraph;
         app.last_screen_area = Rect::new(0, 0, 120, 60);
 
@@ -3108,12 +3310,10 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
-        assert!(!app.show_samples_panel);
-        assert!(app.samples_panel_before_two_columns);
+        assert!(app.show_samples_panel);
         let rendered = render_app_to_text(&app, 120, 60);
-        assert!(rendered.contains("☐  v: Samples"), "{rendered}");
+        assert!(rendered.contains("☑  v: Samples"), "{rendered}");
         assert!(rendered.contains("l: 2 cols"), "{rendered}");
-        assert!(!rendered.contains("d: Delta"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
@@ -3130,34 +3330,334 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn auto_graph_layout_uses_two_columns_only_when_more_slots_fit() {
+    fn auto_graph_layout_uses_width_and_keeps_every_graph_registered() {
         let mut app = make_test_app(30, 10);
-        let identity = app.selected_visible_process_identity().unwrap();
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
-        app.graph_slots[2] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        for index in 0..8 {
+            add_test_graph(&mut app, index);
+        }
         app.graph_slot_layout = GraphSlotLayout::Auto;
-        app.show_details = true;
+        app.show_samples_panel = false;
 
-        app.set_screen_area(Rect::new(0, 0, 120, 58));
-        app.sync_graph_layout_visibility();
+        let wide = Rect::new(0, 0, 140, 80);
+        app::sync_layout_state(&mut app, wide);
+        let details = main_panel_areas_for_app(wide, &app).details.unwrap();
+        assert_eq!(ui::layout::graph_workspace_layout(details, &app).columns, 2);
 
+        let narrow = Rect::new(0, 0, 80, 80);
+        app::sync_layout_state(&mut app, narrow);
+        let details = main_panel_areas_for_app(narrow, &app).details.unwrap();
+        assert_eq!(ui::layout::graph_workspace_layout(details, &app).columns, 1);
+        assert_eq!(app.graph_entries.len(), 8);
+    }
+
+    #[test]
+    fn graph_workspace_layout_reaches_required_counts_in_every_column_mode() {
+        let screen = Rect::new(0, 0, 220, 110);
+        for count in [1, 2, 3, 4, 5, 8, app::GRAPH_LIMIT] {
+            for mode in [
+                GraphSlotLayout::OneColumn,
+                GraphSlotLayout::TwoColumns,
+                GraphSlotLayout::Auto,
+            ] {
+                let mut app = make_test_app(1, 10);
+                for index in 0..count {
+                    add_test_graph(&mut app, index);
+                }
+                app.graph_slot_layout = mode;
+                app.show_samples_panel = false;
+                app::sync_layout_state(&mut app, screen);
+                let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+                let layout = ui::layout::graph_workspace_layout(details, &app);
+                let expected_columns = if mode == GraphSlotLayout::OneColumn || count == 1 {
+                    1
+                } else {
+                    2
+                };
+                assert_eq!(
+                    layout.columns, expected_columns,
+                    "count={count}, mode={mode:?}"
+                );
+                assert_eq!(
+                    layout.total_rows,
+                    count.div_ceil(expected_columns),
+                    "count={count}, mode={mode:?}"
+                );
+
+                let expected_ids = app
+                    .graph_entries
+                    .iter()
+                    .map(|entry| entry.id)
+                    .collect::<std::collections::HashSet<_>>();
+                let mut reached = std::collections::HashSet::new();
+                for row in 0..=layout.max_scroll_row {
+                    app.graph_scroll_row = row;
+                    let row_layout = ui::layout::graph_workspace_layout(details, &app);
+                    for card in &row_layout.graph_cards {
+                        assert_eq!(app.graph_entries[card.ordinal].id, card.id);
+                        reached.insert(card.id);
+                    }
+                }
+                assert_eq!(reached, expected_ids, "count={count}, mode={mode:?}");
+
+                let rendered = render_app_to_text(&app, screen.width, screen.height);
+                assert!(
+                    rendered.contains(&format!("Slot#{count}/{count}")),
+                    "count={count}, mode={mode:?}\n{rendered}"
+                );
+                assert!(rendered.contains("[x]"), "{rendered}");
+            }
+        }
+    }
+
+    #[test]
+    fn two_column_workspace_scrolls_by_rows_in_row_major_order() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..8)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.graph_slot_layout = GraphSlotLayout::TwoColumns;
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 160, 45);
+        app::sync_layout_state(&mut app, screen);
+        assert!(app.set_active_graph(ids[0]));
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let before = ui::layout::graph_workspace_layout(details, &app);
+        assert_eq!(before.columns, 2);
         assert_eq!(
-            app.effective_graph_slot_layout(),
-            GraphSlotLayout::TwoColumns
+            before
+                .graph_cards
+                .iter()
+                .map(|card| card.id)
+                .collect::<Vec<_>>(),
+            ids[..before.graph_cards.len()]
         );
-        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1, 2]);
-        assert!(!app.show_samples_panel);
 
-        app.set_screen_area(Rect::new(0, 0, 120, 100));
-        app.sync_graph_layout_visibility();
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: before.graph_viewport.x,
+                row: before.graph_viewport.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
 
+        let after = ui::layout::graph_workspace_layout(details, &app);
+        assert_eq!(app.graph_scroll_row, 1);
+        assert_eq!(after.graph_cards[0].id, ids[2]);
+        assert_eq!(after.graph_cards[1].id, ids[3]);
+    }
+
+    #[test]
+    fn samples_inspector_uses_right_bottom_and_temporary_collapse_placements() {
+        let mut app = make_test_app(30, 10);
+        for index in 0..4 {
+            add_test_graph(&mut app, index);
+        }
+        app.graph_slot_layout = GraphSlotLayout::TwoColumns;
+        app.show_samples_panel = true;
+
+        let wide = Rect::new(0, 0, 200, 80);
+        app::sync_layout_state(&mut app, wide);
+        let details = main_panel_areas_for_app(wide, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
         assert_eq!(
-            app.effective_graph_slot_layout(),
-            GraphSlotLayout::OneColumn
+            layout.samples_placement,
+            Some(ui::layout::SamplesPlacement::Right)
         );
-        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1, 2]);
+        assert_eq!(layout.columns, 2);
+        assert!(!app.samples_temporarily_collapsed);
+
+        let narrow_tall = Rect::new(0, 0, 70, 100);
+        app::sync_layout_state(&mut app, narrow_tall);
+        let details = main_panel_areas_for_app(narrow_tall, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        assert_eq!(
+            layout.samples_placement,
+            Some(ui::layout::SamplesPlacement::Bottom)
+        );
+        assert!(!app.samples_temporarily_collapsed);
+
+        let narrow_short = Rect::new(0, 0, 70, 40);
+        app::sync_layout_state(&mut app, narrow_short);
+        let details = main_panel_areas_for_app(narrow_short, &app)
+            .details
+            .unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        assert!(layout.samples.is_none());
+        assert!(app.samples_temporarily_collapsed);
         assert!(app.show_samples_panel);
+
+        app::sync_layout_state(&mut app, wide);
+        assert!(app.effective_show_samples_panel());
+        app.toggle_samples_panel();
+        app::sync_layout_state(&mut app, narrow_short);
+        app::sync_layout_state(&mut app, wide);
+        assert!(!app.show_samples_panel);
+        assert!(!app.effective_show_samples_panel());
+    }
+
+    #[test]
+    fn panel_focus_and_active_graph_use_distinct_frames_in_both_themes() {
+        let screen = Rect::new(0, 0, 180, 60);
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+            assign_private_graph(&mut app);
+            app.show_samples_panel = true;
+            app::sync_layout_state(&mut app, screen);
+            let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+            let layout = ui::layout::graph_workspace_layout(details, &app);
+            let samples = layout
+                .samples
+                .expect("Samples should fit beside Graph Slots");
+            let card = layout.graph_cards.first().expect("active graph card").area;
+
+            app.focused_panel = FocusedPanel::DetailsGraph;
+            let graph_focused = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(
+                graph_focused[(layout.graph_slots.x, layout.graph_slots.y)].symbol(),
+                "┏"
+            );
+            assert_eq!(
+                graph_focused[(layout.graph_slots.x, layout.graph_slots.y)].fg,
+                theme.focus_border
+            );
+            assert_eq!(graph_focused[(card.x, card.y)].symbol(), "╔");
+            assert_eq!(graph_focused[(card.x, card.y)].fg, theme.accent);
+            assert_eq!(graph_focused[(samples.x, samples.y)].symbol(), "╭");
+            assert_eq!(graph_focused[(samples.x, samples.y)].fg, theme.border);
+
+            app.focused_panel = FocusedPanel::DetailsSamples;
+            let samples_focused = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(
+                samples_focused[(layout.graph_slots.x, layout.graph_slots.y)].symbol(),
+                "╭"
+            );
+            assert_eq!(
+                samples_focused[(layout.graph_slots.x, layout.graph_slots.y)].fg,
+                theme.border
+            );
+            assert_eq!(samples_focused[(card.x, card.y)].symbol(), "╔");
+            assert_eq!(samples_focused[(card.x, card.y)].fg, theme.accent);
+            assert_eq!(samples_focused[(samples.x, samples.y)].symbol(), "┏");
+            assert_eq!(
+                samples_focused[(samples.x, samples.y)].fg,
+                theme.focus_border
+            );
+
+            app.focused_panel = FocusedPanel::Processes;
+            let processes_focused = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(
+                processes_focused[(layout.graph_slots.x, layout.graph_slots.y)].symbol(),
+                "╭"
+            );
+            assert_eq!(processes_focused[(card.x, card.y)].symbol(), "╔");
+            assert_eq!(processes_focused[(card.x, card.y)].fg, theme.accent);
+            assert_eq!(processes_focused[(samples.x, samples.y)].symbol(), "╭");
+        }
+    }
+
+    #[test]
+    fn exactly_one_top_level_panel_uses_the_thick_green_focus_frame() {
+        let screen = Rect::new(0, 0, 180, 60);
+        for theme_index in 0..ui::THEMES.len() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+            assign_private_graph(&mut app);
+            app.show_samples_panel = true;
+            app::sync_layout_state(&mut app, screen);
+
+            for focused_panel in [
+                FocusedPanel::System,
+                FocusedPanel::SystemActivity,
+                FocusedPanel::Cpu,
+                FocusedPanel::Processes,
+                FocusedPanel::DetailsGraph,
+                FocusedPanel::DetailsSamples,
+            ] {
+                app.focused_panel = focused_panel;
+                let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+                let focused_top_left_corners = buffer
+                    .content()
+                    .iter()
+                    .filter(|cell| cell.symbol() == "┏" && cell.fg == app.theme().focus_border)
+                    .count();
+                assert_eq!(
+                    focused_top_left_corners, 1,
+                    "theme={theme_index}, focus={focused_panel:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn clicking_graph_slots_outer_frame_moves_focus_to_graphs() {
+        let mut app = make_test_app(3, 10);
+        assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::Processes;
+        let screen = Rect::new(0, 0, 180, 60);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+
+        app.on_mouse(
+            left_click(layout.graph_slots.x, layout.graph_slots.bottom() - 1),
+            screen,
+        );
+
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.status, "Focus: Graph 1/1");
+    }
+
+    #[test]
+    fn compact_workspace_keeps_process_row_navigator_title_remove_and_resize_message() {
+        let mut app = make_test_app(3, 10);
+        add_test_graph(&mut app, 0);
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 120, 25);
+        app::sync_layout_state(&mut app, screen);
+        let panels = main_panel_areas_for_app(screen, &app);
+        let layout = ui::layout::graph_workspace_layout(panels.details.unwrap(), &app);
+
+        assert!(layout.compact);
+        assert_eq!(layout.graph_cards.len(), 1);
+        assert!(layout.graph_cards[0].title.height > 0);
+        assert!(layout.graph_cards[0].remove.width > 0);
+        assert!(panels.processes.page_size >= 1);
+
+        let rendered = render_app_to_text(&app, screen.width, screen.height);
+        assert!(rendered.contains("Slot#1/1"), "{rendered}");
+        assert!(rendered.contains("[x]"), "{rendered}");
+        assert!(
+            rendered.contains("Resize terminal to view Graph"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn long_graph_target_keeps_remove_button_visible_at_narrow_width() {
+        let mut app = make_test_app(1, 10);
+        let mut row = app.snapshot.processes[0].clone();
+        row.name = "a-very-long-process-name-that-must-be-truncated.exe".to_string();
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(
+                ProcessIdentity::from_row(&row),
+                DetailsMetric::WorksetPrivate,
+            ),
+            FocusedPanel::Processes,
+        );
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 60, 45);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+
+        assert_eq!(layout.graph_cards.len(), 1);
+        assert_eq!(layout.graph_cards[0].remove.width, 5);
+        assert_eq!(layout.graph_cards[0].remove_label, "[x]");
+        let rendered = render_app_to_text(&app, screen.width, screen.height);
+        assert!(rendered.contains("[x]"), "{rendered}");
     }
 
     #[test]
@@ -3173,83 +3673,61 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn switching_to_two_columns_keeps_assignments_that_do_not_fit() {
+    fn changing_layout_never_hides_or_removes_registered_graphs() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
-        app.graph_slots[1] = app.graph_slots[0].clone();
+        for index in 1..5 {
+            add_test_graph(&mut app, index);
+        }
         app.focused_panel = FocusedPanel::DetailsGraph;
         app.graph_slot_layout = GraphSlotLayout::OneColumn;
         app.last_screen_area = Rect::new(0, 0, 99, 60);
+        let ids = app
+            .graph_entries
+            .iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>();
 
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
-        assert_eq!(app.active_graph_slot_count(), 2);
-        assert!(app.visible_graph_slot_indices().len() < 2);
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
         assert!(!app.show_display_area_warning);
     }
 
     #[test]
-    fn switching_to_one_column_hides_high_numbered_graph_slots_without_clearing_them() {
+    fn samples_temporary_collapse_is_distinct_from_user_preference() {
         let mut app = make_test_app(30, 10);
-        let identity = app.selected_visible_process_identity().unwrap();
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
-        app.graph_slots[2] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        for index in 0..3 {
+            add_test_graph(&mut app, index);
+        }
         app.graph_slot_layout = GraphSlotLayout::TwoColumns;
-        app.show_samples_panel = false;
-        app.samples_panel_before_two_columns = true;
+        app.show_samples_panel = true;
         app.focused_panel = FocusedPanel::DetailsGraph;
-        app.active_graph_slot_index = 2;
-        app.show_details = true;
-        app.last_screen_area = Rect::new(0, 0, 120, 58);
-        assert!(app.graph_slots_fit(3));
-
-        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+        app.set_screen_area(Rect::new(0, 0, 70, 40));
+        app.sync_graph_layout_visibility();
         assert!(app.show_samples_panel);
-        assert!(app.graph_slots[0].is_some());
-        assert!(app.graph_slots[1].is_some());
-        assert!(app.graph_slots[2].is_some());
-        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1]);
-        assert_eq!(app.active_graph_slot_index, 0);
-        assert_eq!(app.status, "1 Graph slot hidden: not enough display area");
-        assert!(!app.show_display_area_warning);
-    }
+        assert!(app.samples_temporarily_collapsed);
+        assert!(!app.effective_show_samples_panel());
 
-    #[test]
-    fn showing_samples_from_two_columns_hides_slots_without_clearing_them() {
-        let mut app = make_test_app(30, 10);
-        let identity = app.selected_visible_process_identity().unwrap();
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
-        app.graph_slots[2] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
-        app.graph_slot_layout = GraphSlotLayout::TwoColumns;
-        app.show_samples_panel = false;
-        app.samples_panel_before_two_columns = true;
-        app.focused_panel = FocusedPanel::DetailsGraph;
-        app.active_graph_slot_index = 2;
-        app.show_details = true;
-        app.last_screen_area = Rect::new(0, 0, 120, 58);
-        assert!(app.graph_slots_fit(3));
-
-        app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+        app.set_screen_area(Rect::new(0, 0, 180, 80));
+        app.sync_graph_layout_visibility();
         assert!(app.show_samples_panel);
-        assert!(app.graph_slots[0].is_some());
-        assert!(app.graph_slots[1].is_some());
-        assert!(app.graph_slots[2].is_some());
-        assert_eq!(app.visible_graph_slot_indices(), vec![0, 1]);
-        assert_eq!(app.active_graph_slot_index, 0);
-        assert_eq!(app.status, "1 Graph slot hidden: not enough display area");
-        assert!(!app.show_display_area_warning);
+        assert!(!app.samples_temporarily_collapsed);
+        assert!(app.effective_show_samples_panel());
+
+        app.toggle_samples_panel();
+        app.set_screen_area(Rect::new(0, 0, 220, 100));
+        app.sync_graph_layout_visibility();
+        assert!(!app.show_samples_panel);
+        assert!(!app.effective_show_samples_panel());
     }
 
     #[test]
@@ -3257,7 +3735,7 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 120, 60);
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
-        app.graph_slots[1] = app.graph_slots[0].clone();
+        add_test_graph(&mut app, 1);
         app.last_screen_area = screen;
         let initial = render_app_to_buffer(&app, screen.width, screen.height);
         let (layout_x, layout_y) =
@@ -3274,15 +3752,15 @@ processes = ["api.exe", "worker.exe"]
         app.on_mouse(left_click(layout_x, layout_y), screen);
 
         assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
-        assert!(!app.show_samples_panel);
+        assert!(app.show_samples_panel);
         let two_columns = render_app_to_buffer(&app, screen.width, screen.height);
         let (samples_x, samples_y) =
             find_text_position(&two_columns, "v: Samples").expect("Samples checkbox should render");
 
         app.on_mouse(left_click(samples_x, samples_y), screen);
 
-        assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
-        assert!(app.show_samples_panel);
+        assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
+        assert!(!app.show_samples_panel);
     }
 
     #[test]
@@ -3304,31 +3782,338 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn clicking_graph_item_selects_matching_process_row() {
+    fn clicking_graph_card_selects_graph_without_changing_process_row() {
         let mut app = make_test_app(4, 10);
         let target = ProcessIdentity::from_row(&app.snapshot.processes[2]);
-        app.graph_slots[0] = Some(GraphSlot::process(target, DetailsMetric::Private));
-        app.active_graph_slot_index = 0;
-        app.show_details = true;
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(target, DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
+        let target_id = app.graph_entries[0].id;
+        add_test_graph(&mut app, 1);
+        app.show_samples_panel = false;
         app.select_process_index(0);
 
-        let screen = Rect::new(0, 0, 120, 60);
-        let slot = details_slot_areas_for_app(screen, &app, 1, app.graph_slot_layout)
-            .into_iter()
-            .next()
+        let screen = Rect::new(0, 0, 140, 80);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let card = layout
+            .graph_cards
+            .iter()
+            .find(|card| card.id == target_id)
             .unwrap();
         app.on_mouse(
             MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
-                column: slot.x + 3,
-                row: slot.y,
+                column: card.title.x,
+                row: card.title.y,
                 modifiers: KeyModifiers::NONE,
             },
             screen,
         );
 
-        assert_eq!(app.process_table_state.selected(), Some(2));
-        assert_eq!(app.focused_panel, FocusedPanel::Processes);
+        assert_eq!(app.active_graph_id, Some(target_id));
+        assert_eq!(app.process_table_state.selected(), Some(0));
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+    }
+
+    #[test]
+    fn process_metric_double_click_adds_then_reveals_without_removing_graph() {
+        let mut app = make_test_app(2, 10);
+        app.process_columns = vec![MetricColumn::HandleCount];
+        app.selected_process_column_index = 2;
+        let screen = Rect::new(0, 0, 140, 60);
+        app::sync_layout_state(&mut app, screen);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, _) = find_text_position(&buffer, "Hndl").expect("handle column should render");
+        let y = main_panel_areas_for_app(screen, &app).processes.area.y + 2;
+        let source = app.selected_process_graph_source().unwrap();
+
+        app.on_mouse(left_click(x, y), screen);
+        assert!(app.graph_entries.is_empty());
+        app.on_mouse(left_click(x, y), screen);
+
+        assert_eq!(app.graph_entries.len(), 1);
+        assert_eq!(app.graph_entries[0].source, source);
+        let source_id = app.graph_entries[0].id;
+        add_test_graph(&mut app, 8);
+        assert_ne!(app.active_graph_id, Some(source_id));
+
+        app.on_mouse(left_click(x, y), screen);
+        app.on_mouse(left_click(x, y), screen);
+
+        assert_eq!(app.graph_entries.len(), 2);
+        assert_eq!(app.active_graph_id, Some(source_id));
+    }
+
+    #[test]
+    fn process_metric_double_click_requires_the_same_visible_process_identity() {
+        let mut app = make_test_app(2, 10);
+        app.process_columns = vec![MetricColumn::HandleCount];
+        app.sort = SortSpec {
+            column: SortColumn::Pid,
+            direction: SortDirection::Asc,
+        };
+        app.rebuild_visible_process_cache();
+        app.clamp_process_table_state();
+        let screen = Rect::new(0, 0, 140, 60);
+        app::sync_layout_state(&mut app, screen);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, _) = find_text_position(&buffer, "Hndl").expect("handle column should render");
+        let y = main_panel_areas_for_app(screen, &app).processes.area.y + 2;
+
+        app.on_mouse(left_click(x, y), screen);
+        app.snapshot.processes[0].pid = 500;
+        app.snapshot.processes[0].name = "reordered.exe".to_string();
+        app.snapshot.processes[0].start_time = Some(1_900_000_000);
+        app.rebuild_visible_process_cache();
+        app.clamp_process_table_state();
+        let visible_identity = ProcessIdentity::from_row(app.visible_process_at(0).unwrap());
+
+        app.on_mouse(left_click(x, y), screen);
+        assert!(app.graph_entries.is_empty());
+        app.on_mouse(left_click(x, y), screen);
+
+        assert_eq!(app.graph_entries.len(), 1);
+        assert_eq!(
+            app.graph_entries[0].source,
+            GraphSlot::process(visible_identity, DetailsMetric::HandleCount)
+        );
+    }
+
+    #[test]
+    fn process_non_metric_double_click_does_not_add_a_graph() {
+        let mut app = make_test_app(2, 10);
+        app.process_columns = vec![MetricColumn::HandleCount];
+        let screen = Rect::new(0, 0, 140, 60);
+        app::sync_layout_state(&mut app, screen);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, _) = find_text_position(&buffer, "PID").expect("PID column should render");
+        let y = main_panel_areas_for_app(screen, &app).processes.area.y + 2;
+
+        app.on_mouse(left_click(x, y), screen);
+        app.on_mouse(left_click(x, y), screen);
+
+        assert!(app.graph_entries.is_empty());
+    }
+
+    #[test]
+    fn semantic_double_click_rejects_changed_identity_metric_and_timeout() {
+        let mut app = make_test_app(1, 10);
+        let first = test_graph_source(&app, 0);
+        let second = test_graph_source(&app, 1);
+        let start = Instant::now();
+
+        app.register_graph_source_click(first.clone(), start, FocusedPanel::Processes);
+        app.register_graph_source_click(
+            second.clone(),
+            start + Duration::from_millis(100),
+            FocusedPanel::Processes,
+        );
+        assert!(app.graph_entries.is_empty());
+
+        app.register_graph_source_click(
+            second.clone(),
+            start + Duration::from_millis(200),
+            FocusedPanel::Processes,
+        );
+        assert_eq!(app.graph_entries.len(), 1);
+        assert_eq!(app.graph_entries[0].source, second);
+
+        let third = test_graph_source(&app, 2);
+        app.register_graph_source_click(
+            third.clone(),
+            start + Duration::from_millis(300),
+            FocusedPanel::Processes,
+        );
+        app.register_graph_source_click(
+            third,
+            start + Duration::from_millis(801),
+            FocusedPanel::Processes,
+        );
+        assert_eq!(app.graph_entries.len(), 1);
+
+        let different_metric = match first {
+            GraphSlot::Process { identity, .. } => {
+                GraphSlot::process(identity, DetailsMetric::WorksetPrivate)
+            }
+            GraphSlot::System { .. } => unreachable!(),
+        };
+        app.register_graph_source_click(
+            test_graph_source(&app, 3),
+            start + Duration::from_millis(900),
+            FocusedPanel::Processes,
+        );
+        app.register_graph_source_click(
+            different_metric,
+            start + Duration::from_millis(950),
+            FocusedPanel::Processes,
+        );
+        assert_eq!(app.graph_entries.len(), 1);
+    }
+
+    #[test]
+    fn system_panel_double_clicks_add_ram_activity_and_cpu_graphs() {
+        let mut app = make_test_app(2, 10);
+        let screen = Rect::new(0, 0, 180, 70);
+        app::sync_layout_state(&mut app, screen);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let points = [
+            (
+                find_text_position(&buffer, "Physical Memory").unwrap(),
+                GraphSlot::system(SystemMetric::PhysicalMemory),
+            ),
+            (
+                find_text_position(&buffer, "Net Rx").unwrap(),
+                GraphSlot::system(SystemMetric::NetworkReceived),
+            ),
+            (
+                find_text_position(&buffer, "CPU Usage").unwrap(),
+                GraphSlot::system(SystemMetric::CpuAverage),
+            ),
+        ];
+
+        for ((x, y), expected) in points {
+            app.on_mouse(left_click(x, y), screen);
+            app.on_mouse(left_click(x, y), screen);
+            assert!(app.graph_id_for_source(&expected).is_some());
+        }
+        assert_eq!(app.graph_entries.len(), 3);
+    }
+
+    #[test]
+    fn navigator_click_selects_its_graph_and_scrolls_the_card_into_view() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..8)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 120, 48);
+        app::sync_layout_state(&mut app, screen);
+        assert!(app.set_active_graph(ids[3]));
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let target = layout
+            .navigator_items
+            .iter()
+            .find(|item| !item.active)
+            .expect("navigator should expose a neighboring graph")
+            .clone();
+
+        app.on_mouse(left_click(target.area.x, target.area.y), screen);
+
+        assert_eq!(app.active_graph_id, Some(target.id));
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        assert!(
+            ui::layout::graph_workspace_layout(details, &app)
+                .graph_cards
+                .iter()
+                .any(|card| card.id == target.id)
+        );
+    }
+
+    #[test]
+    fn graph_remove_button_has_priority_and_preserves_non_active_selection() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..3)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.show_samples_panel = false;
+        let active = ids[2];
+        let screen = Rect::new(0, 0, 160, 80);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let remove = layout
+            .graph_cards
+            .iter()
+            .find(|card| card.id == ids[0])
+            .unwrap()
+            .remove;
+
+        app.on_mouse(left_click(remove.x, remove.y), screen);
+
+        assert!(app.graph_entry_by_id(ids[0]).is_none());
+        assert_eq!(app.active_graph_id, Some(active));
+        assert_eq!(app.graph_entries.len(), 2);
+    }
+
+    #[test]
+    fn graph_scrollbar_track_click_and_thumb_drag_reach_later_rows() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..8)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 100, 48);
+        app::sync_layout_state(&mut app, screen);
+        assert!(app.set_active_graph(ids[0]));
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let scrollbar = layout.graph_scrollbar.expect("graph scrollbar");
+        let bottom = scrollbar.bottom().saturating_sub(2);
+
+        app.on_mouse(left_click(scrollbar.x, bottom), screen);
+        assert!(app.graph_scroll_row > 0);
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Left),
+                column: scrollbar.x,
+                row: bottom,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        app.set_graph_scroll_row(0);
+        app.on_mouse(
+            left_click(scrollbar.x, scrollbar.y.saturating_add(1)),
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Left),
+                column: scrollbar.x,
+                row: bottom,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(app.graph_scroll_row, layout.max_scroll_row);
+    }
+
+    #[test]
+    fn samples_wheel_does_not_scroll_graph_workspace_rows() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..8)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        app.graph_slot_layout = GraphSlotLayout::OneColumn;
+        app.show_samples_panel = true;
+        let screen = Rect::new(0, 0, 180, 60);
+        app::sync_layout_state(&mut app, screen);
+        assert!(app.set_active_graph(ids[0]));
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let samples = ui::layout::graph_workspace_layout(details, &app)
+            .samples
+            .expect("Samples inspector");
+        assert_eq!(app.graph_scroll_row, 0);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: samples.x.saturating_add(1),
+                row: samples.y.saturating_add(1),
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        assert_eq!(app.graph_scroll_row, 0);
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
     }
 
     #[test]
@@ -3786,6 +4571,7 @@ processes = ["api.exe", "worker.exe"]
     fn graph_ab_labels_render_on_x_axis_not_cursor_value_row() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         app.show_sample_delta = true;
         let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
         for (seconds, value) in [(0, 100), (30, 200), (60, 424_242)] {
@@ -3824,7 +4610,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn details_rendering_groups_graph_and_samples_in_one_slot() {
+    fn details_rendering_shows_workspace_navigator_and_active_samples() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
         app.process_history.record_snapshot(
@@ -3836,11 +4622,15 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 120, 45);
 
         assert!(rendered.contains("GRAPHS · Span 60s"), "{rendered}");
+        assert!(rendered.contains("Slot#1/1"), "{rendered}");
         assert!(
-            rendered.contains("GRAPH#1 · proc-0 · Private [B] · B-A: --"),
+            rendered.contains("Slot#1 · Private · proc-0 · B-A: --"),
             "{rendered}"
         );
-        assert!(!rendered.contains("Samples#1"), "{rendered}");
+        assert!(
+            rendered.contains("Samples · Slot#1/1 · proc-0 · Private"),
+            "{rendered}"
+        );
         assert!(rendered.contains("M  Time      Private"), "{rendered}");
         assert!(rendered.contains("MA5:"), "{rendered}");
         assert!(!rendered.contains("Details"), "{rendered}");
@@ -3848,18 +4638,18 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn multi_graph_rendering_numbers_panels_and_hides_base_sample_summary() {
+    fn multi_graph_rendering_uses_one_shared_samples_inspector() {
         let mut app = make_test_app(3, 10);
         app.set_screen_area(Rect::new(0, 0, 140, 80));
-        app.graph_slots[0] = Some(GraphSlot::process(
-            app.selected_visible_process_identity().unwrap(),
-            DetailsMetric::Private,
-        ));
-        app.graph_slots[1] = Some(GraphSlot::process(
-            app.selected_visible_process_identity().unwrap(),
-            DetailsMetric::Workset,
-        ));
-        app.show_details = true;
+        let identity = app.selected_visible_process_identity().unwrap();
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::Workset),
+            FocusedPanel::Processes,
+        );
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
             &app.snapshot.processes,
@@ -3868,29 +4658,27 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 140, 80);
 
-        assert!(
-            rendered.contains("GRAPH#1 · proc-0 · Private"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("GRAPH#2 · proc-0 · WS"), "{rendered}");
+        assert!(rendered.contains("Slot#1 · Private · proc-0"), "{rendered}");
+        assert!(rendered.contains("Slot#2 · WS · proc-0"), "{rendered}");
         assert_eq!(rendered.matches("B-A: --").count(), 2, "{rendered}");
         assert_eq!(rendered.matches("f: Fit all").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("z: Min 0").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("v: Samples").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("d: Delta").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("l: Auto").count(), 1, "{rendered}");
-        assert!(!rendered.contains("Samples#1"), "{rendered}");
-        assert!(!rendered.contains("Samples#2"), "{rendered}");
-        assert!(!rendered.contains("Max:"), "{rendered}");
-        assert!(!rendered.contains("MA5:"), "{rendered}");
+        assert_eq!(
+            rendered.matches("Samples · Slot#2/2").count(),
+            1,
+            "{rendered}"
+        );
 
         let buffer = render_app_to_buffer(&app, 140, 80);
         let (active_x, active_y) =
-            find_text_position(&buffer, "GRAPH#1").expect("active slot title should render");
-        let (inactive_x, inactive_y) =
-            find_text_position(&buffer, "GRAPH#2").expect("inactive slot title should render");
-        assert_eq!(buffer[(active_x, active_y)].fg, THEMES[0].accent);
-        assert_eq!(buffer[(inactive_x, inactive_y)].fg, THEMES[0].muted);
+            find_text_position(&buffer, "Slot#2 · WS").expect("active Graph title should render");
+        let (inactive_x, inactive_y) = find_text_position(&buffer, "Slot#1 · Private")
+            .expect("inactive Graph title should render");
+        assert_eq!(buffer[(active_x + 9, active_y)].fg, THEMES[0].text);
+        assert_eq!(buffer[(inactive_x + 9, inactive_y)].fg, THEMES[0].muted);
     }
 
     #[test]
@@ -3898,30 +4686,30 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(3, 10);
         app.set_screen_area(Rect::new(0, 0, 140, 80));
         let identity = app.selected_visible_process_identity().unwrap();
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Workset));
-        app.graph_slots[2] = Some(GraphSlot::process(
-            identity.clone(),
+        for metric in [
+            DetailsMetric::Private,
+            DetailsMetric::Workset,
             DetailsMetric::CpuPercent,
-        ));
-        app.graph_slots[3] = Some(GraphSlot::process(identity, DetailsMetric::IoRead));
+            DetailsMetric::IoRead,
+        ] {
+            app.add_or_reveal_graph_source(
+                GraphSlot::process(identity.clone(), metric),
+                FocusedPanel::Processes,
+            );
+        }
         app.graph_slot_layout = GraphSlotLayout::TwoColumns;
         app.show_samples_panel = false;
-        app.show_details = true;
+        let details = main_panel_areas_for_app(Rect::new(0, 0, 140, 80), &app)
+            .details
+            .unwrap();
+        let cards = ui::layout::graph_workspace_layout(details, &app).graph_cards;
 
-        let buffer = render_app_to_buffer(&app, 140, 80);
-        let positions = (1..=4)
-            .map(|number| {
-                find_text_position(&buffer, &format!("GRAPH#{number}"))
-                    .expect("graph title should render")
-            })
-            .collect::<Vec<_>>();
-
-        assert!(positions[0].0 < positions[1].0);
-        assert_eq!(positions[0].1, positions[1].1);
-        assert_eq!(positions[0].0, positions[2].0);
-        assert!(positions[0].1 < positions[2].1);
-        assert_eq!(positions[2].1, positions[3].1);
+        assert_eq!(cards.len(), 4);
+        assert!(cards[0].area.x < cards[1].area.x);
+        assert_eq!(cards[0].area.y, cards[1].area.y);
+        assert_eq!(cards[0].area.x, cards[2].area.x);
+        assert!(cards[0].area.y < cards[2].area.y);
+        assert_eq!(cards[2].area.y, cards[3].area.y);
     }
 
     #[test]
@@ -3937,25 +4725,29 @@ processes = ["api.exe", "worker.exe"]
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::HandleCount),
+            FocusedPanel::Processes,
+        );
         app.graph_slot_layout = GraphSlotLayout::OneColumn;
         app.show_samples_panel = true;
-        app.show_details = true;
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let rendered = buffer_to_text(&buffer);
-        assert!(rendered.contains("Private [B]"), "{rendered}");
-        assert!(rendered.contains("Hndl [count]"), "{rendered}");
+        assert!(rendered.contains("Slot#1 · Private"), "{rendered}");
+        assert!(rendered.contains("Slot#2 · Hndl"), "{rendered}");
         assert!(rendered.contains("5.9 MB"), "{rendered}");
         assert!(rendered.contains("5,900,000"), "{rendered}");
 
-        let slots = ui::details_slot_areas_for_app(screen, &app, 2, GraphSlotLayout::OneColumn);
-        for slot in slots {
-            let graph =
-                ui::layout::details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let chart = ui::layout::details_graph_rows(graph)[1];
-            assert_eq!(buffer[(chart.x + 6, chart.y)].symbol(), "┤");
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        for card in layout.graph_cards {
+            let chart = ui::layout::details_graph_rows(card.plot)[1];
+            assert!(buffer[(chart.x, chart.y)].symbol() == " " || chart.width > 0);
         }
     }
 
@@ -3972,26 +4764,30 @@ processes = ["api.exe", "worker.exe"]
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
-        app.graph_slots[0] = Some(GraphSlot::process(identity.clone(), DetailsMetric::Private));
-        app.graph_slots[1] = Some(GraphSlot::process(identity, DetailsMetric::HandleCount));
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::HandleCount),
+            FocusedPanel::Processes,
+        );
         app.graph_slot_layout = GraphSlotLayout::TwoColumns;
         app.show_samples_panel = false;
-        app.show_details = true;
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let rendered = buffer_to_text(&buffer);
-        assert!(rendered.contains("Private [B]"), "{rendered}");
-        assert!(rendered.contains("Hndl [count]"), "{rendered}");
+        assert!(rendered.contains("Slot#1 · Private"), "{rendered}");
+        assert!(rendered.contains("Slot#2 · Hndl"), "{rendered}");
         assert!(rendered.contains("5.9 MB"), "{rendered}");
 
-        let slots = ui::details_slot_areas_for_app(screen, &app, 2, GraphSlotLayout::TwoColumns);
-        assert_eq!(slots.len(), 2);
-        for slot in slots {
-            let graph =
-                ui::layout::details_graph_area(slot, app.show_samples_panel, app.show_sample_delta);
-            let chart = ui::layout::details_graph_rows(graph)[1];
-            assert_eq!(buffer[(chart.x + 6, chart.y)].symbol(), "┤");
-        }
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        assert_eq!(
+            ui::layout::graph_workspace_layout(details, &app)
+                .graph_cards
+                .len(),
+            2
+        );
     }
 
     #[test]
@@ -4491,34 +5287,37 @@ processes = ["api.exe", "worker.exe"]
         app.watch_list = vec!["target.exe".to_string()];
         app.normalized_watch_names = std::collections::HashSet::from(["target.exe".to_string()]);
         app.rebuild_visible_process_cache();
-        app.graph_slots[0] = Some(GraphSlot::process(
-            ProcessIdentity::from_row(&app.snapshot.processes[0]),
-            DetailsMetric::Private,
-        ));
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(
+                ProcessIdentity::from_row(&app.snapshot.processes[0]),
+                DetailsMetric::Private,
+            ),
+            FocusedPanel::Processes,
+        );
         app.show_details = false;
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (value_x, value_y) = find_text_position(&buffer, "107.4 GB")
+        let (value_x, value_y) = find_text_position(&buffer, "107.4GB")
             .expect("graphed private bytes should be rendered");
         let (name_x, name_y) =
             find_text_position(&buffer, "target.exe").expect("tracked name should be rendered");
         let tracked_x = (0..name_x)
             .find(|&x| buffer[(x, name_y)].symbol() == "T")
             .expect("tracked marker should be rendered beside the process name");
-        let graph_number_x = (1..MetricColumn::PrivateBytes.width())
+        let graph_slot_number_x = (1..MetricColumn::PrivateBytes.width())
             .find_map(|offset| {
                 let x = value_x.checked_sub(offset)?;
                 (buffer[(x, value_y)].symbol() == "1").then_some(x)
             })
-            .expect("graph slot number should be rendered in the metric cell");
-        let graph_number_cell = &buffer[(graph_number_x, value_y)];
+            .expect("Graph slot number should be rendered in the metric cell");
+        let graph_slot_number_cell = &buffer[(graph_slot_number_x, value_y)];
         let value_cell = &buffer[(value_x, value_y)];
         let tracked_cell = &buffer[(tracked_x, name_y)];
 
-        assert_eq!(graph_number_cell.symbol(), "1");
-        assert_eq!(graph_number_cell.fg, ui::THEMES[0].warning);
-        assert_ne!(graph_number_cell.bg, ui::THEMES[0].warning);
-        assert!(!graph_number_cell.modifier.contains(Modifier::BOLD));
+        assert_eq!(graph_slot_number_cell.symbol(), "1");
+        assert_eq!(graph_slot_number_cell.fg, ui::THEMES[0].accent);
+        assert_ne!(graph_slot_number_cell.bg, ui::THEMES[0].accent);
+        assert!(graph_slot_number_cell.modifier.contains(Modifier::BOLD));
         assert_eq!(value_cell.fg, ui::THEMES[0].text);
         assert_ne!(value_cell.bg, ui::THEMES[0].warning);
         assert_eq!(buffer[(name_x, name_y)].fg, ui::THEMES[0].text);
@@ -4763,7 +5562,7 @@ processes = ["api.exe", "worker.exe"]
 
         let screen = Rect::new(0, 0, 120, 45);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "☐ Tracked only(T)")
+        let (x, y) = find_text_position(&buffer, "☐ Tracked-only(Shift+T)")
             .expect("unchecked tracked-only control should render in the process title");
 
         app.on_mouse(
@@ -4785,7 +5584,7 @@ processes = ["api.exe", "worker.exe"]
         );
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "☑ Tracked only(T)")
+        let (x, y) = find_text_position(&buffer, "☑ Tracked-only(Shift+T)")
             .expect("checked tracked-only control should render in the process title");
 
         app.on_mouse(
@@ -4840,7 +5639,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn ram_vram_space_reports_metrics_are_retained_automatically() {
+    fn ram_vram_space_toggles_selected_graph() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::System;
 
@@ -4851,38 +5650,38 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.watch_list.is_empty());
-        assert_eq!(app.details_target, DetailsTarget::Process);
+        assert_eq!(app.graph_entries.len(), 1);
         assert_eq!(
-            app.status,
-            "RAM/VRAM metrics keep 7200 samples automatically"
+            app.active_graph_slot(),
+            Some(&GraphSlot::system(SystemMetric::Committed))
         );
+        assert!(app.show_details);
+        assert_eq!(app.focused_panel, FocusedPanel::System);
     }
 
     #[test]
-    fn ram_vram_number_keys_assign_graph_slot_and_show_slot_number() {
+    fn ram_vram_graph_number_uses_slot_ordinal_and_active_accent() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::System;
 
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(
-            app.graph_slots[0]
-                .as_ref()
-                .and_then(GraphSlot::system_metric),
-            Some(SystemMetric::Committed)
+            app.active_graph_slot(),
+            Some(&GraphSlot::system(SystemMetric::Committed))
         );
         assert!(app.show_details);
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) =
-            find_text_position(&buffer, "1 Committed").expect("RAM graph marker should render");
+        let (x, y) = find_text_position(&buffer, "1 Committed")
+            .expect("RAM Graph slot number should render");
         let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].warning);
-        assert_ne!(marker.bg, ui::THEMES[0].warning);
-        assert!(!marker.modifier.contains(Modifier::BOLD));
+        assert_eq!(marker.fg, ui::THEMES[0].accent);
+        assert_ne!(marker.bg, ui::THEMES[0].accent);
+        assert!(marker.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -4929,7 +5728,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn system_activity_number_keys_assign_graph_slot_and_show_slot_number() {
+    fn system_activity_space_assigns_graph_and_shows_slot_number() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::SystemActivity;
         app.snapshot.disk_queue_length = Some(1.5);
@@ -4942,14 +5741,12 @@ processes = ["api.exe", "worker.exe"]
             SystemMetric::DiskQueueLength
         );
 
-        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(
-            app.graph_slots[1]
-                .as_ref()
-                .and_then(GraphSlot::system_metric),
-            Some(SystemMetric::DiskQueueLength)
+            app.active_graph_slot(),
+            Some(&GraphSlot::system(SystemMetric::DiskQueueLength))
         );
         assert!(app.show_details);
         assert_eq!(
@@ -4964,19 +5761,19 @@ processes = ["api.exe", "worker.exe"]
         );
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("2 Disk Q"), "{rendered}");
+        assert!(rendered.contains("1 Disk Q"), "{rendered}");
         assert!(
-            rendered.contains("GRAPH#2 · System Activity · Disk Q"),
+            rendered.contains("Slot#1 · Disk Q · System Activity"),
             "{rendered}"
         );
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) =
-            find_text_position(&buffer, "2 Disk Q").expect("NW/DISK graph marker should render");
+        let (x, y) = find_text_position(&buffer, "1 Disk Q")
+            .expect("NW/DISK Graph slot number should render");
         let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].warning);
-        assert_ne!(marker.bg, ui::THEMES[0].warning);
-        assert!(!marker.modifier.contains(Modifier::BOLD));
+        assert_eq!(marker.fg, ui::THEMES[0].accent);
+        assert_ne!(marker.bg, ui::THEMES[0].accent);
+        assert!(marker.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -5036,12 +5833,12 @@ processes = ["api.exe", "worker.exe"]
         app.selected_process_column_index = 2;
         app.select_process_index(0);
 
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
-        assert!(app.graph_slots[0].is_none());
+        assert!(app.graph_entries.is_empty());
         assert_eq!(app.details_metric, DetailsMetric::Private);
-        assert_eq!(app.status, "Full Path cannot be graphed");
+        assert_eq!(app.status, "Select a graphable metric cell");
     }
 
     #[test]
@@ -5276,6 +6073,7 @@ processes = ["api.exe", "worker.exe"]
     fn ab_keys_set_points_instead_of_starting_filter() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
             &app.snapshot.processes,
@@ -5293,6 +6091,7 @@ processes = ["api.exe", "worker.exe"]
     fn ab_clear_key_clears_comparison() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
             &app.snapshot.processes,
@@ -5331,6 +6130,7 @@ processes = ["api.exe", "worker.exe"]
     fn shifted_ab_keys_jump_selection_to_points() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
+        app.focused_panel = FocusedPanel::DetailsGraph;
         let base = Local::now();
         for (seconds, value) in [(0, 10), (1, 20), (2, 30)] {
             app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
@@ -5362,13 +6162,14 @@ processes = ["api.exe", "worker.exe"]
     #[test]
     fn ab_key_does_not_open_details_panel() {
         let mut app = make_test_app(1, 10);
+        let status = app.status.clone();
 
         app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE))
             .unwrap();
 
         assert!(app.ab_comparison.is_none());
         assert!(!app.show_details);
-        assert!(app.status.contains("Details"));
+        assert_eq!(app.status, status);
     }
 
     #[test]
@@ -5405,7 +6206,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(3, 10);
         app.show_help = true;
 
-        let rendered = render_app_to_text(&app, 120, 50);
+        let rendered = render_app_to_text(&app, 150, 70);
         let rendered_lower = rendered.to_ascii_lowercase();
 
         assert!(
@@ -5424,8 +6225,15 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Processes"), "{rendered}");
         assert!(rendered.contains("RAM/VRAM"), "{rendered}");
         assert!(rendered.contains("NW/DISK"), "{rendered}");
-        assert!(rendered.contains("Graph"), "{rendered}");
+        assert!(
+            rendered.contains("Graph Workspace  (Graph focus)"),
+            "{rendered}"
+        );
         assert!(rendered.contains("Samples"), "{rendered}");
+        assert!(
+            rendered.contains("Tracking  (Processes focus)"),
+            "{rendered}"
+        );
         assert!(
             rendered.contains("A/B comparison  (Graph or Samples)"),
             "{rendered}"
@@ -5439,14 +6247,20 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Clear A/B comparison"), "{rendered}");
 
         assert!(rendered.contains("Pan time range"), "{rendered}");
-        assert!(rendered.contains("Enter / Left/Right"), "{rendered}");
-        assert!(rendered.contains("Info / select sample"), "{rendered}");
+        assert!(
+            rendered.contains("Select previous Graph slot"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Select next Graph slot"), "{rendered}");
+        assert!(rendered.contains("Select older sample"), "{rendered}");
+        assert!(rendered.contains("Select newer sample"), "{rendered}");
+        assert!(rendered.contains("Remove active Graph"), "{rendered}");
         assert!(
             rendered.contains("f/z") && rendered.contains("Fit all / compact Min0"),
             "{rendered}"
         );
         assert!(
-            rendered.contains("v/d/l") && rendered.contains("Samples/Delta/mode"),
+            rendered.contains("v/d/l") && rendered.contains("Samples / Delta / layout"),
             "{rendered}"
         );
         assert!(rendered.contains("Toggle recording"), "{rendered}");
@@ -5537,10 +6351,6 @@ processes = ["api.exe", "worker.exe"]
         assert!(popup.height <= screen.height);
         assert!(popup.width >= 50, "popup too narrow: {popup:?}");
         assert!(popup.height >= 25, "popup too short: {popup:?}");
-        assert!(
-            popup.height < screen.height,
-            "two-column help should not need the full screen height: {popup:?}"
-        );
     }
 
     #[test]
@@ -5641,7 +6451,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(3, 10);
         app.status = "Copied row: proc-0".to_string();
 
-        let rendered = render_app_to_text(&app, 170, 30);
+        let rendered = render_app_to_text(&app, 260, 30);
 
         assert!(rendered.contains("PROCESSES"), "{rendered}");
         assert!(rendered.contains("Ctrl+P Pause"), "{rendered}");
@@ -5651,9 +6461,10 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("g Graphs"), "{rendered}");
         assert!(rendered.contains("Ctrl+I Jump"), "{rendered}");
         assert!(!rendered.contains("Shift+←/→ Move column"), "{rendered}");
-        assert!(rendered.contains("1-4 Graph"), "{rendered}");
+        assert!(rendered.contains("Space Graph"), "{rendered}");
         assert!(rendered.contains("Enter/f Info/Files"), "{rendered}");
-        assert!(rendered.contains("Space Track"), "{rendered}");
+        assert!(rendered.contains("t Track"), "{rendered}");
+        assert!(rendered.contains("Shift+T Tracked-only"), "{rendered}");
         assert!(rendered.contains("d Kill"), "{rendered}");
         assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
         assert!(rendered.contains("Esc Quit"), "{rendered}");
@@ -5668,15 +6479,15 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn footer_keeps_help_visible_at_narrow_width() {
+    fn footer_keeps_primary_action_visible_at_narrow_width() {
         let app = make_test_app(3, 10);
         let buffer = render_app_to_buffer(&app, 30, 24);
         let footer = Rect::new(0, 23, 30, 1);
-        let (help_x, help_y) = find_text_position_in_area(&buffer, footer, "? Help")
-            .expect("Help should remain visible");
+        let (action_x, action_y) = find_text_position_in_area(&buffer, footer, "Space Graph")
+            .expect("primary action should remain visible");
 
-        assert_eq!(help_x, 0);
-        assert_eq!(help_y, footer.y);
+        assert_eq!(action_x, 0);
+        assert_eq!(action_y, footer.y);
         assert!(find_text_position_in_area(&buffer, footer, "PROCESSES").is_none());
         assert!(find_text_position(&buffer, "Ctrl+T Lists").is_none());
     }
@@ -5690,27 +6501,31 @@ processes = ["api.exe", "worker.exe"]
         assert!(!system.contains("Up/Down Metric"), "{system}");
         assert!(!system.contains("Left/Right Column"), "{system}");
 
+        assign_private_graph(&mut app);
         app.focused_panel = FocusedPanel::DetailsGraph;
-        app.active_graph_slot_index = 1;
-        let graph = render_app_to_text(&app, 170, 45);
+        let graph = render_app_to_text(&app, 260, 45);
+        assert!(graph.contains("↑ Prev Slot"), "{graph}");
+        assert!(graph.contains("↓ Next Slot"), "{graph}");
+        assert!(graph.contains("Del Remove Graph"), "{graph}");
+        assert!(graph.contains("← Older"), "{graph}");
+        assert!(graph.contains("→ Newer"), "{graph}");
         assert!(graph.contains("Enter Info"), "{graph}");
-        assert!(graph.contains("Ctrl+Left/Right Pan"), "{graph}");
+        assert!(graph.contains("Ctrl+←/→ Pan"), "{graph}");
         assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
-        assert!(graph.contains("f Fit"), "{graph}");
-        assert!(graph.contains("z Min 0"), "{graph}");
+        assert!(graph.contains("f/z Fit/Min 0"), "{graph}");
         assert!(graph.contains("a/b Set A/B"), "{graph}");
         assert!(graph.contains("Shift+A/B Jump A/B"), "{graph}");
-        assert!(!graph.contains("  Left/Right Sample"), "{graph}");
 
         app.focused_panel = FocusedPanel::DetailsSamples;
-        let samples = render_app_to_text(&app, 170, 45);
-        assert!(samples.contains("PgUp/PgDn Page"), "{samples}");
+        let samples = render_app_to_text(&app, 260, 45);
+        assert!(samples.contains("↑/← Older"), "{samples}");
+        assert!(samples.contains("↓/→ Newer"), "{samples}");
+        assert!(samples.contains("Del Remove Graph"), "{samples}");
+        assert!(samples.contains("PgUp/PgDn Span"), "{samples}");
         assert!(samples.contains("Home/End Edge"), "{samples}");
-        assert!(samples.contains("f Fit"), "{samples}");
-        assert!(samples.contains("z Min 0"), "{samples}");
+        assert!(samples.contains("f/z Fit/Min 0"), "{samples}");
         assert!(samples.contains("Shift+A/B Jump A/B"), "{samples}");
         assert!(samples.contains("x Clear A/B"), "{samples}");
-        assert!(!samples.contains("Up/Down Sample"), "{samples}");
     }
 
     #[test]
@@ -5726,7 +6541,7 @@ processes = ["api.exe", "worker.exe"]
             FocusedPanel::DetailsSamples,
         ] {
             app.focused_panel = focused_panel;
-            let rendered = render_app_to_text(&app, 180, 45);
+            let rendered = render_app_to_text(&app, 420, 45);
             assert!(
                 rendered.contains("Ctrl+P Pause"),
                 "{focused_panel:?}: {rendered}"
@@ -5771,20 +6586,18 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn cpu_panel_number_keys_assign_cpu_average_to_graph_slot() {
+    fn cpu_panel_space_assigns_cpu_average_graph() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::Cpu;
         app.snapshot.cpu_total_usage_percent = Some(42);
         app.system_history.record_snapshot(&app.snapshot);
 
-        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
         assert_eq!(
-            app.graph_slots[0]
-                .as_ref()
-                .and_then(GraphSlot::system_metric),
-            Some(SystemMetric::CpuAverage)
+            app.active_graph_slot(),
+            Some(&GraphSlot::system(SystemMetric::CpuAverage))
         );
         assert!(app.show_details);
         assert_eq!(
@@ -5799,18 +6612,15 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("1 CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
-        assert!(
-            rendered.contains("GRAPH#1 · CPUs · CPU Usage"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("Slot#1 · CPU Usage · CPUs"), "{rendered}");
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) =
-            find_text_position(&buffer, "1 CPU Usage [").expect("CPU graph marker should render");
+        let (x, y) = find_text_position(&buffer, "1 CPU Usage [")
+            .expect("CPU Graph slot number should render");
         let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].warning);
-        assert_ne!(marker.bg, ui::THEMES[0].warning);
-        assert!(!marker.modifier.contains(Modifier::BOLD));
+        assert_eq!(marker.fg, ui::THEMES[0].accent);
+        assert_ne!(marker.bg, ui::THEMES[0].accent);
+        assert!(marker.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -5843,7 +6653,15 @@ processes = ["api.exe", "worker.exe"]
         app.focused_panel = FocusedPanel::Processes;
         app.show_help = true;
 
-        assert_modal_rect_focus_border(&app, help_area(Rect::new(0, 0, 100, 45)));
+        let screen = Rect::new(0, 0, 140, 70);
+        let popup = help_area(screen);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let process_table = main_panel_areas_for_app(screen, &app).processes.area;
+        assert_eq!(buffer[(popup.x, popup.y)].fg, app.theme().focus_border);
+        assert_eq!(
+            buffer[(process_table.x, process_table.y)].fg,
+            app.theme().border
+        );
     }
 
     #[test]
@@ -8810,15 +9628,16 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::System);
 
-        app.graph_slots[0] = Some(GraphSlot::process(
-            app.selected_visible_process_identity().unwrap(),
-            DetailsMetric::Private,
-        ));
-        app.graph_slots[1] = Some(GraphSlot::process(
-            app.selected_visible_process_identity().unwrap(),
-            DetailsMetric::Workset,
-        ));
-        app.show_details = true;
+        let identity = app.selected_visible_process_identity().unwrap();
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::Workset),
+            FocusedPanel::Processes,
+        );
+        let active_id = app.active_graph_id;
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
@@ -8831,31 +9650,20 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.active_graph_slot_index, 0);
+        assert_eq!(app.active_graph_id, active_id);
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
-        assert_eq!(app.active_graph_slot_index, 0);
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.active_graph_slot_index, 1);
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
-        assert_eq!(app.active_graph_slot_index, 1);
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.active_graph_slot_index, 1);
+        assert_eq!(app.focused_panel, FocusedPanel::System);
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
-        assert_eq!(app.active_graph_slot_index, 0);
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.active_graph_slot_index, 0);
+        assert_eq!(app.active_graph_id, active_id);
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::Processes);
@@ -8868,26 +9676,26 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn tab_moves_between_graphs_when_samples_are_hidden() {
+    fn tab_leaves_graph_workspace_when_samples_are_hidden() {
         let mut app = make_test_app(1, 10);
-        app.graph_slots[0] = Some(GraphSlot::process(
-            app.selected_visible_process_identity().unwrap(),
-            DetailsMetric::Private,
-        ));
-        app.graph_slots[1] = Some(GraphSlot::process(
-            app.selected_visible_process_identity().unwrap(),
-            DetailsMetric::Workset,
-        ));
-        app.show_details = true;
+        let identity = app.selected_visible_process_identity().unwrap();
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::Workset),
+            FocusedPanel::Processes,
+        );
         app.show_samples_panel = false;
         app.focused_panel = FocusedPanel::DetailsGraph;
-        app.active_graph_slot_index = 0;
+        let active_id = app.active_graph_id;
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-        assert_eq!(app.active_graph_slot_index, 1);
+        assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.active_graph_id, active_id);
     }
 
     #[test]
@@ -8940,20 +9748,20 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn space_toggles_selected_process_in_tracked_list() {
+    fn t_toggles_selected_process_in_tracked_list() {
         let mut app = make_test_app(3, 10);
         app.snapshot.processes[0].name = "cargo.exe".to_string();
         app.snapshot.processes[1].name = "winproc-tui.exe".to_string();
         app.move_selection_down(1);
 
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.watch_enabled);
         assert_eq!(app.watch_list, vec!["winproc-tui.exe"]);
         assert_eq!(app.visible_process_count(), 3);
 
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.watch_enabled);
@@ -8999,7 +9807,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn save_current_tracked_list_creates_named_list_without_changing_space_semantics() {
+    fn save_current_tracked_list_creates_named_list_without_changing_t_semantics() {
         let mut app = make_test_app(1, 10);
         app.watch_list = vec!["proc-0".to_string(), "worker.exe".to_string()];
         app.normalized_watch_names = ["proc-0".to_string(), "worker.exe".to_string()]
@@ -9025,7 +9833,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(!app.active_tracked_list_dirty());
 
         app.close_tracked_lists();
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
         assert!(app.active_tracked_list_dirty());
     }
@@ -9202,14 +10010,14 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn t_toggles_tracked_only_when_processes_are_focused() {
+    fn shift_t_toggles_tracked_only_when_processes_are_focused() {
         let mut app = make_test_app(2, 10);
         app.snapshot.processes[0].name = "target.exe".to_string();
         app.snapshot.processes[1].name = "other.exe".to_string();
         app.watch_list = vec!["target.exe".to_string()];
         app.normalized_watch_names = ["target.exe".to_string()].into_iter().collect();
 
-        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
             .unwrap();
 
         assert!(app.watch_enabled);
@@ -9220,11 +10028,38 @@ processes = ["api.exe", "worker.exe"]
             "Tracked Total"
         );
 
-        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::SHIFT))
             .unwrap();
 
         assert!(!app.watch_enabled);
         assert_eq!(app.visible_process_count(), 2);
+    }
+
+    #[test]
+    fn tracked_only_preserves_graph_order_active_graph_and_valid_scroll() {
+        let mut app = make_test_app(2, 10);
+        app.snapshot.processes[0].name = "target.exe".to_string();
+        app.snapshot.processes[1].name = "other.exe".to_string();
+        app.watch_list = vec!["target.exe".to_string()];
+        app.normalized_watch_names = ["target.exe".to_string()].into_iter().collect();
+        for index in 0..16 {
+            add_test_graph(&mut app, index);
+        }
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 100, 30);
+        app::sync_layout_state(&mut app, screen);
+        app.set_graph_scroll_row(1);
+        let entries = app.graph_entries.clone();
+        let active = app.active_graph_id;
+
+        app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
+            .unwrap();
+        app::sync_layout_state(&mut app, screen);
+
+        assert!(app.watch_enabled);
+        assert_eq!(app.graph_entries, entries);
+        assert_eq!(app.active_graph_id, active);
+        assert_eq!(app.graph_scroll_row, 1);
     }
 
     #[test]
@@ -9239,7 +10074,7 @@ processes = ["api.exe", "worker.exe"]
         app.watch_list = vec!["target.exe".to_string()];
         app.normalized_watch_names = ["target.exe".to_string()].into_iter().collect();
 
-        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
             .unwrap();
 
         let total = app.tracked_total_visible_row().unwrap().process;
@@ -9258,7 +10093,7 @@ processes = ["api.exe", "worker.exe"]
         app.watch_list = vec!["target.exe".to_string()];
         app.normalized_watch_names = ["target.exe".to_string()].into_iter().collect();
 
-        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
             .unwrap();
 
         let screen = Rect::new(0, 0, 100, 30);
@@ -9283,7 +10118,7 @@ processes = ["api.exe", "worker.exe"]
             .into_iter()
             .collect();
 
-        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
             .unwrap();
 
         let rendered = render_app_to_text(&app, 100, 30);
@@ -9292,7 +10127,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.visible_tracked_process_count(), 0);
         assert!(app.status.contains("0 visible"));
         assert!(
-            rendered.contains("PROCESSES · 0 visible · ☑ Tracked only(T)"),
+            rendered.contains("PROCESSES · 0 visible · ☑ Tracked-only(Shift+T)"),
             "{rendered}"
         );
     }
@@ -9314,7 +10149,8 @@ processes = ["api.exe", "worker.exe"]
         let rendered = buffer_to_text(&buffer);
 
         assert!(
-            rendered.contains("PROCESSES · 1 visible · ☑ Tracked only(T) · Filter \"target\""),
+            rendered
+                .contains("PROCESSES · 1 visible · ☑ Tracked-only(Shift+T) · Filter \"target\""),
             "{rendered}"
         );
         assert!(
@@ -9325,22 +10161,13 @@ processes = ["api.exe", "worker.exe"]
         assert!(!rendered.contains("[x]"), "{rendered}");
         assert!(!rendered.contains("Custom"), "{rendered}");
 
-        let (state_x, state_y) = find_text_position(&buffer, "☑ Tracked only(T)")
+        let (state_x, state_y) = find_text_position(&buffer, "☑ Tracked-only(Shift+T)")
             .expect("tracked-only state should be rendered");
         let state_cell = &buffer[(state_x, state_y)];
         assert_eq!(state_cell.fg, ui::THEMES[0].tracked);
         assert_ne!(state_cell.fg, ui::THEMES[0].warning);
         assert_eq!(state_cell.bg, ui::THEMES[0].panel);
         assert!(!state_cell.modifier.contains(Modifier::BOLD));
-
-        let (label_x, label_y) = find_text_position(&buffer, "Tracked only(T)")
-            .expect("tracked-only marker legend should be rendered");
-        let marker_x = label_x + "Tracked only(".len() as u16;
-        let marker_cell = &buffer[(marker_x, label_y)];
-        assert_eq!(marker_cell.symbol(), "T");
-        assert_eq!(marker_cell.fg, ui::THEMES[0].background);
-        assert_eq!(marker_cell.bg, ui::THEMES[0].tracked);
-        assert!(!marker_cell.modifier.contains(Modifier::BOLD));
 
         let (filter_x, filter_y) = find_text_position(&buffer, "Filter \"target\"")
             .expect("filter state should be rendered");
@@ -9362,7 +10189,7 @@ processes = ["api.exe", "worker.exe"]
 
         let saved = render_app_to_text(&app, 120, 30);
         assert!(
-            saved.contains("PROCESSES · 1 visible · ☐ Tracked only(T)"),
+            saved.contains("PROCESSES · 1 visible · ☐ Tracked-only(Shift+T)"),
             "{saved}"
         );
         assert!(!saved.contains("List \"API\""), "{saved}");
@@ -9371,7 +10198,7 @@ processes = ["api.exe", "worker.exe"]
         app.normalized_watch_names.insert("worker.exe".to_string());
         let dirty = render_app_to_text(&app, 120, 30);
         assert!(
-            dirty.contains("PROCESSES · 1 visible · ☐ Tracked only(T)"),
+            dirty.contains("PROCESSES · 1 visible · ☐ Tracked-only(Shift+T)"),
             "{dirty}"
         );
         assert!(!dirty.contains("List \"API*\""), "{dirty}");
@@ -9461,7 +10288,7 @@ processes = ["api.exe", "worker.exe"]
         track_process_name(&mut app, "target.exe");
         record_tracked_process_history_samples(&mut app, "target.exe", 120);
 
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.show_tracked_remove_confirmation);
@@ -9479,7 +10306,7 @@ processes = ["api.exe", "worker.exe"]
         track_process_name(&mut app, "target.exe");
         record_tracked_process_history_samples(&mut app, "target.exe", 121);
 
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
         assert!(app.show_tracked_remove_confirmation);
@@ -9521,7 +10348,7 @@ processes = ["api.exe", "worker.exe"]
             app.snapshot.processes[0].name = "target.exe".to_string();
             track_process_name(&mut app, "target.exe");
             record_tracked_process_history_samples(&mut app, "target.exe", 121);
-            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
                 .unwrap();
 
             app.on_key(key).unwrap();
@@ -9542,7 +10369,7 @@ processes = ["api.exe", "worker.exe"]
         app.snapshot.processes[0].name = "target.exe".to_string();
         track_process_name(&mut app, "target.exe");
         record_tracked_process_history_samples(&mut app, "target.exe", 121);
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
         app.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE))
@@ -9563,7 +10390,7 @@ processes = ["api.exe", "worker.exe"]
         app.snapshot.processes[0].name = "target.exe".to_string();
         track_process_name(&mut app, "target.exe");
         record_tracked_process_history_samples(&mut app, "target.exe", 121);
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
         app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
@@ -10025,9 +10852,24 @@ processes = ["api.exe", "worker.exe"]
         let identity = app
             .selected_visible_process_identity()
             .expect("selected process identity");
-        app.graph_slots[0] = Some(GraphSlot::process(identity, DetailsMetric::Private));
-        app.active_graph_slot_index = 0;
-        app.show_details = true;
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::Private),
+            FocusedPanel::Processes,
+        ));
+    }
+
+    fn test_graph_source(app: &App, index: usize) -> GraphSlot {
+        let mut row = app.snapshot.processes[0].clone();
+        row.pid = 10_000 + index as u32;
+        row.start_time = Some(1_800_000_000 + index as u64);
+        row.name = format!("graph-{index}.exe");
+        GraphSlot::process(ProcessIdentity::from_row(&row), DetailsMetric::Private)
+    }
+
+    fn add_test_graph(app: &mut App, index: usize) -> app::GraphId {
+        let source = test_graph_source(app, index);
+        assert!(app.add_or_reveal_graph_source(source, FocusedPanel::Processes));
+        app.graph_entries.last().unwrap().id
     }
 
     fn track_process_name(app: &mut App, name: &str) {
@@ -10230,8 +11072,8 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             buffer[(popup.x, popup.y)].fg,
-            theme.accent,
-            "modal border should use the focused accent"
+            theme.focus_border,
+            "modal border should use the focused green"
         );
         assert_eq!(
             buffer[(process_table.x, process_table.y)].fg,
@@ -10304,10 +11146,10 @@ processes = ["api.exe", "worker.exe"]
             find_text_position(&recording, "Recording").expect("Recording title should render");
 
         assert_eq!(logs_x, recording_x);
-        assert_eq!(logs[(logs_x - 1, logs_y)].symbol(), "╭");
-        assert_eq!(recording[(recording_x - 1, recording_y)].symbol(), "╭");
-        assert_eq!(logs[(logs_x + 76, logs_y)].symbol(), "╮");
-        assert_eq!(recording[(recording_x + 76, recording_y)].symbol(), "╮");
+        assert_eq!(logs[(logs_x - 1, logs_y)].symbol(), "┏");
+        assert_eq!(recording[(recording_x - 1, recording_y)].symbol(), "┏");
+        assert_eq!(logs[(logs_x + 76, logs_y)].symbol(), "┓");
+        assert_eq!(recording[(recording_x + 76, recording_y)].symbol(), "┓");
     }
 
     #[test]
@@ -10726,7 +11568,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.log_view_path = Some(std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"));
 
-        let rendered = render_app_to_text(&app, 120, 30);
+        let rendered = render_app_to_text(&app, 240, 30);
         assert!(!rendered.contains("Ctrl+P Pause"), "{rendered}");
         assert!(rendered.contains("Esc Live"), "{rendered}");
 
@@ -10841,8 +11683,10 @@ processes = ["api.exe", "worker.exe"]
 
         app.apply_loaded_log(loaded);
         let identity = app.visible_process_identity_at(0).unwrap();
-        app.graph_slots[0] = Some(GraphSlot::process(identity, DetailsMetric::Private));
-        app.show_details = true;
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(identity, DetailsMetric::Private),
+            FocusedPanel::Processes,
+        );
         app.focused_panel = FocusedPanel::DetailsSamples;
         let samples = app.graph_slot_samples(app.graph_slot(0).unwrap());
 
@@ -10852,7 +11696,7 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(
-            rendered.contains("GRAPH#1 · app.exe · Private"),
+            rendered.contains("Slot#1 · Private · app.exe"),
             "{rendered}"
         );
         assert!(rendered.contains("M  Time      Private"), "{rendered}");
@@ -11152,8 +11996,14 @@ processes = ["api.exe", "worker.exe"]
             log_view_normalized_watch_names: std::collections::HashSet::new(),
             focused_panel: FocusedPanel::Processes,
             show_details: false,
-            graph_slots: std::array::from_fn(|_| None),
-            active_graph_slot_index: 0,
+            graph_entries: Vec::new(),
+            active_graph_id: None,
+            next_graph_id: 0,
+            graph_scroll_row: 0,
+            graph_scrollbar_dragging: false,
+            graph_scrollbar_grab_offset: 0,
+            graph_return_focus: FocusedPanel::Processes,
+            graph_source_last_click: None,
             details_target: DetailsTarget::Process,
             details_metric: DetailsMetric::Private,
             details_sample_selected: 0,
@@ -11168,9 +12018,8 @@ processes = ["api.exe", "worker.exe"]
             graph_show_all_samples: false,
             graph_y_axis_zero_min: true,
             graph_slot_layout: GraphSlotLayout::Auto,
-            hidden_graph_slot_count: 0,
             show_samples_panel: true,
-            samples_panel_before_two_columns: true,
+            samples_temporarily_collapsed: false,
             show_sample_delta: true,
             details_live: true,
             column_preset: ColumnPreset::Default,

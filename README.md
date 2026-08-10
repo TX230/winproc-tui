@@ -7,10 +7,10 @@
 Languages: [English](README.md) | [Japanese](README.ja.md)
 
 `winproc-tui` is a **process monitoring TUI** for tracking per-process resource usage over time.
-It shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other Windows process metrics. Up to four Graphs, A/B comparison, recording, and saved-log review support resource-behavior investigations during development and verification.
+It shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other Windows process metrics. Up to 16 Graphs, A/B comparison, recording, and saved-log review support resource-behavior investigations during development and verification.
 Rather than providing the broad system inspection of Process Explorer or System Informer, it focuses on quickly following changes in a specific process. It is built with Rust/Ratatui.
 
-![winproc-tui main screen showing the process list, GRAPH#1, Samples, and A/B comparison](assets/screenshots/main-screen.png)
+![winproc-tui main screen showing a four-card Graph Workspace, Samples, and A/B comparison](assets/screenshots/main-screen.png)
 
 _Example investigation of a process's private memory using tracking, display pause, and A/B comparison._
 
@@ -35,10 +35,10 @@ RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automa
 
 1. In `PROCESSES`, select the process you want to inspect.
 2. Use `Left` / `Right` to select the metric column you want to inspect. For example, `Private` is the process's private memory usage.
-3. Press `1` to show that metric in `GRAPH#1`.
-4. Use `2` – `4` in the same way to compare up to four metrics.
+3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace.
+4. Repeat the operation on other metrics to compare up to 16 Graphs. The navigator shows the active Graph and its position in the ordered list.
 
-Press the same number again to clear that Graph slot, or press `0` to clear all Graphs. You can also select a metric in the RAM / VRAM, NW/DISK, or CPUS panel and assign it to a Graph with `1` – `4`.
+Press `Space` again on a registered source to remove only that Graph. Double-clicking a registered source reveals its existing Graph without removing it. The same controls work for selectable metrics in the RAM / VRAM and NW/DISK panels and for CPU Usage in CPUS. Registered sources show the corresponding Graph slot number.
 
 ### 3. Compare Two Points
 
@@ -46,9 +46,9 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 
 ### 4. Track and Record a Process
 
-1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `Space` to add the name to the Tracked List. `Space` toggles the registration.
+1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `t` to add the name to the Tracked List. `t` toggles the registration.
 2. For targets you use repeatedly, press `Ctrl+T` and save the Tracked List with a name.
-3. If needed, press `t` to switch between All processes and Tracked only. Tracked only view is not required for recording.
+3. If needed, press `Shift+T` to switch between All processes and Tracked-only. Tracked-only view is not required for recording.
 4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
 5. Press `Ctrl+R` again to stop recording and close the log.
 6. Press `Ctrl+L` to select and inspect a saved log.
@@ -63,9 +63,9 @@ The Tracked Lists dialog is split into an upper area for loading a list and a lo
 | ------------------- | ------------------------------------------- |
 | `Tab` / `Shift+Tab` | Move between panels.                        |
 | Arrow keys          | Select a row, column, or sample.            |
-| `1` – `4`           | Assign the selected metric to a Graph.      |
-| `Space`             | Add/remove a process name in Tracked List.  |
-| `t`                 | Switch between All processes / Tracked only. |
+| `Space`             | Add/remove the selected metric Graph.       |
+| `t`                 | Add/remove a process name in Tracked List.  |
+| `Shift+T`           | Switch between All processes / Tracked-only. |
 | `Ctrl+T`            | Open named Tracked Lists.                   |
 | `Ctrl+F`            | Filter the process list.                    |
 | `Ctrl+R`            | Start/stop recording.                       |
@@ -76,7 +76,7 @@ The Tracked Lists dialog is split into an upper area for loading a list and a lo
 ## Features
 
 - **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
-- **Graphing**: Lays out selected metrics in up to four Graph / Samples slots so you can review time-series movement and individual sample values. General process history keeps about 120 seconds, while tracked-process and system-metric history (RAM / VRAM, System Activity, and CPU average) keeps about 7,200 seconds.
+- **Graphing**: Keeps up to 16 selected metrics in an ordered, scrollable Graph Workspace with an active-Graph navigator and one synchronized Samples inspector. General process history keeps about 120 seconds, while tracked-process and system-metric history (RAM / VRAM, System Activity, and CPU average) keeps about 7,200 seconds.
 - **Tracking (Tracked List)**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
 - **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
@@ -220,7 +220,7 @@ There are currently only two startup options.
 Only the main controls are listed in this README.
 **Press** `?` **while running to view the full key bindings in the Help dialog.**
 
-Some single-letter keys such as `f` map to different actions depending on which panel is focused. The Footer does not repeat the active panel name; it places `? Help` at the left edge so it remains visible at narrow widths. In Live and Recording, `Ctrl+P Pause` follows it across panels; it is omitted in Log view, where display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the main controls by panel.
+Some single-letter keys such as `f` map to different actions depending on which panel is focused. The Footer does not repeat the active panel name; it lists that panel's primary actions first so they survive narrow widths. In Live and Recording it also includes `Ctrl+P Pause`; Log view replaces the exit action with `Esc Live` because display pause is unavailable. The predictable Tab focus-cycle shortcut is omitted from the footer. The tables below list the main controls by panel.
 
 ### General
 
@@ -246,8 +246,7 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `Ctrl+F`            | Filter the process list by name, or by executable path when the `Full Path` column is selected. |
 | `Ctrl+I` / `Ctrl+J` | Process-name incremental search.                                                      |
-| `1` – `4`           | Show the selected process, RAM / VRAM, NW/DISK activity, or CPU Usage metric in Graph#1 – Graph#4 (press the same number again to clear). |
-| `0`                 | Clear all Graphs and close the Graph panel.                                           |
+| `Space`             | Add or remove the selected graphable process, RAM / VRAM, NW/DISK, or CPU Usage metric in the Graph Workspace. |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |
 | `Shift+Up/Down`     | Select a continuous range of live process rows.                                       |
@@ -255,15 +254,17 @@ Some single-letter keys such as `f` map to different actions depending on which 
 | `Ctrl+Space`        | Add or remove the current live process row from the multi-selection.                  |
 | `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
 | `w` / `Shift+W`     | Widen or narrow the selected column by one cell.                                      |
-| `Space`             | Add or remove the selected process name from the Tracked List.                        |
+| `t`                 | Add or remove the selected process name from the Tracked List.                        |
+| `Shift+T`           | Toggle Tracked-only display.                                                          |
 | `d` / `Delete`      | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
-| `t`                 | Toggle whether only tracked processes are shown.                                      |
 | `Enter`             | Open Process Info for the selected process.                                          |
 | `i`                 | Open the System Info dialog.                                                        |
 | `f`                 | Open Process Info directly on the Files tab for the selected live process.            |
 | `g`                 | Open or close all configured Graphs at once.                                          |
 
 Process Info is a responsive tabbed dialog that stays compact on large terminals and shrinks to the available area on smaller ones. `Metrics` lists all 14 normally sampled numeric process metrics, `Image` shows executable, user, architecture, full command-line, and version details, `Files` contains the former Open files list, `DLLs` lists the full paths of loaded DLLs, and `Environment` shows the target's environment variables. Use `Ctrl+Right` / `Ctrl+Left` to switch to the next or previous tab; `Tab` / `Shift+Tab` moves focus between the active tab content and the Close button. The active tab is remembered after closing Process Info and restored the next time it opens during the same run; `f` still opens it directly on `Files`. Set A and optionally B in Graph or Samples before opening `Metrics`: with A only, the dialog shows Current minus A; with both points, it shows B minus A. Missing exact-time samples remain `--`.
+
+On a graphable source cell or system metric, two left clicks within 500 ms add the Graph or reveal its existing card. A single click only changes the selected row or cell. Double-clicking a non-graph column, empty table space, or Tracked Total does not add a Graph.
 
 Scroll ordinary content with `Up` / `Down`, `PageUp` / `PageDown`, `Home` / `End`, or the mouse wheel. On `DLLs` and `Environment`, those keys select a row instead; press `Enter` to open the selected DLL metadata or the selected variable's complete value. The same scrolling keys move through a long detail view, and `Esc` or `Enter` returns to the list. `Files` and `DLLs` filters match full paths. All three list filters are cleared when a new Process Info dialog opens, but remain available while switching tabs or refreshing within that dialog. Filtered summaries show both the displayed and total item counts. On `Image`, `Files`, `DLLs`, and `Environment`, `Ctrl+U` refreshes the active tab. `Ctrl+C` copies the filtered paths on `Files`, the selected DLL path on `DLLs`, or the selected `NAME=value` on `Environment`. Dynamic collection is point-in-time and may be unavailable for protected, unsupported, or exited processes.
 
@@ -276,7 +277,11 @@ Environment values can contain passwords, tokens, and other secrets. They are re
 | Key                        | Action                                                                              |
 | -------------------------- | ----------------------------------------------------------------------------------- |
 | `Enter`                    | Open Process Info for the active process Graph.                                     |
-| `Left` / `Right`           | Move the selected sample.                                                           |
+| `Up`                       | Select the previous Graph slot.                                                     |
+| `Down`                     | Select the next Graph slot.                                                         |
+| `Delete`                   | Remove the active Graph.                                                            |
+| `Left`                     | Select the older sample.                                                            |
+| `Right`                    | Select the newer sample.                                                            |
 | `Ctrl+Left` / `Ctrl+Right` | Pan the visible range.                                                              |
 | Right drag / `Ctrl`+left drag | Pan the visible range with the mouse.                                            |
 | `PageUp` / `PageDown`      | Change the visible time span.                                                       |
@@ -288,15 +293,19 @@ Environment values can contain passwords, tokens, and other secrets. They are re
 | `a` / `b`                  | Mark the selected sample as point A or point B.                                     |
 | `Shift+A` / `Shift+B`      | Jump to point A or point B.                                                         |
 | `x`                        | Clear the A/B comparison.                                                           |
+| Mouse wheel                | Scroll Graph rows; over Samples, scroll sample rows.                                |
 
 
-Shared Graph controls appear once above the complete Graph area: visible time span, cursor and A/B times, plus `v: Samples`, `d: Delta`, the current `l` layout mode, `f: Fit all`, and `z: Min 0`. The controls can also be clicked. Each slot uses one frame titled `GRAPH#n · item · metric [unit] · B-A: value`, with its Graph and synchronized Samples table grouped inside that frame. Units already present in names such as `CPU%` are not repeated. The title computes `B-A` from that slot's own metric values and shows `--` when either point is unset or the slot has no value at either exact time. The active slot title is emphasized and inactive slot titles are muted.
-The shared `v`, `d`, `l`, `f`, and `z` shortcuts work while either the Graph or Samples part of a slot has focus.
-With the Graph part of a process slot focused, `Enter` opens Process Info for that slot's process without changing the selected Processes row. System Graphs do not have process details.
+Shared Graph controls appear once above the Graph Workspace: visible time span, cursor and A/B times, plus `v: Samples`, `d: Delta`, the current `l` layout mode, `f: Fit all`, and `z: Min 0`. The framed Graph Slots navigator always identifies the active `Slot#i`, total Graph count, target, and metric; visible navigator items are clickable. Each card title starts with `Slot#i`, followed by the metric and target without a separate unit label, and ends with a mouse-operable `[x]`; units remain visible on the Y-axis and in Samples values. Registered source metrics in Processes, RAM / VRAM, NW/DISK, and CPU show the same slot number instead of a generic `G`. `B-A` is calculated from that Graph's exact-time samples and remains `--` when either point or value is unavailable.
 
-Auto layout uses one column unless two columns make more assigned slots visible in the current terminal area. In two-column mode, slots use row-major order: upper left, upper right, lower left, then lower right. A single Graph uses the full width, and three Graphs leave the lower-right cell empty. Two-column mode hides Samples and restores its previous visibility when the effective layout returns to one column. Enabling Samples with `v` switches to the fixed one-column mode.
+The panel receiving keyboard input uses a thick green border. The active Graph card uses a separate double border and keeps that selection while Samples or another panel has focus. The Samples title repeats the active `Slot#i`, so panel focus and the Graph whose history is being inspected remain distinct.
+The shared `v`, `d`, `l`, `f`, and `z` shortcuts work with Graph or Samples focus. `Delete` removes only the active Graph; clicking any card's remove button can also remove an inactive Graph. With a process Graph active, `Enter` opens Process Info for its fixed process identity without changing the selected Processes row. System Graphs do not have process details.
 
-When multiple Graphs are shown, the visible time span, cursor position, and A/B points are shared across slots, while the Y-axis scale, sample availability, and value labels remain independent per Graph. Byte-based Y-axis ticks use compact adaptive units such as `5.9 MB`; count ticks remain integers. The shared reduced tick width is reclaimed by every plot. Samples, cursor labels, A/B values and deltas, clipboard output, and recording logs retain exact values. If a selected Samples value is outside the current Graph range, the time window moves only as far as needed to reveal it. Adding a Graph or shrinking the terminal never clears an assignment. Slots that do not fit are temporarily hidden from the highest slot number and reappear automatically when space becomes available.
+Auto layout uses two columns whenever the available width can preserve the minimum card width; otherwise it uses one. Two-column mode is row-major: upper left, upper right, lower left, then lower right. A single Graph always uses the full width, and an odd final card leaves the lower-right position empty. Graph rows scroll vertically and remain reachable through `Up` / `Down`, card or navigator clicks, the mouse wheel, and the scrollbar.
+
+The single Samples inspector always follows the active Graph. It appears to the right when width allows, below the Graph cards when only height allows, and temporarily collapses when neither placement is readable. Restoring terminal space brings back only a temporarily collapsed inspector; one explicitly hidden with `v` stays hidden. Two-column Graphs and Samples can be shown together.
+
+When multiple Graphs are shown, the visible time span, cursor position, selected time, and A/B points are shared, while Y-axis scale, sample availability, and value labels remain independent per Graph. Byte-based Y-axis ticks use compact adaptive units such as `5.9 MB`; count ticks remain integers. Samples, cursor labels, A/B values and deltas, clipboard output, and recording logs retain exact values. A Graph without a sample at the exact shared time shows `--`; nearby values are not substituted. Resizing or collapsing the Workspace with `g` preserves every registration, its order, the active Graph, and comparison state.
 
 ## Recording and Log View
 
@@ -317,7 +326,7 @@ The recording log format and the meaning of each field are described in [docs/me
 
 ## Saved Settings
 
-The theme, Graph layout and Samples / Delta visibility, process-table columns, sort, and widths, Tracked Only state, working Tracked List, and saved named lists are saved automatically and restored on the next launch. Tracked Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
+The theme, Graph layout and Samples / Delta visibility, process-table columns, sort, and widths, Tracked-only state, working Tracked List, and saved named lists are saved automatically and restored on the next launch. Tracked Lists startup behavior and explicit Save, Rename, and Delete actions are saved when performed. Filter input is not carried over to the next launch.
 
 ## Developer Docs
 

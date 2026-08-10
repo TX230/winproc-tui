@@ -23,12 +23,11 @@ use crate::{
             format_io_rate, format_mb_per_sec, format_signed_integer, format_signed_io_rate,
         },
         layout::{
-            DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, details_graph_area, details_graph_rows,
-            details_samples_area, details_samples_divider_area, details_samples_row_capacity,
-            details_samples_summary_height, details_shared_controls_area, details_slot_areas,
-            graph_shared_control_areas,
+            DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, GraphCardLayout, GraphWorkspaceLayout,
+            details_graph_rows, details_samples_row_capacity, details_samples_summary_height,
+            graph_shared_control_areas, graph_workspace_layout,
         },
-        widgets::block::panel_block_focused,
+        widgets::block::{graph_card_block, panel_block_focused},
     },
 };
 
@@ -41,12 +40,7 @@ pub(crate) fn draw_details_panel(
     app: &App,
     theme: Theme,
 ) {
-    let slots = app
-        .visible_graph_slot_indices()
-        .into_iter()
-        .filter_map(|index| app.graph_slot(index).map(|slot| (index, slot)))
-        .collect::<Vec<_>>();
-    if slots.is_empty() {
+    if app.graph_entries.is_empty() {
         let lines = vec![Line::from(Span::styled(
             "No graph metrics selected",
             Style::default().fg(theme.muted),
@@ -55,50 +49,79 @@ pub(crate) fn draw_details_panel(
         return;
     }
 
-    draw_graph_shared_controls(frame, details_shared_controls_area(area), app, theme);
+    let layout = graph_workspace_layout(area, app);
+    draw_graph_shared_controls(frame, layout.controls, app, theme);
+    frame.render_widget(
+        panel_block_focused("", theme, app.panel_has_focus(FocusedPanel::DetailsGraph)),
+        layout.graph_slots,
+    );
+    draw_graph_navigator(frame, &layout, theme);
 
-    let visible_slot_count = slots.len();
-    let common_y_label_width = graph_y_axis_label_width(app);
+    let visible_indices = layout
+        .graph_cards
+        .iter()
+        .map(|card| card.ordinal)
+        .collect::<Vec<_>>();
+    let common_y_label_width = graph_y_axis_label_width_for_indices(app, &visible_indices);
     let selected_sample_time = app.selected_details_sample_time();
-    let slot_areas = details_slot_areas(area, slots.len(), app.effective_graph_slot_layout());
-    for ((slot_index, slot), slot_area) in slots.into_iter().zip(slot_areas) {
-        let samples = app.graph_slot_samples(slot);
-        let peak = app.graph_slot_peak(slot);
-        let metric = slot.value_format();
-        render_details_content(
+    for card in &layout.graph_cards {
+        let Some(entry) = app.graph_entry(card.ordinal) else {
+            continue;
+        };
+        let samples = app.graph_slot_samples(&entry.source);
+        let peak = app.graph_slot_peak(&entry.source);
+        let metric = entry.source.value_format();
+        render_graph_card(
             frame,
-            slot_area,
-            slot_index,
+            card,
             graph_slot_title_line(
-                slot,
-                slot_index,
+                &entry.source,
+                card.ordinal,
                 samples.as_slice(),
                 metric,
                 app.active_ab_comparison(),
-                app.active_graph_slot_index == slot_index,
+                app.active_graph_id == Some(entry.id),
                 theme,
             ),
             samples.as_slice(),
             peak,
             metric,
-            slot.metric_label(),
             app,
             theme,
-            visible_slot_count == 1,
             common_y_label_width,
             selected_sample_time,
+            layout.compact,
         );
+    }
+    render_graph_workspace_scrollbar(frame, &layout, app.graph_scroll_row, theme);
+    if let Some(samples_area) = layout.samples {
+        draw_active_samples_inspector(frame, samples_area, app, theme);
     }
 }
 
 pub(crate) fn graph_y_axis_label_width(app: &App) -> usize {
+    let indices = crate::ui::main_panel_areas_for_app(app.last_screen_area, app)
+        .details
+        .map(|area| graph_workspace_layout(area, app))
+        .map(|layout| {
+            layout
+                .graph_cards
+                .into_iter()
+                .map(|card| card.ordinal)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| app.active_graph_index().into_iter().collect());
+    graph_y_axis_label_width_for_indices(app, &indices)
+}
+
+fn graph_y_axis_label_width_for_indices(app: &App, indices: &[usize]) -> usize {
     let bounds = graph_bounds(
         app.effective_graph_time_span_seconds(),
         app.effective_graph_time_offset_seconds(),
     );
-    app.visible_graph_slot_indices()
-        .into_iter()
-        .filter_map(|index| app.graph_slot(index))
+    indices
+        .iter()
+        .filter_map(|index| app.graph_slot(*index))
         .map(|slot| {
             let samples = app.graph_slot_samples(slot);
             let metric = slot.value_format();
@@ -111,31 +134,34 @@ pub(crate) fn graph_y_axis_label_width(app: &App) -> usize {
         .unwrap_or(1)
 }
 
-fn render_details_content(
+fn render_graph_card(
     frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    slot_index: usize,
+    card: &GraphCardLayout,
     title: Line<'static>,
     samples: &[GraphSample],
     peak: Option<f64>,
     metric: GraphValueFormat,
-    metric_label: &'static str,
     app: &App,
     theme: Theme,
-    show_base_summary: bool,
     y_label_width: usize,
     selected_sample_time: Option<DateTime<Local>>,
+    compact: bool,
 ) {
-    let slot_focused = app.active_graph_slot_index == slot_index
-        && matches!(
-            app.focused_panel,
-            FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-        );
-    let block = panel_block_focused(title, theme, slot_focused);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let active = app.active_graph_id == Some(card.id);
+    let block = graph_card_block(title, theme, active);
+    let inner = block.inner(card.area);
+    frame.render_widget(block, card.area);
 
-    if samples.is_empty() {
+    if compact || inner.height < 8 || inner.width < 30 {
+        let lines = vec![Line::from(Span::styled(
+            "Resize terminal to view Graph",
+            Style::default().fg(theme.muted),
+        ))];
+        frame.render_widget(
+            Paragraph::new(lines).style(Style::default().fg(theme.muted).bg(theme.panel)),
+            inner,
+        );
+    } else if samples.is_empty() {
         let lines = vec![Line::from(Span::styled(
             "No samples available",
             Style::default().fg(theme.muted),
@@ -144,64 +170,158 @@ fn render_details_content(
             Paragraph::new(lines).style(Style::default().fg(theme.muted).bg(theme.panel)),
             inner,
         );
-        return;
-    }
-
-    let graph_area = details_graph_area(area, app.show_samples_panel, app.show_sample_delta);
-    let samples_area = app
-        .show_samples_panel
-        .then(|| details_samples_area(area, app.show_sample_delta))
-        .unwrap_or_default();
-    draw_graph_content(
-        frame,
-        graph_area,
-        samples,
-        peak,
-        metric,
-        selected_sample_time,
-        app.effective_graph_time_span_seconds(),
-        app.effective_graph_time_offset_seconds(),
-        app.graph_y_axis_zero_min,
-        app.active_ab_comparison(),
-        theme,
-        y_label_width,
-    );
-    if !app.show_samples_panel {
-        return;
-    }
-    let sample_viewport = draw_samples_subpanel(
-        frame,
-        samples_area,
-        app,
-        samples,
-        metric,
-        metric_label,
-        app.details_sample_selected,
-        app.details_sample_offset,
-        app.active_graph_slot_index == slot_index,
-        app.active_ab_comparison(),
-        theme,
-        slot_index,
-        show_base_summary,
-        app.show_sample_delta,
-    );
-    if let Some(divider) = details_samples_divider_area(samples_area) {
-        frame.render_widget(
-            VerticalDivider {
-                style: Style::default().fg(
-                    if app.panel_has_focus(FocusedPanel::DetailsSamples)
-                        && app.active_graph_slot_index == slot_index
-                    {
-                        theme.accent
-                    } else {
-                        theme.border
-                    },
-                ),
-            },
-            divider,
+    } else {
+        draw_graph_content(
+            frame,
+            card.plot,
+            samples,
+            peak,
+            metric,
+            selected_sample_time,
+            app.effective_graph_time_span_seconds(),
+            app.effective_graph_time_offset_seconds(),
+            app.graph_y_axis_zero_min,
+            app.active_ab_comparison(),
+            theme,
+            y_label_width,
         );
     }
-    render_samples_scrollbar(frame, samples_area, sample_viewport, theme);
+    frame.render_widget(
+        Paragraph::new(format!(" {} ", card.remove_label)).style(
+            Style::default()
+                .fg(if active { theme.warning } else { theme.muted })
+                .bg(theme.panel),
+        ),
+        card.remove,
+    );
+}
+
+fn draw_graph_navigator(
+    frame: &mut ratatui::Frame<'_>,
+    layout: &GraphWorkspaceLayout,
+    theme: Theme,
+) {
+    frame.render_widget(
+        Paragraph::new(layout.navigator_prefix_label.clone()).style(
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.panel)
+                .add_modifier(Modifier::BOLD),
+        ),
+        layout.navigator_prefix,
+    );
+    for ellipsis in [
+        layout.navigator_leading_ellipsis,
+        layout.navigator_trailing_ellipsis,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        frame.render_widget(
+            Paragraph::new("…").style(Style::default().fg(theme.muted).bg(theme.panel)),
+            ellipsis,
+        );
+    }
+    for item in &layout.navigator_items {
+        let style = if item.active {
+            Style::default()
+                .fg(theme.accent)
+                .bg(theme.panel)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.muted).bg(theme.panel)
+        };
+        frame.render_widget(Paragraph::new(item.label.clone()).style(style), item.area);
+    }
+}
+
+fn render_graph_workspace_scrollbar(
+    frame: &mut ratatui::Frame<'_>,
+    layout: &GraphWorkspaceLayout,
+    scroll_row: usize,
+    theme: Theme,
+) {
+    let Some(area) = layout.graph_scrollbar else {
+        return;
+    };
+    let mut state = ScrollbarState::new(layout.total_rows)
+        .position(samples_scrollbar_position(
+            layout.total_rows,
+            layout.visible_rows,
+            scroll_row,
+        ))
+        .viewport_content_length(layout.visible_rows);
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("▲"))
+        .end_symbol(Some("▼"))
+        .thumb_symbol("█")
+        .track_symbol(Some("│"))
+        .style(Style::default().fg(theme.muted).bg(theme.panel))
+        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
+    frame.render_stateful_widget(scrollbar, area, &mut state);
+}
+
+fn draw_active_samples_inspector(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &App,
+    theme: Theme,
+) {
+    let (Some(index), Some(entry)) = (
+        app.active_graph_index(),
+        app.active_graph_id.and_then(|id| app.graph_entry_by_id(id)),
+    ) else {
+        return;
+    };
+    let title = Line::from(vec![
+        Span::styled(
+            "Samples",
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(
+                " · Slot#{}/{} · {} · {}",
+                index + 1,
+                app.graph_entries.len(),
+                entry.source.item_label(),
+                entry.source.metric_label()
+            ),
+            Style::default().fg(theme.muted),
+        ),
+    ]);
+    let block = panel_block_focused(
+        title,
+        theme,
+        app.panel_has_focus(FocusedPanel::DetailsSamples),
+    );
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let samples = app.graph_slot_samples(&entry.source);
+    if samples.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No samples available")
+                .style(Style::default().fg(theme.muted).bg(theme.panel)),
+            inner,
+        );
+        return;
+    }
+    let viewport = draw_samples_subpanel(
+        frame,
+        inner,
+        app,
+        &samples,
+        entry.source.value_format(),
+        entry.source.metric_label(),
+        app.details_sample_selected,
+        app.details_sample_offset,
+        true,
+        app.active_ab_comparison(),
+        theme,
+        index,
+        true,
+        app.show_sample_delta,
+    );
+    render_samples_scrollbar(frame, inner, viewport, theme);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,21 +329,6 @@ struct SampleViewport {
     start: usize,
     rows: usize,
     total: usize,
-}
-
-struct VerticalDivider {
-    style: Style,
-}
-
-impl Widget for VerticalDivider {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        if area.is_empty() {
-            return;
-        }
-        for y in area.y..area.bottom() {
-            buf[(area.x, y)].set_symbol("│").set_style(self.style);
-        }
-    }
 }
 
 fn draw_samples_subpanel(
@@ -1115,7 +1220,7 @@ fn sample_ab_marker(
 
 fn graph_slot_title_line(
     slot: &GraphSlot,
-    slot_index: usize,
+    ordinal: usize,
     samples: &[GraphSample],
     metric: GraphValueFormat,
     comparison: Option<&AbComparison>,
@@ -1140,11 +1245,11 @@ fn graph_slot_title_line(
         Style::default().fg(theme.muted)
     };
     Line::from(vec![
-        Span::styled(format!("GRAPH#{}", slot_index + 1), slot_style),
+        Span::styled(format!("Slot#{}", ordinal + 1), slot_style),
+        Span::styled(" · ", Style::default().fg(theme.muted)),
+        Span::styled(slot.metric_label(), main_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(slot.item_label(), main_style),
-        Span::styled(" · ", Style::default().fg(theme.muted)),
-        Span::styled(slot.metric_title(), main_style),
         Span::styled(" · B-A: ", comparison_style),
         Span::styled(
             format_graph_title_ab_delta(comparison, samples, metric),
@@ -2321,7 +2426,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "GRAPH#1 · app.exe · Private [B] · B-A: --");
+        assert_eq!(rendered, "Slot#1 · Private · app.exe · B-A: --");
         assert!(
             line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
                 && line.spans[0].style.add_modifier.contains(Modifier::BOLD)
@@ -2377,11 +2482,11 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert_eq!(rendered, "GRAPH#1 · DeepL.exe · Hndl [count] · B-A: +2");
+        assert_eq!(rendered, "Slot#1 · Hndl · DeepL.exe · B-A: +2");
     }
 
     #[test]
-    fn graph_metric_titles_add_units_without_duplicating_metric_names() {
+    fn graph_metric_titles_omit_separate_unit_labels() {
         let identity = crate::model::ProcessIdentity {
             pid: 42,
             name: "app.exe".to_string(),
@@ -2390,32 +2495,32 @@ mod tests {
 
         assert_eq!(
             GraphSlot::process(identity.clone(), crate::app::DetailsMetric::CpuPercent)
-                .metric_title(),
+                .metric_label(),
             "CPU%"
         );
         assert_eq!(
-            GraphSlot::system(crate::model::SystemMetric::CpuAverage).metric_title(),
-            "CPU Usage [%]"
+            GraphSlot::system(crate::model::SystemMetric::CpuAverage).metric_label(),
+            "CPU Usage"
         );
         assert_eq!(
             GraphSlot::process(identity.clone(), crate::app::DetailsMetric::Private).value_format(),
             GraphValueFormat::Bytes
         );
         assert_eq!(
-            GraphSlot::process(identity.clone(), crate::app::DetailsMetric::IoRead).metric_title(),
-            "IO Read/s [Kbps/Mbps]"
+            GraphSlot::process(identity.clone(), crate::app::DetailsMetric::IoRead).metric_label(),
+            "IO Read/s"
         );
         assert_eq!(
             GraphSlot::process(identity, crate::app::DetailsMetric::ThreadCount).value_format(),
             GraphValueFormat::Count
         );
         assert_eq!(
-            GraphSlot::system(crate::model::SystemMetric::DiskRead).metric_title(),
-            "Disk R [MB/s]"
+            GraphSlot::system(crate::model::SystemMetric::DiskRead).metric_label(),
+            "Disk R"
         );
         assert_eq!(
-            GraphSlot::system(crate::model::SystemMetric::DiskQueueLength).metric_title(),
-            "Disk Q [requests]"
+            GraphSlot::system(crate::model::SystemMetric::DiskQueueLength).metric_label(),
+            "Disk Q"
         );
     }
 }

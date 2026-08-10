@@ -67,53 +67,60 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
 
     let mut items = match app.focused_panel {
         FocusedPanel::System | FocusedPanel::SystemActivity | FocusedPanel::Cpu => {
-            vec![("1-4", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")]
+            vec![("Space", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")]
         }
         FocusedPanel::Processes => {
             vec![
+                ("Space", "Graph"),
+                ("t", "Track"),
+                ("Shift+T", "Tracked-only"),
                 ("Ctrl+T", "Lists"),
                 ("c", "Columns"),
                 ("w/W", "Width"),
                 ("s", "Sort"),
                 ("g", "Graphs"),
                 ("Ctrl+I", "Jump"),
-                ("1-4", "Graph"),
                 ("Enter/f", "Info/Files"),
-                ("Space", "Track"),
                 ("d", "Kill"),
                 ("Ctrl+F", "Filter"),
             ]
         }
         FocusedPanel::DetailsGraph => {
             vec![
-                ("Enter", "Info"),
-                ("Ctrl+Left/Right", "Pan"),
-                ("PgUp/PgDn", "Span"),
-                ("f", "Fit"),
-                ("z", "Min 0"),
+                ("↑", "Prev Slot"),
+                ("↓", "Next Slot"),
+                ("←", "Older"),
+                ("→", "Newer"),
+                ("Del", "Remove Graph"),
                 ("a/b", "Set A/B"),
+                ("PgUp/PgDn", "Span"),
+                ("Ctrl+←/→", "Pan"),
+                ("Enter", "Info"),
+                ("f/z", "Fit/Min 0"),
                 ("Shift+A/B", "Jump A/B"),
             ]
         }
         FocusedPanel::DetailsSamples => {
             vec![
-                ("PgUp/PgDn", "Page"),
-                ("Home/End", "Edge"),
-                ("f", "Fit"),
-                ("z", "Min 0"),
+                ("↑/←", "Older"),
+                ("↓/→", "Newer"),
+                ("Del", "Remove Graph"),
                 ("a/b", "Set A/B"),
+                ("PgUp/PgDn", "Span"),
+                ("Home/End", "Edge"),
+                ("f/z", "Fit/Min 0"),
                 ("Shift+A/B", "Jump A/B"),
                 ("x", "Clear A/B"),
             ]
         }
     };
     if app.activity() == AppActivity::LogView {
-        items.insert(0, ("Esc", "Live"));
+        items.push(("Esc", "Live"));
     } else {
-        items.insert(0, ("Ctrl+P", "Pause"));
+        items.push(("Ctrl+P", "Pause"));
         items.push(("Esc", "Quit"));
     }
-    items.insert(0, ("?", "Help"));
+    items.push(("?", "Help"));
 
     shortcut_spans(&items, theme)
 }

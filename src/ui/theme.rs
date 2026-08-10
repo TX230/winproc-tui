@@ -10,6 +10,7 @@ pub(crate) struct Theme {
     pub(crate) text: Color,
     pub(crate) muted: Color,
     pub(crate) accent: Color,
+    pub(crate) focus_border: Color,
     pub(crate) focus_surface: Color,
     pub(crate) table_selection_surface: Color,
     pub(crate) table_intersection_surface: Color,
@@ -35,6 +36,7 @@ pub(crate) const THEMES: [Theme; 2] = [
         text: Color::Rgb(230, 226, 218),
         muted: Color::Rgb(154, 152, 146),
         accent: Color::Rgb(201, 206, 214),
+        focus_border: Color::Rgb(82, 196, 120),
         focus_surface: Color::Rgb(48, 52, 58),
         table_selection_surface: Color::Rgb(45, 45, 45),
         table_intersection_surface: Color::Rgb(70, 70, 70),
@@ -57,6 +59,7 @@ pub(crate) const THEMES: [Theme; 2] = [
         text: Color::Rgb(37, 36, 33),
         muted: Color::Rgb(103, 99, 93),
         accent: Color::Rgb(66, 70, 76),
+        focus_border: Color::Rgb(21, 112, 59),
         focus_surface: Color::Rgb(212, 209, 202),
         table_selection_surface: Color::Rgb(231, 231, 231),
         table_intersection_surface: Color::Rgb(212, 212, 212),
@@ -95,6 +98,8 @@ mod tests {
     fn built_in_themes_use_neutral_focus_and_semantic_status_colors() {
         let dark = THEMES[0];
         assert_eq!(dark.accent, Color::Rgb(201, 206, 214));
+        assert_eq!(dark.focus_border, Color::Rgb(82, 196, 120));
+        assert_ne!(dark.focus_border, dark.accent);
         assert_eq!(dark.focus_surface, Color::Rgb(48, 52, 58));
         assert_eq!(dark.table_selection_surface, Color::Rgb(45, 45, 45));
         assert_eq!(dark.table_intersection_surface, Color::Rgb(70, 70, 70));
@@ -105,6 +110,8 @@ mod tests {
 
         let light = THEMES[1];
         assert_eq!(light.accent, Color::Rgb(66, 70, 76));
+        assert_eq!(light.focus_border, Color::Rgb(21, 112, 59));
+        assert_ne!(light.focus_border, light.accent);
         assert_eq!(light.focus_surface, Color::Rgb(212, 209, 202));
         assert_eq!(light.table_selection_surface, Color::Rgb(231, 231, 231));
         assert_eq!(light.table_intersection_surface, Color::Rgb(212, 212, 212));

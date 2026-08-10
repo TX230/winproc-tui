@@ -97,20 +97,6 @@ impl App {
         }
     }
 
-    pub(crate) fn select_process_identity(
-        &mut self,
-        identity: &crate::model::ProcessIdentity,
-    ) -> bool {
-        let Some(index) = self.visible_process_position(identity) else {
-            self.status = "Graph item is not visible in Processes".to_string();
-            return false;
-        };
-        self.select_process_index(index);
-        self.ensure_selected_row_visible();
-        self.status = format!("Process selected: {}", identity.name);
-        true
-    }
-
     fn apply_process_selection_range(
         &mut self,
         anchor: Option<crate::model::ProcessIdentity>,

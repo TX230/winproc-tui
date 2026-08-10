@@ -58,10 +58,6 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Open log list",
     },
     HelpItem {
-        key: "Ctrl+T",
-        label: "Open/load Tracked Lists",
-    },
-    HelpItem {
         key: "Ctrl+R",
         label: "Toggle recording",
     },
@@ -117,20 +113,8 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Widen / narrow column",
     },
     HelpItem {
-        key: "1/2/3/4",
-        label: "Set to Graph#n",
-    },
-    HelpItem {
-        key: "0",
-        label: "Clear all Graph slots",
-    },
-    HelpItem {
         key: "Space",
-        label: "Track / Untrack process",
-    },
-    HelpItem {
-        key: "t",
-        label: "Toggle Tracked-only",
+        label: "Toggle selected metric Graph",
     },
     HelpItem {
         key: "s",
@@ -176,8 +160,8 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
         label: "Move to top / bottom",
     },
     HelpItem {
-        key: "1/2/3/4",
-        label: "Set to Graph#n",
+        key: "Space",
+        label: "Toggle selected metric Graph",
     },
 ];
 
@@ -191,20 +175,55 @@ const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
         label: "Move to top / bottom",
     },
     HelpItem {
-        key: "1/2/3/4",
-        label: "Set to Graph#n",
+        key: "Space",
+        label: "Toggle selected metric Graph",
     },
 ];
 
 const CPU_ROWS: &[HelpItem] = &[HelpItem {
-    key: "1/2/3/4",
-    label: "Set CPU Usage to Graph#n",
+    key: "Space",
+    label: "Toggle CPU Usage Graph",
 }];
+
+const TRACKING_ROWS: &[HelpItem] = &[
+    HelpItem {
+        key: "t",
+        label: "Track / Untrack selected process",
+    },
+    HelpItem {
+        key: "Shift+T",
+        label: "Toggle Tracked-only",
+    },
+    HelpItem {
+        key: "Ctrl+T",
+        label: "Open/load Tracked Lists",
+    },
+];
 
 const GRAPH_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "Enter / Left/Right",
-        label: "Info / select sample",
+        key: "Up",
+        label: "Select previous Graph slot",
+    },
+    HelpItem {
+        key: "Down",
+        label: "Select next Graph slot",
+    },
+    HelpItem {
+        key: "Delete",
+        label: "Remove active Graph",
+    },
+    HelpItem {
+        key: "Left",
+        label: "Select older sample time",
+    },
+    HelpItem {
+        key: "Right",
+        label: "Select newer sample time",
+    },
+    HelpItem {
+        key: "Enter",
+        label: "Open Process Info",
     },
     HelpItem {
         key: "Ctrl+Left/Right",
@@ -224,18 +243,26 @@ const GRAPH_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "v/d/l",
-        label: "Samples/Delta/mode",
+        label: "Samples / Delta / layout",
     },
 ];
 
 const SAMPLES_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "Up/Down",
-        label: "Move selected sample",
+        key: "Up/Left",
+        label: "Select older sample",
+    },
+    HelpItem {
+        key: "Down/Right",
+        label: "Select newer sample",
+    },
+    HelpItem {
+        key: "Delete",
+        label: "Remove active Graph",
     },
     HelpItem {
         key: "PageUp/PageDown",
-        label: "Move by page",
+        label: "Change Graph time span",
     },
     HelpItem {
         key: "Home/End",
@@ -272,8 +299,16 @@ const MOUSE_ROWS: &[HelpItem] = &[
         label: "Select clicked row",
     },
     HelpItem {
-        key: "Click Graph item",
-        label: "Match process row",
+        key: "Double-click metric",
+        label: "Add or reveal Graph",
+    },
+    HelpItem {
+        key: "Click Graph nav/card",
+        label: "Select Graph",
+    },
+    HelpItem {
+        key: "Click [x]",
+        label: "Remove Graph",
     },
     HelpItem {
         key: "Drag scrollbar",
@@ -308,6 +343,11 @@ const LEFT_SECTIONS: &[HelpSection] = &[
         focus_hint: None,
         rows: PROCESSES_ROWS,
     },
+    HelpSection {
+        title: "Mouse",
+        focus_hint: None,
+        rows: MOUSE_ROWS,
+    },
 ];
 
 const RIGHT_SECTIONS: &[HelpSection] = &[
@@ -327,8 +367,13 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         rows: CPU_ROWS,
     },
     HelpSection {
-        title: "Graph slot",
-        focus_hint: Some("Graph or Samples"),
+        title: "Tracking",
+        focus_hint: Some("Processes focus"),
+        rows: TRACKING_ROWS,
+    },
+    HelpSection {
+        title: "Graph Workspace",
+        focus_hint: Some("Graph focus"),
         rows: GRAPH_ROWS,
     },
     HelpSection {
@@ -340,11 +385,6 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         title: "A/B comparison",
         focus_hint: Some("Graph or Samples"),
         rows: AB_ROWS,
-    },
-    HelpSection {
-        title: "Mouse",
-        focus_hint: None,
-        rows: MOUSE_ROWS,
     },
 ];
 

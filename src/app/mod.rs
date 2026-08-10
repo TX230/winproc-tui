@@ -19,9 +19,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use crate::ui::{
     column_picker_page_size_for_screen, draw, help_page_size_for_screen,
-    layout::{
-        MainPanelAreas, details_samples_area, details_samples_row_capacity, details_slot_areas,
-    },
+    layout::{MainPanelAreas, details_samples_row_capacity, graph_workspace_layout},
     main_panel_areas_for_app, process_info_page_size_for_screen,
     tracked_lists_page_size_for_screen,
 };
@@ -33,19 +31,22 @@ pub(crate) use state::AbComparison;
 pub(crate) use state::AbComparisonPoint;
 pub(crate) use state::App;
 pub(crate) use state::AppActivity;
-#[cfg(test)]
 pub(crate) use state::DetailsMetric;
 pub(crate) use state::DetailsSampleViewState;
 #[cfg(test)]
 pub(crate) use state::DetailsTarget;
 pub(crate) use state::FocusedPanel;
+#[cfg(test)]
+pub(crate) use state::GRAPH_LIMIT;
 pub(crate) use state::GRAPH_SLOT_MIN_HEIGHT;
 pub(crate) use state::GRAPH_SLOT_MIN_WIDTH;
+pub(crate) use state::GraphId;
 pub(crate) use state::GraphPanDrag;
 pub(crate) use state::GraphPanDragButton;
 pub(crate) use state::GraphSample;
 pub(crate) use state::GraphSlot;
 pub(crate) use state::GraphSlotLayout;
+pub(crate) use state::GraphSourceState;
 pub(crate) use state::GraphValueFormat;
 pub(crate) use state::LogDirSelection;
 pub(crate) use state::LogListFocus;
@@ -258,8 +259,12 @@ impl LoopTrace {
 }
 
 pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
+    let resized = app.last_screen_area != screen_area;
     app.set_screen_area(screen_area);
     app.sync_graph_layout_visibility();
+    if resized {
+        app.reveal_active_graph();
+    }
     let panels = main_panel_areas_for_app(screen_area, app);
     app.set_process_page_size(panels.processes.page_size);
     app.set_details_sample_page_size(details_samples_page_size_for_app(&panels, app));
@@ -273,21 +278,19 @@ pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
 }
 
 fn details_samples_page_size_for_app(panels: &MainPanelAreas, app: &App) -> usize {
-    if !app.show_samples_panel {
+    if !app.effective_show_samples_panel() {
         return 1;
     }
-    let slot_count = app.visible_graph_slot_indices().len().max(1);
     let Some(details) = panels.details else {
         return 1;
     };
-    let slot_areas = details_slot_areas(details, slot_count, app.effective_graph_slot_layout());
-    let Some(slot) = slot_areas.get(app.active_graph_visible_index()).copied() else {
+    let layout = graph_workspace_layout(details, app);
+    let Some(samples) = layout.samples else {
         return 1;
     };
-    let samples = details_samples_area(slot, app.show_sample_delta);
     details_samples_row_capacity(
-        samples.height,
+        samples.height.saturating_sub(2),
         app.active_ab_comparison().is_some(),
-        slot_count <= 1,
+        true,
     )
 }

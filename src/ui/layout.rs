@@ -1,8 +1,11 @@
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::{
+    layout::{Constraint, Direction, Layout, Margin, Rect},
+    text::Line,
+};
 
 use crate::{
     App,
-    app::{GRAPH_SLOT_MIN_HEIGHT, GRAPH_SLOT_MIN_WIDTH, GraphSlotLayout},
+    app::{GRAPH_SLOT_MIN_HEIGHT, GRAPH_SLOT_MIN_WIDTH, GraphId, GraphSlotLayout},
 };
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
@@ -12,13 +15,17 @@ pub(crate) const GRAPH_LAYOUT_TOGGLE_WIDTH: u16 = 15;
 pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 15;
 pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 13;
 pub(crate) const DETAILS_SHARED_CONTROLS_HEIGHT: u16 = 1;
+pub(crate) const GRAPH_NAVIGATOR_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_HEADER_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_BASE_SUMMARY_HEIGHT: u16 = 2;
 pub(crate) const DETAILS_SAMPLES_AB_SUMMARY_HEIGHT: u16 = 3;
 pub(crate) const DETAILS_SAMPLES_MAX_WIDTH: u16 = 49;
 pub(crate) const DETAILS_SAMPLES_MAX_WIDTH_NO_DELTA: u16 = 32;
-const DETAILS_GRAPH_MIN_WIDTH: u16 = 30;
+const DETAILS_SAMPLES_MIN_WIDTH: u16 = 30;
+const DETAILS_SAMPLES_MIN_HEIGHT: u16 = 8;
+const GRAPH_SLOTS_BORDER_SIZE: u16 = 2;
+const GRAPH_WORKSPACE_MIN_HEIGHT: u16 = 5;
 const PROCESS_TABLE_CHROME_HEIGHT: u16 = 3;
 pub(crate) const PROCESS_TABLE_MAX_HEIGHT: u16 = 13;
 
@@ -34,6 +41,54 @@ pub(crate) struct MainPanelAreas {
     pub(crate) system: Rect,
     pub(crate) processes: ProcessTableLayout,
     pub(crate) details: Option<Rect>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SamplesPlacement {
+    Right,
+    Bottom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNavigatorItemLayout {
+    pub(crate) id: GraphId,
+    pub(crate) ordinal: usize,
+    pub(crate) area: Rect,
+    pub(crate) label: String,
+    pub(crate) active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphCardLayout {
+    pub(crate) id: GraphId,
+    pub(crate) ordinal: usize,
+    pub(crate) area: Rect,
+    pub(crate) title: Rect,
+    pub(crate) remove: Rect,
+    pub(crate) remove_label: &'static str,
+    pub(crate) plot: Rect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphWorkspaceLayout {
+    pub(crate) controls: Rect,
+    pub(crate) graph_slots: Rect,
+    pub(crate) navigator: Rect,
+    pub(crate) navigator_prefix: Rect,
+    pub(crate) navigator_prefix_label: String,
+    pub(crate) navigator_items: Vec<GraphNavigatorItemLayout>,
+    pub(crate) navigator_leading_ellipsis: Option<Rect>,
+    pub(crate) navigator_trailing_ellipsis: Option<Rect>,
+    pub(crate) graph_viewport: Rect,
+    pub(crate) graph_cards: Vec<GraphCardLayout>,
+    pub(crate) graph_scrollbar: Option<Rect>,
+    pub(crate) samples: Option<Rect>,
+    pub(crate) samples_placement: Option<SamplesPlacement>,
+    pub(crate) columns: usize,
+    pub(crate) total_rows: usize,
+    pub(crate) visible_rows: usize,
+    pub(crate) max_scroll_row: usize,
+    pub(crate) compact: bool,
 }
 
 pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
@@ -74,15 +129,30 @@ pub(crate) fn main_panel_areas(
     let sections = body_sections(screen[1]);
     let system = sections[0];
     if show_details {
-        let process_height = process_table_required_height(visible_process_rows, has_tracked_total);
-        let lower = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(process_height), Constraint::Min(20)])
-            .split(sections[1]);
+        let lower_area = sections[1];
+        let preferred_process_height =
+            process_table_required_height(visible_process_rows, has_tracked_total);
+        let minimum_process_height = if visible_process_rows > 0 {
+            PROCESS_TABLE_CHROME_HEIGHT.saturating_add(1)
+        } else {
+            PROCESS_TABLE_CHROME_HEIGHT
+        };
+        let available_for_process = lower_area.height.saturating_sub(GRAPH_WORKSPACE_MIN_HEIGHT);
+        let process_height = preferred_process_height
+            .min(available_for_process.max(minimum_process_height))
+            .min(lower_area.height);
+        let processes_area =
+            Rect::new(lower_area.x, lower_area.y, lower_area.width, process_height);
+        let details_area = Rect::new(
+            lower_area.x,
+            lower_area.y.saturating_add(process_height),
+            lower_area.width,
+            lower_area.height.saturating_sub(process_height),
+        );
         MainPanelAreas {
             system,
-            processes: process_table_layout(lower[0], has_tracked_total),
-            details: Some(lower[1]),
+            processes: process_table_layout(processes_area, has_tracked_total),
+            details: Some(details_area),
         }
     } else {
         MainPanelAreas {
@@ -111,65 +181,6 @@ fn process_table_layout(area: Rect, has_tracked_total: bool) -> ProcessTableLayo
     }
 }
 
-#[cfg(test)]
-pub(crate) fn details_slot_areas_for_app(
-    area: Rect,
-    app: &App,
-    slot_count: usize,
-    slot_layout: GraphSlotLayout,
-) -> Vec<Rect> {
-    let Some(content) = main_panel_areas_for_app(area, app).details else {
-        return Vec::new();
-    };
-    details_slot_areas(content, slot_count, slot_layout)
-}
-
-pub(crate) fn details_slot_areas(
-    area: Rect,
-    slot_count: usize,
-    slot_layout: GraphSlotLayout,
-) -> Vec<Rect> {
-    let slots_area = details_slots_content_area(area);
-    if slot_count == 0 {
-        return Vec::new();
-    }
-
-    let column_count = match slot_layout {
-        GraphSlotLayout::Auto | GraphSlotLayout::OneColumn => 1,
-        GraphSlotLayout::TwoColumns => slot_count.min(2),
-    };
-    let row_count = slot_count.div_ceil(column_count);
-    if slots_area.height < GRAPH_SLOT_MIN_HEIGHT.saturating_mul(row_count as u16)
-        || (column_count > 1
-            && slots_area.width < GRAPH_SLOT_MIN_WIDTH.saturating_mul(column_count as u16))
-    {
-        return Vec::new();
-    }
-
-    let base_height = slots_area.height / row_count as u16;
-    let extra_height = slots_area.height % row_count as u16;
-    let base_width = slots_area.width / column_count as u16;
-    let extra_width = slots_area.width % column_count as u16;
-    (0..slot_count)
-        .map(|index| {
-            let row = index / column_count;
-            let column = index % column_count;
-            let y = slots_area.y
-                + base_height.saturating_mul(row as u16)
-                + extra_height.min(row as u16);
-            let x = slots_area.x
-                + base_width.saturating_mul(column as u16)
-                + extra_width.min(column as u16);
-            Rect::new(
-                x,
-                y,
-                base_width + u16::from(column < extra_width as usize),
-                base_height + u16::from(row < extra_height as usize),
-            )
-        })
-        .collect()
-}
-
 pub(crate) fn details_shared_controls_area(area: Rect) -> Rect {
     Rect::new(
         area.x,
@@ -186,38 +197,402 @@ pub(crate) fn details_shared_controls_area_for_app(area: Rect, app: &App) -> Opt
         .map(details_shared_controls_area)
 }
 
-fn details_slots_content_area(area: Rect) -> Rect {
-    let controls_height = DETAILS_SHARED_CONTROLS_HEIGHT.min(area.height);
-    Rect::new(
+pub(crate) fn graph_workspace_layout(area: Rect, app: &App) -> GraphWorkspaceLayout {
+    let controls = details_shared_controls_area(area);
+    let content_y = area.y.saturating_add(controls.height);
+    let content = Rect::new(
         area.x,
-        area.y.saturating_add(controls_height),
+        content_y,
         area.width,
-        area.height.saturating_sub(controls_height),
-    )
-}
+        area.bottom().saturating_sub(content_y),
+    );
+    let (graph_slots, samples, samples_placement) = graph_workspace_content_areas(content, app);
+    let navigator = Rect::new(
+        graph_slots.x.saturating_add(1),
+        graph_slots.y,
+        graph_slots.width.saturating_sub(2),
+        GRAPH_NAVIGATOR_HEIGHT.min(graph_slots.height),
+    );
+    let graph_viewport = graph_slots.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let (navigator_prefix, navigator_prefix_label, navigator_items, leading, trailing) =
+        graph_navigator_layout(navigator, app);
 
-pub(crate) fn details_graph_area(
-    area: Rect,
-    show_samples_panel: bool,
-    show_sample_delta: bool,
-) -> Rect {
-    let content = details_slot_content_area(area);
-    if show_samples_panel {
-        details_graph_samples_areas(content, show_sample_delta).0
+    let entry_count = app.graph_entries.len();
+    let mut columns =
+        effective_graph_columns(app.graph_slot_layout, entry_count, graph_viewport.width);
+    let mut total_rows = entry_count.div_ceil(columns.max(1));
+    let compact = entry_count > 0 && graph_viewport.height < GRAPH_SLOT_MIN_HEIGHT;
+    let row_capacity = if entry_count == 0 {
+        0
+    } else if compact {
+        1
     } else {
-        content
+        usize::from(graph_viewport.height / GRAPH_SLOT_MIN_HEIGHT).max(1)
+    };
+    let mut visible_rows = total_rows.min(row_capacity);
+    let mut max_scroll_row = total_rows.saturating_sub(visible_rows);
+    if max_scroll_row > 0
+        && columns == 2
+        && graph_viewport.width.saturating_sub(1) < GRAPH_SLOT_MIN_WIDTH.saturating_mul(2)
+    {
+        columns = 1;
+        total_rows = entry_count;
+        visible_rows = total_rows.min(row_capacity);
+        max_scroll_row = total_rows.saturating_sub(visible_rows);
+    }
+    let scroll_row = app.graph_scroll_row.min(max_scroll_row);
+    let graph_scrollbar = (max_scroll_row > 0 && graph_viewport.height > 0).then(|| {
+        Rect::new(
+            graph_viewport.right().saturating_sub(1),
+            graph_viewport.y,
+            1,
+            graph_viewport.height,
+        )
+    });
+    let cards_area = if graph_scrollbar.is_some() {
+        Rect::new(
+            graph_viewport.x,
+            graph_viewport.y,
+            graph_viewport.width.saturating_sub(1),
+            graph_viewport.height,
+        )
+    } else {
+        graph_viewport
+    };
+    let graph_cards =
+        graph_card_layouts(cards_area, app, columns, scroll_row, visible_rows, compact);
+
+    GraphWorkspaceLayout {
+        controls,
+        graph_slots,
+        navigator,
+        navigator_prefix,
+        navigator_prefix_label,
+        navigator_items,
+        navigator_leading_ellipsis: leading,
+        navigator_trailing_ellipsis: trailing,
+        graph_viewport,
+        graph_cards,
+        graph_scrollbar,
+        samples,
+        samples_placement,
+        columns,
+        total_rows,
+        visible_rows,
+        max_scroll_row,
+        compact,
     }
 }
 
-pub(crate) fn details_samples_area(area: Rect, show_sample_delta: bool) -> Rect {
-    details_graph_samples_areas(details_slot_content_area(area), show_sample_delta).1
+fn graph_workspace_content_areas(
+    content: Rect,
+    app: &App,
+) -> (Rect, Option<Rect>, Option<SamplesPlacement>) {
+    if !app.show_samples_panel || app.graph_entries.is_empty() || content.is_empty() {
+        return (content, None, None);
+    }
+
+    let samples_max_width = details_samples_max_width(app.show_sample_delta);
+    let divider_width = 1;
+    let available_width = content.width.saturating_sub(divider_width);
+    let graph_slots_min_width = GRAPH_SLOT_MIN_WIDTH.saturating_add(GRAPH_SLOTS_BORDER_SIZE);
+    let samples_width =
+        samples_max_width.min(available_width.saturating_sub(graph_slots_min_width));
+    if content.height >= DETAILS_SAMPLES_MIN_HEIGHT && samples_width >= DETAILS_SAMPLES_MIN_WIDTH {
+        let graph_width = available_width.saturating_sub(samples_width);
+        return (
+            Rect::new(content.x, content.y, graph_width, content.height),
+            Some(Rect::new(
+                content
+                    .x
+                    .saturating_add(graph_width)
+                    .saturating_add(divider_width),
+                content.y,
+                samples_width,
+                content.height,
+            )),
+            Some(SamplesPlacement::Right),
+        );
+    }
+
+    let graph_slots_min_height = GRAPH_SLOT_MIN_HEIGHT.saturating_add(GRAPH_SLOTS_BORDER_SIZE);
+    if content.width >= DETAILS_SAMPLES_MIN_WIDTH
+        && content.height >= graph_slots_min_height.saturating_add(DETAILS_SAMPLES_MIN_HEIGHT)
+    {
+        let samples_height = DETAILS_SAMPLES_MIN_HEIGHT
+            .max(content.height / 3)
+            .min(content.height.saturating_sub(graph_slots_min_height));
+        let graph_height = content.height.saturating_sub(samples_height);
+        return (
+            Rect::new(content.x, content.y, content.width, graph_height),
+            Some(Rect::new(
+                content.x,
+                content.y.saturating_add(graph_height),
+                content.width,
+                samples_height,
+            )),
+            Some(SamplesPlacement::Bottom),
+        );
+    }
+
+    (content, None, None)
 }
 
-pub(crate) fn details_slot_content_area(area: Rect) -> Rect {
-    area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    })
+pub(crate) fn effective_graph_columns(
+    layout: GraphSlotLayout,
+    entry_count: usize,
+    width: u16,
+) -> usize {
+    if entry_count <= 1 {
+        return 1;
+    }
+    match layout {
+        GraphSlotLayout::OneColumn => 1,
+        GraphSlotLayout::Auto | GraphSlotLayout::TwoColumns
+            if width >= GRAPH_SLOT_MIN_WIDTH.saturating_mul(2) =>
+        {
+            2
+        }
+        GraphSlotLayout::Auto | GraphSlotLayout::TwoColumns => 1,
+    }
+}
+
+type NavigatorLayoutResult = (
+    Rect,
+    String,
+    Vec<GraphNavigatorItemLayout>,
+    Option<Rect>,
+    Option<Rect>,
+);
+
+fn graph_navigator_layout(area: Rect, app: &App) -> NavigatorLayoutResult {
+    let total = app.graph_entries.len();
+    let active_index = app
+        .active_graph_index()
+        .unwrap_or(0)
+        .min(total.saturating_sub(1));
+    let prefix_label = format!(
+        "Slot#{}/{}",
+        usize::from(total > 0) * (active_index + 1),
+        total
+    );
+    let prefix_width = text_width(&prefix_label).min(usize::from(area.width)) as u16;
+    let prefix = Rect::new(area.x, area.y, prefix_width, area.height);
+    if total == 0 || prefix_width >= area.width {
+        return (prefix, prefix_label, Vec::new(), None, None);
+    }
+
+    let gap = 2u16.min(area.width.saturating_sub(prefix_width));
+    let items_x = prefix.right().saturating_add(gap);
+    let available = usize::from(area.right().saturating_sub(items_x));
+    if available == 0 {
+        return (prefix, prefix_label, Vec::new(), None, None);
+    }
+
+    let labels = app
+        .graph_entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let content = format!(
+                "{} {} · {}",
+                index + 1,
+                entry.source.item_label(),
+                entry.source.metric_label()
+            );
+            if index == active_index {
+                format!("[{content}]")
+            } else {
+                content
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let active_width = text_width(&labels[active_index]);
+    if active_width > available {
+        let label = truncate_text(&labels[active_index], available);
+        let item = GraphNavigatorItemLayout {
+            id: app.graph_entries[active_index].id,
+            ordinal: active_index,
+            area: Rect::new(items_x, area.y, text_width(&label) as u16, area.height),
+            label,
+            active: true,
+        };
+        return (prefix, prefix_label, vec![item], None, None);
+    }
+
+    let mut selected = vec![active_index];
+    for distance in 1..total {
+        for candidate in [
+            active_index.checked_sub(distance),
+            active_index.checked_add(distance),
+        ] {
+            let Some(candidate) = candidate.filter(|candidate| *candidate < total) else {
+                continue;
+            };
+            if selected.contains(&candidate) {
+                continue;
+            }
+            let mut next = selected.clone();
+            next.push(candidate);
+            next.sort_unstable();
+            if navigator_selection_width(&next, &labels, total) <= available {
+                selected = next;
+            }
+        }
+    }
+    selected.sort_unstable();
+    let has_leading = selected.first().is_some_and(|index| *index > 0);
+    let has_trailing = selected.last().is_some_and(|index| index + 1 < total);
+    let mut x = items_x;
+    let leading = has_leading.then(|| {
+        let rect = Rect::new(x, area.y, 1, area.height);
+        x = x.saturating_add(2);
+        rect
+    });
+    let mut items = Vec::with_capacity(selected.len());
+    for (position, index) in selected.into_iter().enumerate() {
+        if position > 0 {
+            x = x.saturating_add(2);
+        }
+        let width = text_width(&labels[index]) as u16;
+        items.push(GraphNavigatorItemLayout {
+            id: app.graph_entries[index].id,
+            ordinal: index,
+            area: Rect::new(x, area.y, width, area.height),
+            label: labels[index].clone(),
+            active: index == active_index,
+        });
+        x = x.saturating_add(width);
+    }
+    let trailing = has_trailing.then(|| {
+        x = x.saturating_add(2);
+        Rect::new(x, area.y, 1, area.height)
+    });
+    (prefix, prefix_label, items, leading, trailing)
+}
+
+fn navigator_selection_width(selected: &[usize], labels: &[String], total: usize) -> usize {
+    let labels_width = selected
+        .iter()
+        .map(|index| text_width(&labels[*index]))
+        .sum::<usize>();
+    let gaps = selected.len().saturating_sub(1).saturating_mul(2);
+    let leading = usize::from(selected.first().is_some_and(|index| *index > 0)) * 2;
+    let trailing = usize::from(selected.last().is_some_and(|index| index + 1 < total)) * 2;
+    labels_width + gaps + leading + trailing
+}
+
+fn graph_card_layouts(
+    area: Rect,
+    app: &App,
+    columns: usize,
+    scroll_row: usize,
+    visible_rows: usize,
+    compact: bool,
+) -> Vec<GraphCardLayout> {
+    if app.graph_entries.is_empty() || area.is_empty() || visible_rows == 0 {
+        return Vec::new();
+    }
+    if compact {
+        let index = app.active_graph_index().unwrap_or(0);
+        return app
+            .graph_entries
+            .get(index)
+            .map(|entry| graph_card_layout(area, entry.id, index))
+            .into_iter()
+            .collect();
+    }
+
+    let row_rects = split_evenly(area, visible_rows, true);
+    let mut cards = Vec::new();
+    for (visible_row, row_area) in row_rects.into_iter().enumerate() {
+        let row = scroll_row + visible_row;
+        let column_rects = split_evenly(row_area, columns, false);
+        for (column, card_area) in column_rects.into_iter().enumerate() {
+            let index = row.saturating_mul(columns).saturating_add(column);
+            let Some(entry) = app.graph_entries.get(index) else {
+                continue;
+            };
+            cards.push(graph_card_layout(card_area, entry.id, index));
+        }
+    }
+    cards
+}
+
+fn graph_card_layout(area: Rect, id: GraphId, ordinal: usize) -> GraphCardLayout {
+    let title = details_slot_title_area(area);
+    let remove_label = "[x]";
+    let remove_width = 5.min(title.width);
+    let remove = Rect::new(
+        title.right().saturating_sub(remove_width),
+        title.y,
+        remove_width,
+        title.height,
+    );
+    GraphCardLayout {
+        id,
+        ordinal,
+        area,
+        title,
+        remove,
+        remove_label,
+        plot: area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        }),
+    }
+}
+
+fn split_evenly(area: Rect, count: usize, vertical: bool) -> Vec<Rect> {
+    if count == 0 {
+        return Vec::new();
+    }
+    let total = if vertical { area.height } else { area.width };
+    let base = total / count as u16;
+    let extra = total % count as u16;
+    (0..count)
+        .map(|index| {
+            let index_u16 = index as u16;
+            let offset = base
+                .saturating_mul(index_u16)
+                .saturating_add(extra.min(index_u16));
+            let length = base.saturating_add(u16::from(index_u16 < extra));
+            if vertical {
+                Rect::new(area.x, area.y.saturating_add(offset), area.width, length)
+            } else {
+                Rect::new(area.x.saturating_add(offset), area.y, length, area.height)
+            }
+        })
+        .collect()
+}
+
+fn truncate_text(value: &str, max_width: usize) -> String {
+    if text_width(value) <= max_width {
+        return value.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+    let mut result = String::new();
+    for ch in value.chars() {
+        let mut candidate = result.clone();
+        candidate.push(ch);
+        candidate.push('…');
+        if text_width(&candidate) > max_width {
+            break;
+        }
+        result.push(ch);
+    }
+    result.push('…');
+    result
+}
+
+fn text_width(value: &str) -> usize {
+    Line::from(value).width()
 }
 
 pub(crate) fn details_slot_title_area(area: Rect) -> Rect {
@@ -227,44 +602,6 @@ pub(crate) fn details_slot_title_area(area: Rect) -> Rect {
         area.width.saturating_sub(2),
         u16::from(area.height > 0),
     )
-}
-
-pub(crate) fn details_graph_samples_areas(area: Rect, show_sample_delta: bool) -> (Rect, Rect) {
-    if area.width == 0 {
-        return (area, area);
-    }
-
-    let samples_max_width = details_samples_max_width(show_sample_delta);
-    let divider_width = u16::from(area.width > 0);
-    let available_width = area.width.saturating_sub(divider_width);
-    let samples_width = if available_width > DETAILS_GRAPH_MIN_WIDTH {
-        samples_max_width.min(available_width - DETAILS_GRAPH_MIN_WIDTH)
-    } else {
-        available_width.saturating_mul(30) / 100
-    };
-    let graph_width = available_width.saturating_sub(samples_width);
-    (
-        Rect::new(area.x, area.y, graph_width, area.height),
-        Rect::new(
-            area.x
-                .saturating_add(graph_width)
-                .saturating_add(divider_width),
-            area.y,
-            samples_width,
-            area.height,
-        ),
-    )
-}
-
-pub(crate) fn details_samples_divider_area(samples_area: Rect) -> Option<Rect> {
-    (samples_area.x > 0 && samples_area.height > 0).then(|| {
-        Rect::new(
-            samples_area.x.saturating_sub(1),
-            samples_area.y,
-            1,
-            samples_area.height,
-        )
-    })
 }
 
 pub(crate) fn details_graph_rows(area: Rect) -> std::rc::Rc<[Rect]> {
@@ -344,22 +681,25 @@ pub(crate) fn details_samples_max_width(show_sample_delta: bool) -> u16 {
 
 #[cfg(test)]
 pub(crate) fn details_graph_area_for_app(area: Rect, app: &App) -> Option<Rect> {
-    let slot = details_slot_areas_for_app(area, app, 1, GraphSlotLayout::OneColumn)
+    let details = main_panel_areas_for_app(area, app).details?;
+    let layout = graph_workspace_layout(details, app);
+    let active_id = app.active_graph_id?;
+    layout
+        .graph_cards
         .into_iter()
-        .next()?;
-    Some(details_graph_area(
-        slot,
-        app.show_samples_panel,
-        app.show_sample_delta,
-    ))
+        .find(|card| card.id == active_id)
+        .map(|card| card.plot)
 }
 
 #[cfg(test)]
 pub(crate) fn details_samples_area_for_app(area: Rect, app: &App) -> Option<Rect> {
-    let slot = details_slot_areas_for_app(area, app, 1, GraphSlotLayout::OneColumn)
-        .into_iter()
-        .next()?;
-    Some(details_samples_area(slot, app.show_sample_delta))
+    let details = main_panel_areas_for_app(area, app).details?;
+    graph_workspace_layout(details, app).samples.map(|samples| {
+        samples.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        })
+    })
 }
 
 pub(crate) fn details_samples_row_capacity(
@@ -457,26 +797,6 @@ mod tests {
     }
 
     #[test]
-    fn details_layout_reserves_shared_controls_and_one_slot_frame() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let details = main_panel_areas(screen, true, 3, false).details.unwrap();
-        let controls = details_shared_controls_area(details);
-        let slot = details_slot_areas(details, 1, GraphSlotLayout::OneColumn)[0];
-        let graph = details_graph_area(slot, true, true);
-        let samples = details_samples_area(slot, true);
-
-        assert_eq!(controls, Rect::new(details.x, details.y, details.width, 1));
-        assert_eq!(slot.y, details.y + 1);
-        assert_eq!(graph.x, slot.x + 1);
-        assert_eq!(graph.y, slot.y + 1);
-        assert_eq!(graph.height, slot.height - 2);
-        assert_eq!(samples.y, graph.y);
-        assert_eq!(samples.height, graph.height);
-        assert_eq!(samples.right(), slot.right() - 1);
-        assert!(samples.width <= DETAILS_SAMPLES_MAX_WIDTH);
-    }
-
-    #[test]
     fn dynamic_process_height_matches_rendered_rows_and_caps_at_existing_maximum() {
         let screen = Rect::new(0, 0, 120, 60);
         let cases = [
@@ -532,32 +852,6 @@ mod tests {
     }
 
     #[test]
-    fn two_column_graph_layout_is_row_major_and_uses_full_width_for_one_slot() {
-        let area = Rect::new(0, 0, 101, 53);
-
-        let one = details_slot_areas(area, 1, GraphSlotLayout::TwoColumns);
-        assert_eq!(one, vec![Rect::new(0, 1, 101, 52)]);
-
-        let three = details_slot_areas(area, 3, GraphSlotLayout::TwoColumns);
-        assert_eq!(
-            three,
-            vec![
-                Rect::new(0, 1, 51, 26),
-                Rect::new(51, 1, 50, 26),
-                Rect::new(0, 27, 51, 26),
-            ]
-        );
-    }
-
-    #[test]
-    fn two_column_graph_layout_rejects_insufficient_width() {
-        let area = Rect::new(0, 0, GRAPH_SLOT_MIN_WIDTH * 2 - 1, 53);
-
-        assert!(details_slot_areas(area, 2, GraphSlotLayout::TwoColumns).is_empty());
-        assert!(!details_slot_areas(area, 1, GraphSlotLayout::TwoColumns).is_empty());
-    }
-
-    #[test]
     fn shared_graph_controls_use_the_same_order_with_or_without_delta() {
         let area = Rect::new(0, 0, 120, 1);
         let with_delta = graph_shared_control_areas(area, true);
@@ -569,36 +863,5 @@ mod tests {
         assert!(with_delta.all_samples.unwrap().x < with_delta.y_axis.unwrap().x);
         assert!(without_delta.delta.is_none());
         assert!(without_delta.samples.unwrap().x > with_delta.samples.unwrap().x);
-    }
-
-    #[test]
-    fn details_samples_width_shrinks_when_delta_is_hidden() {
-        let screen = Rect::new(0, 0, 120, 45);
-        let details = main_panel_areas(screen, true, 3, false).details.unwrap();
-        let slot = details_slot_areas(details, 1, GraphSlotLayout::OneColumn)[0];
-        let samples_with_delta = details_samples_area(slot, true);
-        let samples_without_delta = details_samples_area(slot, false);
-
-        assert_eq!(samples_with_delta.width, DETAILS_SAMPLES_MAX_WIDTH);
-        assert_eq!(
-            samples_without_delta.width,
-            DETAILS_SAMPLES_MAX_WIDTH_NO_DELTA
-        );
-        assert!(samples_without_delta.width < samples_with_delta.width);
-    }
-
-    #[test]
-    fn details_samples_page_size_uses_shared_slot_content_height() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let details = main_panel_areas(screen, true, 3, false).details.unwrap();
-        let slot = details_slot_areas(details, 1, GraphSlotLayout::OneColumn)[0];
-        let samples = details_samples_area(slot, true);
-
-        let without_ab = details_samples_row_capacity(samples.height, false, true);
-        let with_ab = details_samples_row_capacity(samples.height, true, true);
-        assert_eq!(
-            without_ab,
-            with_ab + DETAILS_SAMPLES_AB_SUMMARY_HEIGHT as usize
-        );
     }
 }
