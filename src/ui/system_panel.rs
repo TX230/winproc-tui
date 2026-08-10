@@ -13,7 +13,7 @@ use crate::{
         Theme,
         cpu_panel::draw_cpu_panel,
         format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
-        graph_slot::graph_slot_number_span,
+        graph_slot::{GRAPH_SLOT_NUMBER_GAP, GRAPH_SLOT_NUMBER_WIDTH, graph_slot_number_span},
         layout::system_panel_area_for_screen,
         widgets::block::{panel_block_focused, panel_title},
     },
@@ -269,7 +269,11 @@ fn render_summary_graph_slot_value_line(
 }
 
 fn graph_slot_prefix_span(graph_state: Option<GraphSourceState>, theme: Theme) -> Span<'static> {
-    graph_slot_number_span(graph_state, 2, theme)
+    graph_slot_number_span(
+        graph_state,
+        GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
+        theme,
+    )
 }
 
 pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
@@ -600,7 +604,11 @@ fn render_summary_graph_slot_line(
     suffix: Option<&str>,
     theme: Theme,
 ) -> Line<'static> {
-    let mut spans = vec![graph_slot_number_span(graph_state, 2, theme)];
+    let mut spans = vec![graph_slot_number_span(
+        graph_state,
+        GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
+        theme,
+    )];
     spans.extend(render_summary_line(title, used, total, suffix, theme).spans);
     Line::from(spans)
 }

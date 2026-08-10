@@ -12,7 +12,7 @@ use crate::{
     ui::{
         Theme,
         format::{format_compact_bytes, format_integer, format_io_rate},
-        graph_slot::graph_slot_number_span,
+        graph_slot::{GRAPH_SLOT_NUMBER_GAP, GRAPH_SLOT_NUMBER_WIDTH, graph_slot_number_span},
         layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
     },
@@ -25,8 +25,6 @@ const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
 const PROCESS_TITLE: &str = "PROCESSES";
 const TITLE_SEPARATOR: &str = " · ";
 const TRUNCATION_MARKER: &str = "⋯";
-const GRAPH_SLOT_NUMBER_WIDTH: usize = 2;
-const GRAPH_SLOT_NUMBER_GAP: usize = 1;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ProcessTitleSegmentKind {

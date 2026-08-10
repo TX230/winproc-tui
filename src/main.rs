@@ -3404,10 +3404,12 @@ processes = ["api.exe", "worker.exe"]
                 assert_eq!(reached, expected_ids, "count={count}, mode={mode:?}");
 
                 let rendered = render_app_to_text(&app, screen.width, screen.height);
+                let slot_label = if count == 1 { "Slot" } else { "Slots" };
                 assert!(
-                    rendered.contains(&format!("Slot#{count}/{count}")),
+                    rendered.contains(&format!("GRAPHS · {count} {slot_label} · Span 60s")),
                     "count={count}, mode={mode:?}\n{rendered}"
                 );
+                assert!(rendered.contains(&format!("Slot#{count}")), "{rendered}");
                 assert!(rendered.contains("[x]"), "{rendered}");
             }
         }
@@ -3520,30 +3522,68 @@ processes = ["api.exe", "worker.exe"]
             app.focused_panel = FocusedPanel::DetailsGraph;
             let graph_focused = render_app_to_buffer(&app, screen.width, screen.height);
             assert_eq!(
-                graph_focused[(layout.graph_slots.x, layout.graph_slots.y)].symbol(),
-                "┏"
+                graph_focused[(
+                    layout.graph_slots.right().saturating_sub(1),
+                    layout.graph_slots.y
+                )]
+                    .symbol(),
+                "━"
             );
             assert_eq!(
-                graph_focused[(layout.graph_slots.x, layout.graph_slots.y)].fg,
+                graph_focused[(
+                    layout.graph_slots.right().saturating_sub(1),
+                    layout.graph_slots.y
+                )]
+                    .fg,
                 theme.focus_border
             );
-            assert_eq!(graph_focused[(card.x, card.y)].symbol(), "╔");
-            assert_eq!(graph_focused[(card.x, card.y)].fg, theme.accent);
+            assert_eq!(
+                graph_focused[(layout.graph_slots.x, layout.graph_slots.y + 1)].symbol(),
+                " "
+            );
+            assert_eq!(
+                graph_focused[(
+                    layout.graph_slots.x,
+                    layout.graph_slots.bottom().saturating_sub(1)
+                )]
+                    .symbol(),
+                " "
+            );
+            assert_eq!(graph_focused[(card.x, card.y)].symbol(), "╭");
+            assert_eq!(graph_focused[(card.x, card.y)].fg, theme.active_series);
+            assert!(
+                graph_focused[(card.x, card.y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
             assert_eq!(graph_focused[(samples.x, samples.y)].symbol(), "╭");
             assert_eq!(graph_focused[(samples.x, samples.y)].fg, theme.border);
 
             app.focused_panel = FocusedPanel::DetailsSamples;
             let samples_focused = render_app_to_buffer(&app, screen.width, screen.height);
             assert_eq!(
-                samples_focused[(layout.graph_slots.x, layout.graph_slots.y)].symbol(),
-                "╭"
+                samples_focused[(
+                    layout.graph_slots.right().saturating_sub(1),
+                    layout.graph_slots.y
+                )]
+                    .symbol(),
+                "─"
             );
             assert_eq!(
-                samples_focused[(layout.graph_slots.x, layout.graph_slots.y)].fg,
+                samples_focused[(
+                    layout.graph_slots.right().saturating_sub(1),
+                    layout.graph_slots.y
+                )]
+                    .fg,
                 theme.border
             );
-            assert_eq!(samples_focused[(card.x, card.y)].symbol(), "╔");
-            assert_eq!(samples_focused[(card.x, card.y)].fg, theme.accent);
+            assert_eq!(samples_focused[(card.x, card.y)].symbol(), "╭");
+            assert_eq!(samples_focused[(card.x, card.y)].fg, theme.active_series);
+            assert!(
+                samples_focused[(card.x, card.y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
             assert_eq!(samples_focused[(samples.x, samples.y)].symbol(), "┏");
             assert_eq!(
                 samples_focused[(samples.x, samples.y)].fg,
@@ -3553,17 +3593,112 @@ processes = ["api.exe", "worker.exe"]
             app.focused_panel = FocusedPanel::Processes;
             let processes_focused = render_app_to_buffer(&app, screen.width, screen.height);
             assert_eq!(
-                processes_focused[(layout.graph_slots.x, layout.graph_slots.y)].symbol(),
-                "╭"
+                processes_focused[(
+                    layout.graph_slots.right().saturating_sub(1),
+                    layout.graph_slots.y
+                )]
+                    .symbol(),
+                "─"
             );
-            assert_eq!(processes_focused[(card.x, card.y)].symbol(), "╔");
-            assert_eq!(processes_focused[(card.x, card.y)].fg, theme.accent);
+            assert_eq!(processes_focused[(card.x, card.y)].symbol(), "╭");
+            assert_eq!(processes_focused[(card.x, card.y)].fg, theme.active_series);
+            assert!(
+                processes_focused[(card.x, card.y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
             assert_eq!(processes_focused[(samples.x, samples.y)].symbol(), "╭");
         }
     }
 
     #[test]
-    fn exactly_one_top_level_panel_uses_the_thick_green_focus_frame() {
+    fn graph_series_stay_grayscale_and_samples_stay_neutral_in_both_themes() {
+        let screen = Rect::new(0, 0, 180, 70);
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            let identity = app.selected_visible_process_identity().unwrap();
+            app.add_or_reveal_graph_source(
+                GraphSlot::process(identity.clone(), DetailsMetric::Private),
+                FocusedPanel::Processes,
+            );
+            app.add_or_reveal_graph_source(
+                GraphSlot::process(identity, DetailsMetric::Workset),
+                FocusedPanel::Processes,
+            );
+            let active_id = app.active_graph_id.unwrap();
+            let first_time = app.snapshot.captured_at;
+            app.snapshot.processes[0].private_bytes = Some(1_000);
+            app.snapshot.processes[0].workset_bytes = Some(2_000);
+            app.process_history.record_snapshot(
+                first_time,
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+            app.snapshot.captured_at = first_time + chrono::Duration::seconds(1);
+            app.snapshot.processes[0].private_bytes = Some(1_100);
+            app.snapshot.processes[0].workset_bytes = Some(2_200);
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at,
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+            app.select_details_sample_latest();
+            app.show_samples_panel = true;
+            app::sync_layout_state(&mut app, screen);
+
+            let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+            let layout = ui::layout::graph_workspace_layout(details, &app);
+            let active_plot = layout
+                .graph_cards
+                .iter()
+                .find(|card| card.id == active_id)
+                .expect("active graph card")
+                .plot;
+            let inactive_plot = layout
+                .graph_cards
+                .iter()
+                .find(|card| card.id != active_id)
+                .expect("inactive graph card")
+                .plot;
+            let samples = layout.samples.expect("Samples should render");
+            let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+
+            assert!(
+                area_contains_foreground(&buffer, active_plot, theme.graph_line),
+                "theme={theme_index}: active series should stay monochrome"
+            );
+            assert!(
+                !area_contains_foreground(&buffer, active_plot, theme.active_series),
+                "theme={theme_index}: active series should not carry the selection color"
+            );
+            assert!(
+                area_contains_foreground(&buffer, inactive_plot, theme.graph_line),
+                "theme={theme_index}: inactive series should stay monochrome"
+            );
+            let (value_x, value_y) = find_text_position_in_area(&buffer, samples, "2,200")
+                .expect("active Samples metric value should render");
+            assert_eq!(buffer[(value_x, value_y)].fg, theme.text);
+            let (history_x, history_y) = find_text_position_in_area(&buffer, samples, "2,000")
+                .expect("non-selected Samples metric value should render");
+            assert_eq!(buffer[(history_x, history_y)].fg, theme.text);
+            let (header_x, header_y) = find_text_position_in_area(&buffer, samples, "WS")
+                .expect("active Samples metric header should render");
+            assert_eq!(buffer[(header_x, header_y)].fg, theme.accent);
+            assert!(
+                buffer[(header_x, header_y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
+            let (slot_x, slot_y) = find_text_position_in_area(&buffer, samples, "Slot#2")
+                .expect("compact Samples slot title should render");
+            assert_eq!(buffer[(slot_x, slot_y)].fg, theme.muted);
+            assert!(!buffer[(slot_x, slot_y)].modifier.contains(Modifier::BOLD));
+        }
+    }
+
+    #[test]
+    fn exactly_one_top_level_panel_uses_high_contrast_focus_chrome() {
         let screen = Rect::new(0, 0, 180, 60);
         for theme_index in 0..ui::THEMES.len() {
             let mut app = make_test_app(3, 10);
@@ -3571,6 +3706,10 @@ processes = ["api.exe", "worker.exe"]
             assign_private_graph(&mut app);
             app.show_samples_panel = true;
             app::sync_layout_state(&mut app, screen);
+            let details = main_panel_areas_for_app(screen, &app)
+                .details
+                .expect("Graph Workspace should render");
+            let graph_layout = ui::layout::graph_workspace_layout(details, &app);
 
             for focused_panel in [
                 FocusedPanel::System,
@@ -3587,8 +3726,14 @@ processes = ["api.exe", "worker.exe"]
                     .iter()
                     .filter(|cell| cell.symbol() == "┏" && cell.fg == app.theme().focus_border)
                     .count();
+                let graph_has_focused_top_rule =
+                    (graph_layout.graph_slots.x..graph_layout.graph_slots.right()).any(|x| {
+                        let cell = &buffer[(x, graph_layout.graph_slots.y)];
+                        cell.symbol() == "━" && cell.fg == app.theme().focus_border
+                    });
                 assert_eq!(
-                    focused_top_left_corners, 1,
+                    focused_top_left_corners + usize::from(graph_has_focused_top_rule),
+                    1,
                     "theme={theme_index}, focus={focused_panel:?}"
                 );
             }
@@ -3633,8 +3778,8 @@ processes = ["api.exe", "worker.exe"]
                 ),
                 (
                     FocusedPanel::DetailsGraph,
-                    graph_layout.navigator_prefix,
-                    "Slot#1/1",
+                    graph_layout.graph_slots,
+                    "GRAPHS",
                 ),
                 (
                     FocusedPanel::DetailsSamples,
@@ -3659,9 +3804,12 @@ processes = ["api.exe", "worker.exe"]
                         expected,
                         "theme={theme_index}, focus={focused_panel:?}, title={title}"
                     );
-                    assert!(
+                    let should_be_bold =
+                        panel != FocusedPanel::DetailsGraph || panel == focused_panel;
+                    assert_eq!(
                         buffer[(x, y)].modifier.contains(Modifier::BOLD),
-                        "top-level panel title should be bold: theme={theme_index}, focus={focused_panel:?}, title={title}"
+                        should_be_bold,
+                        "unexpected title weight: theme={theme_index}, focus={focused_panel:?}, title={title}"
                     );
                 }
             }
@@ -3738,7 +3886,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn clicking_graph_slots_outer_frame_moves_focus_to_graphs() {
+    fn clicking_graph_workspace_top_rule_moves_focus_to_graphs() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
         app.focused_panel = FocusedPanel::Processes;
@@ -3748,7 +3896,7 @@ processes = ["api.exe", "worker.exe"]
         let layout = ui::layout::graph_workspace_layout(details, &app);
 
         app.on_mouse(
-            left_click(layout.graph_slots.x, layout.graph_slots.bottom() - 1),
+            left_click(layout.graph_slots.right() - 1, layout.graph_slots.y),
             screen,
         );
 
@@ -3757,7 +3905,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn compact_workspace_keeps_process_row_navigator_title_remove_and_resize_message() {
+    fn compact_workspace_keeps_process_row_panel_title_remove_and_resize_message() {
         let mut app = make_test_app(3, 10);
         add_test_graph(&mut app, 0);
         app.show_samples_panel = false;
@@ -3773,7 +3921,11 @@ processes = ["api.exe", "worker.exe"]
         assert!(panels.processes.page_size >= 1);
 
         let rendered = render_app_to_text(&app, screen.width, screen.height);
-        assert!(rendered.contains("Slot#1/1"), "{rendered}");
+        assert!(
+            rendered.contains("GRAPHS · 1 Slot · Span 60s"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Slot#1"), "{rendered}");
         assert!(rendered.contains("[x]"), "{rendered}");
         assert!(
             rendered.contains("Resize terminal to view Graph"),
@@ -4129,34 +4281,47 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn navigator_click_selects_its_graph_and_scrolls_the_card_into_view() {
+    fn graph_panel_title_omits_the_verbose_slot_list() {
         let mut app = make_test_app(1, 10);
-        let ids = (0..8)
-            .map(|index| add_test_graph(&mut app, index))
-            .collect::<Vec<_>>();
+        for index in 0..8 {
+            add_test_graph(&mut app, index);
+        }
         app.graph_slot_layout = GraphSlotLayout::OneColumn;
         app.show_samples_panel = false;
+        let selected_at = app.snapshot.captured_at;
+        app.ab_comparison = Some(app::AbComparison {
+            a: Some(app::AbComparisonPoint {
+                captured_at: selected_at - chrono::Duration::seconds(10),
+            }),
+            b: Some(app::AbComparisonPoint {
+                captured_at: selected_at,
+            }),
+        });
         let screen = Rect::new(0, 0, 120, 48);
         app::sync_layout_state(&mut app, screen);
-        assert!(app.set_active_graph(ids[3]));
         let details = main_panel_areas_for_app(screen, &app).details.unwrap();
         let layout = ui::layout::graph_workspace_layout(details, &app);
-        let target = layout
-            .navigator_items
-            .iter()
-            .find(|item| !item.active)
-            .expect("navigator should expose a neighboring graph")
-            .clone();
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let title_row = (layout.graph_slots.x..layout.graph_slots.right())
+            .map(|x| buffer[(x, layout.graph_slots.y)].symbol())
+            .collect::<String>();
 
-        app.on_mouse(left_click(target.area.x, target.area.y), screen);
-
-        assert_eq!(app.active_graph_id, Some(target.id));
-        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
         assert!(
-            ui::layout::graph_workspace_layout(details, &app)
-                .graph_cards
-                .iter()
-                .any(|card| card.id == target.id)
+            title_row.contains("GRAPHS · 8 Slots · Span 60s"),
+            "{title_row}"
+        );
+        assert!(!title_row.contains("graph-"), "{title_row}");
+        assert!(!title_row.contains("Cursor"), "{title_row}");
+        assert!(!title_row.contains("· A "), "{title_row}");
+        assert!(!title_row.contains("· B "), "{title_row}");
+        let (metadata_x, metadata_y) =
+            find_text_position_in_area(&buffer, layout.graph_slots, "8 Slots")
+                .expect("Graph slot metadata should render in the panel title");
+        assert_eq!(buffer[(metadata_x, metadata_y)].fg, app.theme().border);
+        assert!(
+            !buffer[(metadata_x, metadata_y)]
+                .modifier
+                .contains(Modifier::BOLD)
         );
     }
 
@@ -4756,7 +4921,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn details_rendering_shows_workspace_navigator_and_active_samples() {
+    fn details_rendering_shows_workspace_title_and_active_samples() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
         app.process_history.record_snapshot(
@@ -4767,17 +4932,18 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("GRAPHS · Span 60s"), "{rendered}");
-        assert!(rendered.contains("Slot#1/1"), "{rendered}");
+        assert!(
+            rendered.contains("GRAPHS · 1 Slot · Span 60s"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("Slot#1/"), "{rendered}");
         assert!(
             rendered.contains("Slot#1 · Private · proc-0 · B-A: --"),
             "{rendered}"
         );
-        assert!(
-            rendered.contains("SAMPLES · Slot#1/1 · proc-0 · Private"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("M  Time      Private"), "{rendered}");
+        assert!(rendered.contains("SAMPLES · Slot#1"), "{rendered}");
+        assert!(!rendered.contains("SAMPLES · Slot#1/"), "{rendered}");
+        assert!(rendered.contains("A/B Time      Private"), "{rendered}");
         assert!(rendered.contains("MA5:"), "{rendered}");
         assert!(!rendered.contains("Details"), "{rendered}");
         assert!(!rendered.contains("A/B not set"), "{rendered}");
@@ -4813,7 +4979,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(rendered.matches("d: Delta").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("l: Auto").count(), 1, "{rendered}");
         assert_eq!(
-            rendered.matches("SAMPLES · Slot#2/2").count(),
+            rendered.matches("SAMPLES · Slot#2").count(),
             1,
             "{rendered}"
         );
@@ -5461,8 +5627,8 @@ processes = ["api.exe", "worker.exe"]
         let tracked_cell = &buffer[(tracked_x, name_y)];
 
         assert_eq!(graph_slot_number_cell.symbol(), "1");
-        assert_eq!(graph_slot_number_cell.fg, ui::THEMES[0].accent);
-        assert_ne!(graph_slot_number_cell.bg, ui::THEMES[0].accent);
+        assert_eq!(graph_slot_number_cell.fg, ui::THEMES[0].active_series);
+        assert_ne!(graph_slot_number_cell.bg, ui::THEMES[0].active_series);
         assert!(graph_slot_number_cell.modifier.contains(Modifier::BOLD));
         assert_eq!(value_cell.fg, ui::THEMES[0].text);
         assert_ne!(value_cell.bg, ui::THEMES[0].warning);
@@ -5806,7 +5972,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn ram_vram_graph_number_uses_slot_ordinal_and_active_accent() {
+    fn ram_vram_graph_number_uses_slot_ordinal_and_active_series_color() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::System;
 
@@ -5822,11 +5988,37 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.show_details);
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1 Committed")
+        let (x, y) = find_text_position(&buffer, "1  Committed")
             .expect("RAM Graph slot number should render");
         let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].accent);
-        assert_ne!(marker.bg, ui::THEMES[0].accent);
+        assert_eq!(marker.fg, ui::THEMES[0].active_series);
+        assert_ne!(marker.bg, ui::THEMES[0].active_series);
+        assert!(marker.modifier.contains(Modifier::BOLD));
+        let rendered = buffer_to_text(&buffer);
+        assert!(
+            rendered.contains("Slot#1 · Committed · SYSTEM"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn ram_vram_inactive_two_digit_graph_number_matches_process_style() {
+        let mut app = make_test_app(3, 10);
+        let ids = (0..9)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::system(SystemMetric::GpuDedicated),
+            FocusedPanel::System,
+        ));
+        assert!(app.set_active_graph(ids[0]));
+
+        let buffer = render_app_to_buffer(&app, 120, 45);
+        let (x, y) = find_text_position(&buffer, "10 GPU Dedicated")
+            .expect("two-digit RAM Graph slot number should keep a label gap");
+        let marker = &buffer[(x, y)];
+
+        assert_eq!(marker.fg, ui::THEMES[0].graph_line);
         assert!(marker.modifier.contains(Modifier::BOLD));
     }
 
@@ -5907,18 +6099,15 @@ processes = ["api.exe", "worker.exe"]
         );
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("1 Disk Q"), "{rendered}");
-        assert!(
-            rendered.contains("Slot#1 · Disk Q · System Activity"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("1  Disk Q"), "{rendered}");
+        assert!(rendered.contains("Slot#1 · Disk Q · SYSTEM"), "{rendered}");
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1 Disk Q")
+        let (x, y) = find_text_position(&buffer, "1  Disk Q")
             .expect("NW/DISK Graph slot number should render");
         let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].accent);
-        assert_ne!(marker.bg, ui::THEMES[0].accent);
+        assert_eq!(marker.fg, ui::THEMES[0].active_series);
+        assert_ne!(marker.bg, ui::THEMES[0].active_series);
         assert!(marker.modifier.contains(Modifier::BOLD));
     }
 
@@ -6756,16 +6945,40 @@ processes = ["api.exe", "worker.exe"]
         );
 
         let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("1 CPU Usage ["), "{rendered}");
+        assert!(rendered.contains("1  CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
-        assert!(rendered.contains("Slot#1 · CPU Usage · CPUs"), "{rendered}");
+        assert!(
+            rendered.contains("Slot#1 · CPU Usage · SYSTEM"),
+            "{rendered}"
+        );
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1 CPU Usage [")
+        let (x, y) = find_text_position(&buffer, "1  CPU Usage [")
             .expect("CPU Graph slot number should render");
         let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].accent);
-        assert_ne!(marker.bg, ui::THEMES[0].accent);
+        assert_eq!(marker.fg, ui::THEMES[0].active_series);
+        assert_ne!(marker.bg, ui::THEMES[0].active_series);
+        assert!(marker.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn cpu_inactive_two_digit_graph_number_matches_process_style() {
+        let mut app = make_test_app(3, 10);
+        let ids = (0..9)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::system(SystemMetric::CpuAverage),
+            FocusedPanel::Cpu,
+        ));
+        assert!(app.set_active_graph(ids[0]));
+
+        let buffer = render_app_to_buffer(&app, 120, 45);
+        let (x, y) = find_text_position(&buffer, "10 CPU Usage [")
+            .expect("two-digit CPU Graph slot number should keep a label gap");
+        let marker = &buffer[(x, y)];
+
+        assert_eq!(marker.fg, ui::THEMES[0].graph_line);
         assert!(marker.modifier.contains(Modifier::BOLD));
     }
 
@@ -11256,7 +11469,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(
             buffer[(popup.x, popup.y)].fg,
             theme.focus_border,
-            "modal border should use the focused green"
+            "modal border should use the high-contrast neutral focus color"
         );
         assert_eq!(
             buffer[(process_table.x, process_table.y)].fg,
@@ -11882,7 +12095,7 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Slot#1 · Private · app.exe"),
             "{rendered}"
         );
-        assert!(rendered.contains("M  Time      Private"), "{rendered}");
+        assert!(rendered.contains("A/B Time      Private"), "{rendered}");
         assert!(rendered.contains("1,024"), "{rendered}");
     }
 
@@ -11975,6 +12188,16 @@ processes = ["api.exe", "worker.exe"]
             }
         }
         None
+    }
+
+    fn area_contains_foreground(
+        buffer: &ratatui::buffer::Buffer,
+        area: Rect,
+        foreground: ratatui::style::Color,
+    ) -> bool {
+        let right = area.right().min(buffer.area().right());
+        let bottom = area.bottom().min(buffer.area().bottom());
+        (area.y..bottom).any(|y| (area.x..right).any(|x| buffer[(x, y)].fg == foreground))
     }
 
     fn find_styled_symbol_positions_in_area(

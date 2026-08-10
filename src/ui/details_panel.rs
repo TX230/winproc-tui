@@ -27,7 +27,7 @@ use crate::{
             details_graph_rows, details_samples_row_capacity, details_samples_summary_height,
             graph_shared_control_areas, graph_workspace_layout,
         },
-        widgets::block::{graph_card_block, panel_block_focused},
+        widgets::block::{graph_card_block, graph_workspace_block, panel_block_focused},
     },
 };
 
@@ -51,15 +51,14 @@ pub(crate) fn draw_details_panel(
 
     let layout = graph_workspace_layout(area, app);
     draw_graph_shared_controls(frame, layout.controls, app, theme);
+    let graph_focused = app.panel_has_focus(FocusedPanel::DetailsGraph);
     frame.render_widget(
-        panel_block_focused("", theme, app.panel_has_focus(FocusedPanel::DetailsGraph)),
+        graph_workspace_block(
+            graph_workspace_title(app, theme, graph_focused),
+            theme,
+            graph_focused,
+        ),
         layout.graph_slots,
-    );
-    draw_graph_navigator(
-        frame,
-        &layout,
-        app.panel_has_focus(FocusedPanel::DetailsGraph),
-        theme,
     );
 
     let visible_indices = layout
@@ -201,50 +200,6 @@ fn render_graph_card(
     );
 }
 
-fn draw_graph_navigator(
-    frame: &mut ratatui::Frame<'_>,
-    layout: &GraphWorkspaceLayout,
-    focused: bool,
-    theme: Theme,
-) {
-    frame.render_widget(
-        Paragraph::new(layout.navigator_prefix_label.clone()).style(
-            Style::default()
-                .fg(if focused {
-                    theme.focus_border
-                } else {
-                    theme.border
-                })
-                .bg(theme.panel)
-                .add_modifier(Modifier::BOLD),
-        ),
-        layout.navigator_prefix,
-    );
-    for ellipsis in [
-        layout.navigator_leading_ellipsis,
-        layout.navigator_trailing_ellipsis,
-    ]
-    .into_iter()
-    .flatten()
-    {
-        frame.render_widget(
-            Paragraph::new("…").style(Style::default().fg(theme.muted).bg(theme.panel)),
-            ellipsis,
-        );
-    }
-    for item in &layout.navigator_items {
-        let style = if item.active {
-            Style::default()
-                .fg(theme.accent)
-                .bg(theme.panel)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.muted).bg(theme.panel)
-        };
-        frame.render_widget(Paragraph::new(item.label.clone()).style(style), item.area);
-    }
-}
-
 fn render_graph_workspace_scrollbar(
     frame: &mut ratatui::Frame<'_>,
     layout: &GraphWorkspaceLayout,
@@ -286,13 +241,7 @@ fn draw_active_samples_inspector(
     let title = Line::from(vec![
         Span::styled("SAMPLES", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(
-            format!(
-                " · Slot#{}/{} · {} · {}",
-                index + 1,
-                app.graph_entries.len(),
-                entry.source.item_label(),
-                entry.source.metric_label()
-            ),
+            format!(" · Slot#{}", index + 1),
             Style::default().fg(theme.muted),
         ),
     ]);
@@ -363,7 +312,7 @@ fn draw_samples_subpanel(
         Style::default().fg(theme.muted)
     };
     let mut lines = vec![Line::from(vec![
-        Span::styled("M  ", Style::default().fg(theme.muted)),
+        Span::styled("A/B ", Style::default().fg(theme.muted)),
         Span::styled("Time      ", Style::default().fg(theme.muted)),
         Span::styled(
             format!("{metric_label:<SAMPLE_METRIC_VALUE_WIDTH$}"),
@@ -405,13 +354,20 @@ fn draw_samples_subpanel(
             theme.panel
         };
         let delta_value = metric_value(sample, metric);
+        let metric_value_style = Style::default()
+            .fg(if delta_value.is_none() {
+                theme.muted
+            } else {
+                theme.text
+            })
+            .bg(row_bg);
         let previous_value = sample_index
             .checked_sub(1)
             .and_then(|previous_index| samples.get(previous_index))
             .and_then(|previous| metric_value(previous, metric));
         lines.push(Line::from(vec![
             Span::styled(
-                format!("{:<3}", sample_ab_marker(comparison, sample.captured_at)),
+                format!("{:<4}", sample_ab_marker(comparison, sample.captured_at)),
                 style,
             ),
             Span::styled(
@@ -423,7 +379,7 @@ fn draw_samples_subpanel(
                     "{:>SAMPLE_METRIC_VALUE_WIDTH$}",
                     format_metric_sample_value(sample, metric)
                 ),
-                style,
+                metric_value_style,
             ),
             if show_delta {
                 Span::styled("  ", style)
@@ -674,7 +630,7 @@ fn draw_graph_content(
         Dataset::default()
             .marker(Marker::Braille)
             .graph_type(GraphType::Line)
-            .style(Style::default().fg(theme.graph_line))
+            .style(graph_series_style(theme))
             .data(&plot_data),
     );
     let y_labels = pad_y_axis_labels(y_axis_labels(y_min, y_max, metric), y_label_width);
@@ -738,40 +694,6 @@ fn draw_graph_content(
 
 fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let controls = graph_shared_control_areas(area, app.show_samples_panel);
-    let mut spans = vec![
-        Span::styled(
-            "GRAPHS",
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            format!(" · Span {}s", app.effective_graph_time_span_seconds()),
-            Style::default().fg(theme.muted),
-        ),
-    ];
-    if let Some(time) = app.selected_details_sample_time() {
-        spans.push(Span::styled(
-            format!(" · Cursor {}", time.format("%H:%M:%S")),
-            Style::default().fg(theme.accent),
-        ));
-    }
-    if let Some(comparison) = app.active_ab_comparison() {
-        if let Some(point) = comparison.a {
-            spans.push(Span::styled(
-                format!(" · A {}", point.captured_at.format("%H:%M:%S")),
-                Style::default().fg(theme.warning),
-            ));
-        }
-        if let Some(point) = comparison.b {
-            spans.push(Span::styled(
-                format!(" · B {}", point.captured_at.format("%H:%M:%S")),
-                Style::default().fg(theme.warning),
-            ));
-        }
-    }
-    frame.render_widget(
-        Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.background)),
-        controls.status,
-    );
     render_graph_toggle(
         frame,
         controls.samples,
@@ -801,6 +723,29 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
         "  z: Min 0",
         theme,
     );
+}
+
+fn graph_workspace_title(app: &App, theme: Theme, focused: bool) -> Line<'static> {
+    let count = app.graph_entries.len();
+    let slot_label = if count == 1 { "Slot" } else { "Slots" };
+    let style = Style::default()
+        .fg(if focused {
+            theme.focus_border
+        } else {
+            theme.border
+        })
+        .add_modifier(if focused {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        });
+    Line::from(Span::styled(
+        format!(
+            "GRAPHS · {count} {slot_label} · Span {}s",
+            app.effective_graph_time_span_seconds()
+        ),
+        style,
+    ))
 }
 
 fn render_graph_toggle(
@@ -1058,6 +1003,10 @@ fn selected_cursor_line_style(theme: Theme) -> Style {
     Style::default().fg(theme.cursor_guide)
 }
 
+fn graph_series_style(theme: Theme) -> Style {
+    Style::default().fg(theme.graph_line)
+}
+
 fn delta_style(value: Option<f64>, previous: Option<f64>, selected: bool, theme: Theme) -> Style {
     if value.is_none() || previous.is_none() {
         return Style::default().fg(theme.muted);
@@ -1256,7 +1205,7 @@ fn graph_slot_title_line(
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(slot.metric_label(), main_style),
         Span::styled(" · ", Style::default().fg(theme.muted)),
-        Span::styled(slot.item_label(), main_style),
+        Span::styled(slot.graph_title_target_label().to_string(), main_style),
         Span::styled(" · B-A: ", comparison_style),
         Span::styled(
             format_graph_title_ab_delta(comparison, samples, metric),
@@ -2155,8 +2104,9 @@ mod tests {
     }
 
     #[test]
-    fn graph_cursor_and_sample_delta_use_neutral_theme_colors() {
+    fn graph_series_stays_grayscale_while_cursor_and_sample_delta_use_distinct_colors() {
         for theme in crate::ui::theme::THEMES {
+            assert_eq!(graph_series_style(theme).fg, Some(theme.graph_line));
             assert_eq!(
                 selected_cursor_line_style(theme).fg,
                 Some(theme.cursor_guide)
@@ -2490,6 +2440,40 @@ mod tests {
             .join("");
 
         assert_eq!(rendered, "Slot#1 · Hndl · DeepL.exe · B-A: +2");
+    }
+
+    #[test]
+    fn system_graph_slot_titles_use_system_as_the_target() {
+        for (metric, expected_metric) in [
+            (
+                crate::model::SystemMetric::PhysicalMemory,
+                "Physical Memory",
+            ),
+            (crate::model::SystemMetric::DiskRead, "Disk R"),
+            (crate::model::SystemMetric::CpuAverage, "CPU Usage"),
+        ] {
+            let slot = GraphSlot::system(metric);
+            let line = graph_slot_title_line(
+                &slot,
+                0,
+                &[],
+                slot.value_format(),
+                None,
+                true,
+                crate::ui::THEMES[0],
+            );
+            let rendered = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<Vec<_>>()
+                .join("");
+
+            assert_eq!(
+                rendered,
+                format!("Slot#1 · {expected_metric} · SYSTEM · B-A: --")
+            );
+        }
     }
 
     #[test]

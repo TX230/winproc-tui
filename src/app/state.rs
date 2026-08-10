@@ -435,6 +435,13 @@ impl GraphSlot {
         }
     }
 
+    pub(crate) fn graph_title_target_label(&self) -> &str {
+        match self {
+            Self::Process { identity, .. } => &identity.name,
+            Self::System { .. } => "SYSTEM",
+        }
+    }
+
     pub(crate) fn description(&self) -> String {
         format!("{} · {}", self.item_label(), self.metric_label())
     }

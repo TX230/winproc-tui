@@ -1812,13 +1812,6 @@ impl App {
                     self.remove_graph(id);
                     return;
                 }
-                if let Some(id) =
-                    graph_navigator_item_at(self, screen_area, mouse.column, mouse.row)
-                {
-                    self.select_graph(id);
-                    self.focused_panel = FocusedPanel::DetailsGraph;
-                    return;
-                }
                 if process_tracked_only_control_area_for_screen(screen_area, self)
                     .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
                 {
@@ -2582,14 +2575,6 @@ fn graph_remove_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<Graph
         .into_iter()
         .find(|card| contains_point(card.remove, x, y))
         .map(|card| card.id)
-}
-
-fn graph_navigator_item_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphId> {
-    graph_workspace_layout_for_app(app, screen_area)?
-        .navigator_items
-        .into_iter()
-        .find(|item| contains_point(item.area, x, y))
-        .map(|item| item.id)
 }
 
 fn graph_viewport_at(app: &App, screen_area: Rect, x: u16, y: u16) -> bool {
