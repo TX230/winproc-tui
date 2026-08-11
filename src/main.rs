@@ -2805,11 +2805,17 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn graph_right_click_without_drag_resets_to_live_edge() {
+    fn graph_right_click_without_drag_preserves_fit_all_samples() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
-        app.graph_time_offset_seconds = 60;
-        app.details_live = false;
+        for offset in [0, 120, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.toggle_graph_all_samples();
         let screen = Rect::new(0, 0, 120, 45);
         let graph = details_graph_area_for_app(screen, &app).unwrap();
         let x = graph.x.saturating_add(30);
@@ -2834,8 +2840,9 @@ processes = ["api.exe", "worker.exe"]
             screen,
         );
 
-        assert_eq!(app.graph_time_offset_seconds, 0);
-        assert_eq!(app.status, "Graph right edge: 0s");
+        assert!(app.graph_show_all_samples);
+        assert_eq!(app.effective_graph_time_span_seconds(), 240);
+        assert!(app.graph_pan_drag.is_none());
     }
 
     #[test]
@@ -3134,6 +3141,48 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("☑  f: Fit all"), "{rendered}");
+    }
+
+    #[test]
+    fn graph_fit_all_uses_the_time_range_across_every_graph() {
+        let mut app = make_test_app(1, 10);
+        let base = app.snapshot.captured_at;
+        app.process_history = ProcessHistory::default();
+        app.system_history = SystemHistory::default();
+
+        for offset in [120, 240] {
+            app.process_history.record_snapshot_unbounded(
+                base + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+            );
+        }
+        for offset in [0, 360] {
+            let mut snapshot = app.snapshot.clone();
+            snapshot.captured_at = base + chrono::Duration::seconds(offset);
+            snapshot.committed_memory = Some(1_000 + offset as u64);
+            app.system_history.record_snapshot_unbounded(&snapshot);
+        }
+
+        assign_private_graph(&mut app);
+        let process_graph = app.active_graph_id.unwrap();
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::system(SystemMetric::Committed),
+            FocusedPanel::System,
+        ));
+        app.toggle_graph_all_samples();
+
+        assert_eq!(app.effective_graph_time_span_seconds(), 360);
+        assert_eq!(
+            app.graph_time_reference_at(),
+            Some(base + chrono::Duration::seconds(360))
+        );
+
+        assert!(app.set_active_graph(process_graph));
+        assert_eq!(app.effective_graph_time_span_seconds(), 360);
+        assert_eq!(
+            app.graph_time_reference_at(),
+            Some(base + chrono::Duration::seconds(360))
+        );
     }
 
     #[test]

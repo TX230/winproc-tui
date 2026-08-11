@@ -205,6 +205,14 @@ impl ProcessHistory {
             .unwrap_or_default()
     }
 
+    pub(crate) fn time_range_for(
+        &self,
+        identity: &ProcessIdentity,
+    ) -> Option<(DateTime<Local>, DateTime<Local>)> {
+        let samples = self.samples.get(identity)?;
+        Some((samples.front()?.captured_at, samples.back()?.captured_at))
+    }
+
     pub(crate) fn sample_at(
         &self,
         identity: &ProcessIdentity,
@@ -335,6 +343,13 @@ impl SystemHistory {
 
     pub(crate) fn samples(&self) -> &[SystemSample] {
         &self.samples
+    }
+
+    pub(crate) fn time_range(&self) -> Option<(DateTime<Local>, DateTime<Local>)> {
+        Some((
+            self.samples.first()?.captured_at,
+            self.samples.last()?.captured_at,
+        ))
     }
 
     fn prune(&mut self) {

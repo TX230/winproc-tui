@@ -1897,11 +1897,7 @@ impl App {
                 }
             }
             MouseEventKind::Up(MouseButton::Right) => {
-                if let Some(drag) = self.stop_graph_pan_drag(GraphPanDragButton::Right)
-                    && !drag.moved
-                {
-                    self.reset_graph_to_live_edge();
-                }
+                self.stop_graph_pan_drag(GraphPanDragButton::Right);
             }
             MouseEventKind::ScrollUp => self.scroll_at(mouse.column, mouse.row, screen_area, true),
             MouseEventKind::ScrollDown => {
@@ -2165,7 +2161,6 @@ impl App {
             button,
             start_x: x,
             start_offset_seconds: self.graph_time_offset_seconds,
-            moved: false,
         });
         true
     }
@@ -2176,7 +2171,7 @@ impl App {
         screen_area: Rect,
         button: GraphPanDragButton,
     ) -> bool {
-        let Some(mut drag) = self.graph_pan_drag else {
+        let Some(drag) = self.graph_pan_drag else {
             return false;
         };
         if drag.button != button {
@@ -2188,8 +2183,6 @@ impl App {
         };
 
         if self.graph_show_all_samples {
-            drag.moved |= x != drag.start_x;
-            self.graph_pan_drag = Some(drag);
             return true;
         }
 
@@ -2198,8 +2191,6 @@ impl App {
         let offset_delta = dx * i64::from(self.graph_time_span_seconds) / plot_width;
         let next_offset = i64::from(drag.start_offset_seconds) + offset_delta;
         let next_offset = next_offset.max(0) as u32;
-        drag.moved |= dx != 0;
-        self.graph_pan_drag = Some(drag);
         self.set_graph_time_window_offset(next_offset);
         true
     }

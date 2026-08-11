@@ -129,7 +129,7 @@ fn graph_y_axis_label_width_for_indices(app: &App, indices: &[usize]) -> usize {
         .map(|slot| {
             let samples = app.graph_slot_samples(slot);
             let metric = slot.value_format();
-            let data = chart_points(samples.as_slice(), bounds);
+            let data = chart_points(samples.as_slice(), bounds, app.graph_time_reference_at());
             let stats = graph_stats(samples.as_slice(), app.graph_slot_peak(slot), &data);
             let (y_min, y_max) = graph_y_bounds(&stats, app.graph_y_axis_zero_min);
             y_axis_label_width(&y_axis_labels(y_min, y_max, metric))
@@ -182,6 +182,7 @@ fn render_graph_card(
             peak,
             metric,
             selected_sample_time,
+            app.graph_time_reference_at(),
             app.effective_graph_time_span_seconds(),
             app.effective_graph_time_offset_seconds(),
             app.graph_y_axis_zero_min,
@@ -489,12 +490,12 @@ fn sample_index_at_age_seconds(samples: &[GraphSample], age_seconds: i64) -> Opt
 }
 
 fn sample_age_seconds_at_time(
-    samples: &[GraphSample],
+    time_reference_at: Option<DateTime<Local>>,
     captured_at: DateTime<Local>,
 ) -> Option<i64> {
-    let latest = samples.last()?.captured_at;
+    let time_reference_at = time_reference_at?;
     Some(
-        latest
+        time_reference_at
             .signed_duration_since(captured_at)
             .num_seconds()
             .max(0),
@@ -568,6 +569,7 @@ fn draw_graph_content(
     peak: Option<f64>,
     metric: GraphValueFormat,
     selected_sample_time: Option<DateTime<Local>>,
+    time_reference_at: Option<DateTime<Local>>,
     span_seconds: u32,
     offset_seconds: u32,
     y_axis_zero_min: bool,
@@ -578,22 +580,40 @@ fn draw_graph_content(
     let layout = details_graph_rows(area);
 
     let bounds = graph_bounds(span_seconds, offset_seconds);
-    let data = chart_points(samples, bounds);
+    let data = chart_points(samples, bounds, time_reference_at);
     let stats = graph_stats(samples, peak, &data);
     let (y_min, y_max) = graph_y_bounds(&stats, y_axis_zero_min);
     let plot_data = lift_floor_points_for_plot(&data, y_min, y_max);
     let selected_age_seconds =
-        selected_sample_time.and_then(|time| sample_age_seconds_at_time(samples, time));
+        selected_sample_time.and_then(|time| sample_age_seconds_at_time(time_reference_at, time));
     let selected_line = selected_age_seconds
         .map(|age| selected_age_line_points(age, y_min, y_max, bounds, layout[1].height))
         .unwrap_or_default();
     let a_line = comparison
         .and_then(|comparison| comparison.a)
-        .map(|point| ab_line_points(samples, point, y_min, y_max, bounds, layout[1].height))
+        .map(|point| {
+            ab_line_points(
+                time_reference_at,
+                point,
+                y_min,
+                y_max,
+                bounds,
+                layout[1].height,
+            )
+        })
         .unwrap_or_default();
     let b_line = comparison
         .and_then(|comparison| comparison.b)
-        .map(|point| ab_line_points(samples, point, y_min, y_max, bounds, layout[1].height))
+        .map(|point| {
+            ab_line_points(
+                time_reference_at,
+                point,
+                y_min,
+                y_max,
+                bounds,
+                layout[1].height,
+            )
+        })
         .unwrap_or_default();
     let mut datasets = Vec::new();
     if !selected_line.is_empty() {
@@ -671,7 +691,7 @@ fn draw_graph_content(
         GraphAbAxisLabels {
             y_label_width,
             bounds,
-            latest_sample_at: samples.last().map(|sample| sample.captured_at),
+            time_reference_at,
             comparison,
             theme,
         },
@@ -682,7 +702,7 @@ fn draw_graph_content(
         layout[2].width as usize,
         y_label_width,
         bounds,
-        samples.last().map(|sample| sample.captured_at),
+        time_reference_at,
         theme,
     ))
     .style(Style::default().bg(theme.panel));
@@ -1373,7 +1393,7 @@ impl Widget for ChartAxisOverlay {
 struct GraphAbAxisLabels<'a> {
     y_label_width: usize,
     bounds: (i64, i64),
-    latest_sample_at: Option<DateTime<Local>>,
+    time_reference_at: Option<DateTime<Local>>,
     comparison: Option<&'a AbComparison>,
     theme: Theme,
 }
@@ -1383,7 +1403,7 @@ impl Widget for GraphAbAxisLabels<'_> {
         if area.width == 0 || area.height < 2 {
             return;
         }
-        let (Some(latest_sample_at), Some(comparison)) = (self.latest_sample_at, self.comparison)
+        let (Some(time_reference_at), Some(comparison)) = (self.time_reference_at, self.comparison)
         else {
             return;
         };
@@ -1398,7 +1418,7 @@ impl Widget for GraphAbAxisLabels<'_> {
                 area,
                 self.y_label_width,
                 self.bounds,
-                latest_sample_at,
+                time_reference_at,
                 point,
             ) else {
                 continue;
@@ -1580,14 +1600,18 @@ fn graph_bounds(span_seconds: u32, offset_seconds: u32) -> (i64, i64) {
     (left, right)
 }
 
-fn chart_points(samples: &[GraphSample], bounds: (i64, i64)) -> Vec<(f64, f64)> {
-    let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
+fn chart_points(
+    samples: &[GraphSample],
+    bounds: (i64, i64),
+    time_reference_at: Option<DateTime<Local>>,
+) -> Vec<(f64, f64)> {
+    let Some(time_reference_at) = time_reference_at else {
         return Vec::new();
     };
 
     let mut points = Vec::new();
     for sample in samples.iter().rev() {
-        let age = latest
+        let age = time_reference_at
             .signed_duration_since(sample.captured_at)
             .num_seconds()
             .max(0);
@@ -1671,17 +1695,17 @@ fn selected_age_line_points(
 }
 
 fn ab_line_points(
-    samples: &[GraphSample],
+    time_reference_at: Option<DateTime<Local>>,
     point: AbComparisonPoint,
     y_min: f64,
     y_max: f64,
     bounds: (i64, i64),
     plot_height: u16,
 ) -> Vec<(f64, f64)> {
-    let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
+    let Some(time_reference_at) = time_reference_at else {
         return Vec::new();
     };
-    let age = latest
+    let age = time_reference_at
         .signed_duration_since(point.captured_at)
         .num_seconds()
         .max(0);
@@ -1730,7 +1754,7 @@ mod tests {
             sample(now, Some(10), Some(5)),
             sample(now, Some(30), Some(7)),
         ];
-        let points = chart_points(&samples, (-60, 0));
+        let points = chart_points(&samples, (-60, 0), Some(now));
 
         assert_eq!(
             graph_stats(&samples, Some(50.0), &points),
@@ -2036,7 +2060,7 @@ mod tests {
         GraphAbAxisLabels {
             y_label_width: 4,
             bounds: (-60, 0),
-            latest_sample_at: Some(latest),
+            time_reference_at: Some(latest),
             comparison: Some(&comparison),
             theme,
         }
@@ -2054,9 +2078,8 @@ mod tests {
         let latest = chrono::Local
             .with_ymd_and_hms(2026, 1, 1, 10, 1, 0)
             .unwrap();
-        let samples = [sample(latest, Some(100), None)];
         let line = ab_line_points(
-            &samples,
+            Some(latest),
             AbComparisonPoint {
                 captured_at: latest,
             },
@@ -2308,7 +2331,7 @@ mod tests {
         let refs = samples.to_vec();
 
         assert_eq!(
-            chart_points(&refs, (-60, 0)),
+            chart_points(&refs, (-60, 0), Some(now)),
             vec![(-15.0, 10.0), (0.0, 20.0)]
         );
     }
@@ -2325,8 +2348,30 @@ mod tests {
         let refs = samples.to_vec();
 
         assert_eq!(
-            chart_points(&refs, (-60, -10)),
+            chart_points(&refs, (-60, -10), Some(now)),
             vec![(-45.0, 10.0), (-15.0, 15.0)]
+        );
+    }
+
+    #[test]
+    fn chart_points_use_the_shared_graph_time_reference() {
+        let shared_latest = chrono::Local::now();
+        let samples = [
+            sample(
+                shared_latest - chrono::Duration::seconds(120),
+                Some(10),
+                None,
+            ),
+            sample(
+                shared_latest - chrono::Duration::seconds(60),
+                Some(20),
+                None,
+            ),
+        ];
+
+        assert_eq!(
+            chart_points(&samples, (-180, 0), Some(shared_latest)),
+            vec![(-120.0, 10.0), (-60.0, 20.0)]
         );
     }
 

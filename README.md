@@ -286,7 +286,7 @@ When A/B points are set, `Metrics` shows Current − A or B − A using exact-ti
 | `Ctrl+Left` / `Ctrl+Right` | Pan the visible range.                                                              |
 | Right drag / `Ctrl`+left drag | Pan the visible range with the mouse.                                            |
 | `PageUp` / `PageDown`      | Change the visible time span with Graph focus; move by page with Samples focus.     |
-| `f`                        | Switch to a time span that fits all samples.                                        |
+| `f`                        | Switch to one shared time range that fits all samples across the registered Graphs. |
 | `z`                        | Toggle the Y-axis lower bound between fixed at 0 and following the visible minimum. |
 | `v`                        | Show or hide the Samples table.                                                     |
 | `d`                        | Show or hide the Delta column in Samples.                                           |
@@ -299,7 +299,7 @@ When A/B points are set, `Metrics` shows Current − A or B − A using exact-ti
 
 The Graph Workspace keeps up to 16 ordered cards. `Up` / `Down`, card clicks, the mouse wheel, and the scrollbar select a Graph; `Delete` or a card's `[x]` removes it. The single Samples inspector follows the active Graph, and the shared shortcuts work from either Graph or Samples focus.
 
-Multiple Graphs share the visible time range, cursor, selected time, and A/B points. Each Graph keeps its own Y-axis scale and sample availability. A/B values, clipboard output, and recordings retain exact values; if a Graph has no sample at the exact selected time, it shows `--` instead of substituting a nearby value.
+Multiple Graphs share one absolute visible time range, cursor, selected time, and A/B points. `Fit all` covers the earliest through latest samples across the registered Graphs, including Graphs whose histories start or end at different times. Each Graph keeps its own Y-axis scale and sample availability. A/B values, clipboard output, and recordings retain exact values; if a Graph has no sample at the exact selected time, it shows `--` instead of substituting a nearby value.
 
 ## Recording and Log View
 

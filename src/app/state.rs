@@ -402,7 +402,6 @@ pub(crate) struct GraphPanDrag {
     pub(crate) button: GraphPanDragButton,
     pub(crate) start_x: u16,
     pub(crate) start_offset_seconds: u32,
-    pub(crate) moved: bool,
 }
 
 impl GraphSlot {
@@ -2699,11 +2698,11 @@ impl App {
             return;
         };
         let samples = self.graph_slot_samples(slot);
-        let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
+        let Some(time_reference_at) = self.graph_time_reference_at() else {
             return;
         };
         let Some((index, _)) = samples.iter().enumerate().min_by_key(|(_, sample)| {
-            let age = latest
+            let age = time_reference_at
                 .signed_duration_since(sample.captured_at)
                 .num_seconds()
                 .max(0);
@@ -2737,13 +2736,13 @@ impl App {
             return;
         };
         let samples = self.graph_slot_samples(slot);
-        let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
+        let Some(time_reference_at) = self.graph_time_reference_at() else {
             return;
         };
         let Some(selected) = samples.get(self.details_sample_selected) else {
             return;
         };
-        let selected_age = latest
+        let selected_age = time_reference_at
             .signed_duration_since(selected.captured_at)
             .num_seconds()
             .clamp(0, i64::from(u32::MAX)) as u32;
@@ -3060,13 +3059,6 @@ impl App {
         self.status = "Details live mode enabled".to_string();
     }
 
-    pub(crate) fn reset_graph_to_live_edge(&mut self) {
-        self.graph_show_all_samples = false;
-        self.graph_time_offset_seconds = 0;
-        self.graph_time_window_right_at = None;
-        self.status = "Graph right edge: 0s".to_string();
-    }
-
     pub(crate) fn toggle_graph_y_axis_zero_min(&mut self) {
         self.graph_y_axis_zero_min = !self.graph_y_axis_zero_min;
         self.status = if self.graph_y_axis_zero_min {
@@ -3222,15 +3214,11 @@ impl App {
     }
 
     fn graph_time_window_right_edge(&self) -> Option<DateTime<Local>> {
-        let latest = self.active_graph_latest_sample_at()?;
-        Some(latest - chrono::Duration::seconds(i64::from(self.graph_time_offset_seconds)))
-    }
-
-    fn active_graph_latest_sample_at(&self) -> Option<DateTime<Local>> {
-        let slot = self.active_graph_slot()?;
-        self.graph_slot_samples(slot)
-            .last()
-            .map(|sample| sample.captured_at)
+        let time_reference_at = self.graph_time_reference_at()?;
+        Some(
+            time_reference_at
+                - chrono::Duration::seconds(i64::from(self.graph_time_offset_seconds)),
+        )
     }
 
     fn restore_frozen_graph_time_window(&mut self) {
@@ -3240,10 +3228,10 @@ impl App {
         let Some(right_edge) = self.graph_time_window_right_at else {
             return;
         };
-        let Some(latest) = self.active_graph_latest_sample_at() else {
+        let Some(time_reference_at) = self.graph_time_reference_at() else {
             return;
         };
-        let offset = rounded_nonnegative_seconds_between(latest, right_edge);
+        let offset = rounded_nonnegative_seconds_between(time_reference_at, right_edge);
         let max_offset = self
             .graph_time_max_seconds()
             .saturating_sub(self.graph_time_span_seconds);
@@ -3306,13 +3294,13 @@ impl App {
             return Vec::new();
         };
         let samples = self.graph_slot_samples(slot);
-        let Some(latest) = samples.last().map(|sample| sample.captured_at) else {
+        let Some(time_reference_at) = self.graph_time_reference_at() else {
             return Vec::new();
         };
         let mut ages = samples
             .iter()
             .map(|sample| {
-                latest
+                time_reference_at
                     .signed_duration_since(sample.captured_at)
                     .num_seconds()
                     .clamp(0, i64::from(u32::MAX)) as u32
@@ -3325,7 +3313,7 @@ impl App {
 
     pub(crate) fn effective_graph_time_span_seconds(&self) -> u32 {
         if self.graph_show_all_samples {
-            self.selected_sample_time_span_seconds()
+            self.graph_sample_time_span_seconds()
                 .max(u32::from(GRAPH_TIME_SPAN_MIN_SECONDS))
         } else {
             self.graph_time_span_seconds
@@ -3340,22 +3328,43 @@ impl App {
         }
     }
 
-    fn selected_sample_time_span_seconds(&self) -> u32 {
-        self.active_graph_slot()
-            .and_then(|slot| {
-                let samples = self
-                    .graph_slot_samples(slot)
-                    .into_iter()
-                    .map(|sample| sample.captured_at)
-                    .collect::<Vec<_>>();
-                sample_time_span_seconds(&samples)
-            })
+    pub(crate) fn graph_time_reference_at(&self) -> Option<DateTime<Local>> {
+        self.graph_sample_time_range().map(|(_, latest)| latest)
+    }
+
+    fn graph_sample_time_span_seconds(&self) -> u32 {
+        self.graph_sample_time_range()
+            .map(|(earliest, latest)| sample_time_span_seconds(earliest, latest))
             .unwrap_or(self.graph_time_span_seconds)
+    }
+
+    fn graph_sample_time_range(&self) -> Option<(DateTime<Local>, DateTime<Local>)> {
+        self.graph_entries
+            .iter()
+            .filter_map(|entry| self.graph_slot_time_range(&entry.source))
+            .fold(None, |range, (first, last)| {
+                Some(match range {
+                    Some((earliest, latest)) => (earliest.min(first), latest.max(last)),
+                    None => (first, last),
+                })
+            })
+    }
+
+    fn graph_slot_time_range(
+        &self,
+        slot: &GraphSlot,
+    ) -> Option<(DateTime<Local>, DateTime<Local>)> {
+        match slot {
+            GraphSlot::Process { identity, .. } => {
+                self.display_process_history().time_range_for(identity)
+            }
+            GraphSlot::System { .. } => self.display_system_history().time_range(),
+        }
     }
 
     fn graph_time_max_seconds(&self) -> u32 {
         if self.activity() == AppActivity::LogView {
-            self.selected_sample_time_span_seconds()
+            self.graph_sample_time_span_seconds()
                 .max(LIVE_GRAPH_TIME_MAX_SECONDS)
         } else {
             LIVE_GRAPH_TIME_MAX_SECONDS
@@ -7077,13 +7086,11 @@ fn rounded_nonnegative_seconds_between(later: DateTime<Local>, earlier: DateTime
     (milliseconds.saturating_add(500) / 1_000).min(i64::from(u32::MAX)) as u32
 }
 
-fn sample_time_span_seconds(samples: &[DateTime<Local>]) -> Option<u32> {
-    let first = samples.first()?;
-    let last = samples.last()?;
+fn sample_time_span_seconds(first: DateTime<Local>, last: DateTime<Local>) -> u32 {
     let span = last
-        .signed_duration_since(*first)
+        .signed_duration_since(first)
         .num_seconds()
         .max(1)
         .min(i64::from(u32::MAX));
-    Some(span as u32)
+    span as u32
 }
