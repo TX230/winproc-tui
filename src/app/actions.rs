@@ -8,10 +8,10 @@ use ratatui::layout::{Margin, Rect};
 
 use crate::{
     app::{
-        App, AppActivity, DetailsMetric, FocusedPanel, GraphId, GraphPanDrag, GraphPanDragButton,
-        GraphSlot, ProcessInfoFocus, ProcessKillSelection, QuitConfirmSelection,
-        RecordingOverwriteSelection, TrackedListConfirmSelection, TrackedListsButton,
-        TrackedListsView, TrackedRemoveSelection,
+        App, AppActivity, DetailsMetric, FocusedPanel, GraphHoverTarget, GraphId, GraphPanDrag,
+        GraphPanDragButton, GraphSlot, ProcessInfoFocus, ProcessKillSelection,
+        QuitConfirmSelection, RecordingOverwriteSelection, TrackedListConfirmSelection,
+        TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
@@ -1342,8 +1342,16 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, mouse: MouseEvent, screen_area: Rect) {
-        if self.has_modal_focus() {
+        let has_modal_focus = self.has_modal_focus();
+        if has_modal_focus {
             self.clear_graph_source_click();
+            self.graph_hovered_target = None;
+        } else {
+            self.graph_hovered_target =
+                graph_hover_target_at(self, screen_area, mouse.column, mouse.row);
+            if mouse.kind == MouseEventKind::Moved {
+                return;
+            }
         }
         if matches!(
             mouse.kind,
@@ -1804,6 +1812,9 @@ impl App {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                if self.activate_graph_span_control_at(mouse.column, mouse.row, screen_area) {
+                    return;
+                }
                 if let Some(id) = graph_remove_at(self, screen_area, mouse.column, mouse.row) {
                     self.remove_graph(id);
                     return;
@@ -2018,6 +2029,35 @@ impl App {
         self.focused_panel = FocusedPanel::DetailsSamples;
         self.drag_samples_scrollbar(x, y, screen_area);
         true
+    }
+
+    fn activate_graph_span_control_at(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
+        let Some(layout) = graph_workspace_layout_for_app(self, screen_area) else {
+            return false;
+        };
+        if layout
+            .span_controls
+            .zoom_out
+            .is_some_and(|area| contains_point(area, x, y))
+        {
+            self.focused_panel = FocusedPanel::DetailsGraph;
+            if self.can_zoom_graph_time_span(false) {
+                self.zoom_graph_time_span(false);
+            }
+            return true;
+        }
+        if layout
+            .span_controls
+            .zoom_in
+            .is_some_and(|area| contains_point(area, x, y))
+        {
+            self.focused_panel = FocusedPanel::DetailsGraph;
+            if self.can_zoom_graph_time_span(true) {
+                self.zoom_graph_time_span(true);
+            }
+            return true;
+        }
+        false
     }
 
     fn start_graph_scrollbar_drag(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
@@ -2550,6 +2590,31 @@ fn graph_remove_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<Graph
         .into_iter()
         .find(|card| contains_point(card.remove, x, y))
         .map(|card| card.id)
+}
+
+fn graph_hover_target_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphHoverTarget> {
+    let layout = graph_workspace_layout_for_app(app, screen_area)?;
+    if app.can_zoom_graph_time_span(false)
+        && layout
+            .span_controls
+            .zoom_out
+            .is_some_and(|area| contains_point(area, x, y))
+    {
+        return Some(GraphHoverTarget::ZoomOut);
+    }
+    if app.can_zoom_graph_time_span(true)
+        && layout
+            .span_controls
+            .zoom_in
+            .is_some_and(|area| contains_point(area, x, y))
+    {
+        return Some(GraphHoverTarget::ZoomIn);
+    }
+    layout
+        .graph_cards
+        .into_iter()
+        .find(|card| contains_point(card.remove, x, y))
+        .map(|card| GraphHoverTarget::Remove(card.id))
 }
 
 fn graph_viewport_at(app: &App, screen_area: Rect, x: u16, y: u16) -> bool {

@@ -1,4 +1,7 @@
-use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
+use ratatui::{
+    layout::{Constraint, Direction, Layout, Margin, Rect},
+    text::Line,
+};
 
 use crate::{
     App,
@@ -60,6 +63,7 @@ pub(crate) struct GraphCardLayout {
 pub(crate) struct GraphWorkspaceLayout {
     pub(crate) controls: Rect,
     pub(crate) graph_slots: Rect,
+    pub(crate) span_controls: GraphSpanControlAreas,
     pub(crate) graph_viewport: Rect,
     pub(crate) graph_cards: Vec<GraphCardLayout>,
     pub(crate) graph_scrollbar: Option<Rect>,
@@ -70,6 +74,12 @@ pub(crate) struct GraphWorkspaceLayout {
     pub(crate) visible_rows: usize,
     pub(crate) max_scroll_row: usize,
     pub(crate) compact: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct GraphSpanControlAreas {
+    pub(crate) zoom_out: Option<Rect>,
+    pub(crate) zoom_in: Option<Rect>,
 }
 
 pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
@@ -188,6 +198,7 @@ pub(crate) fn graph_workspace_layout(area: Rect, app: &App) -> GraphWorkspaceLay
         area.bottom().saturating_sub(content_y),
     );
     let (graph_slots, samples, samples_placement) = graph_workspace_content_areas(content, app);
+    let span_controls = graph_span_control_areas(graph_slots, app);
     let graph_viewport = graph_slots.inner(Margin {
         horizontal: 1,
         vertical: 1,
@@ -239,6 +250,7 @@ pub(crate) fn graph_workspace_layout(area: Rect, app: &App) -> GraphWorkspaceLay
     GraphWorkspaceLayout {
         controls,
         graph_slots,
+        span_controls,
         graph_viewport,
         graph_cards,
         graph_scrollbar,
@@ -249,6 +261,42 @@ pub(crate) fn graph_workspace_layout(area: Rect, app: &App) -> GraphWorkspaceLay
         visible_rows,
         max_scroll_row,
         compact,
+    }
+}
+
+pub(crate) fn graph_workspace_title_label(app: &App) -> String {
+    let count = app.graph_entries.len();
+    let slot_label = if count == 1 { "Slot" } else { "Slots" };
+    format!(
+        "GRAPHS · {count} {slot_label} · Span {}s",
+        app.effective_graph_time_span_seconds()
+    )
+}
+
+fn graph_span_control_areas(area: Rect, app: &App) -> GraphSpanControlAreas {
+    const TITLE_INSET: u16 = 0;
+    const TITLE_BUTTON_GAP: u16 = 2;
+    const BUTTON_WIDTH: u16 = 3;
+    const BETWEEN_BUTTONS: u16 = 1;
+
+    if area.height == 0 {
+        return GraphSpanControlAreas::default();
+    }
+    let title_width = Line::from(graph_workspace_title_label(app)).width() as u16;
+    let zoom_out_x = area
+        .x
+        .saturating_add(TITLE_INSET)
+        .saturating_add(title_width)
+        .saturating_add(TITLE_BUTTON_GAP);
+    let zoom_in_x = zoom_out_x
+        .saturating_add(BUTTON_WIDTH)
+        .saturating_add(BETWEEN_BUTTONS);
+    if zoom_in_x.saturating_add(BUTTON_WIDTH) > area.right() {
+        return GraphSpanControlAreas::default();
+    }
+    GraphSpanControlAreas {
+        zoom_out: Some(Rect::new(zoom_out_x, area.y, BUTTON_WIDTH, 1)),
+        zoom_in: Some(Rect::new(zoom_in_x, area.y, BUTTON_WIDTH, 1)),
     }
 }
 

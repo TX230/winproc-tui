@@ -44,6 +44,7 @@ use crate::{
 
 const GRAPH_TIME_SPAN_MIN_SECONDS: u16 = 60;
 const LIVE_GRAPH_TIME_MAX_SECONDS: u32 = TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u32;
+const GRAPH_TIME_SPAN_STEPS_SECONDS: &[u32] = &[60, 120, 300, 600, 900, 1_800, 3_600, 7_200];
 const FIXED_PROCESS_COLUMN_COUNT: usize = 2;
 pub(crate) const GRAPH_LIMIT: usize = 16;
 pub(crate) const GRAPH_SLOT_MIN_HEIGHT: u16 = 13;
@@ -359,6 +360,13 @@ pub(crate) enum GraphSlot {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct GraphId(pub(crate) u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphHoverTarget {
+    ZoomOut,
+    ZoomIn,
+    Remove(GraphId),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GraphEntry {
@@ -957,6 +965,7 @@ pub(crate) struct App {
     pub(crate) graph_scroll_row: usize,
     pub(crate) graph_scrollbar_dragging: bool,
     pub(crate) graph_scrollbar_grab_offset: usize,
+    pub(crate) graph_hovered_target: Option<GraphHoverTarget>,
     pub(crate) graph_return_focus: FocusedPanel,
     pub(crate) graph_source_last_click: Option<GraphSourceClick>,
     pub(crate) details_target: DetailsTarget,
@@ -1194,6 +1203,7 @@ impl App {
             graph_scroll_row: 0,
             graph_scrollbar_dragging: false,
             graph_scrollbar_grab_offset: 0,
+            graph_hovered_target: None,
             graph_return_focus: FocusedPanel::Processes,
             graph_source_last_click: None,
             details_target: DetailsTarget::Process,
@@ -1929,6 +1939,7 @@ impl App {
         self.graph_scroll_row = 0;
         self.graph_scrollbar_dragging = false;
         self.graph_scrollbar_grab_offset = 0;
+        self.graph_hovered_target = None;
         self.show_details = false;
         self.ab_comparison = None;
         if matches!(
@@ -3136,18 +3147,25 @@ impl App {
         self.details_sample_offset = sample_count.saturating_sub(rows);
     }
 
+    pub(crate) fn can_zoom_graph_time_span(&self, zoom_in: bool) -> bool {
+        if self.graph_show_all_samples && !zoom_in {
+            return false;
+        }
+        let current = self.effective_graph_time_span_seconds();
+        graph_zoom_target(current, self.graph_time_max_seconds(), zoom_in) != current
+    }
+
     pub(crate) fn zoom_graph_time_span(&mut self, zoom_in: bool) {
-        self.graph_show_all_samples = false;
         let max_span = self.graph_time_max_seconds();
-        let next = if zoom_in {
-            self.graph_time_span_seconds
-                .saturating_sub(graph_zoom_step(self.graph_time_span_seconds))
-                .max(u32::from(GRAPH_TIME_SPAN_MIN_SECONDS))
-        } else {
-            self.graph_time_span_seconds
-                .saturating_add(graph_zoom_step(self.graph_time_span_seconds))
-                .min(max_span)
-        };
+        let current = self.effective_graph_time_span_seconds();
+        if self.graph_show_all_samples && !zoom_in {
+            return;
+        }
+        let next = graph_zoom_target(current, max_span, zoom_in);
+        if next == current {
+            return;
+        }
+        self.graph_show_all_samples = false;
         self.graph_time_span_seconds = next;
         self.graph_time_offset_seconds = self
             .graph_time_offset_seconds
@@ -7027,11 +7045,21 @@ fn sum_optional_f64(values: impl Iterator<Item = f64>) -> Option<f64> {
     found.then_some(total)
 }
 
-fn graph_zoom_step(span_seconds: u32) -> u32 {
-    if span_seconds <= u32::from(GRAPH_TIME_SPAN_MIN_SECONDS) {
-        u32::from(GRAPH_TIME_SPAN_MIN_SECONDS)
+fn graph_zoom_target(current: u32, max_span: u32, zoom_in: bool) -> u32 {
+    let min_span = u32::from(GRAPH_TIME_SPAN_MIN_SECONDS);
+    if zoom_in {
+        GRAPH_TIME_SPAN_STEPS_SECONDS
+            .iter()
+            .rev()
+            .copied()
+            .find(|span| *span < current)
+            .unwrap_or(min_span)
     } else {
-        60
+        GRAPH_TIME_SPAN_STEPS_SECONDS
+            .iter()
+            .copied()
+            .find(|span| *span > current && *span <= max_span)
+            .unwrap_or(max_span)
     }
 }
 

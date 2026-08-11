@@ -38,9 +38,9 @@ pub(crate) use app::App;
 use app::run_tui;
 #[cfg(test)]
 use app::{
-    AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphSlot, GraphSlotLayout,
-    GraphValueFormat, PROCESS_INFO_DEBOUNCE, QuitConfirmSelection, SAMPLE_STALE_AFTER_SECONDS,
-    SampleFreshness, TrackedRemoveSelection, VisibleProcessEntry,
+    AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphHoverTarget, GraphSlot,
+    GraphSlotLayout, GraphValueFormat, PROCESS_INFO_DEBOUNCE, QuitConfirmSelection,
+    SAMPLE_STALE_AFTER_SECONDS, SampleFreshness, TrackedRemoveSelection, VisibleProcessEntry,
 };
 use cli::Cli;
 #[cfg(test)]
@@ -4110,6 +4110,120 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
         assert_eq!(app.status, "Focus: Graph 1/1");
+    }
+
+    #[test]
+    fn graph_span_buttons_zoom_and_highlight_on_hover() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.show_samples_panel = false;
+        app.graph_time_span_seconds = 120;
+        let screen = Rect::new(0, 0, 160, 60);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let zoom_out = layout.span_controls.zoom_out.unwrap();
+        let zoom_in = layout.span_controls.zoom_in.unwrap();
+
+        let initial = render_app_to_buffer(&app, screen.width, screen.height);
+        let zoom_out_text = (zoom_out.x..zoom_out.right())
+            .map(|x| initial[(x, zoom_out.y)].symbol())
+            .collect::<String>();
+        let zoom_in_text = (zoom_in.x..zoom_in.right())
+            .map(|x| initial[(x, zoom_in.y)].symbol())
+            .collect::<String>();
+        assert_eq!(zoom_out_text, "[-]");
+        assert_eq!(zoom_in_text, "[+]");
+        assert_eq!(initial[(zoom_out.x + 1, zoom_out.y)].bg, app.theme().panel);
+
+        app.on_mouse(mouse_move(zoom_out.x + 1, zoom_out.y), screen);
+
+        assert_eq!(app.graph_hovered_target, Some(GraphHoverTarget::ZoomOut));
+        let hovered = render_app_to_buffer(&app, screen.width, screen.height);
+        assert_eq!(
+            hovered[(zoom_out.x + 1, zoom_out.y)].bg,
+            app.theme().focus_surface
+        );
+        assert!(
+            hovered[(zoom_out.x + 1, zoom_out.y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
+
+        app.on_mouse(left_click(zoom_out.x + 1, zoom_out.y), screen);
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+        assert_eq!(app.graph_time_span_seconds, 300);
+
+        app.on_mouse(mouse_move(zoom_in.x + 1, zoom_in.y), screen);
+        assert_eq!(app.graph_hovered_target, Some(GraphHoverTarget::ZoomIn));
+        app.on_mouse(left_click(zoom_in.x + 1, zoom_in.y), screen);
+        assert_eq!(app.graph_time_span_seconds, 120);
+    }
+
+    #[test]
+    fn graph_remove_button_highlights_on_hover_and_clears_when_pointer_leaves() {
+        let mut app = make_test_app(1, 10);
+        let id = add_test_graph(&mut app, 0);
+        app.show_samples_panel = false;
+        let screen = Rect::new(0, 0, 120, 45);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let card = &layout.graph_cards[0];
+
+        app.on_mouse(mouse_move(card.remove.x + 2, card.remove.y), screen);
+
+        assert_eq!(app.graph_hovered_target, Some(GraphHoverTarget::Remove(id)));
+        let hovered = render_app_to_buffer(&app, screen.width, screen.height);
+        assert_eq!(
+            hovered[(card.remove.x + 2, card.remove.y)].bg,
+            app.theme().focus_surface
+        );
+        assert!(
+            hovered[(card.remove.x + 2, card.remove.y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
+
+        app.on_mouse(mouse_move(card.plot.x, card.plot.y), screen);
+        assert_eq!(app.graph_hovered_target, None);
+    }
+
+    #[test]
+    fn graph_fit_all_disables_zoom_out_and_zoom_in_uses_visible_span() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.show_samples_panel = false;
+        for offset in [0, 120, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.toggle_graph_all_samples();
+        let screen = Rect::new(0, 0, 120, 45);
+        app::sync_layout_state(&mut app, screen);
+        let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+        let layout = ui::layout::graph_workspace_layout(details, &app);
+        let zoom_out = layout.span_controls.zoom_out.unwrap();
+        let zoom_in = layout.span_controls.zoom_in.unwrap();
+
+        app.on_mouse(mouse_move(zoom_out.x + 1, zoom_out.y), screen);
+        assert_eq!(app.graph_hovered_target, None);
+        let rendered = render_app_to_buffer(&app, screen.width, screen.height);
+        assert_eq!(
+            rendered[(zoom_out.x + 1, zoom_out.y)].fg,
+            app.theme().border
+        );
+
+        app.on_mouse(left_click(zoom_out.x + 1, zoom_out.y), screen);
+        assert!(app.graph_show_all_samples);
+        assert_eq!(app.effective_graph_time_span_seconds(), 240);
+
+        app.on_mouse(left_click(zoom_in.x + 1, zoom_in.y), screen);
+        assert!(!app.graph_show_all_samples);
+        assert_eq!(app.graph_time_span_seconds, 120);
     }
 
     #[test]
@@ -12680,6 +12794,7 @@ processes = ["api.exe", "worker.exe"]
             graph_scroll_row: 0,
             graph_scrollbar_dragging: false,
             graph_scrollbar_grab_offset: 0,
+            graph_hovered_target: None,
             graph_return_focus: FocusedPanel::Processes,
             graph_source_last_click: None,
             details_target: DetailsTarget::Process,

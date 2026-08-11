@@ -14,7 +14,8 @@ use ratatui::{
 use crate::{
     App,
     app::{
-        AbComparison, AbComparisonPoint, FocusedPanel, GraphSample, GraphSlot, GraphValueFormat,
+        AbComparison, AbComparisonPoint, FocusedPanel, GraphHoverTarget, GraphSample, GraphSlot,
+        GraphValueFormat,
     },
     ui::{
         Theme,
@@ -23,9 +24,10 @@ use crate::{
             format_io_rate, format_mb_per_sec, format_signed_integer, format_signed_io_rate,
         },
         layout::{
-            DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, GraphCardLayout, GraphWorkspaceLayout,
-            details_graph_rows, details_samples_row_capacity, details_samples_summary_height,
-            graph_shared_control_areas, graph_workspace_layout,
+            DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT, GraphCardLayout, GraphSpanControlAreas,
+            GraphWorkspaceLayout, details_graph_rows, details_samples_row_capacity,
+            details_samples_summary_height, graph_shared_control_areas, graph_workspace_layout,
+            graph_workspace_title_label,
         },
         widgets::block::{graph_card_block, graph_workspace_block, panel_block_focused},
     },
@@ -54,7 +56,7 @@ pub(crate) fn draw_details_panel(
     let graph_focused = app.panel_has_focus(FocusedPanel::DetailsGraph);
     frame.render_widget(
         graph_workspace_block(
-            graph_workspace_title(app, theme, graph_focused),
+            graph_workspace_title(app, theme, graph_focused, layout.span_controls),
             theme,
             graph_focused,
         ),
@@ -192,8 +194,11 @@ fn render_graph_card(
         );
     }
     frame.render_widget(
-        Paragraph::new(format!(" {} ", card.remove_label))
-            .style(Style::default().fg(theme.muted).bg(theme.panel)),
+        Paragraph::new(format!(" {} ", card.remove_label)).style(graph_button_style(
+            theme,
+            app.graph_hovered_target == Some(GraphHoverTarget::Remove(card.id)),
+            true,
+        )),
         card.remove,
     );
 }
@@ -742,9 +747,12 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
     );
 }
 
-fn graph_workspace_title(app: &App, theme: Theme, focused: bool) -> Line<'static> {
-    let count = app.graph_entries.len();
-    let slot_label = if count == 1 { "Slot" } else { "Slots" };
+fn graph_workspace_title(
+    app: &App,
+    theme: Theme,
+    focused: bool,
+    controls: GraphSpanControlAreas,
+) -> Line<'static> {
     let style = Style::default()
         .fg(if focused {
             theme.focus_border
@@ -756,13 +764,41 @@ fn graph_workspace_title(app: &App, theme: Theme, focused: bool) -> Line<'static
         } else {
             Modifier::empty()
         });
-    Line::from(Span::styled(
-        format!(
-            "GRAPHS · {count} {slot_label} · Span {}s",
-            app.effective_graph_time_span_seconds()
-        ),
-        style,
-    ))
+    let mut spans = vec![Span::styled(graph_workspace_title_label(app), style)];
+    if controls.zoom_out.is_some() && controls.zoom_in.is_some() {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            "[-]",
+            graph_button_style(
+                theme,
+                app.graph_hovered_target == Some(GraphHoverTarget::ZoomOut),
+                app.can_zoom_graph_time_span(false),
+            ),
+        ));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            "[+]",
+            graph_button_style(
+                theme,
+                app.graph_hovered_target == Some(GraphHoverTarget::ZoomIn),
+                app.can_zoom_graph_time_span(true),
+            ),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn graph_button_style(theme: Theme, hovered: bool, enabled: bool) -> Style {
+    if !enabled {
+        Style::default().fg(theme.border).bg(theme.panel)
+    } else if hovered {
+        Style::default()
+            .fg(theme.text)
+            .bg(theme.focus_surface)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted).bg(theme.panel)
+    }
 }
 
 fn render_graph_toggle(

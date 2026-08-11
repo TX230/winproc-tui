@@ -307,6 +307,10 @@ const MOUSE_ROWS: &[HelpItem] = &[
         label: "Remove Graph",
     },
     HelpItem {
+        key: "Click [-]/[+]",
+        label: "Zoom time span out / in",
+    },
+    HelpItem {
         key: "Drag scrollbar",
         label: "Scroll",
     },
