@@ -63,13 +63,13 @@ The `RAM/VRAM` panel and system details use four metrics.
 | `GPU Shared` | Shared GPU memory usage and capacity. | GPU PDH counters, DXGI adapter description | `used / total MB` |
 
 `RAM/VRAM` metrics always retain 7,200 samples and do not have a Tracking List display.
-When the `RAM/VRAM` panel has focus, `Space` adds or removes the selected metric in the Graph Workspace. Double-clicking the same metric adds it or reveals its existing Graph without removing it.
+When the `RAM/VRAM` panel has focus, `Space` or double-click adds or removes the selected metric in the Graph Workspace.
 
 ## CPU Panel
 
 The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after `RAM/VRAM` and `NW/DISK`.
 It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
-When the `CPUs` panel has focus, `Space` adds or removes `CPU Usage` in the Graph Workspace. Double-clicking the CPU Usage row adds it or reveals its existing Graph without removing it.
+When the `CPUs` panel has focus, `Space` or double-click adds or removes `CPU Usage` in the Graph Workspace.
 The left edge of the panel content reserves two character cells for a `G` marker, matching the RAM/VRAM summary rows. The marker is accented when that source is the active Graph and muted when it is registered but inactive.
 
 | Display | Description | Primary source | Format |
@@ -87,7 +87,7 @@ The per-logical-CPU cells are intended for quick visual pressure checks, not rec
 The middle of the top panel shows `NW/DISK`, a compact System Activity view for network and disk counters.
 Pressing `i` opens `System Info` as a dialog instead of replacing this panel.
 These values are sampled once per screen update and are stored in recording frames so Log view can show the recorded values.
-When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `Space` adds or removes it in the Graph Workspace, matching the `RAM/VRAM` behavior. Double-click adds or reveals the metric without removing an existing Graph.
+When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `Space` or double-click adds or removes it in the Graph Workspace, matching the `RAM/VRAM` behavior.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|

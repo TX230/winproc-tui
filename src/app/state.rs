@@ -2371,7 +2371,7 @@ impl App {
         });
         if is_double_click {
             self.graph_source_last_click = None;
-            self.add_or_reveal_graph_source(source, return_focus);
+            self.toggle_graph_source(source, return_focus);
         } else {
             self.graph_source_last_click = Some(GraphSourceClick { source, clicked_at });
         }

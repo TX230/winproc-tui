@@ -4335,7 +4335,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_metric_double_click_adds_then_reveals_without_removing_graph() {
+    fn process_metric_double_click_adds_then_removes_only_that_graph() {
         let mut app = make_test_app(2, 10);
         app.process_columns = vec![MetricColumn::HandleCount];
         app.selected_process_column_index = 2;
@@ -4353,14 +4353,16 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.graph_entries.len(), 1);
         assert_eq!(app.graph_entries[0].source, source);
         let source_id = app.graph_entries[0].id;
-        add_test_graph(&mut app, 8);
-        assert_ne!(app.active_graph_id, Some(source_id));
+        let other_id = add_test_graph(&mut app, 8);
+        assert_eq!(app.active_graph_id, Some(other_id));
 
         app.on_mouse(left_click(x, y), screen);
         app.on_mouse(left_click(x, y), screen);
 
-        assert_eq!(app.graph_entries.len(), 2);
-        assert_eq!(app.active_graph_id, Some(source_id));
+        assert_eq!(app.graph_entries.len(), 1);
+        assert!(app.graph_entry_by_id(source_id).is_none());
+        assert!(app.graph_entry_by_id(other_id).is_some());
+        assert_eq!(app.active_graph_id, Some(other_id));
     }
 
     #[test]
@@ -4470,7 +4472,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn system_panel_double_clicks_add_ram_activity_and_cpu_graphs() {
+    fn system_panel_double_clicks_toggle_ram_activity_and_cpu_graphs() {
         let mut app = make_test_app(2, 10);
         let screen = Rect::new(0, 0, 180, 70);
         app::sync_layout_state(&mut app, screen);
@@ -4494,8 +4496,12 @@ processes = ["api.exe", "worker.exe"]
             app.on_mouse(left_click(x, y), screen);
             app.on_mouse(left_click(x, y), screen);
             assert!(app.graph_id_for_source(&expected).is_some());
+
+            app.on_mouse(left_click(x, y), screen);
+            app.on_mouse(left_click(x, y), screen);
+            assert!(app.graph_id_for_source(&expected).is_none());
         }
-        assert_eq!(app.graph_entries.len(), 3);
+        assert!(app.graph_entries.is_empty());
     }
 
     #[test]

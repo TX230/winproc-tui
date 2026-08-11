@@ -296,7 +296,7 @@ const MOUSE_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Double-click metric",
-        label: "Add or reveal Graph",
+        label: "Add or remove Graph",
     },
     HelpItem {
         key: "Click Graph nav/card",

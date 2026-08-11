@@ -33,10 +33,10 @@ RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automa
 
 1. In `PROCESSES`, select the process you want to inspect.
 2. Use `Left` / `Right` to select the metric column you want to inspect. For example, `PrivBytes` is memory committed privately by the process.
-3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace.
+3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace. Repeat the same operation to remove it.
 4. Repeat the operation on other metrics to compare up to 16 Graphs. The active card stays visible as you move through the ordered list.
 
-Press `Space` again on a registered source to remove only that Graph. Double-clicking a registered source reveals its existing Graph without removing it. The same controls work for selectable metrics in the RAM / VRAM and NW/DISK panels and for CPU Usage in CPUS. Registered sources show their Graph slot number.
+`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the RAM / VRAM and NW/DISK panels and for CPU Usage in CPUS. Registered sources show their Graph slot number.
 
 ### 3. Compare Two Points
 
