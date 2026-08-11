@@ -2358,6 +2358,7 @@ impl App {
         self.add_graph_source(source, return_focus)
     }
 
+    #[cfg(test)]
     pub(crate) fn add_or_reveal_graph_source(
         &mut self,
         source: GraphSlot,
