@@ -2763,6 +2763,77 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn graph_right_click_after_drag_preserves_panned_range() {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in [0, 30, 60, 90, 120, 150, 180, 210, 240] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.select_details_sample_latest();
+        let screen = Rect::new(0, 0, 120, 45);
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
+        let start_x = graph.x.saturating_add(20);
+        let end_x = start_x.saturating_add(40);
+        let y = graph.y.saturating_add(5);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: start_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Right),
+                column: end_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Right),
+                column: end_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        let panned_offset = app.graph_time_offset_seconds;
+        assert!(panned_offset > 0);
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: end_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Right),
+                column: end_x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+
+        assert_eq!(app.graph_time_offset_seconds, panned_offset);
+        assert!(app.graph_pan_drag.is_none());
+    }
+
+    #[test]
     fn graph_drag_clamps_to_range_with_visible_sample() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);

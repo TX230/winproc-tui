@@ -2255,6 +2255,12 @@ impl App {
         if self.graph_entry_by_id(id).is_none() {
             return false;
         }
+        if self.active_graph_id == Some(id) {
+            self.show_details = true;
+            self.sync_graph_layout_visibility();
+            self.reveal_active_graph();
+            return true;
+        }
         let selected_time = self.selected_details_sample_time();
         self.active_graph_id = Some(id);
         if let Some(time) = selected_time {
