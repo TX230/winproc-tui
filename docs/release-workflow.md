@@ -13,21 +13,31 @@ This project does not maintain a separate `CHANGELOG.md` file.
 Use `gh release create --generate-notes` to create draft release notes, then review and edit them before publishing.
 GitHub's generated notes are a starting point, especially for releases built from merged maintainer-requested or AI-assisted pull requests; they are not a substitute for checking the actual commit range.
 
-The published notes should use a short `What's changed` section that summarizes user-visible outcomes rather than copying commit titles mechanically. Review the commits since the previous tag and group closely related commits into one bullet when that makes the result easier to understand. Append every relevant Issue number in the form `Issue #n`; when one bullet covers several Issues, write each one explicitly. Do not attach an Issue number to unrelated release housekeeping.
+Published GitHub Release notes follow the [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) conventions even though the repository does not maintain a separate changelog file. Under a short `What's changed` section, group notable user-visible outcomes by the applicable Keep a Changelog types, in this order: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`. Omit empty types. The GitHub Release title and publication date provide the version and date metadata that a standalone changelog would normally place in its release heading.
+
+Review the commits since the previous tag, but do not copy commit titles or Conventional Commit prefixes such as `feat:` and `fix:` mechanically. Write for users, group closely related commits into one entry when that makes the result easier to understand, and call out deprecations, removals, security fixes, and breaking changes explicitly. Append every relevant Issue number in the form `Issue #n`; when one entry covers several Issues, write each one explicitly. Do not attach an Issue number to unrelated release housekeeping.
 
 Use this structure:
 
 ```markdown
 ## What's changed
 
-- Describe one user-visible change. (Issue #n)
-- Describe a related group of changes. (Issue #n, Issue #n)
-- Describe release or compatibility work. (Issue #n)
+### Added
+
+- Describe a new user-visible capability. (Issue #n)
+
+### Changed
+
+- Describe a change to existing user-visible behavior. (Issue #n, Issue #n)
+
+### Fixed
+
+- Describe a user-visible bug fix. (Issue #n)
 
 **Full Changelog**: https://github.com/TX230/winproc-tui/compare/<previous-tag>...<current-tag>
 ```
 
-Generated notes may contain only a Full Changelog link when the release range has no merged pull requests. In that case, write the `What's changed` bullets manually. Prefer a notes file over a long inline shell argument so Markdown, backticks, and line breaks are not altered by PowerShell:
+Generated notes may contain only a Full Changelog link when the release range has no merged pull requests. In that case, write the categorized `What's changed` entries manually. Prefer a notes file over a long inline shell argument so Markdown, backticks, and line breaks are not altered by PowerShell:
 
 ```powershell
 gh release edit $Tag `
