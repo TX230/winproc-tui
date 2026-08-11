@@ -84,9 +84,9 @@ The record types, fields, units, and missing-value rules are specified in [metri
 ### 4.1 Startup and shutdown
 
 1. `main` parses the CLI, installs the Windows console control handler, and resolves and loads `winproc-tui.toml`.
-2. Startup mode either resumes the previous working Tracking List, clears it, or opens a chooser for the previous session, an empty list, or a saved named list. The chooser completes before `RuntimeConfig` is built and before any sample is collected.
-3. `App::new` performs one synchronous initial collection so the first screen has data, initializes histories and selection state, and then spawns `SamplingWorker` for subsequent samples.
-4. `main` enters raw mode and the alternate screen, then calls `run_tui`.
+2. `main` enters raw mode and the alternate screen once for the complete interactive session. Startup mode then either resumes the previous working Tracking List, clears it, or opens a chooser for the previous working list, an empty list, or a saved named list. `Esc` restores the terminal and exits; `Enter` applies the selected choice before `RuntimeConfig` is built and before any sample is collected.
+3. `App::new` performs one synchronous initial collection while the alternate screen remains active, so the first main screen has data without exposing the terminal prompt. It initializes histories and selection state, then spawns `SamplingWorker` for subsequent samples.
+4. `main` calls `run_tui` using the same terminal session that covered startup and initial collection.
 5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Tracking List startup changes and explicit Save, Save As, Rename, and Delete actions for named Tracking Lists persist immediately.
 
 Interactive quit goes through application cleanup. If recording is active, the end record is attempted and the writer is flushed and closed before exit. Windows console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` set a termination request that enters the same cleanup path; close-class events wait for a bounded period so the main loop and workers can finish. Dropping `SamplingWorker` sends `Stop` and joins its thread.

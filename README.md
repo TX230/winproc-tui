@@ -55,6 +55,8 @@ Recording requires at least one process name in the Tracking List. It can still 
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. Loading a list may ask for confirmation before discarding retained history for removed names. Press `?` in the app for the complete dialog controls.
 
+When startup behavior is set to `Choose list`, the startup screen uses `Up` / `Down` to select a Tracking List and `Tab` / `Shift+Tab` to move focus through the list, `[ Start ]`, and `[ Quit ]`. `Enter` activates the focused choice or button. `Esc` exits without collecting the initial sample.
+
 Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain text into an issue or investigation note. For longer investigations, keep the `.log` file and reopen it with `Ctrl+L`.
 
 ### Essential Keys

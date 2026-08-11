@@ -73,12 +73,20 @@ pub(crate) fn warning_block(title: &'static str, theme: Theme) -> Block<'static>
 }
 
 pub(crate) fn button_line(buttons: &[(&'static str, bool)], theme: Theme) -> Line<'static> {
+    button_line_with_hover(buttons, None, theme)
+}
+
+pub(crate) fn button_line_with_hover(
+    buttons: &[(&'static str, bool)],
+    hovered: Option<usize>,
+    theme: Theme,
+) -> Line<'static> {
     let mut spans = Vec::new();
     for (index, (label, selected)) in buttons.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("   "));
         }
-        spans.push(button(label, *selected, theme));
+        spans.push(button(label, *selected, hovered == Some(index), theme));
     }
     Line::from(spans)
 }
@@ -149,8 +157,16 @@ fn button_width(label: &'static str) -> u16 {
     label.chars().count().saturating_add(2) as u16
 }
 
-fn button(label: &'static str, selected: bool, theme: Theme) -> Span<'static> {
-    if selected {
+fn button(label: &'static str, selected: bool, hovered: bool, theme: Theme) -> Span<'static> {
+    if hovered {
+        Span::styled(
+            format!("[{label}]"),
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.focus_surface)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if selected {
         Span::styled(
             format!("[{label}]"),
             Style::default()
@@ -170,5 +186,23 @@ fn confirm_button_text(theme: Theme) -> Color {
     match theme.name {
         "Light" => theme.background,
         _ => Color::Black,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::THEMES;
+
+    #[test]
+    fn hovered_button_uses_common_focus_surface_style() {
+        let theme = THEMES[0];
+        let line = button_line_with_hover(&[(" Start ", false)], Some(0), theme);
+        let style = line.spans[0].style;
+
+        assert_eq!(style.fg, Some(theme.text));
+        assert_eq!(style.bg, Some(theme.focus_surface));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+        assert_ne!(style.bg, Some(theme.warning));
     }
 }

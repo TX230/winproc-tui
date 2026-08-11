@@ -13,7 +13,9 @@ use crate::{
         Theme,
         widgets::{
             block::{panel_block, panel_block_focused, panel_title},
-            confirm_dialog::{self, button_areas, button_line, centered_dialog_rect},
+            confirm_dialog::{
+                self, button_areas, button_line, button_line_with_hover, centered_dialog_rect,
+            },
         },
     },
 };
@@ -266,23 +268,12 @@ fn tracked_lists_button_line<const N: usize>(
 ) -> Line<'static> {
     let focused = app.tracked_lists_focused_button();
     let hovered = app.tracked_lists_hovered_button();
-    let mut spans = Vec::new();
-    for (index, (label, button)) in buttons.into_iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::raw("   "));
-        }
-        let highlighted = hovered.map_or(focused == Some(button), |hovered| hovered == button);
-        let style = if highlighted {
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.focus_surface)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.text).bg(theme.panel_alt)
-        };
-        spans.push(Span::styled(format!("[{label}]"), style));
-    }
-    Line::from(spans)
+    let highlighted = hovered.or(focused);
+    let highlighted_index = buttons
+        .iter()
+        .position(|(_, button)| Some(*button) == highlighted);
+    let buttons = buttons.map(|(label, _)| (label, false));
+    button_line_with_hover(&buttons, highlighted_index, theme)
 }
 
 fn tracked_list_row_text(

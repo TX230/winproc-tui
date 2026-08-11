@@ -116,28 +116,50 @@ fn main() -> Result<()> {
     let config_path = resolve_config_path()?;
 
     let result = (|| {
-        let mut config = load_config(&config_path)?;
-        if config.tracking.startup == config::TrackedListStartup::ChooseList {
-            let mouse_enabled = config.general.mouse;
-            let mut terminal = setup_terminal(mouse_enabled)?;
-            let choice_result = startup::choose_startup_tracked_list(&mut terminal, &mut config);
-            let restore_result = restore_terminal(&mut terminal, mouse_enabled);
-            restore_result?;
-            choice_result?;
-        }
-        let mut runtime = build_runtime_config(config)?;
-        runtime.config_path = Some(config_path.clone());
-        let mut app = App::new(runtime)?;
-        let mut terminal = setup_terminal(app.runtime.mouse)?;
-        let run_result = run_tui(&mut terminal, &mut app);
-        restore_terminal(&mut terminal, app.runtime.mouse)?;
-        if run_result.is_ok() {
-            write_app_config(&config_path, &app)?;
-        }
-        run_result
+        let config = load_config(&config_path)?;
+        let mouse_enabled = config.general.mouse;
+        with_terminal_session(
+            || setup_terminal(mouse_enabled),
+            |terminal| run_application_session(terminal, &config_path, config),
+            |terminal| restore_terminal(terminal, mouse_enabled),
+        )
     })();
     platform::mark_shutdown_complete();
     result
+}
+
+fn run_application_session(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    config_path: &std::path::Path,
+    mut config: config::AppConfig,
+) -> Result<()> {
+    if config.tracking.startup == config::TrackedListStartup::ChooseList
+        && startup::choose_startup_tracked_list(terminal, &mut config)?
+            == startup::StartupOutcome::Quit
+    {
+        return Ok(());
+    }
+
+    let mut runtime = build_runtime_config(config)?;
+    runtime.config_path = Some(config_path.to_path_buf());
+    let mut app = App::new(runtime)?;
+    let run_result = run_tui(terminal, &mut app);
+    if run_result.is_ok() {
+        write_app_config(config_path, &app)?;
+    }
+    run_result
+}
+
+fn with_terminal_session<S, T>(
+    setup: impl FnOnce() -> Result<S>,
+    operation: impl FnOnce(&mut S) -> Result<T>,
+    restore: impl FnOnce(&mut S) -> Result<()>,
+) -> Result<T> {
+    let mut session = setup()?;
+    let operation_result = operation(&mut session);
+    let restore_result = restore(&mut session);
+    restore_result?;
+    operation_result
 }
 
 fn setup_terminal(mouse_enabled: bool) -> Result<Terminal<CrosstermBackend<Stdout>>> {
@@ -167,6 +189,61 @@ fn restore_terminal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_session_does_not_restore_between_startup_and_main() {
+        let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let setup_events = std::rc::Rc::clone(&events);
+        let operation_events = std::rc::Rc::clone(&events);
+        let restore_events = std::rc::Rc::clone(&events);
+
+        with_terminal_session(
+            || {
+                setup_events.borrow_mut().push("setup");
+                Ok(())
+            },
+            |_| {
+                let mut events = operation_events.borrow_mut();
+                events.push("startup choice");
+                events.push("initial sample");
+                events.push("main loop");
+                Ok(())
+            },
+            |_| {
+                restore_events.borrow_mut().push("restore");
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            events.borrow().as_slice(),
+            [
+                "setup",
+                "startup choice",
+                "initial sample",
+                "main loop",
+                "restore"
+            ]
+        );
+    }
+
+    #[test]
+    fn terminal_session_restores_after_startup_failure() {
+        let restored = std::cell::Cell::new(false);
+
+        let result = with_terminal_session(
+            || Ok(()),
+            |_| Err::<(), _>(anyhow::anyhow!("startup failed")),
+            |_| {
+                restored.set(true);
+                Ok(())
+            },
+        );
+
+        assert!(result.is_err());
+        assert!(restored.get());
+    }
 
     #[test]
     fn build_runtime_config_uses_config_process_filters() {
