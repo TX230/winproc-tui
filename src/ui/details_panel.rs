@@ -241,13 +241,7 @@ fn draw_active_samples_inspector(
     ) else {
         return;
     };
-    let title = Line::from(vec![
-        Span::styled("SAMPLES", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(
-            format!(" · Slot#{}", index + 1),
-            Style::default().fg(theme.muted),
-        ),
-    ]);
+    let title = samples_inspector_title(&entry.source, index, area.width, theme);
     let block = panel_block_focused(
         title,
         theme,
@@ -281,6 +275,40 @@ fn draw_active_samples_inspector(
         app.show_sample_delta,
     );
     render_samples_scrollbar(frame, inner, viewport, theme);
+}
+
+fn active_graph_slot_style(theme: Theme) -> Style {
+    Style::default()
+        .fg(theme.active_series)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn samples_inspector_title(
+    slot: &GraphSlot,
+    ordinal: usize,
+    area_width: u16,
+    theme: Theme,
+) -> Line<'static> {
+    let slot_label = format!("Slot#{}", ordinal + 1);
+    let mut spans = vec![
+        Span::styled("SAMPLES", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(" · ", Style::default().fg(theme.muted)),
+        Span::styled(slot_label.clone(), active_graph_slot_style(theme)),
+    ];
+
+    if let Some(identity) = slot.process_identity() {
+        let full_title = Line::from(format!("SAMPLES · {slot_label} · {}", identity.name));
+        let available_width = usize::from(area_width.saturating_sub(2));
+        if full_title.width() <= available_width {
+            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+            spans.push(Span::styled(
+                identity.name.clone(),
+                Style::default().fg(theme.text),
+            ));
+        }
+    }
+
+    Line::from(spans)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1242,9 +1270,7 @@ fn graph_slot_title_line(
         Style::default().fg(theme.muted)
     };
     let slot_style = if active {
-        Style::default()
-            .fg(theme.accent)
-            .add_modifier(Modifier::BOLD)
+        active_graph_slot_style(theme)
     } else {
         Style::default().fg(theme.muted)
     };
@@ -2468,7 +2494,7 @@ mod tests {
 
         assert_eq!(rendered, "Slot#1 · PrivBytes · app.exe · B-A: --");
         assert!(
-            line.spans[0].style.fg == Some(crate::ui::THEMES[0].accent)
+            line.spans[0].style.fg == Some(crate::ui::THEMES[0].active_series)
                 && line.spans[0].style.add_modifier.contains(Modifier::BOLD)
         );
         assert_eq!(line.spans[5].style.fg, Some(crate::ui::THEMES[0].accent));
@@ -2485,6 +2511,49 @@ mod tests {
         assert!(!rendered.contains("F7 Save CSV"));
         assert!(!rendered.contains("Samples:"));
         assert!(!rendered.contains("Start Time:"));
+    }
+
+    #[test]
+    fn samples_title_shows_process_name_only_when_it_fits() {
+        let theme = crate::ui::THEMES[0];
+        let slot = GraphSlot::process(
+            crate::model::ProcessIdentity {
+                pid: 42,
+                name: "app.exe".to_string(),
+                start_time: Some(1_700_000_000),
+            },
+            crate::app::DetailsMetric::Private,
+        );
+
+        let wide = samples_inspector_title(&slot, 1, 32, theme);
+        let narrow = samples_inspector_title(&slot, 1, 23, theme);
+        let rendered = |line: &Line<'_>| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<Vec<_>>()
+                .join("")
+        };
+
+        assert_eq!(rendered(&wide), "SAMPLES · Slot#2 · app.exe");
+        assert_eq!(rendered(&narrow), "SAMPLES · Slot#2");
+        assert_eq!(wide.spans[2].style.fg, Some(theme.active_series));
+        assert!(wide.spans[2].style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn samples_title_does_not_add_a_process_name_to_system_graphs() {
+        let theme = crate::ui::THEMES[0];
+        let slot = GraphSlot::system(crate::model::SystemMetric::CpuAverage);
+        let line = samples_inspector_title(&slot, 0, 80, theme);
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>()
+            .join("");
+
+        assert_eq!(rendered, "SAMPLES · Slot#1");
     }
 
     #[test]

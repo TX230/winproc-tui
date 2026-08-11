@@ -3820,7 +3820,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn graph_series_stay_grayscale_and_samples_stay_neutral_in_both_themes() {
+    fn graph_series_stay_grayscale_and_active_slot_tokens_match_in_both_themes() {
         let screen = Rect::new(0, 0, 180, 70);
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(1, 10);
@@ -3857,12 +3857,12 @@ processes = ["api.exe", "worker.exe"]
 
             let details = main_panel_areas_for_app(screen, &app).details.unwrap();
             let layout = ui::layout::graph_workspace_layout(details, &app);
-            let active_plot = layout
+            let active_card = layout
                 .graph_cards
                 .iter()
                 .find(|card| card.id == active_id)
-                .expect("active graph card")
-                .plot;
+                .expect("active graph card");
+            let active_plot = active_card.plot;
             let inactive_plot = layout
                 .graph_cards
                 .iter()
@@ -3900,8 +3900,17 @@ processes = ["api.exe", "worker.exe"]
             );
             let (slot_x, slot_y) = find_text_position_in_area(&buffer, samples, "Slot#2")
                 .expect("compact Samples slot title should render");
-            assert_eq!(buffer[(slot_x, slot_y)].fg, theme.muted);
-            assert!(!buffer[(slot_x, slot_y)].modifier.contains(Modifier::BOLD));
+            assert_eq!(buffer[(slot_x, slot_y)].fg, theme.active_series);
+            assert!(buffer[(slot_x, slot_y)].modifier.contains(Modifier::BOLD));
+            let (graph_slot_x, graph_slot_y) =
+                find_text_position_in_area(&buffer, active_card.title, "Slot#2")
+                    .expect("active Graph slot title should render");
+            assert_eq!(buffer[(graph_slot_x, graph_slot_y)].fg, theme.active_series);
+            assert!(
+                buffer[(graph_slot_x, graph_slot_y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
         }
     }
 
@@ -5323,7 +5332,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(rendered.matches("d: Delta").count(), 1, "{rendered}");
         assert_eq!(rendered.matches("l: Auto").count(), 1, "{rendered}");
         assert_eq!(
-            rendered.matches("SAMPLES · Slot#2").count(),
+            rendered.matches("SAMPLES · Slot#2 · proc-0").count(),
             1,
             "{rendered}"
         );
