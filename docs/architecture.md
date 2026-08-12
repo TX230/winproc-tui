@@ -83,7 +83,7 @@ The record types, fields, units, and missing-value rules are specified in [metri
 
 ### 4.1 Startup and shutdown
 
-1. `main` parses the CLI, installs the Windows console control handler, and resolves and loads `winproc-tui.toml`.
+1. `main` parses the CLI and acquires a Windows session-local named mutex. A second instance exits before terminal setup or configuration access. The first instance then installs the Windows console control handler and resolves and loads `winproc-tui.toml`.
 2. `main` enters raw mode and the alternate screen once for the complete interactive session. Startup mode then either resumes the previous working Tracking List, clears it, or opens a chooser for the previous working list, an empty list, or a saved named list. `Esc` restores the terminal and exits; `Enter` applies the selected choice before `RuntimeConfig` is built and before any sample is collected.
 3. `App::new` performs one synchronous initial collection while the alternate screen remains active, so the first main screen has data without exposing the terminal prompt. It initializes histories and selection state, then spawns `SamplingWorker` for subsequent samples.
 4. `main` calls `run_tui` using the same terminal session that covered startup and initial collection.
@@ -204,6 +204,7 @@ The Log list scans supported `*.log` files on a background worker. Only schema v
 The most important implementation invariants are:
 
 - sampling and other expensive investigation work must not block the UI thread;
+- only one `winproc-tui` instance may run in a Windows session, and a second launch must exit before terminal setup or configuration access;
 - display pause must not pause sampling, history updates, freshness, or recording;
 - Recording and Log view must never be active together;
 - stopping or quitting Recording must flush and close the log;

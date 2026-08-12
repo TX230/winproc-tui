@@ -25,6 +25,8 @@ winget install --id TX230.winproc-tui -e
 winproc-tui
 ```
 
+`winproc-tui` は、同じ Windows セッション内で 1 つだけ起動できます。すでに起動中の場合、2 つ目はターミナル表示やセッション設定を変更せず終了します。
+
 画面上部にはシステム全体の RAM / VRAM、ネットワーク / ディスク、CPU 使用率が表示され、`PROCESSES` パネルには実行中のプロセスが並びます。`Tab` / `Shift+Tab` でパネルを移動し、方向キーで行やカラムを選択します。
 
 RAM / VRAM、平均 CPU 使用率、NW/DISK の System Activity は、プロセス名を登録しなくても起動時から自動的に履歴を保持します。Tracking List はプロセス名だけを対象にします。

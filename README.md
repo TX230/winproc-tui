@@ -25,6 +25,8 @@ winget install --id TX230.winproc-tui -e
 winproc-tui
 ```
 
+Only one `winproc-tui` instance can run in a Windows session. If one is already running, another launch exits before changing the terminal or loading session settings.
+
 The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
 
 RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names.

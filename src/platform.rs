@@ -1,14 +1,22 @@
 use std::{
     ffi::OsStr,
     os::windows::ffi::OsStrExt,
+    ptr,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 
 use winapi::{
-    shared::minwindef::{BOOL, DWORD, TRUE, WORD},
+    shared::{
+        minwindef::{BOOL, DWORD, FALSE, TRUE, WORD},
+        ntdef::HANDLE,
+        winerror::ERROR_ALREADY_EXISTS,
+    },
     um::{
         consoleapi::SetConsoleCtrlHandler,
+        errhandlingapi::{GetLastError, SetLastError},
+        handleapi::CloseHandle,
+        synchapi::CreateMutexW,
         wincon::{
             CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT,
             CTRL_SHUTDOWN_EVENT,
@@ -22,9 +30,46 @@ use winapi::{
 
 static TERMINATION_REQUESTED: AtomicBool = AtomicBool::new(false);
 static SHUTDOWN_COMPLETE: AtomicBool = AtomicBool::new(false);
+const SINGLE_INSTANCE_MUTEX_NAME: &str = "Local\\TX230.winproc-tui.SingleInstance";
 const CONSOLE_CLOSE_CLEANUP_TIMEOUT: Duration = Duration::from_millis(4_500);
 const CONSOLE_CLOSE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const CONTROL_NOT_HANDLED: BOOL = 0;
+
+pub(crate) struct SingleInstanceGuard {
+    handle: HANDLE,
+}
+
+impl Drop for SingleInstanceGuard {
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.handle);
+        }
+    }
+}
+
+pub(crate) fn acquire_single_instance() -> std::io::Result<Option<SingleInstanceGuard>> {
+    acquire_named_mutex(SINGLE_INSTANCE_MUTEX_NAME)
+}
+
+fn acquire_named_mutex(name: &str) -> std::io::Result<Option<SingleInstanceGuard>> {
+    let name = to_wide(name);
+    unsafe {
+        SetLastError(0);
+    }
+    let handle = unsafe { CreateMutexW(ptr::null_mut(), FALSE, name.as_ptr()) };
+    if handle.is_null() {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        unsafe {
+            CloseHandle(handle);
+        }
+        Ok(None)
+    } else {
+        Ok(Some(SingleInstanceGuard { handle }))
+    }
+}
 
 pub(crate) fn install_console_control_handler() -> std::io::Result<()> {
     let ok = unsafe { SetConsoleCtrlHandler(Some(console_control_handler), TRUE) };
@@ -128,4 +173,34 @@ fn keyboard_input(vk: WORD, flags: u32) -> INPUT {
         };
     }
     input
+}
+
+#[cfg(test)]
+mod tests {
+    use super::acquire_named_mutex;
+
+    #[test]
+    fn named_mutex_rejects_a_duplicate_and_allows_reacquisition_after_drop() {
+        let name = format!(
+            "Local\\TX230.winproc-tui.Test.SingleInstance.{}",
+            std::process::id()
+        );
+        let first = acquire_named_mutex(&name)
+            .expect("first mutex acquisition should succeed")
+            .expect("first mutex acquisition should own the guard");
+
+        assert!(
+            acquire_named_mutex(&name)
+                .expect("duplicate mutex check should succeed")
+                .is_none()
+        );
+
+        drop(first);
+
+        assert!(
+            acquire_named_mutex(&name)
+                .expect("mutex should be acquirable after the first guard drops")
+                .is_some()
+        );
+    }
 }

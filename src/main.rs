@@ -111,6 +111,9 @@ use ui::{column_picker_area, column_picker_scrollbar_area, help_area, help_scrol
 
 fn main() -> Result<()> {
     Cli::parse();
+    let _single_instance = platform::acquire_single_instance()
+        .context("failed to check for another winproc-tui instance")?
+        .ok_or_else(|| anyhow::anyhow!("winproc-tui is already running"))?;
     platform::install_console_control_handler()
         .context("failed to install console control handler")?;
     let config_path = resolve_config_path()?;
