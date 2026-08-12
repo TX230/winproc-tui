@@ -20,13 +20,13 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use sysinfo::{ProcessesToUpdate, System};
 
-use crate::model::{GpuCapacitySample, GpuUsageSample, ProcessExtraMetrics, ProcessRow, Snapshot};
+use crate::model::{GpuSample, ProcessExtraMetrics, ProcessRow, Snapshot};
 
 pub(crate) use counters::{ProcessCounterSampler, SystemCounterSampler};
 use cpu::collect_cpu_summary;
 use disk::collect_disk_usages;
-use gpu::{GpuSampler, collect_gpu_capacity, collect_gpu_summary_usage, collect_process_gpu_usage};
-use memory::map_memory_counters;
+use gpu::{GpuSampler, merge_process_gpu_metrics};
+use memory::{collect_performance_info, map_memory_counters};
 use process::collect_process_extras;
 
 pub(crate) struct CollectSnapshotResult {
@@ -54,15 +54,12 @@ pub(crate) struct SamplingRuntime {
     options: SamplingOptions,
     sample_index: u64,
     cached_slow_process_extras: HashMap<u32, ProcessExtraMetrics>,
-    cached_gpu_summary_usage: GpuUsageSample,
-    cached_gpu_capacity: GpuCapacitySample,
 }
 
 const SLOW_SAMPLE_INTERVAL: u64 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SamplingOptions {
-    pub(crate) collect_ws_share: bool,
     pub(crate) collect_gpu: bool,
     pub(crate) collect_gui_resources: bool,
 }
@@ -70,7 +67,6 @@ pub(crate) struct SamplingOptions {
 impl Default for SamplingOptions {
     fn default() -> Self {
         Self {
-            collect_ws_share: false,
             collect_gpu: true,
             collect_gui_resources: true,
         }
@@ -90,8 +86,6 @@ impl SamplingRuntime {
             options,
             sample_index: 0,
             cached_slow_process_extras: HashMap::new(),
-            cached_gpu_summary_usage: GpuUsageSample::default(),
-            cached_gpu_capacity: GpuCapacitySample::default(),
         }
     }
 
@@ -106,8 +100,6 @@ impl SamplingRuntime {
             collect_slow_metrics,
             self.options,
             &mut self.cached_slow_process_extras,
-            &mut self.cached_gpu_summary_usage,
-            &mut self.cached_gpu_capacity,
         )
     }
 }
@@ -177,46 +169,34 @@ fn collect_snapshot(
     system: &mut System,
     mut system_sampler: Option<&mut SystemCounterSampler>,
     process_sampler: Option<&mut ProcessCounterSampler>,
-    gpu_sampler: Option<&mut GpuSampler>,
+    mut gpu_sampler: Option<&mut GpuSampler>,
     collect_slow_metrics: bool,
     options: SamplingOptions,
     cached_slow_process_extras: &mut HashMap<u32, ProcessExtraMetrics>,
-    cached_gpu_summary_usage: &mut GpuUsageSample,
-    cached_gpu_capacity: &mut GpuCapacitySample,
 ) -> CollectSnapshotResult {
     system.refresh_memory();
     system.refresh_processes(ProcessesToUpdate::All, true);
     system.refresh_cpu_all();
 
     let logical_processor_count = system.cpus().len().max(1);
-    let process_pdh_metrics = process_sampler
+    let mut process_pdh_metrics = process_sampler
         .map(|sampler| sampler.sample(logical_processor_count))
         .unwrap_or_default();
+    let gpu_sample = if options.collect_gpu {
+        gpu_sampler
+            .as_mut()
+            .and_then(|sampler| sampler.sample())
+            .unwrap_or_default()
+    } else {
+        GpuSample::default()
+    };
+    merge_process_gpu_metrics(&mut process_pdh_metrics, &gpu_sample);
     let process_extras = collect_process_extras(
         process_pdh_metrics,
         collect_slow_metrics,
         options,
-        gpu_sampler,
         cached_slow_process_extras,
     );
-    let gpu_summary_usage = if !options.collect_gpu {
-        GpuUsageSample::default()
-    } else if collect_slow_metrics {
-        let usage = collect_gpu_summary_usage().merge(collect_process_gpu_usage(&process_extras));
-        *cached_gpu_summary_usage = usage;
-        usage
-    } else {
-        *cached_gpu_summary_usage
-    };
-    let gpu_capacity = if !options.collect_gpu {
-        GpuCapacitySample::default()
-    } else if collect_slow_metrics {
-        let capacity = collect_gpu_capacity();
-        *cached_gpu_capacity = capacity.clone();
-        capacity
-    } else {
-        cached_gpu_capacity.clone()
-    };
     let disks = collect_disk_usages();
 
     let mut processes = system
@@ -239,7 +219,6 @@ fn collect_snapshot(
                 workset_bytes,
                 workset_private_bytes: extras.workset_private_bytes,
                 workset_shareable_bytes: extras.workset_shareable_bytes,
-                workset_shared_bytes: extras.workset_shared_bytes,
                 thread_count: extras.thread_count,
                 handle_count: extras.handle_count,
                 user_object_count: extras.user_object_count,
@@ -268,7 +247,10 @@ fn collect_snapshot(
             .then_with(|| left.name.cmp(&right.name))
     });
 
-    let total_memory = system.total_memory();
+    let performance = collect_performance_info();
+    let total_memory = performance
+        .physical_total_bytes
+        .unwrap_or_else(|| system.total_memory());
     let fallback_available_memory = system.available_memory();
     let sampled_counters = system_sampler
         .as_mut()
@@ -284,19 +266,25 @@ fn collect_snapshot(
 
     let mapped_counters =
         map_memory_counters(total_memory, fallback_available_memory, sampled_counters);
-    let used_memory = total_memory.saturating_sub(mapped_counters.available_memory);
+    let used_memory = total_memory.saturating_sub(
+        performance
+            .physical_available_bytes
+            .unwrap_or(mapped_counters.available_memory),
+    );
 
     CollectSnapshotResult {
         snapshot: Snapshot {
             captured_at: Local::now(),
             total_memory,
             used_memory,
+            available_memory: Some(mapped_counters.available_memory),
+            standby_memory: mapped_counters.standby_cache_bytes,
+            free_zeroed_memory: mapped_counters.free_zeroed_bytes,
             committed_memory: mapped_counters.committed_memory,
             commit_limit: mapped_counters.commit_limit,
-            gpu_dedicated_used: gpu_summary_usage.dedicated,
-            gpu_dedicated_total: gpu_capacity.dedicated_total,
-            gpu_shared_used: gpu_summary_usage.shared,
-            gpu_shared_total: gpu_capacity.shared_total,
+            paged_pool_memory: performance.paged_pool_bytes,
+            nonpaged_pool_memory: performance.nonpaged_pool_bytes,
+            pages_input_per_sec: mapped_counters.pages_input_per_sec,
             cpu_name: cpu_summary.name,
             cpu_frequency_mhz: cpu_summary.frequency_mhz,
             cpu_current_frequency_mhz: cpu_summary.current_frequency_mhz,
@@ -306,14 +294,18 @@ fn collect_snapshot(
             cpu_logical_processors: cpu_summary.logical_processors,
             cpu_topology: cpu_summary.topology,
             cpu_cache: cpu_summary.caches,
-            gpu_name: gpu_capacity.name,
+            gpu_adapters: gpu_sample.adapters,
             disks,
             disk_read_bytes_per_sec: mapped_counters.disk_read_bytes_per_sec,
             disk_write_bytes_per_sec: mapped_counters.disk_write_bytes_per_sec,
             disk_queue_length: mapped_counters.disk_queue_length,
             network_received_bytes_per_sec: mapped_counters.network_received_bytes_per_sec,
             network_sent_bytes_per_sec: mapped_counters.network_sent_bytes_per_sec,
-            process_count: processes.len(),
+            process_count: performance
+                .process_count
+                .and_then(|value| usize::try_from(value).ok())
+                .unwrap_or(processes.len()),
+            thread_count: performance.thread_count,
             processes,
         },
         warning: mapped_counters.warning,

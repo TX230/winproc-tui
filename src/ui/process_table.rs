@@ -1009,9 +1009,6 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn, column_widt
         MetricColumn::WorksetShareableBytes => {
             format_optional_compact_bytes(process.workset_shareable_bytes)
         }
-        MetricColumn::WorksetSharedBytes => {
-            format_optional_compact_bytes(process.workset_shared_bytes)
-        }
         MetricColumn::ThreadCount => format_optional_integer(process.thread_count),
         MetricColumn::HandleCount => format_optional_integer(process.handle_count),
         MetricColumn::UserObjectCount => format_optional_integer(process.user_object_count),
@@ -1082,7 +1079,6 @@ mod tests {
             workset_bytes: None,
             workset_private_bytes: Some(80),
             workset_shareable_bytes: None,
-            workset_shared_bytes: None,
             thread_count: None,
             handle_count: None,
             user_object_count: None,
@@ -1243,15 +1239,15 @@ mod tests {
         assert_eq!(process_metric_overflow_indicator(&all, columns.len()), None);
         assert_eq!(
             process_metric_overflow_indicator(&leading, columns.len()).as_deref(),
-            Some("‹ 1–3/15 ›")
+            Some("‹ 1–3/16 ›")
         );
         assert_eq!(
             process_metric_overflow_indicator(&offset, columns.len()).as_deref(),
-            Some("‹ 10–12/15 ›")
+            Some("‹ 10–12/16 ›")
         );
         assert_eq!(
             process_metric_overflow_indicator(&[], columns.len()).as_deref(),
-            Some("‹ 0/15 ›")
+            Some("‹ 0/16 ›")
         );
     }
 
@@ -1275,7 +1271,6 @@ mod tests {
             workset_bytes: None,
             workset_private_bytes: Some(80),
             workset_shareable_bytes: None,
-            workset_shared_bytes: None,
             thread_count: None,
             handle_count: None,
             user_object_count: None,

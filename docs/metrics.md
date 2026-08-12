@@ -16,7 +16,7 @@ Live sampling is requested once per second. The header derives freshness from th
 
 ## Process Table Columns
 
-The Process table can select the 15 columns included in `MetricColumn::ALL`. All 15 are selected when no saved column selection exists.
+The Process table can select the 16 columns included in `MetricColumn::ALL`. All 16 are selected when no saved column selection exists.
 Most columns are numeric metrics that can be sorted, graphed, sampled, and recorded.
 `Full Path` is a text column for process identification; it can be displayed, sorted, copied, filtered, and recorded, but it is not a Graph metric.
 
@@ -26,11 +26,12 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | `PrivBytes` | `private_bytes` | Committed memory owned by the process. This corresponds to Windows Commit size. | PDH `Private Bytes`; fallback is `sysinfo::virtual_memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `WS` | `workset_bytes` | Working Set currently resident in physical memory. | PDH `Working Set`; fallback is `sysinfo::memory()` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `WS Priv` | `workset_private_bytes` | Private part of the Working Set that is not shared with other processes. | PDH `Working Set - Private` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `WS Shrbl` | `workset_shareable_bytes` | Working Set bytes that can potentially be shared. This is not the amount currently shared with another process. | Same-sample PDH `Working Set - Working Set - Private` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `Thrd` | `thread_count` | Thread count. Used to spot unexpected growth. | ToolHelp process snapshot | Integer |
 | `Hndl` | `handle_count` | Handle count. Used to spot leaked files, synchronization objects, and similar resources. | PDH `Handle Count`; fallback is `GetProcessHandleCount` | Integer |
 | `USER` | `user_object_count` | Count of USER objects such as windows, menus, cursors, and icons. | `GetGuiResources(GR_USEROBJECTS)` | Integer |
 | `GDI` | `gdi_object_count` | Count of GDI objects such as bitmaps, brushes, pens, and fonts. | `GetGuiResources(GR_GDIOBJECTS)` | Integer |
-| `GPU%` | `gpu_percent` | Per-process GPU engine utilization. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | `%` with 1 decimal place |
+| `GPU%` | `gpu_percent` | Sum of the process's GPU engine utilization values, clamped to 100%. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | `%` with 1 decimal place |
 | `.NET Heap` | `dotnet_heap_bytes` | Total .NET CLR managed heap size. | PDH `\.NET CLR Memory(*)\# Bytes in all Heaps` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
@@ -42,35 +43,54 @@ When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering
 When it is not selected, filtering matches process name only.
 Compact byte formatting is used in the Processes table and for Graph Y-axis tick labels. Sorting and Graph data continue to use the raw numeric values.
 
-## Process Metrics Defined Internally Only
+`WS Shrbl` is derived only when both PDH counters exist in the same sample and `Working Set >= Working Set - Private`. An invalid negative difference is unavailable (`--`); it is never clamped to zero. The collector does not call `QueryWorkingSet`, and the previous `WS Shrd` metric is not collected or exposed.
 
-| Display name | Log field | Description | Current behavior |
-|---|---|---|---|
-| `WS Shrbl` | `workset_shareable_bytes` | Shareable pages in the Working Set. | Normally not collected because `collect_ws_share=false`; uses compact decimal units if shown in Processes. |
-| `WS Shrd` | `workset_shared_bytes` | Shareable pages that are actually shared. | Normally not collected because `collect_ws_share=false`; uses compact decimal units if shown in Processes. |
+## MEM and GPU Panels
 
-These metrics use the heavy `QueryWorkingSet` collection path, so they are currently excluded from normal monitoring.
+The first system resource region contains a two-page `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPUs`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPUs`.
 
-## System / RAM / VRAM Metrics
+Press `m` or `g` while the resource region has focus to select `MEM` or `GPU`. `Left` / `Right` change the MEM page or GPU adapter, `Up` / `Down` select a row, and `Space` or double-click adds or removes that row in the Graph Workspace.
 
-The `RAM/VRAM` panel and system details use four metrics.
+### MEM 1/2: Overview
 
-| Display name | Description | Primary source | Display format |
-|---|---|---|---|
-| `Physical Memory` | Physical memory used by the OS and total installed physical memory. | `sysinfo` and PDH `Available Bytes` | `used / total MB` |
-| `Committed` | OS-wide committed bytes and commit limit. | PDH `Committed Bytes`, `Commit Limit` | `used / total MB` |
-| `GPU Dedicated` | Dedicated GPU memory usage and capacity. | GPU PDH counters, DXGI adapter description | `used / total MB` |
-| `GPU Shared` | Shared GPU memory usage and capacity. | GPU PDH counters, DXGI adapter description | `used / total MB` |
+| Display name | Log field | Description | Primary source | Display format |
+|---|---|---|---|---|
+| `In use` | `physical_memory_bytes` | Installed physical memory minus physical pages available to the system. | `GetPerformanceInfo` (`PhysicalTotal`, `PhysicalAvailable`) | `used / total MB` and percent |
+| `Available` | `available_memory_bytes` | Memory immediately available for allocation. | PDH `\Memory\Available Bytes` | MB |
+| `Standby` | `standby_memory_bytes` | Sum of standby reserve, normal-priority, and core cache lists. | PDH `Standby Cache Reserve/Normal Priority/Core Bytes` | MB |
+| `Free + Zeroed` | `free_zeroed_memory_bytes` | Free and zeroed page lists. | PDH `\Memory\Free & Zero Page List Bytes` | MB |
+| `Commit charge` | `committed_bytes`, `commit_limit_bytes` | OS-wide commit charge and commit limit. | PDH `Committed Bytes`, `Commit Limit` | `used / limit MB` and percent |
 
-`RAM/VRAM` metrics always retain 7,200 samples and do not have a Tracking List display.
-When the `RAM/VRAM` panel has focus, `Space` or double-click adds or removes the selected metric in the Graph Workspace.
+### MEM 2/2: Pressure
+
+| Display name | Log field | Description | Primary source | Display format |
+|---|---|---|---|---|
+| `Paged Pool` | `paged_pool_bytes` | Pageable kernel pool allocation. | `GetPerformanceInfo` (`KernelPaged`) | MB |
+| `Nonpaged Pool` | `nonpaged_pool_bytes` | Nonpageable kernel pool allocation. | `GetPerformanceInfo` (`KernelNonpaged`) | MB |
+| `Pages Input/s` | `pages_input_per_sec` | Pages read from disk to resolve hard page faults. | PDH `\Memory\Pages Input/sec` | Integer pages/s |
+| `Processes` | `process_count` | System process count. | `GetPerformanceInfo` (`ProcessCount`) | Integer |
+| `Threads` | `thread_count` | System thread count. | `GetPerformanceInfo` (`ThreadCount`) | Integer |
+
+### GPU per adapter
+
+The title is `GPU n/N`. Adapter identity is the WDDM/DXGI LUID; values from different adapters are never summed. `Dedicated` and `Shared` capacity come from that adapter's DXGI description. They are capacity values, not WDDM budget values.
+
+| Display name | GPU adapter log field | Description | Primary source | Display format |
+|---|---|---|---|---|
+| `GPU` | `utilization_percent` | Busiest physical engine on the adapter. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | Busiest-engine percent |
+| `Encode` | `encode_average_percent`, `encode_max_percent`, `encode_engine_count` | VideoEncode utilization across exposed physical encode engines. | Same GPU Engine counter, `engtype_VideoEncode` | `average% max maximum% NE` |
+| `Decode` | `decode_average_percent`, `decode_max_percent`, `decode_engine_count` | VideoDecode utilization across exposed physical decode engines. | Same GPU Engine counter, `engtype_VideoDecode` | `average% max maximum% NE` |
+| `Dedicated` | `dedicated_bytes`, `dedicated_total_bytes` | Dedicated video-memory usage and capacity for this adapter. | PDH `\GPU Adapter Memory(*)\Dedicated Usage`, DXGI | `used / total MB` |
+| `Shared` | `shared_bytes`, `shared_total_bytes` | Shared system-memory usage and capacity for this adapter. | PDH `\GPU Adapter Memory(*)\Shared Usage`, DXGI | `used / total MB` |
+
+GPU Engine instance names are parsed for PID, LUID, physical-engine index, engine index, and engine type. PID instances that refer to the same physical engine are summed, then clamped to `0..100`. The adapter-wide `GPU` value is the maximum physical-engine value. For Encode and Decode, the main row and Graph value are the average across exposed engines; `max` is the busiest engine, and `NE` is the number of exposed WDDM engines. `NE` is neither a simultaneous session limit nor a count of physical codec circuits. Workloads may also run on `3D` or `Compute`, so codec rows are classification-specific rather than a complete statement about every media workload.
 
 ## CPU Panel
 
-The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after `RAM/VRAM` and `NW/DISK`.
+The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after the MEM/GPU resource region and `NW/DISK`.
 It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
 When the `CPUs` panel has focus, `Space` or double-click adds or removes `CPU Usage` in the Graph Workspace.
-The left edge of the panel content reserves two character cells for a `G` marker, matching the RAM/VRAM summary rows. The marker is accented when that source is the active Graph and muted when it is registered but inactive.
+The left edge of the panel content reserves two character cells for a Graph slot marker, matching the MEM/GPU summary rows. The marker is accented when that source is the active Graph and muted when it is registered but inactive.
 
 | Display | Description | Primary source | Format |
 |---|---|---|---|
@@ -87,7 +107,7 @@ The per-logical-CPU cells are intended for quick visual pressure checks, not rec
 The middle of the top panel shows `NW/DISK`, a compact System Activity view for network and disk counters.
 Pressing `i` opens `System Info` as a dialog instead of replacing this panel.
 These values are sampled once per screen update and are stored in recording frames so Log view can show the recorded values.
-When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `Space` or double-click adds or removes it in the Graph Workspace, matching the `RAM/VRAM` behavior.
+When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `Space` or double-click adds or removes it in the Graph Workspace, matching the MEM/GPU behavior.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
@@ -137,7 +157,7 @@ The `Image` tab displays these values:
 
 Unavailable values are displayed as one of `<access denied>`, `<exited>`, `<not available>`, `<missing>`, or `--`.
 
-The `Metrics` tab always lists the 14 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` and the internal `WS Shrbl` / `WS Shrd` metrics are excluded. Unlike the compact Processes column headers, the tab uses descriptive row names:
+The `Metrics` tab always lists the 15 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` is excluded. Unlike the compact Processes column headers, the tab uses descriptive row names:
 
 | Processes column | Metrics row |
 |---|---|
@@ -145,6 +165,7 @@ The `Metrics` tab always lists the 14 numeric selectable process metrics in `Met
 | `PrivBytes` | `Private Bytes` |
 | `WS` | `Working Set` |
 | `WS Priv` | `Working Set - Private` |
+| `WS Shrbl` | `Working Set - Shareable` |
 | `Thrd` | `Threads` |
 | `Hndl` | `Handles` |
 | `USER` | `USER Objects` |
@@ -222,14 +243,15 @@ Examples:
 
 The base screen update interval is fixed at 1 second and is not configurable.
 
-Heavy metrics are not collected every second.
-
 | Kind | Frequency | Target |
 |---|---:|---|
-| Normal sample | Every 1 second | `sysinfo`, PDH process counters, thread count, handle count |
-| Slow sample | Every 5 seconds | GUI resources, GPU usage/capacity, WS share metrics |
+| Normal sample | Every 1 second | `sysinfo`, system/process PDH counters, `GetPerformanceInfo`, thread count, handle count, `WS Shrbl`, system GPU/Encode/Decode, per-adapter GPU memory usage, per-process GPU/GPU D/GPU S |
+| Slow sample | Every 5 seconds | Per-process USER and GDI object counts |
+| Startup / topology check | Startup, then every 5 seconds | DXGI adapter identity, name, and Dedicated/Shared capacity; cached unless the configuration changes |
 
-Slow-sample values are cached until the next slow sample.
+GPU collection uses one persistent PDH query containing GPU Engine, GPU Process Memory, and GPU Adapter Memory counters. It does not open and close per-counter queries on every sample. Only GUI-resource values are cached between slow samples.
+
+The one-second GPU-memory cadence was validated with a local Windows benchmark using 38 Local Usage and 38 Non Local Usage instances over 500 samples in three runs. Reopening both PDH queries for every sample took approximately `0.055-0.056 ms` wall time and `0.062 ms` CPU time per sample. A persistent two-counter query took approximately `0.030-0.033 ms` wall time and `0.031 ms` CPU time per sample. These numbers exclude Rust instance-name parsing and map construction, so they support the persistent-query design but are not an end-to-end sampling-cost guarantee.
 
 ## History Retention
 
@@ -237,7 +259,7 @@ Slow-sample values are cached until the next slow sample.
 |---|---:|---|
 | General process | 120 | About 2 minutes. |
 | Tracked process | 7,200 | About 2 hours. |
-| System metrics | 7,200 | Used for `RAM/VRAM`, `System Activity`, and `CPU Usage` graphs. |
+| System metrics | 7,200 | Used for MEM, per-adapter GPU, System Activity, and CPU Usage graphs. |
 
 Process history identity consists of PID, process name, and start time.
 When start time is available, it is included in the identity to avoid mixing history after PID reuse.
@@ -294,6 +316,8 @@ Session record fields:
 | `sort` | object | Sort column / direction. |
 | `system` | object | Supporting information such as CPU / GPU names. |
 
+`system.gpu_adapters` is an array keyed by `luid_high` and `luid_low`. It stores per-adapter names and capacities when available.
+
 Frame record fields:
 
 | Field | Type | Description |
@@ -303,7 +327,7 @@ Frame record fields:
 | `session_id` | string | Same ID as the session record. |
 | `captured_at` | string | RFC 3339 timestamp. |
 | `tracked_names` | string array | Fixed session Tracking List; identical to the session record for logs written by the current version. |
-| `system_metrics` | object | System metrics recorded with the frame, including RAM/VRAM, CPU average, and System Activity values. |
+| `system_metrics` | object | System metrics recorded with the frame, including MEM, per-adapter GPU, CPU average, and System Activity values. |
 | `processes` | object array | Live processes matching the fixed session Tracking List. This can be empty when the configured tracked names have no live match. |
 
 Process object fields:
@@ -319,6 +343,7 @@ Process object fields:
 A `frame` record outputs system metrics and the live processes matching the fixed session Tracking List.
 System metrics are recorded even when no live process currently matches that list.
 System Activity fields are optional for compatibility with older logs and with systems where a PDH counter is unavailable.
+Every optional MEM, GPU, and process field is omitted when unavailable. New recordings store GPU values in `system_metrics.gpu_adapters`; the reader still accepts the older aggregate GPU fields but never combines adapters when reading the new form.
 
 ```json
 {
@@ -330,8 +355,34 @@ System Activity fields are optional for compatibility with older logs and with s
   "system_metrics": {
     "physical_memory_bytes": 1234567890,
     "total_memory_bytes": 34359738368,
+    "available_memory_bytes": 12000000000,
+    "standby_memory_bytes": 4000000000,
+    "free_zeroed_memory_bytes": 1000000000,
     "committed_bytes": 2345678901,
     "commit_limit_bytes": 68719476736,
+    "paged_pool_bytes": 450000000,
+    "nonpaged_pool_bytes": 320000000,
+    "pages_input_per_sec": 12,
+    "process_count": 214,
+    "thread_count": 3812,
+    "gpu_adapters": [
+      {
+        "luid_high": 0,
+        "luid_low": 12345,
+        "name": "Example GPU",
+        "utilization_percent": 74.0,
+        "encode_average_percent": 60.0,
+        "encode_max_percent": 100.0,
+        "encode_engine_count": 2,
+        "decode_average_percent": 18.0,
+        "decode_max_percent": 31.0,
+        "decode_engine_count": 2,
+        "dedicated_bytes": 2147483648,
+        "dedicated_total_bytes": 8589934592,
+        "shared_bytes": 536870912,
+        "shared_total_bytes": 17179869184
+      }
+    ],
     "cpu_percent": 37,
     "disk_read_bytes_per_sec": 10000000,
     "disk_write_bytes_per_sec": 20000000,
@@ -347,7 +398,8 @@ System Activity fields are optional for compatibility with older logs and with s
       "start_time": 1700000000,
       "metrics": {
         "private_bytes": 123456789,
-        "workset_private_bytes": 98765432
+        "workset_private_bytes": 98765432,
+        "workset_shareable_bytes": 12582912
       }
     }
   ]

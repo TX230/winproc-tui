@@ -105,7 +105,7 @@ Applying a live sample updates the current `Snapshot`, process and system histor
 
 ### 4.3 Sampling cycle
 
-`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies Win32/DXGI-derived extras, and returns `CollectSnapshotResult { snapshot, warning }`.
+`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies `GetPerformanceInfo` and Win32/DXGI-derived values, and returns `CollectSnapshotResult { snapshot, warning }`. GPU Engine, GPU Process Memory, and GPU Adapter Memory counters share one persistent query and are collected every second. DXGI adapter identity and capacity are initialized once and rechecked every five samples so a topology change can replace the cached static adapter list. The only five-second cached process extras are USER and GDI object counts.
 
 The collection boundary deliberately produces one aggregate `Snapshot`. Individual collectors do not update `App`, histories, or widgets. Open Files is an explicit per-process investigation action rather than part of continuous sampling; it enumerates disk file handles only and remains off the UI thread.
 
@@ -113,9 +113,9 @@ The collection boundary deliberately produces one aggregate `Snapshot`. Individu
 
 ### 5.1 Snapshot and histories
 
-`Snapshot` is the aggregate value for one capture time. It contains system memory, GPU, CPU, disk and activity values plus `Vec<ProcessRow>`. Unavailable process values are optional so access failure or process exit can be represented without fabricating a measurement.
+`Snapshot` is the aggregate value for one capture time. It contains system memory, a LUID-keyed `Vec<GpuAdapterSample>`, CPU, disk and activity values plus `Vec<ProcessRow>`. Unavailable values are optional so access failure or process exit can be represented without fabricating a measurement. Per-process `WS Shrbl` is derived from the two same-sample PDH Working Set counters; normal sampling never enumerates pages with `QueryWorkingSet`.
 
-`ProcessHistory` is keyed by `ProcessIdentity` and stores graphable samples and selected peaks. `SystemHistory` stores the system metrics used by RAM/VRAM, System Activity, and CPU graphs. Live histories apply the capacities described above; the log loader uses unbounded reconstruction for the selected recording.
+`ProcessHistory` is keyed by `ProcessIdentity` and stores graphable samples and selected peaks. `SystemHistory` stores the metrics used by MEM, LUID-keyed GPU, System Activity, and CPU graphs. A GPU Graph source carries the adapter LUID so switching the visible adapter does not retarget an existing Graph. Live histories apply the capacities described above; the log loader uses unbounded reconstruction for the selected recording.
 
 Column selection and sorting are modeled separately through `MetricColumn`, `SortColumn`, `ColumnPreset`, and `SortSpec`. Metric semantics and display units remain centralized in [metrics.md](metrics.md).
 

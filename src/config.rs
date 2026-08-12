@@ -273,7 +273,6 @@ pub(crate) fn build_runtime_config(config: AppConfig) -> Result<RuntimeConfig> {
         active_tracked_list,
         saved_tracked_lists,
         sampling_options: SamplingOptions {
-            collect_ws_share: false,
             collect_gpu: true,
             collect_gui_resources: true,
         },

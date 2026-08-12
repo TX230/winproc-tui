@@ -1,6 +1,10 @@
 use anyhow::Result;
 
-use crate::model::SystemCounterSample;
+use std::mem::{size_of, zeroed};
+
+use winapi::um::psapi::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
+
+use crate::model::{PerformanceSample, SystemCounterSample};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MappedSystemCounters {
@@ -9,6 +13,8 @@ pub(crate) struct MappedSystemCounters {
     pub(crate) commit_limit: Option<u64>,
     pub(crate) cache_bytes: Option<u64>,
     pub(crate) standby_cache_bytes: Option<u64>,
+    pub(crate) free_zeroed_bytes: Option<u64>,
+    pub(crate) pages_input_per_sec: Option<u64>,
     pub(crate) disk_read_bytes_per_sec: Option<u64>,
     pub(crate) disk_write_bytes_per_sec: Option<u64>,
     pub(crate) disk_queue_length: Option<f64>,
@@ -29,6 +35,8 @@ pub(crate) fn map_memory_counters(
             commit_limit: Some(sample.commit_limit),
             cache_bytes: sample.cache_bytes,
             standby_cache_bytes: sample.standby_cache_bytes,
+            free_zeroed_bytes: sample.free_zeroed_bytes,
+            pages_input_per_sec: sample.pages_input_per_sec,
             disk_read_bytes_per_sec: sample.disk_read_bytes_per_sec,
             disk_write_bytes_per_sec: sample.disk_write_bytes_per_sec,
             disk_queue_length: sample.disk_queue_length,
@@ -42,6 +50,8 @@ pub(crate) fn map_memory_counters(
             commit_limit: None,
             cache_bytes: None,
             standby_cache_bytes: None,
+            free_zeroed_bytes: None,
+            pages_input_per_sec: None,
             disk_read_bytes_per_sec: None,
             disk_write_bytes_per_sec: None,
             disk_queue_length: None,
@@ -55,6 +65,8 @@ pub(crate) fn map_memory_counters(
             commit_limit: None,
             cache_bytes: None,
             standby_cache_bytes: None,
+            free_zeroed_bytes: None,
+            pages_input_per_sec: None,
             disk_read_bytes_per_sec: None,
             disk_write_bytes_per_sec: None,
             disk_queue_length: None,
@@ -62,5 +74,27 @@ pub(crate) fn map_memory_counters(
             network_sent_bytes_per_sec: None,
             warning: Some(format!("Warning: commit counters unavailable ({error})")),
         },
+    }
+}
+
+pub(crate) fn collect_performance_info() -> PerformanceSample {
+    unsafe {
+        let mut info: PERFORMANCE_INFORMATION = zeroed();
+        info.cb = size_of::<PERFORMANCE_INFORMATION>() as u32;
+        if GetPerformanceInfo(&mut info, info.cb) == 0 {
+            return PerformanceSample::default();
+        }
+
+        let page_size = info.PageSize as u64;
+        PerformanceSample {
+            physical_total_bytes: Some((info.PhysicalTotal as u64).saturating_mul(page_size)),
+            physical_available_bytes: Some(
+                (info.PhysicalAvailable as u64).saturating_mul(page_size),
+            ),
+            paged_pool_bytes: Some((info.KernelPaged as u64).saturating_mul(page_size)),
+            nonpaged_pool_bytes: Some((info.KernelNonpaged as u64).saturating_mul(page_size)),
+            process_count: Some(info.ProcessCount as u64),
+            thread_count: Some(info.ThreadCount as u64),
+        }
     }
 }

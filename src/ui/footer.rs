@@ -66,7 +66,14 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
     }
 
     let mut items = match app.focused_panel {
-        FocusedPanel::System | FocusedPanel::SystemActivity | FocusedPanel::Cpu => {
+        FocusedPanel::System => vec![
+            ("m/g", "MEM/GPU"),
+            ("←/→", "Page/Adapter"),
+            ("Space", "Graph"),
+            ("Ctrl+C", "Copy"),
+            ("i", "System info"),
+        ],
+        FocusedPanel::SystemActivity | FocusedPanel::Cpu => {
             vec![("Space", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")]
         }
         FocusedPanel::Processes => {

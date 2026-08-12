@@ -96,7 +96,6 @@ pub(crate) enum MetricColumn {
     WorksetBytes,
     WorksetPrivateBytes,
     WorksetShareableBytes,
-    WorksetSharedBytes,
     ThreadCount,
     HandleCount,
     UserObjectCount,
@@ -149,11 +148,12 @@ impl ProcessColumnWidths {
 }
 
 impl MetricColumn {
-    pub(crate) const ALL: [Self; 15] = [
+    pub(crate) const ALL: [Self; 16] = [
         Self::CpuPercent,
         Self::PrivateBytes,
         Self::WorksetBytes,
         Self::WorksetPrivateBytes,
+        Self::WorksetShareableBytes,
         Self::ThreadCount,
         Self::HandleCount,
         Self::UserObjectCount,
@@ -174,7 +174,6 @@ impl MetricColumn {
             Self::WorksetBytes => "WS",
             Self::WorksetPrivateBytes => "WS Priv",
             Self::WorksetShareableBytes => "WS Shrbl",
-            Self::WorksetSharedBytes => "WS Shrd",
             Self::ThreadCount => "Thrd",
             Self::HandleCount => "Hndl",
             Self::UserObjectCount => "USER",
@@ -198,7 +197,6 @@ impl MetricColumn {
                 "Private portion of the working set currently resident in RAM"
             }
             Self::WorksetShareableBytes => "Shareable pages in working set",
-            Self::WorksetSharedBytes => "Actually shared pages in working set",
             Self::ThreadCount => "Number of threads in the process",
             Self::HandleCount => "Number of open handles in the process",
             Self::UserObjectCount => "USER objects such as windows and menus",
@@ -225,7 +223,6 @@ impl MetricColumn {
             Self::WorksetBytes
             | Self::WorksetPrivateBytes
             | Self::WorksetShareableBytes
-            | Self::WorksetSharedBytes
             | Self::GpuDedicatedBytes
             | Self::GpuSharedBytes => 10,
             Self::DotNetHeapBytes => 11,
@@ -248,7 +245,6 @@ impl MetricColumn {
             Self::WorksetShareableBytes => {
                 row.workset_shareable_bytes.map(|value| value.to_string())
             }
-            Self::WorksetSharedBytes => row.workset_shared_bytes.map(|value| value.to_string()),
             Self::ThreadCount => row.thread_count.map(|value| value.to_string()),
             Self::HandleCount => row.handle_count.map(|value| value.to_string()),
             Self::UserObjectCount => row.user_object_count.map(|value| value.to_string()),
@@ -273,9 +269,6 @@ impl MetricColumn {
             }
             Self::WorksetShareableBytes => {
                 compare_optional_u64(left.workset_shareable_bytes, right.workset_shareable_bytes)
-            }
-            Self::WorksetSharedBytes => {
-                compare_optional_u64(left.workset_shared_bytes, right.workset_shared_bytes)
             }
             Self::ThreadCount => compare_optional_u64(left.thread_count, right.thread_count),
             Self::HandleCount => compare_optional_u64(left.handle_count, right.handle_count),
@@ -315,7 +308,6 @@ impl MetricColumn {
             Self::WorksetBytes => row.workset_bytes.is_some(),
             Self::WorksetPrivateBytes => row.workset_private_bytes.is_some(),
             Self::WorksetShareableBytes => row.workset_shareable_bytes.is_some(),
-            Self::WorksetSharedBytes => row.workset_shared_bytes.is_some(),
             Self::ThreadCount => row.thread_count.is_some(),
             Self::HandleCount => row.handle_count.is_some(),
             Self::UserObjectCount => row.user_object_count.is_some(),
@@ -349,7 +341,6 @@ impl FromStr for MetricColumn {
             "ws" | "workingset" | "workset" => Ok(Self::WorksetBytes),
             "wspriv" | "workingsetprivate" | "worksetprivate" => Ok(Self::WorksetPrivateBytes),
             "wsshrbl" | "wsshareable" | "worksetshareable" => Ok(Self::WorksetShareableBytes),
-            "wsshrd" | "wsshared" | "worksetshared" => Ok(Self::WorksetSharedBytes),
             "thrd" | "thread" | "threads" | "threadcount" => Ok(Self::ThreadCount),
             "hndl" | "handle" | "handles" | "handlecount" => Ok(Self::HandleCount),
             "user" | "userobjects" | "userobjectcount" => Ok(Self::UserObjectCount),
@@ -398,6 +389,7 @@ impl ColumnPreset {
                 MetricColumn::PrivateBytes,
                 MetricColumn::WorksetBytes,
                 MetricColumn::WorksetPrivateBytes,
+                MetricColumn::WorksetShareableBytes,
             ],
             Self::Resources => &[
                 MetricColumn::PrivateBytes,
@@ -584,7 +576,6 @@ mod tests {
             workset_bytes: None,
             workset_private_bytes: ws_private,
             workset_shareable_bytes: None,
-            workset_shared_bytes: None,
             thread_count: None,
             handle_count: None,
             user_object_count: None,
@@ -623,18 +614,12 @@ mod tests {
     }
 
     #[test]
-    fn selectable_columns_exclude_working_set_share_columns() {
-        assert!(!MetricColumn::ALL.contains(&MetricColumn::WorksetShareableBytes));
-        assert!(!MetricColumn::ALL.contains(&MetricColumn::WorksetSharedBytes));
+    fn selectable_columns_include_working_set_shareable() {
+        assert!(MetricColumn::ALL.contains(&MetricColumn::WorksetShareableBytes));
         assert!(
-            !ColumnPreset::Memory
+            ColumnPreset::Memory
                 .columns()
                 .contains(&MetricColumn::WorksetShareableBytes)
-        );
-        assert!(
-            !ColumnPreset::Memory
-                .columns()
-                .contains(&MetricColumn::WorksetSharedBytes)
         );
     }
 
@@ -661,7 +646,6 @@ mod tests {
             workset_bytes: Some(1002),
             workset_private_bytes: Some(1003),
             workset_shareable_bytes: Some(1004),
-            workset_shared_bytes: Some(1005),
             thread_count: Some(6),
             handle_count: Some(7),
             user_object_count: Some(8),
@@ -695,10 +679,6 @@ mod tests {
                 .raw_value(&row)
                 .as_deref(),
             Some("1004")
-        );
-        assert_eq!(
-            MetricColumn::WorksetSharedBytes.raw_value(&row).as_deref(),
-            Some("1005")
         );
         assert_eq!(
             MetricColumn::ThreadCount.raw_value(&row).as_deref(),
@@ -765,7 +745,6 @@ mod tests {
             MetricColumn::WorksetBytes,
             MetricColumn::WorksetPrivateBytes,
             MetricColumn::WorksetShareableBytes,
-            MetricColumn::WorksetSharedBytes,
             MetricColumn::GpuDedicatedBytes,
             MetricColumn::GpuSharedBytes,
         ] {

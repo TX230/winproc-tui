@@ -27,6 +27,8 @@ pub(crate) struct SystemCounterSampler {
     standby_reserve_counter: Option<PDH_HCOUNTER>,
     standby_normal_counter: Option<PDH_HCOUNTER>,
     standby_core_counter: Option<PDH_HCOUNTER>,
+    free_zeroed_counter: Option<PDH_HCOUNTER>,
+    pages_input_counter: Option<PDH_HCOUNTER>,
     disk_read_counter: Option<PDH_HCOUNTER>,
     disk_write_counter: Option<PDH_HCOUNTER>,
     disk_queue_length_counter: Option<PDH_HCOUNTER>,
@@ -95,6 +97,9 @@ impl SystemCounterSampler {
                 add_optional_pdh_counter(query, "\\Memory\\Standby Cache Normal Priority Bytes");
             let standby_core_counter =
                 add_optional_pdh_counter(query, "\\Memory\\Standby Cache Core Bytes");
+            let free_zeroed_counter =
+                add_optional_pdh_counter(query, "\\Memory\\Free & Zero Page List Bytes");
+            let pages_input_counter = add_optional_pdh_counter(query, "\\Memory\\Pages Input/sec");
             let disk_read_counter =
                 add_optional_pdh_counter(query, "\\PhysicalDisk(_Total)\\Disk Read Bytes/sec");
             let disk_write_counter =
@@ -125,6 +130,8 @@ impl SystemCounterSampler {
                 standby_reserve_counter,
                 standby_normal_counter,
                 standby_core_counter,
+                free_zeroed_counter,
+                pages_input_counter,
                 disk_read_counter,
                 disk_write_counter,
                 disk_queue_length_counter,
@@ -156,6 +163,8 @@ impl SystemCounterSampler {
                     read_optional_pdh_large_value(self.standby_normal_counter),
                     read_optional_pdh_large_value(self.standby_core_counter),
                 ]),
+                free_zeroed_bytes: read_optional_pdh_large_value(self.free_zeroed_counter),
+                pages_input_per_sec: read_optional_pdh_large_value(self.pages_input_counter),
                 disk_read_bytes_per_sec: read_optional_pdh_large_value(self.disk_read_counter),
                 disk_write_bytes_per_sec: read_optional_pdh_large_value(self.disk_write_counter),
                 disk_queue_length: read_optional_pdh_double_value(self.disk_queue_length_counter),
@@ -336,6 +345,10 @@ impl ProcessCounterSampler {
             self.working_set_private_counter,
             |metric, value| metric.workset_private_bytes = Some(value),
         );
+        for metric in metrics.values_mut() {
+            metric.workset_shareable_bytes =
+                derive_workset_shareable_bytes(metric.workset_bytes, metric.workset_private_bytes);
+        }
         self.merge_u64_counter(
             &mut metrics,
             process_ids.clone(),
@@ -386,6 +399,13 @@ impl ProcessCounterSampler {
     }
 }
 
+fn derive_workset_shareable_bytes(
+    working_set: Option<u64>,
+    private_working_set: Option<u64>,
+) -> Option<u64> {
+    working_set?.checked_sub(private_working_set?)
+}
+
 impl Drop for ProcessCounterSampler {
     fn drop(&mut self) {
         unsafe {
@@ -426,5 +446,16 @@ mod tests {
             current_cpu_frequency_items(frequencies, performances),
             vec![(0, 3_843), (1, 3_182)]
         );
+    }
+
+    #[test]
+    fn workset_shareable_requires_a_valid_same_sample_difference() {
+        assert_eq!(
+            derive_workset_shareable_bytes(Some(1_000), Some(400)),
+            Some(600)
+        );
+        assert_eq!(derive_workset_shareable_bytes(Some(400), Some(1_000)), None);
+        assert_eq!(derive_workset_shareable_bytes(None, Some(400)), None);
+        assert_eq!(derive_workset_shareable_bytes(Some(1_000), None), None);
     }
 }

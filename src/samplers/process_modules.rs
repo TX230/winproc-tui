@@ -368,7 +368,6 @@ mod tests {
             workset_bytes: None,
             workset_private_bytes: None,
             workset_shareable_bytes: None,
-            workset_shared_bytes: None,
             thread_count: None,
             handle_count: None,
             user_object_count: None,

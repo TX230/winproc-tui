@@ -14,15 +14,14 @@ pub(crate) use history::{
     GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, ProcessHistory, ProcessIdentity, ProcessSample,
     SystemHistory, SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY,
 };
-pub(crate) use process::{
-    InfoValue, ProcessExtraMetrics, ProcessInfo, ProcessRow, WorkingSetShareSample,
-};
+pub(crate) use process::{InfoValue, ProcessExtraMetrics, ProcessInfo, ProcessRow};
 pub(crate) use process_environment::{
     ProcessEnvironmentEntry, ProcessEnvironmentError, ProcessEnvironmentReport,
 };
 pub(crate) use process_module::{ProcessModuleEntry, ProcessModulesError, ProcessModulesReport};
 pub(crate) use snapshot::Snapshot;
 pub(crate) use system::{
-    CpuCoreKind, CpuLogicalProcessorSample, CpuSummarySample, DiskUsageSample, GpuCapacitySample,
-    GpuUsageSample, SystemCounterSample,
+    CpuCoreKind, CpuLogicalProcessorSample, CpuSummarySample, DiskUsageSample, GpuAdapterId,
+    GpuAdapterSample, GpuEngineSummary, GpuSample, PerformanceSample, ProcessGpuSample,
+    SystemCounterSample,
 };

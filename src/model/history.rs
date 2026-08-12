@@ -13,7 +13,18 @@ const SYSTEM_HISTORY_SAMPLE_CAPACITY: usize = TRACKED_PROCESS_HISTORY_SAMPLE_CAP
 pub(crate) enum SystemMetric {
     CpuAverage,
     PhysicalMemory,
+    AvailableMemory,
+    StandbyMemory,
+    FreeZeroedMemory,
     Committed,
+    PagedPool,
+    NonpagedPool,
+    PagesInput,
+    ProcessCount,
+    ThreadCount,
+    GpuUtilization,
+    GpuEncode,
+    GpuDecode,
     GpuDedicated,
     GpuShared,
     NetworkReceived,
@@ -24,9 +35,24 @@ pub(crate) enum SystemMetric {
 }
 
 impl SystemMetric {
-    pub(crate) const RAM_VRAM_PANEL: [Self; 4] = [
+    pub(crate) const MEMORY_OVERVIEW_PANEL: [Self; 5] = [
         Self::PhysicalMemory,
+        Self::AvailableMemory,
+        Self::StandbyMemory,
+        Self::FreeZeroedMemory,
         Self::Committed,
+    ];
+    pub(crate) const MEMORY_PRESSURE_PANEL: [Self; 5] = [
+        Self::PagedPool,
+        Self::NonpagedPool,
+        Self::PagesInput,
+        Self::ProcessCount,
+        Self::ThreadCount,
+    ];
+    pub(crate) const GPU_PANEL: [Self; 5] = [
+        Self::GpuUtilization,
+        Self::GpuEncode,
+        Self::GpuDecode,
         Self::GpuDedicated,
         Self::GpuShared,
     ];
@@ -41,8 +67,19 @@ impl SystemMetric {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::CpuAverage => "CPU Usage",
-            Self::PhysicalMemory => "Physical Memory",
-            Self::Committed => "Committed",
+            Self::PhysicalMemory => "In use",
+            Self::AvailableMemory => "Available",
+            Self::StandbyMemory => "Standby",
+            Self::FreeZeroedMemory => "Free + Zeroed",
+            Self::Committed => "Commit charge",
+            Self::PagedPool => "Paged Pool",
+            Self::NonpagedPool => "Nonpaged Pool",
+            Self::PagesInput => "Pages Input/s",
+            Self::ProcessCount => "Processes",
+            Self::ThreadCount => "Threads",
+            Self::GpuUtilization => "GPU",
+            Self::GpuEncode => "Encode",
+            Self::GpuDecode => "Decode",
             Self::GpuDedicated => "GPU Dedicated",
             Self::GpuShared => "GPU Shared",
             Self::NetworkReceived => "Net Rx",
@@ -56,9 +93,21 @@ impl SystemMetric {
     pub(crate) fn panel_label(self) -> &'static str {
         match self {
             Self::CpuAverage => "CPUs",
-            Self::PhysicalMemory | Self::Committed | Self::GpuDedicated | Self::GpuShared => {
-                "RAM/VRAM"
-            }
+            Self::PhysicalMemory
+            | Self::AvailableMemory
+            | Self::StandbyMemory
+            | Self::FreeZeroedMemory
+            | Self::Committed
+            | Self::PagedPool
+            | Self::NonpagedPool
+            | Self::PagesInput
+            | Self::ProcessCount
+            | Self::ThreadCount => "MEM",
+            Self::GpuUtilization
+            | Self::GpuEncode
+            | Self::GpuDecode
+            | Self::GpuDedicated
+            | Self::GpuShared => "GPU",
             Self::NetworkReceived
             | Self::NetworkSent
             | Self::DiskRead
@@ -93,7 +142,6 @@ pub(crate) struct ProcessSample {
     pub(crate) workset_bytes: Option<u64>,
     pub(crate) workset_private_bytes: Option<u64>,
     pub(crate) workset_shareable_bytes: Option<u64>,
-    pub(crate) workset_shared_bytes: Option<u64>,
     pub(crate) thread_count: Option<u64>,
     pub(crate) handle_count: Option<u64>,
     pub(crate) user_object_count: Option<u64>,
@@ -115,7 +163,6 @@ impl ProcessSample {
             workset_bytes: row.workset_bytes,
             workset_private_bytes: row.workset_private_bytes,
             workset_shareable_bytes: row.workset_shareable_bytes,
-            workset_shared_bytes: row.workset_shared_bytes,
             thread_count: row.thread_count,
             handle_count: row.handle_count,
             user_object_count: row.user_object_count,
@@ -281,9 +328,16 @@ pub(crate) struct SystemSample {
     pub(crate) captured_at: DateTime<Local>,
     pub(crate) cpu_average_percent: Option<u64>,
     pub(crate) physical_memory_bytes: Option<u64>,
+    pub(crate) available_memory_bytes: Option<u64>,
+    pub(crate) standby_memory_bytes: Option<u64>,
+    pub(crate) free_zeroed_memory_bytes: Option<u64>,
     pub(crate) committed_bytes: Option<u64>,
-    pub(crate) gpu_dedicated_bytes: Option<u64>,
-    pub(crate) gpu_shared_bytes: Option<u64>,
+    pub(crate) paged_pool_bytes: Option<u64>,
+    pub(crate) nonpaged_pool_bytes: Option<u64>,
+    pub(crate) pages_input_per_sec: Option<u64>,
+    pub(crate) process_count: Option<u64>,
+    pub(crate) thread_count: Option<u64>,
+    pub(crate) gpu_adapters: Vec<crate::model::GpuAdapterSample>,
     pub(crate) network_received_bytes_per_sec: Option<u64>,
     pub(crate) network_sent_bytes_per_sec: Option<u64>,
     pub(crate) disk_read_bytes_per_sec: Option<u64>,
@@ -297,9 +351,16 @@ impl SystemSample {
             captured_at: snapshot.captured_at,
             cpu_average_percent: snapshot.cpu_total_usage_percent.map(u64::from),
             physical_memory_bytes: Some(snapshot.used_memory),
+            available_memory_bytes: snapshot.available_memory,
+            standby_memory_bytes: snapshot.standby_memory,
+            free_zeroed_memory_bytes: snapshot.free_zeroed_memory,
             committed_bytes: snapshot.committed_memory,
-            gpu_dedicated_bytes: snapshot.gpu_dedicated_used,
-            gpu_shared_bytes: snapshot.gpu_shared_used,
+            paged_pool_bytes: snapshot.paged_pool_memory,
+            nonpaged_pool_bytes: snapshot.nonpaged_pool_memory,
+            pages_input_per_sec: snapshot.pages_input_per_sec,
+            process_count: Some(snapshot.process_count as u64),
+            thread_count: snapshot.thread_count,
+            gpu_adapters: snapshot.gpu_adapters.clone(),
             network_received_bytes_per_sec: snapshot.network_received_bytes_per_sec,
             network_sent_bytes_per_sec: snapshot.network_sent_bytes_per_sec,
             disk_read_bytes_per_sec: snapshot.disk_read_bytes_per_sec,
@@ -312,9 +373,22 @@ impl SystemSample {
         match metric {
             SystemMetric::CpuAverage => self.cpu_average_percent.map(|value| value as f64),
             SystemMetric::PhysicalMemory => self.physical_memory_bytes.map(|value| value as f64),
+            SystemMetric::AvailableMemory => self.available_memory_bytes.map(|value| value as f64),
+            SystemMetric::StandbyMemory => self.standby_memory_bytes.map(|value| value as f64),
+            SystemMetric::FreeZeroedMemory => {
+                self.free_zeroed_memory_bytes.map(|value| value as f64)
+            }
             SystemMetric::Committed => self.committed_bytes.map(|value| value as f64),
-            SystemMetric::GpuDedicated => self.gpu_dedicated_bytes.map(|value| value as f64),
-            SystemMetric::GpuShared => self.gpu_shared_bytes.map(|value| value as f64),
+            SystemMetric::PagedPool => self.paged_pool_bytes.map(|value| value as f64),
+            SystemMetric::NonpagedPool => self.nonpaged_pool_bytes.map(|value| value as f64),
+            SystemMetric::PagesInput => self.pages_input_per_sec.map(|value| value as f64),
+            SystemMetric::ProcessCount => self.process_count.map(|value| value as f64),
+            SystemMetric::ThreadCount => self.thread_count.map(|value| value as f64),
+            SystemMetric::GpuUtilization
+            | SystemMetric::GpuEncode
+            | SystemMetric::GpuDecode
+            | SystemMetric::GpuDedicated
+            | SystemMetric::GpuShared => None,
             SystemMetric::NetworkReceived => self
                 .network_received_bytes_per_sec
                 .map(|value| value as f64),
@@ -322,6 +396,25 @@ impl SystemSample {
             SystemMetric::DiskRead => self.disk_read_bytes_per_sec.map(|value| value as f64),
             SystemMetric::DiskWrite => self.disk_write_bytes_per_sec.map(|value| value as f64),
             SystemMetric::DiskQueueLength => self.disk_queue_length,
+        }
+    }
+
+    pub(crate) fn gpu_value(
+        &self,
+        adapter_id: crate::model::GpuAdapterId,
+        metric: SystemMetric,
+    ) -> Option<f64> {
+        let adapter = self
+            .gpu_adapters
+            .iter()
+            .find(|adapter| adapter.id == adapter_id)?;
+        match metric {
+            SystemMetric::GpuUtilization => adapter.utilization_percent,
+            SystemMetric::GpuEncode => adapter.encode.average_percent,
+            SystemMetric::GpuDecode => adapter.decode.average_percent,
+            SystemMetric::GpuDedicated => adapter.dedicated_used.map(|value| value as f64),
+            SystemMetric::GpuShared => adapter.shared_used.map(|value| value as f64),
+            _ => None,
         }
     }
 }
@@ -399,7 +492,6 @@ mod tests {
             workset_bytes: None,
             workset_private_bytes: Some(private_bytes / 2),
             workset_shareable_bytes: None,
-            workset_shared_bytes: None,
             thread_count: None,
             handle_count: None,
             user_object_count: None,
@@ -617,12 +709,14 @@ mod tests {
             captured_at: now,
             total_memory: 0,
             used_memory: 0,
+            available_memory: None,
+            standby_memory: None,
+            free_zeroed_memory: None,
             committed_memory: None,
             commit_limit: None,
-            gpu_dedicated_used: None,
-            gpu_dedicated_total: None,
-            gpu_shared_used: None,
-            gpu_shared_total: None,
+            paged_pool_memory: None,
+            nonpaged_pool_memory: None,
+            pages_input_per_sec: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
             cpu_current_frequency_mhz: None,
@@ -632,7 +726,7 @@ mod tests {
             cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
-            gpu_name: None,
+            gpu_adapters: Vec::new(),
             disks: Vec::new(),
             disk_read_bytes_per_sec: None,
             disk_write_bytes_per_sec: None,
@@ -640,6 +734,7 @@ mod tests {
             network_received_bytes_per_sec: None,
             network_sent_bytes_per_sec: None,
             process_count: 0,
+            thread_count: None,
             processes: Vec::new(),
         };
         let mut history = SystemHistory::default();

@@ -27,9 +27,9 @@ winproc-tui
 
 Only one `winproc-tui` instance can run in a Windows session. If one is already running, another launch exits before changing the terminal or loading session settings.
 
-The upper panels show system-wide RAM / VRAM, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
+The upper panels show system-wide memory, per-adapter GPU activity and memory, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
 
-RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names.
+MEM, GPU, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names. With the MEM/GPU resource region focused, use `m` / `g` to select the resource view and `Left` / `Right` to change the MEM page or GPU adapter.
 
 ### 2. Graph Process Metrics
 
@@ -38,7 +38,7 @@ RAM / VRAM, average CPU usage, and NW/DISK System Activity retain history automa
 3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace. Repeat the same operation to remove it.
 4. Repeat the operation on other metrics to compare up to 16 Graphs. The active card stays visible as you move through the ordered list.
 
-`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the RAM / VRAM and NW/DISK panels and for CPU Usage in CPUS. Registered sources show their Graph slot number.
+`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, and NW/DISK panels and for CPU Usage in CPUS. Registered sources show their Graph slot number.
 
 ### 3. Compare Two Points
 
@@ -53,7 +53,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 5. Press `Ctrl+R` again, then confirm `Stop` to stop recording and close the log. The default `Continue` action leaves recording active.
 6. Press `Ctrl+L` to select and inspect a saved log.
 
-Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
+Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
 The recording start dialog shows how many names will be captured. That Tracking List is fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. Loading a list may ask for confirmation before discarding retained history for removed names. Press `?` in the app for the complete dialog controls.
@@ -80,10 +80,10 @@ Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain 
 
 ## Features
 
-- **Monitoring**: Shows RAM / VRAM, network and disk activity, a compact CPU panel with average and per-logical-CPU load, and key per-process metrics in a table. Sorting, column selection, filtering, and jump search help you narrow down the target.
+- **Monitoring**: Shows two pages of memory pressure metrics, per-adapter GPU/Encode/Decode load and memory, network and disk activity, a compact CPU panel, and key per-process metrics including `WS Shrbl`. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Keeps up to 16 selected metrics in an ordered, scrollable Graph Workspace with one synchronized Samples inspector and recent history for comparison.
-- **Tracking Lists**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. RAM / VRAM, average CPU usage, and System Activity always retain history without registration.
-- **Recording and Log view**: Saves tracked processes, RAM / VRAM, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
+- **Tracking Lists**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. MEM, GPU, average CPU usage, and System Activity always retain history without registration.
+- **Recording and Log view**: Saves tracked processes, MEM, per-adapter GPU, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
 - **Process investigation**: Opens a responsive, tabbed Process Info dialog for metrics, executable details, and files currently open by the selected live process.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, and mouse-based row selection and scrollbars are supported.
@@ -256,7 +256,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `Ctrl+F`            | Filter the process list by name, or by executable path when the `Full Path` column is selected. |
 | `Ctrl+I` / `Ctrl+J` | Process-name incremental search.                                                      |
-| `Space`             | Add or remove the selected graphable process, RAM / VRAM, NW/DISK, or CPU Usage metric in the Graph Workspace. |
+| `Space`             | Add or remove the selected graphable process, MEM, GPU, NW/DISK, or CPU Usage metric in the Graph Workspace. |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |
 | `Shift+Up/Down`     | Select a continuous range of live process rows.                                       |
@@ -311,7 +311,7 @@ Multiple Graphs share one absolute visible time range, cursor, selected time, an
 
 Press `Ctrl+R` to start recording or open its stop confirmation. Recording continues while that confirmation is open; `Continue` is selected by default.
 Recording requires at least one Tracking List entry and saves logs as JSON Lines (with the `.log` extension).
-Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracking List.
+Each frame records system metrics such as MEM, per-adapter GPU, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
 When recording starts, a save-path input dialog opens and shows how many Tracking List names will be fixed for the complete session. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
 While recording, `t` and `Ctrl+T` show a notice instead of changing the Tracking List. `Shift+T` remains available because it changes only the Tracked-only display. A log create, write, or flush failure stops recording, keeps any partial log, and opens a visible error dialog. A flush failure during quit cancels the quit.

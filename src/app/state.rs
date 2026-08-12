@@ -18,10 +18,10 @@ use crate::{
         EMPTY_TRACKED_LIST_NAME, RuntimeConfig, TrackedListStartup, is_empty_tracked_list_name,
     },
     model::{
-        ColumnPreset, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, MetricColumn, ProcessColumnWidths,
-        ProcessEnvironmentError, ProcessEnvironmentReport, ProcessHistory, ProcessIdentity,
-        ProcessInfo, ProcessModulesError, ProcessModulesReport, ProcessRow, ProcessSample,
-        Snapshot, SortColumn, SortDirection, SortSpec, SystemHistory, SystemMetric,
+        ColumnPreset, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, GpuAdapterId, MetricColumn,
+        ProcessColumnWidths, ProcessEnvironmentError, ProcessEnvironmentReport, ProcessHistory,
+        ProcessIdentity, ProcessInfo, ProcessModulesError, ProcessModulesReport, ProcessRow,
+        ProcessSample, Snapshot, SortColumn, SortDirection, SortSpec, SystemHistory, SystemMetric,
         TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY, sort_process_rows,
     },
     samplers::{
@@ -57,11 +57,12 @@ const PROCESS_MODULES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(
 const PROCESS_ENVIRONMENT_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PROCESS_NAVIGATION_ORDER_HOLD: Duration = Duration::from_millis(750);
 pub(crate) const SAMPLE_STALE_AFTER_SECONDS: u64 = 3;
-const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 14] = [
+const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 15] = [
     MetricColumn::CpuPercent,
     MetricColumn::PrivateBytes,
     MetricColumn::WorksetBytes,
     MetricColumn::WorksetPrivateBytes,
+    MetricColumn::WorksetShareableBytes,
     MetricColumn::ThreadCount,
     MetricColumn::HandleCount,
     MetricColumn::UserObjectCount,
@@ -81,7 +82,6 @@ const fn process_info_metric_label(column: MetricColumn) -> &'static str {
         MetricColumn::WorksetBytes => "Working Set",
         MetricColumn::WorksetPrivateBytes => "Working Set - Private",
         MetricColumn::WorksetShareableBytes => "Working Set - Shareable",
-        MetricColumn::WorksetSharedBytes => "Working Set - Shared",
         MetricColumn::ThreadCount => "Threads",
         MetricColumn::HandleCount => "Handles",
         MetricColumn::UserObjectCount => "USER Objects",
@@ -150,7 +150,6 @@ pub(crate) enum DetailsMetric {
     Workset,
     WorksetPrivate,
     WorksetShareable,
-    WorksetShared,
     ThreadCount,
     HandleCount,
     UserObjectCount,
@@ -183,7 +182,6 @@ impl GraphValueFormat {
             | DetailsMetric::Workset
             | DetailsMetric::WorksetPrivate
             | DetailsMetric::WorksetShareable
-            | DetailsMetric::WorksetShared
             | DetailsMetric::DotNetHeap
             | DetailsMetric::GpuDedicated
             | DetailsMetric::GpuShared => Self::Bytes,
@@ -303,6 +301,7 @@ impl ProcessMetricValue {
             MetricColumn::PrivateBytes => sample.private_bytes.map(Self::Bytes),
             MetricColumn::WorksetBytes => sample.workset_bytes.map(Self::Bytes),
             MetricColumn::WorksetPrivateBytes => sample.workset_private_bytes.map(Self::Bytes),
+            MetricColumn::WorksetShareableBytes => sample.workset_shareable_bytes.map(Self::Bytes),
             MetricColumn::ThreadCount => sample.thread_count.map(Self::Count),
             MetricColumn::HandleCount => sample.handle_count.map(Self::Count),
             MetricColumn::UserObjectCount => sample.user_object_count.map(Self::Count),
@@ -313,9 +312,7 @@ impl ProcessMetricValue {
             MetricColumn::GpuSharedBytes => sample.gpu_shared_bytes.map(Self::Bytes),
             MetricColumn::IoReadBytesPerSec => sample.io_read_bytes_per_sec.map(Self::IoRate),
             MetricColumn::IoWriteBytesPerSec => sample.io_write_bytes_per_sec.map(Self::IoRate),
-            MetricColumn::WorksetShareableBytes
-            | MetricColumn::WorksetSharedBytes
-            | MetricColumn::FullPath => None,
+            MetricColumn::FullPath => None,
         }
     }
 
@@ -347,7 +344,7 @@ impl ProcessMetricValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) enum GraphSlot {
     Process {
         identity: ProcessIdentity,
@@ -356,7 +353,52 @@ pub(crate) enum GraphSlot {
     System {
         metric: SystemMetric,
     },
+    Gpu {
+        adapter_id: GpuAdapterId,
+        adapter_name: String,
+        metric: SystemMetric,
+    },
 }
+
+impl PartialEq for GraphSlot {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Process {
+                    identity: left_identity,
+                    metric: left_metric,
+                },
+                Self::Process {
+                    identity: right_identity,
+                    metric: right_metric,
+                },
+            ) => left_identity == right_identity && left_metric == right_metric,
+            (
+                Self::System {
+                    metric: left_metric,
+                },
+                Self::System {
+                    metric: right_metric,
+                },
+            ) => left_metric == right_metric,
+            (
+                Self::Gpu {
+                    adapter_id: left_adapter,
+                    metric: left_metric,
+                    ..
+                },
+                Self::Gpu {
+                    adapter_id: right_adapter,
+                    metric: right_metric,
+                    ..
+                },
+            ) => left_adapter == right_adapter && left_metric == right_metric,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for GraphSlot {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct GraphId(pub(crate) u64);
@@ -421,10 +463,22 @@ impl GraphSlot {
         Self::System { metric }
     }
 
+    pub(crate) fn gpu(
+        adapter_id: GpuAdapterId,
+        adapter_name: impl Into<String>,
+        metric: SystemMetric,
+    ) -> Self {
+        Self::Gpu {
+            adapter_id,
+            adapter_name: adapter_name.into(),
+            metric,
+        }
+    }
+
     pub(crate) fn process_identity(&self) -> Option<&ProcessIdentity> {
         match self {
             Self::Process { identity, .. } => Some(identity),
-            Self::System { .. } => None,
+            Self::System { .. } | Self::Gpu { .. } => None,
         }
     }
 
@@ -432,6 +486,7 @@ impl GraphSlot {
         match self {
             Self::Process { metric, .. } => metric.label(),
             Self::System { metric } => metric.label(),
+            Self::Gpu { metric, .. } => metric.label(),
         }
     }
 
@@ -439,13 +494,14 @@ impl GraphSlot {
         match self {
             Self::Process { identity, .. } => identity.name.clone(),
             Self::System { metric } => metric.panel_label().to_string(),
+            Self::Gpu { adapter_name, .. } => adapter_name.clone(),
         }
     }
 
     pub(crate) fn graph_title_target_label(&self) -> &str {
         match self {
             Self::Process { identity, .. } => &identity.name,
-            Self::System { .. } => "SYSTEM",
+            Self::System { .. } | Self::Gpu { .. } => "SYSTEM",
         }
     }
 
@@ -459,6 +515,12 @@ impl GraphSlot {
             Self::System {
                 metric: SystemMetric::CpuAverage,
             } => GraphValueFormat::Percent,
+            Self::Gpu {
+                metric:
+                    SystemMetric::GpuUtilization | SystemMetric::GpuEncode | SystemMetric::GpuDecode,
+                ..
+            } => GraphValueFormat::Percent,
+            Self::Gpu { .. } => GraphValueFormat::Bytes,
             Self::System {
                 metric: SystemMetric::NetworkReceived | SystemMetric::NetworkSent,
             } => GraphValueFormat::MegabitsPerSec,
@@ -468,6 +530,10 @@ impl GraphSlot {
             Self::System {
                 metric: SystemMetric::DiskQueueLength,
             } => GraphValueFormat::QueueLength,
+            Self::System {
+                metric:
+                    SystemMetric::PagesInput | SystemMetric::ProcessCount | SystemMetric::ThreadCount,
+            } => GraphValueFormat::Count,
             Self::System { .. } => GraphValueFormat::Bytes,
         }
     }
@@ -485,7 +551,6 @@ impl DetailsMetric {
             Self::Workset => crate::model::MetricColumn::WorksetBytes,
             Self::WorksetPrivate => crate::model::MetricColumn::WorksetPrivateBytes,
             Self::WorksetShareable => crate::model::MetricColumn::WorksetShareableBytes,
-            Self::WorksetShared => crate::model::MetricColumn::WorksetSharedBytes,
             Self::ThreadCount => crate::model::MetricColumn::ThreadCount,
             Self::HandleCount => crate::model::MetricColumn::HandleCount,
             Self::UserObjectCount => crate::model::MetricColumn::UserObjectCount,
@@ -520,7 +585,6 @@ impl DetailsMetric {
             MetricColumn::WorksetBytes => Some(Self::Workset),
             MetricColumn::WorksetPrivateBytes => Some(Self::WorksetPrivate),
             MetricColumn::WorksetShareableBytes => Some(Self::WorksetShareable),
-            MetricColumn::WorksetSharedBytes => Some(Self::WorksetShared),
             MetricColumn::ThreadCount => Some(Self::ThreadCount),
             MetricColumn::HandleCount => Some(Self::HandleCount),
             MetricColumn::UserObjectCount => Some(Self::UserObjectCount),
@@ -544,6 +608,12 @@ pub(crate) enum FocusedPanel {
     Processes,
     DetailsGraph,
     DetailsSamples,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResourcePanel {
+    Memory,
+    Gpu,
 }
 
 impl FocusedPanel {
@@ -573,7 +643,7 @@ impl FocusedPanel {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::System => "RAM/VRAM",
+            Self::System => "MEM/GPU",
             Self::SystemActivity => "NW/DISK",
             Self::Cpu => "CPUs",
             Self::Processes => "Processes",
@@ -1044,6 +1114,9 @@ pub(crate) struct App {
     pub(crate) process_history: ProcessHistory,
     pub(crate) system_history: SystemHistory,
     pub(crate) ram_vram_selected_index: usize,
+    pub(crate) resource_panel: ResourcePanel,
+    pub(crate) memory_page: usize,
+    pub(crate) gpu_adapter_index: usize,
     pub(crate) system_activity_selected_index: usize,
     pub(crate) process_info_cache: HashMap<ProcessIdentity, ProcessInfo>,
     pub(crate) process_info_display_identity: Option<ProcessIdentity>,
@@ -1288,6 +1361,9 @@ impl App {
             process_history,
             system_history,
             ram_vram_selected_index: 0,
+            resource_panel: ResourcePanel::Memory,
+            memory_page: 0,
+            gpu_adapter_index: 0,
             system_activity_selected_index: 0,
             process_info_cache: HashMap::new(),
             process_info_display_identity: None,
@@ -2126,6 +2202,17 @@ impl App {
                     value: sample.value(*metric),
                 })
                 .collect(),
+            GraphSlot::Gpu {
+                adapter_id, metric, ..
+            } => self
+                .display_system_history()
+                .samples()
+                .iter()
+                .map(|sample| GraphSample {
+                    captured_at: sample.captured_at,
+                    value: sample.gpu_value(*adapter_id, *metric),
+                })
+                .collect(),
         }
     }
 
@@ -2522,10 +2609,83 @@ impl App {
     }
 
     pub(crate) fn selected_system_metric(&self) -> SystemMetric {
-        SystemMetric::RAM_VRAM_PANEL
+        self.selected_resource_metrics()
             .get(self.ram_vram_selected_index)
             .copied()
             .unwrap_or(SystemMetric::PhysicalMemory)
+    }
+
+    pub(crate) fn selected_resource_metrics(&self) -> &'static [SystemMetric] {
+        match self.resource_panel {
+            ResourcePanel::Memory if self.memory_page == 0 => &SystemMetric::MEMORY_OVERVIEW_PANEL,
+            ResourcePanel::Memory => &SystemMetric::MEMORY_PRESSURE_PANEL,
+            ResourcePanel::Gpu => &SystemMetric::GPU_PANEL,
+        }
+    }
+
+    pub(crate) fn selected_gpu_adapter(&self) -> Option<&crate::model::GpuAdapterSample> {
+        self.display_snapshot()
+            .gpu_adapters
+            .get(self.gpu_adapter_index)
+            .or_else(|| self.display_snapshot().gpu_adapters.first())
+    }
+
+    pub(crate) fn selected_system_graph_slot(&self) -> Option<GraphSlot> {
+        let metric = self.selected_system_metric();
+        match self.resource_panel {
+            ResourcePanel::Memory => Some(GraphSlot::system(metric)),
+            ResourcePanel::Gpu => self.selected_gpu_adapter().map(|adapter| {
+                GraphSlot::gpu(adapter.id, adapter.name.as_deref().unwrap_or("GPU"), metric)
+            }),
+        }
+    }
+
+    pub(crate) fn select_resource_panel(&mut self, panel: ResourcePanel) {
+        self.resource_panel = panel;
+        self.ram_vram_selected_index = self
+            .ram_vram_selected_index
+            .min(self.selected_resource_metrics().len().saturating_sub(1));
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
+    }
+
+    pub(crate) fn select_previous_resource_page(&mut self) {
+        match self.resource_panel {
+            ResourcePanel::Memory => self.memory_page = self.memory_page.saturating_sub(1),
+            ResourcePanel::Gpu => self.gpu_adapter_index = self.gpu_adapter_index.saturating_sub(1),
+        }
+        self.ram_vram_selected_index = 0;
+        self.status = self.resource_page_status();
+    }
+
+    pub(crate) fn select_next_resource_page(&mut self) {
+        match self.resource_panel {
+            ResourcePanel::Memory => self.memory_page = (self.memory_page + 1).min(1),
+            ResourcePanel::Gpu => {
+                let last = self.display_snapshot().gpu_adapters.len().saturating_sub(1);
+                self.gpu_adapter_index = self.gpu_adapter_index.saturating_add(1).min(last);
+            }
+        }
+        self.ram_vram_selected_index = 0;
+        self.status = self.resource_page_status();
+    }
+
+    fn resource_page_status(&self) -> String {
+        match self.resource_panel {
+            ResourcePanel::Memory => format!("MEM page {}/2", self.memory_page + 1),
+            ResourcePanel::Gpu => {
+                let count = self.display_snapshot().gpu_adapters.len();
+                let index = if count == 0 {
+                    0
+                } else {
+                    self.gpu_adapter_index.min(count - 1)
+                };
+                format!("GPU adapter {index}/{count}")
+            }
+        }
     }
 
     pub(crate) fn selected_system_activity_metric(&self) -> SystemMetric {
@@ -2537,7 +2697,11 @@ impl App {
 
     pub(crate) fn select_previous_system_metric(&mut self) {
         self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_sub(1);
-        self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
     }
 
     pub(crate) fn select_previous_system_activity_metric(&mut self) {
@@ -2552,8 +2716,12 @@ impl App {
         self.ram_vram_selected_index = self
             .ram_vram_selected_index
             .saturating_add(1)
-            .min(SystemMetric::RAM_VRAM_PANEL.len().saturating_sub(1));
-        self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+            .min(self.selected_resource_metrics().len().saturating_sub(1));
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
     }
 
     pub(crate) fn select_next_system_activity_metric(&mut self) {
@@ -2569,7 +2737,11 @@ impl App {
 
     pub(crate) fn select_first_system_metric(&mut self) {
         self.ram_vram_selected_index = 0;
-        self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
     }
 
     pub(crate) fn select_first_system_activity_metric(&mut self) {
@@ -2581,8 +2753,12 @@ impl App {
     }
 
     pub(crate) fn select_last_system_metric(&mut self) {
-        self.ram_vram_selected_index = SystemMetric::RAM_VRAM_PANEL.len().saturating_sub(1);
-        self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+        self.ram_vram_selected_index = self.selected_resource_metrics().len().saturating_sub(1);
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
     }
 
     pub(crate) fn select_last_system_activity_metric(&mut self) {
@@ -2596,8 +2772,12 @@ impl App {
 
     pub(crate) fn select_system_metric_index(&mut self, index: usize) {
         self.ram_vram_selected_index =
-            index.min(SystemMetric::RAM_VRAM_PANEL.len().saturating_sub(1));
-        self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+            index.min(self.selected_resource_metrics().len().saturating_sub(1));
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
     }
 
     pub(crate) fn select_system_activity_metric_index(&mut self, index: usize) {
@@ -2611,7 +2791,11 @@ impl App {
 
     pub(crate) fn apply_selected_system_metric_to_details(&mut self) {
         let metric = self.selected_system_metric();
-        self.status = format!("RAM/VRAM metric selected: {}", metric.label());
+        self.status = format!(
+            "{} metric selected: {}",
+            metric.panel_label(),
+            metric.label()
+        );
     }
 
     pub(crate) fn apply_selected_system_activity_metric_to_details(&mut self) {
@@ -2621,13 +2805,14 @@ impl App {
 
     pub(crate) fn toggle_selected_system_graph(&mut self) {
         if self.focused_panel != FocusedPanel::System {
-            self.status = "Graph registration requires RAM/VRAM focus".to_string();
+            self.status = "Graph registration requires MEM/GPU focus".to_string();
             return;
         }
-        self.toggle_graph_source(
-            GraphSlot::system(self.selected_system_metric()),
-            FocusedPanel::System,
-        );
+        let Some(slot) = self.selected_system_graph_slot() else {
+            self.status = "GPU metrics unavailable".to_string();
+            return;
+        };
+        self.toggle_graph_source(slot, FocusedPanel::System);
     }
 
     pub(crate) fn toggle_selected_system_activity_graph(&mut self) {
@@ -2653,7 +2838,11 @@ impl App {
     }
 
     pub(crate) fn apply_selected_system_metric_to_visible_details(&mut self) {
-        self.status = format!("RAM/VRAM row: {}", self.selected_system_metric().label());
+        self.status = format!(
+            "{} row: {}",
+            self.selected_system_metric().panel_label(),
+            self.selected_system_metric().label()
+        );
     }
 
     pub(crate) fn apply_selected_system_activity_metric_to_visible_details(&mut self) {
@@ -3429,7 +3618,9 @@ impl App {
             GraphSlot::Process { identity, .. } => {
                 self.display_process_history().time_range_for(identity)
             }
-            GraphSlot::System { .. } => self.display_system_history().time_range(),
+            GraphSlot::System { .. } | GraphSlot::Gpu { .. } => {
+                self.display_system_history().time_range()
+            }
         }
     }
 
@@ -6924,7 +7115,6 @@ fn process_sample_metric_value(
         DetailsMetric::Workset => sample.workset_bytes.map(|value| value as f64),
         DetailsMetric::WorksetPrivate => sample.workset_private_bytes.map(|value| value as f64),
         DetailsMetric::WorksetShareable => sample.workset_shareable_bytes.map(|value| value as f64),
-        DetailsMetric::WorksetShared => sample.workset_shared_bytes.map(|value| value as f64),
         DetailsMetric::ThreadCount => sample.thread_count.map(|value| value as f64),
         DetailsMetric::HandleCount => sample.handle_count.map(|value| value as f64),
         DetailsMetric::UserObjectCount => sample.user_object_count.map(|value| value as f64),
@@ -7076,11 +7266,6 @@ fn tracked_total_row(
             tracked
                 .iter()
                 .filter_map(|process| process.workset_shareable_bytes),
-        ),
-        workset_shared_bytes: sum_optional_u64(
-            tracked
-                .iter()
-                .filter_map(|process| process.workset_shared_bytes),
         ),
         thread_count: sum_optional_u64(tracked.iter().filter_map(|process| process.thread_count)),
         handle_count: sum_optional_u64(tracked.iter().filter_map(|process| process.handle_count)),

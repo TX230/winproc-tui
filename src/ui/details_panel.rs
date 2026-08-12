@@ -2599,10 +2599,7 @@ mod tests {
     #[test]
     fn system_graph_slot_titles_use_system_as_the_target() {
         for (metric, expected_metric) in [
-            (
-                crate::model::SystemMetric::PhysicalMemory,
-                "Physical Memory",
-            ),
+            (crate::model::SystemMetric::PhysicalMemory, "In use"),
             (crate::model::SystemMetric::DiskRead, "Disk R"),
             (crate::model::SystemMetric::CpuAverage, "CPU Usage"),
         ] {

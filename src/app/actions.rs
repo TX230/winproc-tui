@@ -18,8 +18,8 @@ use crate::{
         TrackedListNameButton, column_picker_close_button_area_for_screen, column_picker_index_at,
         column_picker_scrollbar_area, cpu_panel_area_for_screen,
         details_panel::graph_y_axis_label_width,
-        display_area_warning_ok_button_area, help_area, help_close_button_area,
-        help_scrollbar_area,
+        display_area_warning_ok_button_area, gpu_panel_area_for_screen, help_area,
+        help_close_button_area, help_scrollbar_area,
         layout::{
             GraphWorkspaceLayout, ProcessTableLayout, details_graph_chart_area,
             graph_shared_control_areas, graph_workspace_layout,
@@ -40,7 +40,6 @@ use crate::{
 };
 
 const PROCESS_WHEEL_ROWS: usize = 1;
-const RAM_VRAM_SEPARATOR_ROW: usize = 2;
 
 impl App {
     pub(crate) fn on_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -989,6 +988,22 @@ impl App {
 
         if self.focused_panel == FocusedPanel::System {
             match key.code {
+                KeyCode::Left => {
+                    self.select_previous_resource_page();
+                    return Ok(());
+                }
+                KeyCode::Right => {
+                    self.select_next_resource_page();
+                    return Ok(());
+                }
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'m') => {
+                    self.select_resource_panel(crate::app::ResourcePanel::Memory);
+                    return Ok(());
+                }
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'g') => {
+                    self.select_resource_panel(crate::app::ResourcePanel::Gpu);
+                    return Ok(());
+                }
                 KeyCode::Up => {
                     self.select_previous_system_metric();
                     self.apply_selected_system_metric_to_visible_details();
@@ -2329,7 +2344,15 @@ impl App {
     fn focus_panel_at(&mut self, x: u16, y: u16, screen_area: Rect) {
         if contains_point(ram_vram_panel_area_for_screen(screen_area, self), x, y) {
             self.focused_panel = FocusedPanel::System;
-            self.status = "Focus: RAM/VRAM".to_string();
+            self.select_resource_panel(crate::app::ResourcePanel::Memory);
+            self.status = "Focus: MEM".to_string();
+            return;
+        }
+
+        if contains_point(gpu_panel_area_for_screen(screen_area, self), x, y) {
+            self.focused_panel = FocusedPanel::System;
+            self.select_resource_panel(crate::app::ResourcePanel::Gpu);
+            self.status = "Focus: GPU".to_string();
             return;
         }
 
@@ -2423,24 +2446,25 @@ impl App {
 
     fn select_system_metric_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
         let area = ram_vram_panel_area_for_screen(screen_area, self);
-        if !contains_point(area, x, y) {
+        if contains_point(area, x, y)
+            && y >= area.y.saturating_add(1)
+            && y < area.bottom().saturating_sub(1)
+        {
+            let row = usize::from(y - area.y.saturating_add(1));
+            self.select_resource_panel(crate::app::ResourcePanel::Memory);
+            self.select_system_metric_index(row);
             return;
         }
-        let first_row_y = area.y.saturating_add(1);
-        let last_row_y = area.bottom().saturating_sub(1);
-        if y < first_row_y || y >= last_row_y {
-            return;
+
+        let gpu_area = gpu_panel_area_for_screen(screen_area, self);
+        if contains_point(gpu_area, x, y)
+            && y >= gpu_area.y.saturating_add(1)
+            && y < gpu_area.bottom().saturating_sub(1)
+        {
+            let row = usize::from(y.saturating_sub(gpu_area.y.saturating_add(1)));
+            self.select_resource_panel(crate::app::ResourcePanel::Gpu);
+            self.select_system_metric_index(row);
         }
-        let row = usize::from(y - first_row_y);
-        if row == RAM_VRAM_SEPARATOR_ROW {
-            return;
-        }
-        let index = if row > RAM_VRAM_SEPARATOR_ROW {
-            row.saturating_sub(1)
-        } else {
-            row
-        };
-        self.select_system_metric_index(index);
     }
 
     fn select_system_activity_metric_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
@@ -2578,27 +2602,35 @@ fn process_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Opti
 
 fn ram_vram_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {
     let area = ram_vram_panel_area_for_screen(screen_area, app);
-    if !contains_point(area, x, y) {
+    if contains_point(area, x, y)
+        && y >= area.y.saturating_add(1)
+        && y < area.bottom().saturating_sub(1)
+    {
+        let memory_metrics = if app.memory_page == 0 {
+            &crate::model::SystemMetric::MEMORY_OVERVIEW_PANEL[..]
+        } else {
+            &crate::model::SystemMetric::MEMORY_PRESSURE_PANEL[..]
+        };
+        return memory_metrics
+            .get(usize::from(y - area.y.saturating_add(1)))
+            .copied()
+            .map(GraphSlot::system);
+    }
+    let gpu_area = gpu_panel_area_for_screen(screen_area, app);
+    if !contains_point(gpu_area, x, y)
+        || y < gpu_area.y.saturating_add(1)
+        || y >= gpu_area.bottom().saturating_sub(1)
+    {
         return None;
     }
-    let first_row_y = area.y.saturating_add(1);
-    let last_row_y = area.bottom().saturating_sub(1);
-    if y < first_row_y || y >= last_row_y {
-        return None;
-    }
-    let row = usize::from(y - first_row_y);
-    if row == RAM_VRAM_SEPARATOR_ROW {
-        return None;
-    }
-    let index = if row > RAM_VRAM_SEPARATOR_ROW {
-        row.saturating_sub(1)
-    } else {
-        row
-    };
-    crate::model::SystemMetric::RAM_VRAM_PANEL
-        .get(index)
-        .copied()
-        .map(GraphSlot::system)
+    let index = usize::from(y.saturating_sub(gpu_area.y.saturating_add(1)));
+    let metric = crate::model::SystemMetric::GPU_PANEL.get(index).copied()?;
+    let adapter = app.selected_gpu_adapter()?;
+    Some(GraphSlot::gpu(
+        adapter.id,
+        adapter.name.as_deref().unwrap_or("GPU"),
+        metric,
+    ))
 }
 
 fn system_activity_graph_source_at(

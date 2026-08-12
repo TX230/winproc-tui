@@ -30,26 +30,53 @@ pub(crate) enum CpuCoreKind {
     Efficiency,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct GpuUsageSample {
-    pub(crate) dedicated: Option<u64>,
-    pub(crate) shared: Option<u64>,
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub(crate) struct GpuAdapterId {
+    pub(crate) high: u32,
+    pub(crate) low: u32,
 }
 
-impl GpuUsageSample {
-    pub(crate) fn merge(self, fallback: Self) -> Self {
-        Self {
-            dedicated: self.dedicated.or(fallback.dedicated),
-            shared: self.shared.or(fallback.shared),
-        }
-    }
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct GpuEngineSummary {
+    pub(crate) average_percent: Option<f64>,
+    pub(crate) max_percent: Option<f64>,
+    pub(crate) engine_count: u32,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct GpuCapacitySample {
-    pub(crate) dedicated_total: Option<u64>,
-    pub(crate) shared_total: Option<u64>,
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct GpuAdapterSample {
+    pub(crate) id: GpuAdapterId,
     pub(crate) name: Option<String>,
+    pub(crate) utilization_percent: Option<f64>,
+    pub(crate) encode: GpuEngineSummary,
+    pub(crate) decode: GpuEngineSummary,
+    pub(crate) dedicated_used: Option<u64>,
+    pub(crate) dedicated_total: Option<u64>,
+    pub(crate) shared_used: Option<u64>,
+    pub(crate) shared_total: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct GpuSample {
+    pub(crate) adapters: Vec<GpuAdapterSample>,
+    pub(crate) processes: std::collections::HashMap<u32, ProcessGpuSample>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct ProcessGpuSample {
+    pub(crate) utilization_percent: Option<f64>,
+    pub(crate) dedicated_bytes: Option<u64>,
+    pub(crate) shared_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PerformanceSample {
+    pub(crate) physical_total_bytes: Option<u64>,
+    pub(crate) physical_available_bytes: Option<u64>,
+    pub(crate) paged_pool_bytes: Option<u64>,
+    pub(crate) nonpaged_pool_bytes: Option<u64>,
+    pub(crate) process_count: Option<u64>,
+    pub(crate) thread_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +86,8 @@ pub(crate) struct SystemCounterSample {
     pub(crate) commit_limit: u64,
     pub(crate) cache_bytes: Option<u64>,
     pub(crate) standby_cache_bytes: Option<u64>,
+    pub(crate) free_zeroed_bytes: Option<u64>,
+    pub(crate) pages_input_per_sec: Option<u64>,
     pub(crate) disk_read_bytes_per_sec: Option<u64>,
     pub(crate) disk_write_bytes_per_sec: Option<u64>,
     pub(crate) disk_queue_length: Option<f64>,

@@ -621,7 +621,11 @@ fn recording_session_line(session: &RecordingSession, app: &App) -> Result<Strin
             "cpu_frequency_mhz": snapshot.cpu_frequency_mhz,
             "cpu_topology": snapshot.cpu_topology.as_deref(),
             "cpu_cache": snapshot.cpu_cache.as_deref(),
-            "gpu_name": snapshot.gpu_name.as_deref(),
+            "gpu_adapters": snapshot
+                .gpu_adapters
+                .iter()
+                .map(gpu_adapter_metadata_json)
+                .collect::<Vec<_>>(),
         },
     });
     serde_json::to_string(&frame).context("failed to serialize recording session")
@@ -648,24 +652,42 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
         "total_memory_bytes".to_string(),
         json!(snapshot.total_memory),
     );
+    insert_u64(
+        &mut metrics,
+        "available_memory_bytes",
+        snapshot.available_memory,
+    );
+    insert_u64(
+        &mut metrics,
+        "standby_memory_bytes",
+        snapshot.standby_memory,
+    );
+    insert_u64(
+        &mut metrics,
+        "free_zeroed_memory_bytes",
+        snapshot.free_zeroed_memory,
+    );
     insert_u64(&mut metrics, "committed_bytes", snapshot.committed_memory);
     insert_u64(&mut metrics, "commit_limit_bytes", snapshot.commit_limit);
+    insert_u64(&mut metrics, "paged_pool_bytes", snapshot.paged_pool_memory);
     insert_u64(
         &mut metrics,
-        "gpu_dedicated_bytes",
-        snapshot.gpu_dedicated_used,
+        "nonpaged_pool_bytes",
+        snapshot.nonpaged_pool_memory,
     );
     insert_u64(
         &mut metrics,
-        "gpu_dedicated_total_bytes",
-        snapshot.gpu_dedicated_total,
+        "pages_input_per_sec",
+        snapshot.pages_input_per_sec,
     );
-    insert_u64(&mut metrics, "gpu_shared_bytes", snapshot.gpu_shared_used);
-    insert_u64(
-        &mut metrics,
-        "gpu_shared_total_bytes",
-        snapshot.gpu_shared_total,
-    );
+    metrics.insert("process_count".to_string(), json!(snapshot.process_count));
+    insert_u64(&mut metrics, "thread_count", snapshot.thread_count);
+    if !snapshot.gpu_adapters.is_empty() {
+        metrics.insert(
+            "gpu_adapters".to_string(),
+            Value::Array(snapshot.gpu_adapters.iter().map(gpu_adapter_json).collect()),
+        );
+    }
     insert_u64(
         &mut metrics,
         "cpu_percent",
@@ -699,6 +721,58 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
     Value::Object(metrics)
 }
 
+fn gpu_adapter_json(adapter: &crate::model::GpuAdapterSample) -> Value {
+    let mut value = gpu_adapter_metadata_map(adapter);
+    insert_f64(
+        &mut value,
+        "utilization_percent",
+        adapter.utilization_percent,
+    );
+    insert_f64(
+        &mut value,
+        "encode_average_percent",
+        adapter.encode.average_percent,
+    );
+    insert_f64(&mut value, "encode_max_percent", adapter.encode.max_percent);
+    if adapter.encode.engine_count > 0 {
+        value.insert(
+            "encode_engine_count".to_string(),
+            json!(adapter.encode.engine_count),
+        );
+    }
+    insert_f64(
+        &mut value,
+        "decode_average_percent",
+        adapter.decode.average_percent,
+    );
+    insert_f64(&mut value, "decode_max_percent", adapter.decode.max_percent);
+    if adapter.decode.engine_count > 0 {
+        value.insert(
+            "decode_engine_count".to_string(),
+            json!(adapter.decode.engine_count),
+        );
+    }
+    insert_u64(&mut value, "dedicated_bytes", adapter.dedicated_used);
+    insert_u64(&mut value, "shared_bytes", adapter.shared_used);
+    Value::Object(value)
+}
+
+fn gpu_adapter_metadata_json(adapter: &crate::model::GpuAdapterSample) -> Value {
+    Value::Object(gpu_adapter_metadata_map(adapter))
+}
+
+fn gpu_adapter_metadata_map(adapter: &crate::model::GpuAdapterSample) -> Map<String, Value> {
+    let mut value = Map::new();
+    value.insert("luid_high".to_string(), json!(adapter.id.high));
+    value.insert("luid_low".to_string(), json!(adapter.id.low));
+    if let Some(name) = &adapter.name {
+        value.insert("name".to_string(), json!(name));
+    }
+    insert_u64(&mut value, "dedicated_total_bytes", adapter.dedicated_total);
+    insert_u64(&mut value, "shared_total_bytes", adapter.shared_total);
+    value
+}
+
 fn process_json(process: &ProcessRow) -> Value {
     let mut object = Map::new();
     object.insert("pid".to_string(), json!(process.pid));
@@ -727,11 +801,6 @@ fn metrics_json(process: &ProcessRow) -> Map<String, Value> {
         &mut metrics,
         "workset_shareable_bytes",
         process.workset_shareable_bytes,
-    );
-    insert_u64(
-        &mut metrics,
-        "workset_shared_bytes",
-        process.workset_shared_bytes,
     );
     insert_u64(&mut metrics, "thread_count", process.thread_count);
     insert_u64(&mut metrics, "handle_count", process.handle_count);
@@ -814,12 +883,14 @@ mod tests {
             captured_at: now,
             total_memory: 0,
             used_memory: 0,
+            available_memory: None,
+            standby_memory: None,
+            free_zeroed_memory: None,
             committed_memory: None,
             commit_limit: None,
-            gpu_dedicated_used: None,
-            gpu_dedicated_total: None,
-            gpu_shared_used: None,
-            gpu_shared_total: None,
+            paged_pool_memory: None,
+            nonpaged_pool_memory: None,
+            pages_input_per_sec: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
             cpu_current_frequency_mhz: None,
@@ -829,7 +900,7 @@ mod tests {
             cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
-            gpu_name: None,
+            gpu_adapters: Vec::new(),
             disks: Vec::new(),
             disk_read_bytes_per_sec: Some(10_000_000),
             disk_write_bytes_per_sec: Some(20_000_000),
@@ -837,6 +908,7 @@ mod tests {
             network_received_bytes_per_sec: Some(30_000_000),
             network_sent_bytes_per_sec: Some(40_000_000),
             process_count: 2,
+            thread_count: None,
             processes: vec![
                 row(1, "app.exe", Some(120), None),
                 row(2, "other.exe", Some(999), None),
@@ -899,7 +971,6 @@ mod tests {
             workset_bytes: None,
             workset_private_bytes: None,
             workset_shareable_bytes: None,
-            workset_shared_bytes: None,
             thread_count: None,
             handle_count,
             user_object_count: None,

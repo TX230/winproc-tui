@@ -54,7 +54,7 @@ use model::Snapshot;
 use model::SystemCounterSample;
 #[cfg(test)]
 use model::{
-    ColumnPreset, CpuCoreKind, CpuLogicalProcessorSample, GpuUsageSample, InfoValue, MetricColumn,
+    ColumnPreset, CpuCoreKind, CpuLogicalProcessorSample, InfoValue, MetricColumn,
     ProcessColumnWidths, ProcessEnvironmentEntry, ProcessEnvironmentError,
     ProcessEnvironmentReport, ProcessIdentity, ProcessInfo, ProcessModuleEntry,
     ProcessModulesError, ProcessModulesReport, ProcessRow, SortColumn, SortDirection, SortSpec,
@@ -76,8 +76,6 @@ use samplers::open_files::{
 use samplers::pdh::map_process_counter_instances_to_pids;
 #[cfg(test)]
 use samplers::pdh::{normalize_process_cpu_percent, sum_optional_values};
-#[cfg(test)]
-use samplers::process::{working_set_page_is_shareable, working_set_page_is_shared};
 #[cfg(test)]
 use samplers::process_environment::{
     ProcessEnvironmentRequest, ProcessEnvironmentResult, ProcessEnvironmentWorker,
@@ -334,7 +332,7 @@ mod tests {
             runtime
                 .process_column_widths
                 .resolved(SortColumn::Metric(MetricColumn::WorksetShareableBytes)),
-            MetricColumn::WorksetShareableBytes.width()
+            40
         );
     }
 
@@ -789,6 +787,8 @@ processes = ["api.exe", "worker.exe"]
                 commit_limit: 24_000,
                 cache_bytes: Some(1_000),
                 standby_cache_bytes: Some(2_000),
+                free_zeroed_bytes: Some(500),
+                pages_input_per_sec: Some(25),
                 disk_read_bytes_per_sec: Some(3_000),
                 disk_write_bytes_per_sec: Some(4_000),
                 disk_queue_length: Some(1.5),
@@ -4056,7 +4056,7 @@ processes = ["api.exe", "worker.exe"]
                 (
                     FocusedPanel::System,
                     ui::ram_vram_panel_area_for_screen(screen, &app),
-                    "RAM/VRAM",
+                    "MEM 1/2",
                 ),
                 (
                     FocusedPanel::SystemActivity,
@@ -4659,7 +4659,7 @@ processes = ["api.exe", "worker.exe"]
             GraphSlot::Process { identity, .. } => {
                 GraphSlot::process(identity, DetailsMetric::WorksetPrivate)
             }
-            GraphSlot::System { .. } => unreachable!(),
+            GraphSlot::System { .. } | GraphSlot::Gpu { .. } => unreachable!(),
         };
         app.register_graph_source_click(
             test_graph_source(&app, 3),
@@ -4682,7 +4682,7 @@ processes = ["api.exe", "worker.exe"]
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let points = [
             (
-                find_text_position(&buffer, "Physical Memory").unwrap(),
+                find_text_position(&buffer, "In use").unwrap(),
                 GraphSlot::system(SystemMetric::PhysicalMemory),
             ),
             (
@@ -6223,8 +6223,8 @@ processes = ["api.exe", "worker.exe"]
 
         let narrow_buffer = render_app_to_buffer(&app, 35, 20);
         let narrow = buffer_to_text(&narrow_buffer);
-        assert!(narrow.contains("‹ 0/15 ›"), "{narrow}");
-        let (indicator_x, indicator_y) = find_text_position(&narrow_buffer, "‹ 0/15 ›")
+        assert!(narrow.contains("‹ 0/16 ›"), "{narrow}");
+        let (indicator_x, indicator_y) = find_text_position(&narrow_buffer, "‹ 0/16 ›")
             .expect("the zero-column indicator should render");
         app.on_mouse(
             left_click(indicator_x, indicator_y),
@@ -6233,8 +6233,8 @@ processes = ["api.exe", "worker.exe"]
         assert!(!app.watch_enabled);
 
         let wide = render_app_to_text(&app, 400, 20);
-        assert!(!wide.contains("‹ 1–15/15 ›"), "{wide}");
-        assert!(!wide.contains("‹ 0/15 ›"), "{wide}");
+        assert!(!wide.contains("‹ 1–16/16 ›"), "{wide}");
+        assert!(!wide.contains("‹ 0/16 ›"), "{wide}");
     }
 
     #[test]
@@ -6353,7 +6353,7 @@ processes = ["api.exe", "worker.exe"]
 
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(app.selected_system_metric(), SystemMetric::Committed);
+        assert_eq!(app.selected_system_metric(), SystemMetric::AvailableMemory);
         assert_eq!(app.details_target, DetailsTarget::Process);
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
@@ -6361,7 +6361,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(app.details_target, DetailsTarget::Process);
         assert!(!app.show_details);
-        assert!(app.status.contains("Committed"));
+        assert!(app.status.contains("Available"));
     }
 
     #[test]
@@ -6372,7 +6372,7 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.selected_system_metric(), SystemMetric::Committed);
+        assert_eq!(app.selected_system_metric(), SystemMetric::AvailableMemory);
         assert_eq!(app.details_target, DetailsTarget::Process);
         assert!(!app.show_details);
 
@@ -6398,7 +6398,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.graph_entries.len(), 1);
         assert_eq!(
             app.active_graph_slot(),
-            Some(&GraphSlot::system(SystemMetric::Committed))
+            Some(&GraphSlot::system(SystemMetric::AvailableMemory))
         );
         assert!(app.show_details);
         assert_eq!(app.focused_panel, FocusedPanel::System);
@@ -6416,20 +6416,20 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             app.active_graph_slot(),
-            Some(&GraphSlot::system(SystemMetric::Committed))
+            Some(&GraphSlot::system(SystemMetric::AvailableMemory))
         );
         assert!(app.show_details);
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1  Committed")
-            .expect("RAM Graph slot number should render");
+        let (x, y) = find_text_position(&buffer, "1  Available")
+            .expect("MEM Graph slot number should render");
         let marker = &buffer[(x, y)];
         assert_eq!(marker.fg, ui::THEMES[0].active_series);
         assert_ne!(marker.bg, ui::THEMES[0].active_series);
         assert!(marker.modifier.contains(Modifier::BOLD));
         let rendered = buffer_to_text(&buffer);
         assert!(
-            rendered.contains("Slot#1 · Committed · SYSTEM"),
+            rendered.contains("Slot#1 · Available · SYSTEM"),
             "{rendered}"
         );
     }
@@ -6441,14 +6441,14 @@ processes = ["api.exe", "worker.exe"]
             .map(|index| add_test_graph(&mut app, index))
             .collect::<Vec<_>>();
         assert!(app.add_or_reveal_graph_source(
-            GraphSlot::system(SystemMetric::GpuDedicated),
+            GraphSlot::system(SystemMetric::StandbyMemory),
             FocusedPanel::System,
         ));
         assert!(app.set_active_graph(ids[0]));
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "10 GPU Dedicated")
-            .expect("two-digit RAM Graph slot number should keep a label gap");
+        let (x, y) = find_text_position(&buffer, "10 Standby")
+            .expect("two-digit MEM Graph slot number should keep a label gap");
         let marker = &buffer[(x, y)];
 
         assert_eq!(marker.fg, ui::THEMES[0].graph_line);
@@ -6456,19 +6456,31 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn ram_vram_panel_excludes_cache_standby_and_separates_gpu_rows() {
-        let app = make_test_app(3, 10);
+    fn memory_and_gpu_panels_show_the_new_summary_rows() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.gpu_adapters.push(model::GpuAdapterSample {
+            name: Some("Test GPU".to_string()),
+            ..model::GpuAdapterSample::default()
+        });
 
-        let rendered = render_app_to_text(&app, 120, 30);
+        let rendered = render_app_to_text(&app, 180, 30);
 
-        assert!(rendered.contains("RAM/VRAM"), "{rendered}");
+        assert!(rendered.contains("MEM 1/2"), "{rendered}");
+        assert!(rendered.contains("GPU 0/1"), "{rendered}");
         assert!(!rendered.contains("[Max samples: 7200]"), "{rendered}");
-        assert!(rendered.contains("Physical Memory"), "{rendered}");
-        assert!(rendered.contains("Committed"), "{rendered}");
-        assert!(rendered.contains("GPU Dedicated"), "{rendered}");
-        assert!(rendered.contains("GPU Shared"), "{rendered}");
-        assert!(rendered.contains("────────"), "{rendered}");
-        assert!(!rendered.contains("Standby"), "{rendered}");
+        for label in [
+            "In use",
+            "Available",
+            "Standby",
+            "Free + Zeroed",
+            "Commit charge",
+            "Encode",
+            "Decode",
+            "Dedicated",
+            "Shared",
+        ] {
+            assert!(rendered.contains(label), "missing {label}: {rendered}");
+        }
     }
 
     #[test]
@@ -6484,7 +6496,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("NW/DISK"), "{rendered}");
         assert!(
-            rendered.find("RAM/VRAM").unwrap() < rendered.find("NW/DISK").unwrap(),
+            rendered.find("MEM 1/2").unwrap() < rendered.find("NW/DISK").unwrap(),
             "{rendered}"
         );
         assert!(
@@ -6991,7 +7003,7 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(rendered.contains("Global  (any focus)"), "{rendered}");
         assert!(rendered.contains("Processes"), "{rendered}");
-        assert!(rendered.contains("RAM/VRAM"), "{rendered}");
+        assert!(rendered.contains("MEM/GPU"), "{rendered}");
         assert!(rendered.contains("NW/DISK"), "{rendered}");
         assert!(
             rendered.contains("Graph Workspace  (Graph focus)"),
@@ -8745,7 +8757,7 @@ processes = ["api.exe", "worker.exe"]
     fn ctrl_c_copies_selected_ram_vram_row_text() {
         let mut app = make_test_app(1, 10);
         app.focused_panel = FocusedPanel::System;
-        app.ram_vram_selected_index = 1;
+        app.ram_vram_selected_index = 4;
         app.snapshot.committed_memory = Some(9_000_000_000);
         app.snapshot.commit_limit = Some(18_000_000_000);
 
@@ -8754,9 +8766,9 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             app::clipboard::last_copied_text().as_deref(),
-            Some("Committed\t9,000 MB / 18,000 MB ( 50%)")
+            Some("Commit charge\t9,000 MB / 18,000 MB ( 50%)")
         );
-        assert_eq!(app.status, "Copied row: Committed");
+        assert_eq!(app.status, "Copied row: Commit charge");
     }
 
     #[test]
@@ -9082,6 +9094,7 @@ processes = ["api.exe", "worker.exe"]
                 "Private Bytes",
                 "Working Set",
                 "Working Set - Private",
+                "Working Set - Shareable",
                 "Threads",
                 "Handles",
                 "USER Objects",
@@ -11807,26 +11820,6 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn gpu_usage_prefers_adapter_totals_and_falls_back_per_field() {
-        let merged = GpuUsageSample {
-            dedicated: Some(128),
-            shared: None,
-        }
-        .merge(GpuUsageSample {
-            dedicated: Some(64),
-            shared: Some(32),
-        });
-
-        assert_eq!(
-            merged,
-            GpuUsageSample {
-                dedicated: Some(128),
-                shared: Some(32),
-            }
-        );
-    }
-
-    #[test]
     fn process_counter_instances_map_to_pids() {
         let process_ids = [
             ("chrome".to_string(), 4100),
@@ -11920,21 +11913,23 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn working_set_flag_helpers_match_share_bits() {
-        let shareable_shared = (1usize << 8) | (2usize << 5);
-        let shareable_not_shared = 1usize << 8;
-
-        assert!(working_set_page_is_shareable(shareable_shared));
-        assert!(working_set_page_is_shared(shareable_shared));
-        assert!(working_set_page_is_shareable(shareable_not_shared));
-        assert!(!working_set_page_is_shared(shareable_not_shared));
+    fn filtered_dxgi_adapters_are_skipped() {
+        assert!(is_filtered_dxgi_adapter(DXGI_ADAPTER_FLAG_SOFTWARE));
+        assert!(is_filtered_dxgi_adapter(DXGI_ADAPTER_FLAG_REMOTE));
+        assert!(!is_filtered_dxgi_adapter(0));
     }
 
     #[test]
-    fn filtered_dxgi_adapters_are_skipped() {
-        assert!(is_filtered_dxgi_adapter(DXGI_ADAPTER_FLAG_SOFTWARE as u32));
-        assert!(is_filtered_dxgi_adapter(DXGI_ADAPTER_FLAG_REMOTE as u32));
-        assert!(!is_filtered_dxgi_adapter(0));
+    fn gpu_graph_identity_uses_luid_and_metric_not_display_name() {
+        let adapter_id = model::GpuAdapterId { high: 1, low: 2 };
+        assert_eq!(
+            GraphSlot::gpu(adapter_id, "old name", SystemMetric::GpuEncode),
+            GraphSlot::gpu(adapter_id, "new name", SystemMetric::GpuEncode)
+        );
+        assert_ne!(
+            GraphSlot::gpu(adapter_id, "GPU", SystemMetric::GpuEncode),
+            GraphSlot::gpu(adapter_id, "GPU", SystemMetric::GpuDecode)
+        );
     }
 
     fn make_test_app(row_count: usize, page_size: usize) -> App {
@@ -12027,8 +12022,6 @@ processes = ["api.exe", "worker.exe"]
             file_version: InfoValue::Value("1.0.0.1".to_string()),
             workset_bytes: InfoValue::Value("1,024".to_string()),
             workset_private_bytes: InfoValue::Value("512".to_string()),
-            ws_shareable_bytes: InfoValue::Value("256".to_string()),
-            ws_shared_bytes: InfoValue::Value("128".to_string()),
         }
     }
 
@@ -13222,6 +13215,9 @@ processes = ["api.exe", "worker.exe"]
             process_history: ProcessHistory::default(),
             system_history: SystemHistory::default(),
             ram_vram_selected_index: 0,
+            resource_panel: app::ResourcePanel::Memory,
+            memory_page: 0,
+            gpu_adapter_index: 0,
             system_activity_selected_index: 0,
             process_info_cache: std::collections::HashMap::new(),
             process_info_display_identity: None,
@@ -13247,7 +13243,6 @@ processes = ["api.exe", "worker.exe"]
                 workset_bytes: Some(index as u64),
                 workset_private_bytes: None,
                 workset_shareable_bytes: None,
-                workset_shared_bytes: None,
                 thread_count: None,
                 handle_count: None,
                 user_object_count: None,
@@ -13265,12 +13260,14 @@ processes = ["api.exe", "worker.exe"]
             captured_at: Local::now(),
             total_memory: 0,
             used_memory: 0,
+            available_memory: None,
+            standby_memory: None,
+            free_zeroed_memory: None,
             committed_memory: None,
             commit_limit: None,
-            gpu_dedicated_used: None,
-            gpu_dedicated_total: None,
-            gpu_shared_used: None,
-            gpu_shared_total: None,
+            paged_pool_memory: None,
+            nonpaged_pool_memory: None,
+            pages_input_per_sec: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
             cpu_current_frequency_mhz: None,
@@ -13280,7 +13277,7 @@ processes = ["api.exe", "worker.exe"]
             cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
-            gpu_name: None,
+            gpu_adapters: Vec::new(),
             disks: Vec::new(),
             disk_read_bytes_per_sec: None,
             disk_write_bytes_per_sec: None,
@@ -13288,6 +13285,7 @@ processes = ["api.exe", "worker.exe"]
             network_received_bytes_per_sec: None,
             network_sent_bytes_per_sec: None,
             process_count: row_count,
+            thread_count: None,
             processes,
         }
     }

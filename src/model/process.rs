@@ -10,7 +10,6 @@ pub(crate) struct ProcessRow {
     pub(crate) workset_bytes: Option<u64>,
     pub(crate) workset_private_bytes: Option<u64>,
     pub(crate) workset_shareable_bytes: Option<u64>,
-    pub(crate) workset_shared_bytes: Option<u64>,
     pub(crate) thread_count: Option<u64>,
     pub(crate) handle_count: Option<u64>,
     pub(crate) user_object_count: Option<u64>,
@@ -30,7 +29,6 @@ pub(crate) struct ProcessExtraMetrics {
     pub(crate) workset_bytes: Option<u64>,
     pub(crate) workset_private_bytes: Option<u64>,
     pub(crate) workset_shareable_bytes: Option<u64>,
-    pub(crate) workset_shared_bytes: Option<u64>,
     pub(crate) thread_count: Option<u64>,
     pub(crate) handle_count: Option<u64>,
     pub(crate) user_object_count: Option<u64>,
@@ -41,12 +39,6 @@ pub(crate) struct ProcessExtraMetrics {
     pub(crate) dotnet_heap_bytes: Option<u64>,
     pub(crate) io_read_bytes_per_sec: Option<u64>,
     pub(crate) io_write_bytes_per_sec: Option<u64>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WorkingSetShareSample {
-    pub(crate) shareable_bytes: u64,
-    pub(crate) shared_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,6 +96,4 @@ pub(crate) struct ProcessInfo {
     pub(crate) file_version: InfoValue,
     pub(crate) workset_bytes: InfoValue,
     pub(crate) workset_private_bytes: InfoValue,
-    pub(crate) ws_shareable_bytes: InfoValue,
-    pub(crate) ws_shared_bytes: InfoValue,
 }

@@ -241,15 +241,43 @@ fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
         SystemMetric::PhysicalMemory => {
             format_memory_row_value(Some(snapshot.used_memory), Some(snapshot.total_memory))
         }
+        SystemMetric::AvailableMemory => format_memory_row_value(snapshot.available_memory, None),
+        SystemMetric::StandbyMemory => format_memory_row_value(snapshot.standby_memory, None),
+        SystemMetric::FreeZeroedMemory => {
+            format_memory_row_value(snapshot.free_zeroed_memory, None)
+        }
         SystemMetric::Committed => {
             format_memory_row_value(snapshot.committed_memory, snapshot.commit_limit)
         }
-        SystemMetric::GpuDedicated => {
-            format_memory_row_value(snapshot.gpu_dedicated_used, snapshot.gpu_dedicated_total)
-        }
-        SystemMetric::GpuShared => {
-            format_memory_row_value(snapshot.gpu_shared_used, snapshot.gpu_shared_total)
-        }
+        SystemMetric::PagedPool => format_memory_row_value(snapshot.paged_pool_memory, None),
+        SystemMetric::NonpagedPool => format_memory_row_value(snapshot.nonpaged_pool_memory, None),
+        SystemMetric::PagesInput => snapshot
+            .pages_input_per_sec
+            .map(format_integer)
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::ProcessCount => format_integer(snapshot.process_count as u64),
+        SystemMetric::ThreadCount => snapshot
+            .thread_count
+            .map(format_integer)
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::GpuUtilization | SystemMetric::GpuEncode | SystemMetric::GpuDecode => app
+            .selected_gpu_adapter()
+            .and_then(|adapter| match metric {
+                SystemMetric::GpuUtilization => adapter.utilization_percent,
+                SystemMetric::GpuEncode => adapter.encode.average_percent,
+                SystemMetric::GpuDecode => adapter.decode.average_percent,
+                _ => None,
+            })
+            .map(|value| format!("{value:.0}%"))
+            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::GpuDedicated => app.selected_gpu_adapter().map_or_else(
+            || "--".to_string(),
+            |adapter| format_memory_row_value(adapter.dedicated_used, adapter.dedicated_total),
+        ),
+        SystemMetric::GpuShared => app.selected_gpu_adapter().map_or_else(
+            || "--".to_string(),
+            |adapter| format_memory_row_value(adapter.shared_used, adapter.shared_total),
+        ),
         SystemMetric::NetworkReceived => snapshot
             .network_received_bytes_per_sec
             .map(format_mbps)
@@ -300,7 +328,6 @@ fn format_process_metric_column(process: &ProcessRow, column: MetricColumn) -> S
         MetricColumn::WorksetShareableBytes => {
             format_optional_integer(process.workset_shareable_bytes)
         }
-        MetricColumn::WorksetSharedBytes => format_optional_integer(process.workset_shared_bytes),
         MetricColumn::ThreadCount => format_optional_integer(process.thread_count),
         MetricColumn::HandleCount => format_optional_integer(process.handle_count),
         MetricColumn::UserObjectCount => format_optional_integer(process.user_object_count),

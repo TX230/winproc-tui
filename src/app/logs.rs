@@ -388,6 +388,7 @@ struct SessionMeta {
     cpu_topology: Option<String>,
     cpu_cache: Option<String>,
     gpu_name: Option<String>,
+    gpu_adapters: Vec<crate::model::GpuAdapterSample>,
 }
 
 impl SessionMeta {
@@ -399,6 +400,11 @@ impl SessionMeta {
             cpu_topology: system.and_then(|value| string_from_map(value, "cpu_topology")),
             cpu_cache: system.and_then(|value| string_from_map(value, "cpu_cache")),
             gpu_name: system.and_then(|value| string_from_map(value, "gpu_name")),
+            gpu_adapters: system
+                .and_then(|value| value.get("gpu_adapters"))
+                .and_then(Value::as_array)
+                .map(|items| parse_gpu_adapter_items(items))
+                .unwrap_or_default(),
         }
     }
 }
@@ -429,12 +435,16 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
             .unwrap_or_default(),
         committed_memory: system.and_then(|metrics| u64_from_map(metrics, "committed_bytes")),
         commit_limit: system.and_then(|metrics| u64_from_map(metrics, "commit_limit_bytes")),
-        gpu_dedicated_used: system.and_then(|metrics| u64_from_map(metrics, "gpu_dedicated_bytes")),
-        gpu_dedicated_total: system
-            .and_then(|metrics| u64_from_map(metrics, "gpu_dedicated_total_bytes")),
-        gpu_shared_used: system.and_then(|metrics| u64_from_map(metrics, "gpu_shared_bytes")),
-        gpu_shared_total: system
-            .and_then(|metrics| u64_from_map(metrics, "gpu_shared_total_bytes")),
+        available_memory: system
+            .and_then(|metrics| u64_from_map(metrics, "available_memory_bytes")),
+        standby_memory: system.and_then(|metrics| u64_from_map(metrics, "standby_memory_bytes")),
+        free_zeroed_memory: system
+            .and_then(|metrics| u64_from_map(metrics, "free_zeroed_memory_bytes")),
+        paged_pool_memory: system.and_then(|metrics| u64_from_map(metrics, "paged_pool_bytes")),
+        nonpaged_pool_memory: system
+            .and_then(|metrics| u64_from_map(metrics, "nonpaged_pool_bytes")),
+        pages_input_per_sec: system
+            .and_then(|metrics| u64_from_map(metrics, "pages_input_per_sec")),
         cpu_name: session.cpu_name.clone(),
         cpu_frequency_mhz: session.cpu_frequency_mhz,
         cpu_current_frequency_mhz: None,
@@ -446,7 +456,7 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
         cpu_logical_processors: Vec::new(),
         cpu_topology: session.cpu_topology.clone(),
         cpu_cache: session.cpu_cache.clone(),
-        gpu_name: session.gpu_name.clone(),
+        gpu_adapters: parse_gpu_adapters(system, session),
         disks: Vec::new(),
         disk_read_bytes_per_sec: system
             .and_then(|metrics| u64_from_map(metrics, "disk_read_bytes_per_sec")),
@@ -457,7 +467,11 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
             .and_then(|metrics| u64_from_map(metrics, "network_received_bytes_per_sec")),
         network_sent_bytes_per_sec: system
             .and_then(|metrics| u64_from_map(metrics, "network_sent_bytes_per_sec")),
-        process_count: processes.len(),
+        process_count: system
+            .and_then(|metrics| u64_from_map(metrics, "process_count"))
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(processes.len()),
+        thread_count: system.and_then(|metrics| u64_from_map(metrics, "thread_count")),
         processes,
     };
 
@@ -465,6 +479,82 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
         snapshot,
         has_system_metrics: system.is_some(),
     })
+}
+
+fn parse_gpu_adapters(
+    system: Option<&serde_json::Map<String, Value>>,
+    session: &SessionMeta,
+) -> Vec<crate::model::GpuAdapterSample> {
+    let mut adapters = system
+        .and_then(|metrics| metrics.get("gpu_adapters"))
+        .and_then(Value::as_array)
+        .map(|items| parse_gpu_adapter_items(items))
+        .unwrap_or_default();
+    if !adapters.is_empty() {
+        for adapter in &mut adapters {
+            if let Some(metadata) = session
+                .gpu_adapters
+                .iter()
+                .find(|metadata| metadata.id == adapter.id)
+            {
+                adapter.name = adapter.name.take().or_else(|| metadata.name.clone());
+                adapter.dedicated_total = adapter.dedicated_total.or(metadata.dedicated_total);
+                adapter.shared_total = adapter.shared_total.or(metadata.shared_total);
+            }
+        }
+        return adapters;
+    }
+
+    let Some(metrics) = system else {
+        return session.gpu_adapters.clone();
+    };
+    let adapter = crate::model::GpuAdapterSample {
+        name: session.gpu_name.clone(),
+        dedicated_used: u64_from_map(metrics, "gpu_dedicated_bytes"),
+        dedicated_total: u64_from_map(metrics, "gpu_dedicated_total_bytes"),
+        shared_used: u64_from_map(metrics, "gpu_shared_bytes"),
+        shared_total: u64_from_map(metrics, "gpu_shared_total_bytes"),
+        ..crate::model::GpuAdapterSample::default()
+    };
+    if adapter.name.is_some()
+        || adapter.dedicated_used.is_some()
+        || adapter.dedicated_total.is_some()
+        || adapter.shared_used.is_some()
+        || adapter.shared_total.is_some()
+    {
+        vec![adapter]
+    } else {
+        session.gpu_adapters.clone()
+    }
+}
+
+fn parse_gpu_adapter_items(items: &[Value]) -> Vec<crate::model::GpuAdapterSample> {
+    items
+        .iter()
+        .filter_map(Value::as_object)
+        .map(|adapter| crate::model::GpuAdapterSample {
+            id: crate::model::GpuAdapterId {
+                high: u32_from_map(adapter, "luid_high").unwrap_or_default(),
+                low: u32_from_map(adapter, "luid_low").unwrap_or_default(),
+            },
+            name: string_from_map(adapter, "name"),
+            utilization_percent: f64_from_map(adapter, "utilization_percent"),
+            encode: crate::model::GpuEngineSummary {
+                average_percent: f64_from_map(adapter, "encode_average_percent"),
+                max_percent: f64_from_map(adapter, "encode_max_percent"),
+                engine_count: u32_from_map(adapter, "encode_engine_count").unwrap_or_default(),
+            },
+            decode: crate::model::GpuEngineSummary {
+                average_percent: f64_from_map(adapter, "decode_average_percent"),
+                max_percent: f64_from_map(adapter, "decode_max_percent"),
+                engine_count: u32_from_map(adapter, "decode_engine_count").unwrap_or_default(),
+            },
+            dedicated_used: u64_from_map(adapter, "dedicated_bytes"),
+            dedicated_total: u64_from_map(adapter, "dedicated_total_bytes"),
+            shared_used: u64_from_map(adapter, "shared_bytes"),
+            shared_total: u64_from_map(adapter, "shared_total_bytes"),
+        })
+        .collect()
 }
 
 fn parse_process(value: &Value) -> Result<ProcessRow> {
@@ -486,7 +576,6 @@ fn parse_process(value: &Value) -> Result<ProcessRow> {
         workset_bytes: u64_from_map(&metrics, "workset_bytes"),
         workset_private_bytes: u64_from_map(&metrics, "workset_private_bytes"),
         workset_shareable_bytes: u64_from_map(&metrics, "workset_shareable_bytes"),
-        workset_shared_bytes: u64_from_map(&metrics, "workset_shared_bytes"),
         thread_count: u64_from_map(&metrics, "thread_count"),
         handle_count: u64_from_map(&metrics, "handle_count"),
         user_object_count: u64_from_map(&metrics, "user_object_count"),
@@ -608,8 +697,8 @@ mod tests {
         write_lines(
             &path,
             &[
-                r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system":{"cpu_name":"CPU"}}"#,
-                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"cpu_percent":37,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5}}]}"#,
+                r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system":{"cpu_name":"CPU","gpu_adapters":[{"luid_high":1,"luid_low":2,"name":"GPU","dedicated_total_bytes":8000}]}}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"available_memory_bytes":7000,"thread_count":321,"gpu_adapters":[{"luid_high":1,"luid_low":2,"utilization_percent":74.0,"encode_average_percent":60.0,"encode_max_percent":100.0,"encode_engine_count":2,"dedicated_bytes":2000}],"cpu_percent":37,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5,"workset_shareable_bytes":512}}]}"#,
             ],
         );
 
@@ -627,6 +716,17 @@ mod tests {
         );
         assert_eq!(loaded.snapshot.network_sent_bytes_per_sec, Some(40_000_000));
         assert_eq!(loaded.snapshot.used_memory, 1000);
+        assert_eq!(loaded.snapshot.available_memory, Some(7000));
+        assert_eq!(loaded.snapshot.thread_count, Some(321));
+        assert_eq!(loaded.snapshot.gpu_adapters.len(), 1);
+        assert_eq!(loaded.snapshot.gpu_adapters[0].id.high, 1);
+        assert_eq!(loaded.snapshot.gpu_adapters[0].name.as_deref(), Some("GPU"));
+        assert_eq!(loaded.snapshot.gpu_adapters[0].dedicated_total, Some(8000));
+        assert_eq!(
+            loaded.snapshot.gpu_adapters[0].utilization_percent,
+            Some(74.0)
+        );
+        assert_eq!(loaded.snapshot.gpu_adapters[0].encode.engine_count, 2);
         assert_eq!(loaded.system_history.len(), 1);
         assert_eq!(
             loaded.system_history.samples()[0].value(SystemMetric::CpuAverage),
@@ -634,6 +734,10 @@ mod tests {
         );
         assert_eq!(loaded.snapshot.processes[0].private_bytes, None);
         assert_eq!(loaded.snapshot.processes[0].handle_count, Some(5));
+        assert_eq!(
+            loaded.snapshot.processes[0].workset_shareable_bytes,
+            Some(512)
+        );
     }
 
     #[test]

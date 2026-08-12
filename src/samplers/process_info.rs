@@ -26,7 +26,6 @@ use crate::{
     app::ProcessLifecycle,
     model::{InfoValue, ProcessInfo, ProcessRow},
     platform::to_wide,
-    samplers::process::collect_working_set_share_bytes_for_process,
 };
 
 #[derive(Debug, Clone)]
@@ -220,9 +219,6 @@ pub(crate) fn collect_process_info(
         .unwrap_or_default();
     let workset_bytes = format_optional_bytes(process.workset_bytes);
     let workset_private_bytes = format_optional_bytes(process.workset_private_bytes);
-    let (ws_shareable_bytes, ws_shared_bytes) =
-        working_set_share_info(process.pid, process.workset_bytes);
-
     ProcessInfo {
         name: process.name.clone(),
         pid: process.pid,
@@ -241,8 +237,6 @@ pub(crate) fn collect_process_info(
         file_version: file_metadata.file_version,
         workset_bytes,
         workset_private_bytes,
-        ws_shareable_bytes,
-        ws_shared_bytes,
     }
 }
 
@@ -265,8 +259,6 @@ fn exited_process_info(process: &ProcessRow) -> ProcessInfo {
         file_version: InfoValue::Exited,
         workset_bytes: InfoValue::Exited,
         workset_private_bytes: InfoValue::Exited,
-        ws_shareable_bytes: InfoValue::Exited,
-        ws_shared_bytes: InfoValue::Exited,
     }
 }
 
@@ -415,20 +407,6 @@ fn not_available_version() -> FileMetadataValues {
         product_version: InfoValue::NotAvailable,
         file_version: InfoValue::NotAvailable,
     }
-}
-
-fn working_set_share_info(pid: u32, workset_bytes: Option<u64>) -> (InfoValue, InfoValue) {
-    let Some(workset_bytes) = workset_bytes else {
-        return (InfoValue::Missing, InfoValue::Missing);
-    };
-    collect_working_set_share_bytes_for_process(pid, workset_bytes)
-        .map(|sample| {
-            (
-                InfoValue::Value(format_integer(sample.shareable_bytes)),
-                InfoValue::Value(format_integer(sample.shared_bytes)),
-            )
-        })
-        .unwrap_or((InfoValue::AccessDenied, InfoValue::AccessDenied))
 }
 
 fn format_optional_bytes(value: Option<u64>) -> InfoValue {

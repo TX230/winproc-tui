@@ -148,6 +148,14 @@ const PROCESSES_ROWS: &[HelpItem] = &[
 
 const RAM_VRAM_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "m/g",
+        label: "Show MEM / GPU",
+    },
+    HelpItem {
+        key: "Left/Right",
+        label: "Switch MEM page / GPU adapter",
+    },
+    HelpItem {
         key: "Up/Down",
         label: "Move selected metric",
     },
@@ -352,7 +360,7 @@ const LEFT_SECTIONS: &[HelpSection] = &[
 
 const RIGHT_SECTIONS: &[HelpSection] = &[
     HelpSection {
-        title: "RAM/VRAM",
+        title: "MEM/GPU",
         focus_hint: None,
         rows: RAM_VRAM_ROWS,
     },
