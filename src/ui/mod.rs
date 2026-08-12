@@ -94,8 +94,9 @@ pub(crate) use system_panel::{
     render_summary_info_value_spans, render_summary_line,
 };
 pub(crate) use system_panel::{
-    cpu_panel_area_for_screen, gpu_panel_area_for_screen, ram_vram_panel_area_for_screen,
-    system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
+    cpu_panel_area_for_screen, gpu_panel_area_for_screen, memory_metric_at_position,
+    ram_vram_panel_area_for_screen, system_activity_panel_area_for_screen,
+    system_info_ok_button_area_for_screen,
 };
 use system_panel::{draw_system_info_dialog, draw_system_panel};
 pub(crate) use theme::{THEMES, Theme, theme_index_by_name};

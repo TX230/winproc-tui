@@ -153,7 +153,7 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Left/Right",
-        label: "Switch MEM page / GPU adapter",
+        label: "Switch MEM column / GPU adapter",
     },
     HelpItem {
         key: "Up/Down",

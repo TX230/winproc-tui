@@ -659,6 +659,11 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
     );
     insert_u64(
         &mut metrics,
+        "modified_memory_bytes",
+        snapshot.modified_memory,
+    );
+    insert_u64(
+        &mut metrics,
         "standby_memory_bytes",
         snapshot.standby_memory,
     );
@@ -679,6 +684,11 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
         &mut metrics,
         "pages_input_per_sec",
         snapshot.pages_input_per_sec,
+    );
+    insert_u64(
+        &mut metrics,
+        "pages_output_per_sec",
+        snapshot.pages_output_per_sec,
     );
     metrics.insert("process_count".to_string(), json!(snapshot.process_count));
     insert_u64(&mut metrics, "thread_count", snapshot.thread_count);
@@ -884,13 +894,15 @@ mod tests {
             total_memory: 0,
             used_memory: 0,
             available_memory: None,
+            modified_memory: Some(123_000_000),
             standby_memory: None,
             free_zeroed_memory: None,
             committed_memory: None,
             commit_limit: None,
             paged_pool_memory: None,
             nonpaged_pool_memory: None,
-            pages_input_per_sec: None,
+            pages_input_per_sec: Some(11),
+            pages_output_per_sec: Some(7),
             cpu_name: None,
             cpu_frequency_mhz: None,
             cpu_current_frequency_mhz: None,
@@ -927,6 +939,12 @@ mod tests {
         assert_eq!(value["processes"][0]["metrics"]["private_bytes"], 120);
         assert!(value["processes"][0]["metrics"]["handle_count"].is_null());
         assert_eq!(value["system_metrics"]["physical_memory_bytes"], 0);
+        assert_eq!(
+            value["system_metrics"]["modified_memory_bytes"],
+            123_000_000
+        );
+        assert_eq!(value["system_metrics"]["pages_input_per_sec"], 11);
+        assert_eq!(value["system_metrics"]["pages_output_per_sec"], 7);
         assert_eq!(value["system_metrics"]["cpu_percent"], 37);
         assert_eq!(
             value["system_metrics"]["disk_read_bytes_per_sec"],

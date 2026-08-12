@@ -19,6 +19,10 @@ use crate::{
     },
 };
 
+const SUMMARY_ROW_LABEL_WIDTH: usize = 17;
+const GPU_ROW_LABEL_WIDTH: usize = 10;
+const MEMORY_COLUMN_GAP: u16 = 1;
+
 pub(crate) fn draw_system_panel(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
@@ -26,7 +30,7 @@ pub(crate) fn draw_system_panel(
     theme: Theme,
 ) {
     let panels = top_panel_areas(area, app);
-    let usage_lines = memory_usage_lines(app, theme);
+    let memory_columns = memory_usage_columns(app, theme);
 
     let memory_block = panel_block_focused(
         memory_title(app, theme),
@@ -36,8 +40,13 @@ pub(crate) fn draw_system_panel(
     let memory_inner = memory_block.inner(panels[0]);
     frame.render_widget(memory_block, panels[0]);
 
-    let left = Paragraph::new(Text::from(usage_lines)).style(Style::default().bg(theme.panel));
-    frame.render_widget(left, memory_inner);
+    let memory_column_areas = memory_column_areas(memory_inner, &memory_columns[0]);
+    for (lines, column_area) in memory_columns.into_iter().zip(memory_column_areas) {
+        frame.render_widget(
+            Paragraph::new(Text::from(lines)).style(Style::default().bg(theme.panel)),
+            column_area,
+        );
+    }
 
     if panels[1].width > 0 {
         let gpu_block = panel_block_focused(
@@ -143,7 +152,7 @@ fn system_info_ok_button_area_in_popup(popup: Rect) -> Option<Rect> {
 
 fn memory_title(app: &App, theme: Theme) -> Line<'static> {
     let mut spans = vec![Span::styled(
-        format!("MEM {}/2", app.memory_page + 1),
+        "MEM",
         Style::default().add_modifier(ratatui::style::Modifier::BOLD),
     )];
     if app.activity() == AppActivity::LogView {
@@ -276,9 +285,22 @@ fn render_summary_graph_slot_value_line(
     value: &str,
     theme: Theme,
 ) -> Line<'static> {
+    render_summary_graph_slot_value_line_with_label_width(graph_state, label, 8, value, theme)
+}
+
+fn render_summary_graph_slot_value_line_with_label_width(
+    graph_state: Option<GraphSourceState>,
+    label: &'static str,
+    label_width: usize,
+    value: &str,
+    theme: Theme,
+) -> Line<'static> {
     Line::from(vec![
         graph_slot_prefix_span(graph_state, theme),
-        Span::styled(format!("{label:<8}"), Style::default().fg(theme.muted)),
+        Span::styled(
+            format!("{label:<label_width$}"),
+            Style::default().fg(theme.muted),
+        ),
         Span::styled(
             value.to_string(),
             Style::default()
@@ -306,6 +328,32 @@ pub(crate) fn gpu_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
     top_panel_areas(area, app)[1]
 }
 
+pub(crate) fn memory_metric_at_position(
+    screen_area: Rect,
+    app: &App,
+    x: u16,
+    y: u16,
+) -> Option<SystemMetric> {
+    let panel = ram_vram_panel_area_for_screen(screen_area, app);
+    if panel.width < 2 || panel.height < 2 {
+        return None;
+    }
+    let inner = panel.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let row = usize::from(y.checked_sub(inner.y)?);
+    let columns = memory_usage_columns(app, app.theme());
+    let column_areas = memory_column_areas(inner, &columns[0]);
+    if point_in_rect(column_areas[0], x, y) {
+        SystemMetric::MEMORY_OVERVIEW_PANEL.get(row).copied()
+    } else if point_in_rect(column_areas[1], x, y) {
+        SystemMetric::MEMORY_PRESSURE_PANEL.get(row).copied()
+    } else {
+        None
+    }
+}
+
 pub(crate) fn cpu_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
     let area = system_panel_area_for_screen(screen_area);
     top_panel_areas(area, app)[3]
@@ -317,10 +365,10 @@ pub(crate) fn system_activity_panel_area_for_screen(screen_area: Rect, app: &App
 }
 
 fn top_panel_areas(area: Rect, app: &App) -> [Rect; 4] {
-    let usage_lines = memory_usage_lines(app, app.theme());
+    let memory_columns = memory_usage_columns(app, app.theme());
     let gpu_lines = gpu_usage_lines(app, app.theme());
     let activity_lines = system_activity_lines(app, app.theme());
-    let memory_desired = desired_panel_width(&usage_lines, 28);
+    let memory_desired = desired_memory_panel_width(&memory_columns, 28);
     let gpu_desired = desired_panel_width(&gpu_lines, 28);
     let activity_desired = desired_panel_width(&activity_lines, 14);
     let cpu_minimum = 24;
@@ -370,133 +418,136 @@ fn top_panel_areas(area: Rect, app: &App) -> [Rect; 4] {
     ]
 }
 
-fn memory_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
+fn memory_usage_columns(app: &App, theme: Theme) -> [Vec<Line<'static>>; 2] {
     let snapshot = app.display_snapshot();
-    let rows = if app.memory_page == 0 {
-        vec![
-            (
-                SystemMetric::PhysicalMemory,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::PhysicalMemory),
-                    "In use",
-                    Some(snapshot.used_memory),
-                    Some(snapshot.total_memory),
-                    None,
-                    theme,
-                ),
+    let overview_rows = vec![
+        (
+            SystemMetric::PhysicalMemory,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::PhysicalMemory),
+                "In use",
+                Some(snapshot.used_memory),
+                Some(snapshot.total_memory),
+                None,
+                theme,
             ),
-            (
-                SystemMetric::AvailableMemory,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::AvailableMemory),
-                    "Available",
-                    snapshot.available_memory,
-                    None,
-                    None,
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::ModifiedMemory,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::ModifiedMemory),
+                "Modified",
+                snapshot.modified_memory,
+                None,
+                None,
+                theme,
             ),
-            (
-                SystemMetric::StandbyMemory,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::StandbyMemory),
-                    "Standby",
-                    snapshot.standby_memory,
-                    None,
-                    None,
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::StandbyMemory,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::StandbyMemory),
+                "Standby",
+                snapshot.standby_memory,
+                None,
+                None,
+                theme,
             ),
-            (
-                SystemMetric::FreeZeroedMemory,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::FreeZeroedMemory),
-                    "Free + Zeroed",
-                    snapshot.free_zeroed_memory,
-                    None,
-                    None,
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::FreeZeroedMemory,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::FreeZeroedMemory),
+                "Free + Zeroed",
+                snapshot.free_zeroed_memory,
+                None,
+                None,
+                theme,
             ),
-            (
-                SystemMetric::Committed,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::Committed),
-                    "Commit charge",
-                    snapshot.committed_memory,
-                    snapshot.commit_limit,
-                    None,
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::Committed,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::Committed),
+                "Commit charge",
+                snapshot.committed_memory,
+                snapshot.commit_limit,
+                None,
+                theme,
             ),
-        ]
-    } else {
-        vec![
-            (
-                SystemMetric::PagedPool,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::PagedPool),
-                    "Paged Pool",
-                    snapshot.paged_pool_memory,
-                    None,
-                    None,
-                    theme,
-                ),
+        ),
+    ];
+    let pressure_rows = vec![
+        (
+            SystemMetric::PagedPool,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::PagedPool),
+                "Paged Pool",
+                snapshot.paged_pool_memory,
+                None,
+                None,
+                theme,
             ),
-            (
-                SystemMetric::NonpagedPool,
-                render_summary_graph_slot_line(
-                    system_metric_graph_state(app, SystemMetric::NonpagedPool),
-                    "Nonpaged Pool",
-                    snapshot.nonpaged_pool_memory,
-                    None,
-                    None,
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::NonpagedPool,
+            render_summary_graph_slot_line(
+                system_metric_graph_state(app, SystemMetric::NonpagedPool),
+                "Nonpaged Pool",
+                snapshot.nonpaged_pool_memory,
+                None,
+                None,
+                theme,
             ),
-            (
-                SystemMetric::PagesInput,
-                render_summary_graph_slot_value_line(
-                    system_metric_graph_state(app, SystemMetric::PagesInput),
-                    "Pages/s",
-                    &format_optional_integer(snapshot.pages_input_per_sec),
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::PagesInput,
+            render_summary_graph_slot_value_line_with_label_width(
+                system_metric_graph_state(app, SystemMetric::PagesInput),
+                "Pages In/s",
+                SUMMARY_ROW_LABEL_WIDTH,
+                &format_optional_integer(snapshot.pages_input_per_sec),
+                theme,
             ),
-            (
-                SystemMetric::ProcessCount,
-                render_summary_graph_slot_value_line(
-                    system_metric_graph_state(app, SystemMetric::ProcessCount),
-                    "Processes",
-                    &format_integer(snapshot.process_count as u64),
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::PagesOutput,
+            render_summary_graph_slot_value_line_with_label_width(
+                system_metric_graph_state(app, SystemMetric::PagesOutput),
+                "Pages Out/s",
+                SUMMARY_ROW_LABEL_WIDTH,
+                &format_optional_integer(snapshot.pages_output_per_sec),
+                theme,
             ),
-            (
-                SystemMetric::ThreadCount,
-                render_summary_graph_slot_value_line(
-                    system_metric_graph_state(app, SystemMetric::ThreadCount),
-                    "Threads",
-                    &format_optional_integer(snapshot.thread_count),
-                    theme,
-                ),
+        ),
+        (
+            SystemMetric::ThreadCount,
+            render_summary_graph_slot_value_line_with_label_width(
+                system_metric_graph_state(app, SystemMetric::ThreadCount),
+                "Threads",
+                SUMMARY_ROW_LABEL_WIDTH,
+                &format_optional_integer(snapshot.thread_count),
+                theme,
             ),
-        ]
-    };
+        ),
+    ];
 
     let selected_metric = app.selected_system_metric();
-    rows.into_iter()
-        .map(|(metric, line)| {
-            if app.panel_has_focus(FocusedPanel::System)
-                && app.resource_panel == ResourcePanel::Memory
-                && metric == selected_metric
-            {
-                line.style(Style::default().bg(theme.highlight))
-            } else {
-                line
-            }
-        })
-        .collect()
+    let style_rows = |rows: Vec<(SystemMetric, Line<'static>)>| {
+        rows.into_iter()
+            .map(|(metric, line)| {
+                if app.panel_has_focus(FocusedPanel::System)
+                    && app.resource_panel == ResourcePanel::Memory
+                    && metric == selected_metric
+                {
+                    line.style(Style::default().bg(theme.highlight))
+                } else {
+                    line
+                }
+            })
+            .collect()
+    };
+    [style_rows(overview_rows), style_rows(pressure_rows)]
 }
 
 fn gpu_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
@@ -508,7 +559,7 @@ fn gpu_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
                 app,
                 adapter,
                 SystemMetric::GpuUtilization,
-                "GPU",
+                "Usage",
                 adapter.and_then(|value| value.utilization_percent),
                 None,
                 theme,
@@ -608,7 +659,10 @@ fn render_gpu_percent_line(
             slot.as_ref().and_then(|slot| app.graph_source_state(slot)),
             theme,
         ),
-        Span::styled(format!("{label:<10}"), Style::default().fg(theme.muted)),
+        Span::styled(
+            format!("{label:<GPU_ROW_LABEL_WIDTH$}"),
+            Style::default().fg(theme.muted),
+        ),
         Span::styled(
             value,
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
@@ -629,14 +683,24 @@ fn render_gpu_memory_line(
     let slot = adapter.map(|adapter| {
         GraphSlot::gpu(adapter.id, adapter.name.as_deref().unwrap_or("GPU"), metric)
     });
-    render_summary_graph_slot_line(
+    let mut spans = vec![graph_slot_number_span(
         slot.as_ref().and_then(|slot| app.graph_source_state(slot)),
-        label,
-        used,
-        total,
-        None,
+        GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
         theme,
-    )
+    )];
+    spans.extend(
+        render_summary_line_with_label_width(
+            label,
+            GPU_ROW_LABEL_WIDTH,
+            used,
+            total,
+            None,
+            false,
+            theme,
+        )
+        .spans,
+    );
+    Line::from(spans)
 }
 
 fn format_optional_integer(value: Option<u64>) -> String {
@@ -653,6 +717,34 @@ fn desired_panel_width(lines: &[Line<'_>], minimum: u16) -> u16 {
     (lines.iter().map(line_width).max().unwrap_or(1) as u16)
         .saturating_add(2)
         .max(minimum)
+}
+
+fn desired_memory_panel_width(columns: &[Vec<Line<'_>>; 2], minimum: u16) -> u16 {
+    let content_width = columns
+        .iter()
+        .map(|lines| lines.iter().map(line_width).max().unwrap_or(1) as u16)
+        .sum::<u16>()
+        .saturating_add(MEMORY_COLUMN_GAP);
+    content_width.saturating_add(2).max(minimum)
+}
+
+fn memory_column_areas(inner: Rect, left_lines: &[Line<'_>]) -> [Rect; 2] {
+    let left_width = (left_lines.iter().map(line_width).max().unwrap_or(1) as u16).min(inner.width);
+    let gap = MEMORY_COLUMN_GAP.min(inner.width.saturating_sub(left_width));
+    let right_x = inner.x.saturating_add(left_width).saturating_add(gap);
+    [
+        Rect::new(inner.x, inner.y, left_width, inner.height),
+        Rect::new(
+            right_x,
+            inner.y,
+            inner.right().saturating_sub(right_x),
+            inner.height,
+        ),
+    ]
+}
+
+fn point_in_rect(area: Rect, x: u16, y: u16) -> bool {
+    x >= area.x && x < area.right() && y >= area.y && y < area.bottom()
 }
 
 fn line_width(line: &Line<'_>) -> usize {
@@ -827,6 +919,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn render_summary_line(
     title: &str,
     used: Option<u64>,
@@ -834,7 +927,27 @@ pub(crate) fn render_summary_line(
     suffix: Option<&str>,
     theme: Theme,
 ) -> Line<'static> {
-    let ratio_value = ratio_optional(used, total);
+    render_summary_line_with_label_width(
+        title,
+        SUMMARY_ROW_LABEL_WIDTH,
+        used,
+        total,
+        suffix,
+        true,
+        theme,
+    )
+}
+
+fn render_summary_line_with_label_width(
+    title: &str,
+    label_width: usize,
+    used: Option<u64>,
+    total: Option<u64>,
+    suffix: Option<&str>,
+    show_ratio: bool,
+    theme: Theme,
+) -> Line<'static> {
+    let ratio_value = show_ratio.then(|| ratio_optional(used, total)).flatten();
     let stats = match (used, total) {
         (Some(used), Some(total)) => format!("{} / {}", format_mb(used), format_mb(total)),
         (Some(used), None) => format_mb(used),
@@ -843,7 +956,7 @@ pub(crate) fn render_summary_line(
     };
     let suffix_text = suffix.unwrap_or("").to_string();
     let mut spans = vec![Span::styled(
-        format!("{title:<16} "),
+        format!("{title:<label_width$}"),
         Style::default().fg(theme.muted),
     )];
     spans.push(Span::styled(stats, Style::default().fg(theme.text)));
@@ -873,7 +986,18 @@ fn render_summary_graph_slot_line(
         GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
         theme,
     )];
-    spans.extend(render_summary_line(title, used, total, suffix, theme).spans);
+    spans.extend(
+        render_summary_line_with_label_width(
+            title,
+            SUMMARY_ROW_LABEL_WIDTH,
+            used,
+            total,
+            suffix,
+            false,
+            theme,
+        )
+        .spans,
+    );
     Line::from(spans)
 }
 

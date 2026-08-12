@@ -13,14 +13,14 @@ const SYSTEM_HISTORY_SAMPLE_CAPACITY: usize = TRACKED_PROCESS_HISTORY_SAMPLE_CAP
 pub(crate) enum SystemMetric {
     CpuAverage,
     PhysicalMemory,
-    AvailableMemory,
+    ModifiedMemory,
     StandbyMemory,
     FreeZeroedMemory,
     Committed,
     PagedPool,
     NonpagedPool,
     PagesInput,
-    ProcessCount,
+    PagesOutput,
     ThreadCount,
     GpuUtilization,
     GpuEncode,
@@ -37,7 +37,7 @@ pub(crate) enum SystemMetric {
 impl SystemMetric {
     pub(crate) const MEMORY_OVERVIEW_PANEL: [Self; 5] = [
         Self::PhysicalMemory,
-        Self::AvailableMemory,
+        Self::ModifiedMemory,
         Self::StandbyMemory,
         Self::FreeZeroedMemory,
         Self::Committed,
@@ -46,7 +46,19 @@ impl SystemMetric {
         Self::PagedPool,
         Self::NonpagedPool,
         Self::PagesInput,
-        Self::ProcessCount,
+        Self::PagesOutput,
+        Self::ThreadCount,
+    ];
+    pub(crate) const MEMORY_PANEL: [Self; 10] = [
+        Self::PhysicalMemory,
+        Self::ModifiedMemory,
+        Self::StandbyMemory,
+        Self::FreeZeroedMemory,
+        Self::Committed,
+        Self::PagedPool,
+        Self::NonpagedPool,
+        Self::PagesInput,
+        Self::PagesOutput,
         Self::ThreadCount,
     ];
     pub(crate) const GPU_PANEL: [Self; 5] = [
@@ -68,16 +80,16 @@ impl SystemMetric {
         match self {
             Self::CpuAverage => "CPU Usage",
             Self::PhysicalMemory => "In use",
-            Self::AvailableMemory => "Available",
+            Self::ModifiedMemory => "Modified",
             Self::StandbyMemory => "Standby",
             Self::FreeZeroedMemory => "Free + Zeroed",
             Self::Committed => "Commit charge",
             Self::PagedPool => "Paged Pool",
             Self::NonpagedPool => "Nonpaged Pool",
-            Self::PagesInput => "Pages Input/s",
-            Self::ProcessCount => "Processes",
+            Self::PagesInput => "Pages In/s",
+            Self::PagesOutput => "Pages Out/s",
             Self::ThreadCount => "Threads",
-            Self::GpuUtilization => "GPU",
+            Self::GpuUtilization => "Usage",
             Self::GpuEncode => "Encode",
             Self::GpuDecode => "Decode",
             Self::GpuDedicated => "GPU Dedicated",
@@ -94,14 +106,14 @@ impl SystemMetric {
         match self {
             Self::CpuAverage => "CPUs",
             Self::PhysicalMemory
-            | Self::AvailableMemory
+            | Self::ModifiedMemory
             | Self::StandbyMemory
             | Self::FreeZeroedMemory
             | Self::Committed
             | Self::PagedPool
             | Self::NonpagedPool
             | Self::PagesInput
-            | Self::ProcessCount
+            | Self::PagesOutput
             | Self::ThreadCount => "MEM",
             Self::GpuUtilization
             | Self::GpuEncode
@@ -328,14 +340,14 @@ pub(crate) struct SystemSample {
     pub(crate) captured_at: DateTime<Local>,
     pub(crate) cpu_average_percent: Option<u64>,
     pub(crate) physical_memory_bytes: Option<u64>,
-    pub(crate) available_memory_bytes: Option<u64>,
+    pub(crate) modified_memory_bytes: Option<u64>,
     pub(crate) standby_memory_bytes: Option<u64>,
     pub(crate) free_zeroed_memory_bytes: Option<u64>,
     pub(crate) committed_bytes: Option<u64>,
     pub(crate) paged_pool_bytes: Option<u64>,
     pub(crate) nonpaged_pool_bytes: Option<u64>,
     pub(crate) pages_input_per_sec: Option<u64>,
-    pub(crate) process_count: Option<u64>,
+    pub(crate) pages_output_per_sec: Option<u64>,
     pub(crate) thread_count: Option<u64>,
     pub(crate) gpu_adapters: Vec<crate::model::GpuAdapterSample>,
     pub(crate) network_received_bytes_per_sec: Option<u64>,
@@ -351,14 +363,14 @@ impl SystemSample {
             captured_at: snapshot.captured_at,
             cpu_average_percent: snapshot.cpu_total_usage_percent.map(u64::from),
             physical_memory_bytes: Some(snapshot.used_memory),
-            available_memory_bytes: snapshot.available_memory,
+            modified_memory_bytes: snapshot.modified_memory,
             standby_memory_bytes: snapshot.standby_memory,
             free_zeroed_memory_bytes: snapshot.free_zeroed_memory,
             committed_bytes: snapshot.committed_memory,
             paged_pool_bytes: snapshot.paged_pool_memory,
             nonpaged_pool_bytes: snapshot.nonpaged_pool_memory,
             pages_input_per_sec: snapshot.pages_input_per_sec,
-            process_count: Some(snapshot.process_count as u64),
+            pages_output_per_sec: snapshot.pages_output_per_sec,
             thread_count: snapshot.thread_count,
             gpu_adapters: snapshot.gpu_adapters.clone(),
             network_received_bytes_per_sec: snapshot.network_received_bytes_per_sec,
@@ -373,7 +385,7 @@ impl SystemSample {
         match metric {
             SystemMetric::CpuAverage => self.cpu_average_percent.map(|value| value as f64),
             SystemMetric::PhysicalMemory => self.physical_memory_bytes.map(|value| value as f64),
-            SystemMetric::AvailableMemory => self.available_memory_bytes.map(|value| value as f64),
+            SystemMetric::ModifiedMemory => self.modified_memory_bytes.map(|value| value as f64),
             SystemMetric::StandbyMemory => self.standby_memory_bytes.map(|value| value as f64),
             SystemMetric::FreeZeroedMemory => {
                 self.free_zeroed_memory_bytes.map(|value| value as f64)
@@ -382,7 +394,7 @@ impl SystemSample {
             SystemMetric::PagedPool => self.paged_pool_bytes.map(|value| value as f64),
             SystemMetric::NonpagedPool => self.nonpaged_pool_bytes.map(|value| value as f64),
             SystemMetric::PagesInput => self.pages_input_per_sec.map(|value| value as f64),
-            SystemMetric::ProcessCount => self.process_count.map(|value| value as f64),
+            SystemMetric::PagesOutput => self.pages_output_per_sec.map(|value| value as f64),
             SystemMetric::ThreadCount => self.thread_count.map(|value| value as f64),
             SystemMetric::GpuUtilization
             | SystemMetric::GpuEncode
@@ -710,6 +722,7 @@ mod tests {
             total_memory: 0,
             used_memory: 0,
             available_memory: None,
+            modified_memory: None,
             standby_memory: None,
             free_zeroed_memory: None,
             committed_memory: None,
@@ -717,6 +730,7 @@ mod tests {
             paged_pool_memory: None,
             nonpaged_pool_memory: None,
             pages_input_per_sec: None,
+            pages_output_per_sec: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
             cpu_current_frequency_mhz: None,

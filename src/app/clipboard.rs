@@ -6,7 +6,7 @@ use crate::{
     model::{MetricColumn, ProcessRow, history::SystemMetric},
     ui::format::{
         format_integer, format_io_rate, format_mb, format_mb_per_sec, format_mbps,
-        format_signed_integer, format_signed_io_rate, ratio_optional,
+        format_signed_integer, format_signed_io_rate,
     },
 };
 
@@ -241,7 +241,7 @@ fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
         SystemMetric::PhysicalMemory => {
             format_memory_row_value(Some(snapshot.used_memory), Some(snapshot.total_memory))
         }
-        SystemMetric::AvailableMemory => format_memory_row_value(snapshot.available_memory, None),
+        SystemMetric::ModifiedMemory => format_memory_row_value(snapshot.modified_memory, None),
         SystemMetric::StandbyMemory => format_memory_row_value(snapshot.standby_memory, None),
         SystemMetric::FreeZeroedMemory => {
             format_memory_row_value(snapshot.free_zeroed_memory, None)
@@ -255,7 +255,10 @@ fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
             .pages_input_per_sec
             .map(format_integer)
             .unwrap_or_else(|| "--".to_string()),
-        SystemMetric::ProcessCount => format_integer(snapshot.process_count as u64),
+        SystemMetric::PagesOutput => snapshot
+            .pages_output_per_sec
+            .map(format_integer)
+            .unwrap_or_else(|| "--".to_string()),
         SystemMetric::ThreadCount => snapshot
             .thread_count
             .map(format_integer)
@@ -304,16 +307,12 @@ fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
 }
 
 fn format_memory_row_value(used: Option<u64>, total: Option<u64>) -> String {
-    let mut value = match (used, total) {
+    match (used, total) {
         (Some(used), Some(total)) => format!("{} / {}", format_mb(used), format_mb(total)),
         (Some(used), None) => format_mb(used),
         (None, Some(total)) => format!("-- / {}", format_mb(total)),
         (None, None) => "--".to_string(),
-    };
-    if let Some(ratio_value) = ratio_optional(used, total) {
-        value.push_str(&format!(" ({:>3.0}%)", ratio_value * 100.0));
     }
-    value
 }
 
 fn format_process_metric_column(process: &ProcessRow, column: MetricColumn) -> String {

@@ -25,7 +25,7 @@ use crate::{
             graph_shared_control_areas, graph_workspace_layout,
         },
         log_dir_button_at, log_dir_input_area, log_list_button_at, log_list_index_at,
-        main_panel_areas_for_app, metric_column_warning_ok_button_area,
+        main_panel_areas_for_app, memory_metric_at_position, metric_column_warning_ok_button_area,
         no_graph_metrics_warning_ok_button_area, process_info_close_button_area_for_screen,
         process_info_content_area_for_screen, process_info_tab_at, process_kill_button_at,
         process_metric_column_index_at, process_tracked_only_control_area, quit_confirm_button_at,
@@ -2445,14 +2445,14 @@ impl App {
     }
 
     fn select_system_metric_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
-        let area = ram_vram_panel_area_for_screen(screen_area, self);
-        if contains_point(area, x, y)
-            && y >= area.y.saturating_add(1)
-            && y < area.bottom().saturating_sub(1)
-        {
-            let row = usize::from(y - area.y.saturating_add(1));
+        if let Some(metric) = memory_metric_at_position(screen_area, self, x, y) {
             self.select_resource_panel(crate::app::ResourcePanel::Memory);
-            self.select_system_metric_index(row);
+            if let Some(index) = crate::model::SystemMetric::MEMORY_PANEL
+                .iter()
+                .position(|candidate| *candidate == metric)
+            {
+                self.select_system_metric_index(index);
+            }
             return;
         }
 
@@ -2601,20 +2601,8 @@ fn process_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Opti
 }
 
 fn ram_vram_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {
-    let area = ram_vram_panel_area_for_screen(screen_area, app);
-    if contains_point(area, x, y)
-        && y >= area.y.saturating_add(1)
-        && y < area.bottom().saturating_sub(1)
-    {
-        let memory_metrics = if app.memory_page == 0 {
-            &crate::model::SystemMetric::MEMORY_OVERVIEW_PANEL[..]
-        } else {
-            &crate::model::SystemMetric::MEMORY_PRESSURE_PANEL[..]
-        };
-        return memory_metrics
-            .get(usize::from(y - area.y.saturating_add(1)))
-            .copied()
-            .map(GraphSlot::system);
+    if let Some(metric) = memory_metric_at_position(screen_area, app, x, y) {
+        return Some(GraphSlot::system(metric));
     }
     let gpu_area = gpu_panel_area_for_screen(screen_area, app);
     if !contains_point(gpu_area, x, y)

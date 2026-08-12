@@ -786,9 +786,11 @@ processes = ["api.exe", "worker.exe"]
                 committed_memory: 9_000,
                 commit_limit: 24_000,
                 cache_bytes: Some(1_000),
+                modified_page_list_bytes: Some(750),
                 standby_cache_bytes: Some(2_000),
                 free_zeroed_bytes: Some(500),
                 pages_input_per_sec: Some(25),
+                pages_output_per_sec: Some(15),
                 disk_read_bytes_per_sec: Some(3_000),
                 disk_write_bytes_per_sec: Some(4_000),
                 disk_queue_length: Some(1.5),
@@ -802,6 +804,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(mapped.committed_memory, Some(9_000));
         assert_eq!(mapped.commit_limit, Some(24_000));
         assert_eq!(mapped.cache_bytes, Some(1_000));
+        assert_eq!(mapped.modified_page_list_bytes, Some(750));
         assert_eq!(mapped.standby_cache_bytes, Some(2_000));
         assert_eq!(mapped.disk_read_bytes_per_sec, Some(3_000));
         assert_eq!(mapped.disk_write_bytes_per_sec, Some(4_000));
@@ -819,6 +822,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(mapped.committed_memory, None);
         assert_eq!(mapped.commit_limit, None);
         assert_eq!(mapped.cache_bytes, None);
+        assert_eq!(mapped.modified_page_list_bytes, None);
         assert_eq!(mapped.standby_cache_bytes, None);
         assert_eq!(mapped.disk_read_bytes_per_sec, None);
         assert_eq!(mapped.disk_write_bytes_per_sec, None);
@@ -4056,7 +4060,7 @@ processes = ["api.exe", "worker.exe"]
                 (
                     FocusedPanel::System,
                     ui::ram_vram_panel_area_for_screen(screen, &app),
-                    "MEM 1/2",
+                    "MEM",
                 ),
                 (
                     FocusedPanel::SystemActivity,
@@ -4684,6 +4688,10 @@ processes = ["api.exe", "worker.exe"]
             (
                 find_text_position(&buffer, "In use").unwrap(),
                 GraphSlot::system(SystemMetric::PhysicalMemory),
+            ),
+            (
+                find_text_position(&buffer, "Pages Out/s").unwrap(),
+                GraphSlot::system(SystemMetric::PagesOutput),
             ),
             (
                 find_text_position(&buffer, "Net Rx").unwrap(),
@@ -6353,7 +6361,7 @@ processes = ["api.exe", "worker.exe"]
 
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(app.selected_system_metric(), SystemMetric::AvailableMemory);
+        assert_eq!(app.selected_system_metric(), SystemMetric::ModifiedMemory);
         assert_eq!(app.details_target, DetailsTarget::Process);
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
@@ -6361,7 +6369,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(app.details_target, DetailsTarget::Process);
         assert!(!app.show_details);
-        assert!(app.status.contains("Available"));
+        assert!(app.status.contains("Modified"));
     }
 
     #[test]
@@ -6372,7 +6380,7 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(app.selected_system_metric(), SystemMetric::AvailableMemory);
+        assert_eq!(app.selected_system_metric(), SystemMetric::ModifiedMemory);
         assert_eq!(app.details_target, DetailsTarget::Process);
         assert!(!app.show_details);
 
@@ -6398,7 +6406,7 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.graph_entries.len(), 1);
         assert_eq!(
             app.active_graph_slot(),
-            Some(&GraphSlot::system(SystemMetric::AvailableMemory))
+            Some(&GraphSlot::system(SystemMetric::ModifiedMemory))
         );
         assert!(app.show_details);
         assert_eq!(app.focused_panel, FocusedPanel::System);
@@ -6416,12 +6424,12 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             app.active_graph_slot(),
-            Some(&GraphSlot::system(SystemMetric::AvailableMemory))
+            Some(&GraphSlot::system(SystemMetric::ModifiedMemory))
         );
         assert!(app.show_details);
 
         let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1  Available")
+        let (x, y) = find_text_position(&buffer, "1  Modified")
             .expect("MEM Graph slot number should render");
         let marker = &buffer[(x, y)];
         assert_eq!(marker.fg, ui::THEMES[0].active_series);
@@ -6429,7 +6437,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(marker.modifier.contains(Modifier::BOLD));
         let rendered = buffer_to_text(&buffer);
         assert!(
-            rendered.contains("Slot#1 · Available · SYSTEM"),
+            rendered.contains("Slot#1 · Modified · SYSTEM"),
             "{rendered}"
         );
     }
@@ -6465,15 +6473,21 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 180, 30);
 
-        assert!(rendered.contains("MEM 1/2"), "{rendered}");
+        assert!(rendered.contains("MEM"), "{rendered}");
         assert!(rendered.contains("GPU 1/1"), "{rendered}");
         assert!(!rendered.contains("[Max samples: 7200]"), "{rendered}");
         for label in [
             "In use",
-            "Available",
+            "Modified",
             "Standby",
             "Free + Zeroed",
             "Commit charge",
+            "Paged Pool",
+            "Nonpaged Pool",
+            "Pages In/s",
+            "Pages Out/s",
+            "Threads",
+            "Usage",
             "Encode",
             "Decode",
             "Dedicated",
@@ -6481,22 +6495,95 @@ processes = ["api.exe", "worker.exe"]
         ] {
             assert!(rendered.contains(label), "missing {label}: {rendered}");
         }
+        let in_use_line = rendered
+            .lines()
+            .find(|line| line.contains("In use"))
+            .unwrap();
+        assert!(!in_use_line.contains("%)"), "{in_use_line}");
     }
 
     #[test]
-    fn memory_and_gpu_panels_use_one_based_pages() {
+    fn gpu_panel_aligns_engine_and_memory_value_columns() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.gpu_adapters.push(model::GpuAdapterSample {
+            utilization_percent: Some(56.0),
+            encode: model::GpuEngineSummary {
+                average_percent: Some(12.0),
+                max_percent: Some(34.0),
+                engine_count: 1,
+            },
+            decode: model::GpuEngineSummary {
+                average_percent: Some(18.0),
+                max_percent: Some(24.0),
+                engine_count: 1,
+            },
+            dedicated_used: Some(821_000_000),
+            dedicated_total: Some(8_406_000_000),
+            shared_used: Some(54_000_000),
+            shared_total: Some(17_044_000_000),
+            ..model::GpuAdapterSample::default()
+        });
+
+        let rendered = render_app_to_text(&app, 180, 30);
+        let value_column = |label: &str, value: &str| {
+            let line = rendered
+                .lines()
+                .find(|line| line.contains(label) && line.contains(value))
+                .unwrap_or_else(|| panic!("missing {label} row: {rendered}"));
+            line.find(value)
+                .unwrap_or_else(|| panic!("missing {value} in {label} row: {line}"))
+        };
+
+        let encode_column = value_column("Encode", " 12%");
+        assert_eq!(value_column("Decode", " 18%"), encode_column);
+        assert_eq!(value_column("Dedicated", "821 MB"), encode_column);
+        assert_eq!(value_column("Shared", "54 MB"), encode_column);
+        let dedicated_line = rendered
+            .lines()
+            .find(|line| line.contains("Dedicated") && line.contains("821 MB"))
+            .unwrap();
+        assert!(!dedicated_line.contains("( 10%)"), "{dedicated_line}");
+    }
+
+    #[test]
+    fn memory_pressure_panel_aligns_all_value_columns() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.paged_pool_memory = Some(2_769_000_000);
+        app.snapshot.nonpaged_pool_memory = Some(2_097_000_000);
+        app.snapshot.pages_input_per_sec = Some(25);
+        app.snapshot.pages_output_per_sec = Some(15);
+        app.snapshot.thread_count = Some(4_335);
+
+        let rendered = render_app_to_text(&app, 180, 30);
+        let value_column = |label: &str, value: &str| {
+            let line = rendered
+                .lines()
+                .find(|line| line.contains(label) && line.contains(value))
+                .unwrap_or_else(|| panic!("missing {label} row: {rendered}"));
+            line.find(value)
+                .unwrap_or_else(|| panic!("missing {value} in {label} row: {line}"))
+        };
+
+        let paged_pool_column = value_column("Paged Pool", "2,769 MB");
+        assert_eq!(value_column("Nonpaged Pool", "2,097 MB"), paged_pool_column);
+        assert_eq!(value_column("Pages In/s", "25"), paged_pool_column);
+        assert_eq!(value_column("Pages Out/s", "15"), paged_pool_column);
+        assert_eq!(value_column("Threads", "4,335"), paged_pool_column);
+    }
+
+    #[test]
+    fn memory_uses_columns_and_gpu_uses_one_based_pages() {
         let mut app = make_test_app(3, 10);
         app.snapshot
             .gpu_adapters
             .extend(std::iter::repeat_with(model::GpuAdapterSample::default).take(2));
 
-        let memory_first = render_app_to_text(&app, 180, 30);
-        assert!(memory_first.contains("MEM 1/2"), "{memory_first}");
-
+        let memory = render_app_to_text(&app, 180, 30);
+        assert!(memory.contains("Pages Out/s"), "{memory}");
+        assert!(!memory.contains("MEM 1/2"), "{memory}");
         app.select_next_resource_page();
-        let memory_second = render_app_to_text(&app, 180, 30);
-        assert!(memory_second.contains("MEM 2/2"), "{memory_second}");
-        assert_eq!(app.status, "MEM page 2/2");
+        assert_eq!(app.selected_system_metric(), SystemMetric::PagedPool);
+        assert_eq!(app.status, "MEM row: Paged Pool");
 
         app.select_resource_panel(app::ResourcePanel::Gpu);
         let gpu_first = render_app_to_text(&app, 180, 30);
@@ -6521,7 +6608,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("NW/DISK"), "{rendered}");
         assert!(
-            rendered.find("MEM 1/2").unwrap() < rendered.find("NW/DISK").unwrap(),
+            rendered.find("MEM").unwrap() < rendered.find("NW/DISK").unwrap(),
             "{rendered}"
         );
         assert!(
@@ -8791,7 +8878,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(
             app::clipboard::last_copied_text().as_deref(),
-            Some("Commit charge\t9,000 MB / 18,000 MB ( 50%)")
+            Some("Commit charge\t9,000 MB / 18,000 MB")
         );
         assert_eq!(app.status, "Copied row: Commit charge");
     }
@@ -13241,7 +13328,6 @@ processes = ["api.exe", "worker.exe"]
             system_history: SystemHistory::default(),
             ram_vram_selected_index: 0,
             resource_panel: app::ResourcePanel::Memory,
-            memory_page: 0,
             gpu_adapter_index: 0,
             system_activity_selected_index: 0,
             process_info_cache: std::collections::HashMap::new(),
@@ -13286,6 +13372,7 @@ processes = ["api.exe", "worker.exe"]
             total_memory: 0,
             used_memory: 0,
             available_memory: None,
+            modified_memory: None,
             standby_memory: None,
             free_zeroed_memory: None,
             committed_memory: None,
@@ -13293,6 +13380,7 @@ processes = ["api.exe", "worker.exe"]
             paged_pool_memory: None,
             nonpaged_pool_memory: None,
             pages_input_per_sec: None,
+            pages_output_per_sec: None,
             cpu_name: None,
             cpu_frequency_mhz: None,
             cpu_current_frequency_mhz: None,

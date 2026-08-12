@@ -47,30 +47,35 @@ Compact byte formatting is used in the Processes table and for Graph Y-axis tick
 
 ## MEM and GPU Panels
 
-The first system resource region contains a two-page `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPUs`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPUs`.
+The first system resource region contains a two-column `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPUs`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPUs` when space permits.
 
-Press `m` or `g` while the resource region has focus to select `MEM` or `GPU`. `Left` / `Right` change the MEM page or GPU adapter, `Up` / `Down` select a row, and `Space` or double-click adds or removes that row in the Graph Workspace.
-Page titles are one-based: the MEM panel uses `MEM 1/2` then `MEM 2/2`, and available GPU adapters use `GPU 1/N` through `GPU N/N`.
+Press `m` or `g` while the resource region has focus to select `MEM` or `GPU`. For MEM, `Left` / `Right` move between columns and `Up` / `Down` select a row within the current column. For GPU, `Left` / `Right` change the adapter and `Up` / `Down` select a row. `Space` or double-click adds or removes the selected row in the Graph Workspace.
+All ten MEM rows are visible at once under the title `MEM`. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.
 
-### MEM 1/2: Overview
+### MEM left column: Overview
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
-| `In use` | `physical_memory_bytes` | Installed physical memory minus physical pages available to the system. | `GetPerformanceInfo` (`PhysicalTotal`, `PhysicalAvailable`) | `used / total MB` and percent |
-| `Available` | `available_memory_bytes` | Memory immediately available for allocation. | PDH `\Memory\Available Bytes` | MB |
+| `In use` | `physical_memory_bytes` | Installed physical memory minus physical pages available to the system. | `GetPerformanceInfo` (`PhysicalTotal`, `PhysicalAvailable`) | `used / total MB` |
+| `Modified` | `modified_memory_bytes` | Modified physical pages waiting to be written to disk before they can be repurposed. | PDH `\Memory\Modified Page List Bytes` | MB |
 | `Standby` | `standby_memory_bytes` | Sum of standby reserve, normal-priority, and core cache lists. | PDH `Standby Cache Reserve/Normal Priority/Core Bytes` | MB |
 | `Free + Zeroed` | `free_zeroed_memory_bytes` | Free and zeroed page lists. | PDH `\Memory\Free & Zero Page List Bytes` | MB |
-| `Commit charge` | `committed_bytes`, `commit_limit_bytes` | OS-wide commit charge and commit limit. | PDH `Committed Bytes`, `Commit Limit` | `used / limit MB` and percent |
+| `Commit charge` | `committed_bytes`, `commit_limit_bytes` | OS-wide commit charge and commit limit. | PDH `Committed Bytes`, `Commit Limit` | `used / limit MB` |
 
-### MEM 2/2: Pressure
+`Available` is not a panel or Graph source because it overlaps the reusable standby, free, and zeroed page states already shown. `available_memory_bytes` remains in new recordings for schema compatibility and is still used as the fallback source for the `In use` calculation when `GetPerformanceInfo` is unavailable.
+The MEM panel omits parenthetical capacity percentages for `In use` and `Commit charge`; the absolute used and limit values remain visible and graphable.
+
+### MEM right column: Pressure
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
 | `Paged Pool` | `paged_pool_bytes` | Pageable kernel pool allocation. | `GetPerformanceInfo` (`KernelPaged`) | MB |
 | `Nonpaged Pool` | `nonpaged_pool_bytes` | Nonpageable kernel pool allocation. | `GetPerformanceInfo` (`KernelNonpaged`) | MB |
-| `Pages Input/s` | `pages_input_per_sec` | Pages read from disk to resolve hard page faults. | PDH `\Memory\Pages Input/sec` | Integer pages/s |
-| `Processes` | `process_count` | System process count. | `GetPerformanceInfo` (`ProcessCount`) | Integer |
+| `Pages In/s` | `pages_input_per_sec` | Pages read from disk to resolve hard page faults. | PDH `\Memory\Pages Input/sec` | Integer pages/s |
+| `Pages Out/s` | `pages_output_per_sec` | Pages written to disk so physical pages can be repurposed. | PDH `\Memory\Pages Output/sec` | Integer pages/s |
 | `Threads` | `thread_count` | System thread count. | `GetPerformanceInfo` (`ThreadCount`) | Integer |
+
+`process_count` remains in recording frames for system context and schema compatibility, but it is not a MEM panel or Graph source. `Pages Out/s` is shown instead because it is a more direct indicator of memory pressure that causes page writeback.
 
 ### GPU per adapter
 
@@ -78,13 +83,15 @@ The title is `GPU n/N`, using one-based page numbers for available adapters (`GP
 
 | Display name | GPU adapter log field | Description | Primary source | Display format |
 |---|---|---|---|---|
-| `GPU` | `utilization_percent` | Busiest physical engine on the adapter. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | Busiest-engine percent |
+| `Usage` | `utilization_percent` | Busiest physical engine on the adapter. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | Busiest-engine percent |
 | `Encode` | `encode_average_percent`, `encode_max_percent`, `encode_engine_count` | VideoEncode utilization across exposed physical encode engines. | Same GPU Engine counter, `engtype_VideoEncode` | `average% max maximum% NE` |
 | `Decode` | `decode_average_percent`, `decode_max_percent`, `decode_engine_count` | VideoDecode utilization across exposed physical decode engines. | Same GPU Engine counter, `engtype_VideoDecode` | `average% max maximum% NE` |
 | `Dedicated` | `dedicated_bytes`, `dedicated_total_bytes` | Dedicated video-memory usage and capacity for this adapter. | PDH `\GPU Adapter Memory(*)\Dedicated Usage`, DXGI | `used / total MB` |
 | `Shared` | `shared_bytes`, `shared_total_bytes` | Shared system-memory usage and capacity for this adapter. | PDH `\GPU Adapter Memory(*)\Shared Usage`, DXGI | `used / total MB` |
 
-GPU Engine instance names are parsed for PID, LUID, physical-engine index, engine index, and engine type. PID instances that refer to the same physical engine are summed, then clamped to `0..100`. The adapter-wide `GPU` value is the maximum physical-engine value. For Encode and Decode, the main row and Graph value are the average across exposed engines; `max` is the busiest engine, and `NE` is the number of exposed WDDM engines. `NE` is neither a simultaneous session limit nor a count of physical codec circuits. Workloads may also run on `3D` or `Compute`, so codec rows are classification-specific rather than a complete statement about every media workload.
+The GPU panel keeps `%` on `Usage`, `Encode`, and `Decode` because utilization is itself a percentage. It omits the additional parenthetical capacity percentages from `Dedicated` and `Shared`.
+
+GPU Engine instance names are parsed for PID, LUID, physical-engine index, engine index, and engine type. PID instances that refer to the same physical engine are summed, then clamped to `0..100`. The adapter-wide `Usage` value is the maximum physical-engine value. For Encode and Decode, the main row and Graph value are the average across exposed engines; `max` is the busiest engine, and `NE` is the number of exposed WDDM engines. `NE` is neither a simultaneous session limit nor a count of physical codec circuits. Workloads may also run on `3D` or `Compute`, so codec rows are classification-specific rather than a complete statement about every media workload.
 
 ## CPU Panel
 
@@ -357,6 +364,7 @@ Every optional MEM, GPU, and process field is omitted when unavailable. New reco
     "physical_memory_bytes": 1234567890,
     "total_memory_bytes": 34359738368,
     "available_memory_bytes": 12000000000,
+    "modified_memory_bytes": 750000000,
     "standby_memory_bytes": 4000000000,
     "free_zeroed_memory_bytes": 1000000000,
     "committed_bytes": 2345678901,
@@ -364,6 +372,7 @@ Every optional MEM, GPU, and process field is omitted when unavailable. New reco
     "paged_pool_bytes": 450000000,
     "nonpaged_pool_bytes": 320000000,
     "pages_input_per_sec": 12,
+    "pages_output_per_sec": 4,
     "process_count": 214,
     "thread_count": 3812,
     "gpu_adapters": [

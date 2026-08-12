@@ -29,7 +29,7 @@ winproc-tui
 
 画面上部にはシステム全体のメモリ、GPU アダプター別の負荷とメモリ、ネットワーク / ディスク、CPU 使用率が表示され、`PROCESSES` パネルには実行中のプロセスが並びます。`Tab` / `Shift+Tab` でパネルを移動し、方向キーで行やカラムを選択します。
 
-MEM、GPU、平均 CPU 使用率、NW/DISK の System Activity は、プロセス名を登録しなくても起動時から自動的に履歴を保持します。Tracking List はプロセス名だけを対象にします。MEM/GPU のリソース領域にフォーカスがあるときは、`m` / `g` で表示対象を選び、`Left` / `Right` で MEM ページまたは GPU アダプターを切り替えます。
+MEM、GPU、平均 CPU 使用率、NW/DISK の System Activity は、プロセス名を登録しなくても起動時から自動的に履歴を保持します。Tracking List はプロセス名だけを対象にします。MEM/GPU のリソース領域にフォーカスがあるときは、`m` / `g` で表示対象を選びます。`Left` / `Right` では MEM の左右列、または GPU アダプターを切り替えます。
 
 ### 2. プロセスのメトリクスを Graph で見る
 

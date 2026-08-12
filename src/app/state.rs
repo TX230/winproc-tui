@@ -532,7 +532,7 @@ impl GraphSlot {
             } => GraphValueFormat::QueueLength,
             Self::System {
                 metric:
-                    SystemMetric::PagesInput | SystemMetric::ProcessCount | SystemMetric::ThreadCount,
+                    SystemMetric::PagesInput | SystemMetric::PagesOutput | SystemMetric::ThreadCount,
             } => GraphValueFormat::Count,
             Self::System { .. } => GraphValueFormat::Bytes,
         }
@@ -1115,7 +1115,6 @@ pub(crate) struct App {
     pub(crate) system_history: SystemHistory,
     pub(crate) ram_vram_selected_index: usize,
     pub(crate) resource_panel: ResourcePanel,
-    pub(crate) memory_page: usize,
     pub(crate) gpu_adapter_index: usize,
     pub(crate) system_activity_selected_index: usize,
     pub(crate) process_info_cache: HashMap<ProcessIdentity, ProcessInfo>,
@@ -1362,7 +1361,6 @@ impl App {
             system_history,
             ram_vram_selected_index: 0,
             resource_panel: ResourcePanel::Memory,
-            memory_page: 0,
             gpu_adapter_index: 0,
             system_activity_selected_index: 0,
             process_info_cache: HashMap::new(),
@@ -2617,8 +2615,7 @@ impl App {
 
     pub(crate) fn selected_resource_metrics(&self) -> &'static [SystemMetric] {
         match self.resource_panel {
-            ResourcePanel::Memory if self.memory_page == 0 => &SystemMetric::MEMORY_OVERVIEW_PANEL,
-            ResourcePanel::Memory => &SystemMetric::MEMORY_PRESSURE_PANEL,
+            ResourcePanel::Memory => &SystemMetric::MEMORY_PANEL,
             ResourcePanel::Gpu => &SystemMetric::GPU_PANEL,
         }
     }
@@ -2664,28 +2661,35 @@ impl App {
 
     pub(crate) fn select_previous_resource_page(&mut self) {
         match self.resource_panel {
-            ResourcePanel::Memory => self.memory_page = self.memory_page.saturating_sub(1),
+            ResourcePanel::Memory => {
+                if self.ram_vram_selected_index >= SystemMetric::MEMORY_OVERVIEW_PANEL.len() {
+                    self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_sub(5);
+                }
+            }
             ResourcePanel::Gpu => self.gpu_adapter_index = self.gpu_adapter_index.saturating_sub(1),
         }
-        self.ram_vram_selected_index = 0;
-        self.status = self.resource_page_status();
+        self.status = self.resource_horizontal_status();
     }
 
     pub(crate) fn select_next_resource_page(&mut self) {
         match self.resource_panel {
-            ResourcePanel::Memory => self.memory_page = (self.memory_page + 1).min(1),
+            ResourcePanel::Memory => {
+                if self.ram_vram_selected_index < SystemMetric::MEMORY_OVERVIEW_PANEL.len() {
+                    self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_add(5);
+                }
+            }
             ResourcePanel::Gpu => {
                 let last = self.display_snapshot().gpu_adapters.len().saturating_sub(1);
                 self.gpu_adapter_index = self.gpu_adapter_index.saturating_add(1).min(last);
+                self.ram_vram_selected_index = 0;
             }
         }
-        self.ram_vram_selected_index = 0;
-        self.status = self.resource_page_status();
+        self.status = self.resource_horizontal_status();
     }
 
-    fn resource_page_status(&self) -> String {
+    fn resource_horizontal_status(&self) -> String {
         match self.resource_panel {
-            ResourcePanel::Memory => format!("MEM page {}/2", self.memory_page + 1),
+            ResourcePanel::Memory => format!("MEM row: {}", self.selected_system_metric().label()),
             ResourcePanel::Gpu => {
                 let (page, count) = self.gpu_adapter_page();
                 format!("GPU adapter {page}/{count}")
@@ -2701,7 +2705,14 @@ impl App {
     }
 
     pub(crate) fn select_previous_system_metric(&mut self) {
-        self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_sub(1);
+        let first = if self.resource_panel == ResourcePanel::Memory
+            && self.ram_vram_selected_index >= SystemMetric::MEMORY_OVERVIEW_PANEL.len()
+        {
+            SystemMetric::MEMORY_OVERVIEW_PANEL.len()
+        } else {
+            0
+        };
+        self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_sub(1).max(first);
         self.status = format!(
             "{} row: {}",
             self.selected_system_metric().panel_label(),
@@ -2718,10 +2729,14 @@ impl App {
     }
 
     pub(crate) fn select_next_system_metric(&mut self) {
-        self.ram_vram_selected_index = self
-            .ram_vram_selected_index
-            .saturating_add(1)
-            .min(self.selected_resource_metrics().len().saturating_sub(1));
+        let last = if self.resource_panel == ResourcePanel::Memory
+            && self.ram_vram_selected_index < SystemMetric::MEMORY_OVERVIEW_PANEL.len()
+        {
+            SystemMetric::MEMORY_OVERVIEW_PANEL.len().saturating_sub(1)
+        } else {
+            self.selected_resource_metrics().len().saturating_sub(1)
+        };
+        self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_add(1).min(last);
         self.status = format!(
             "{} row: {}",
             self.selected_system_metric().panel_label(),
@@ -2741,7 +2756,13 @@ impl App {
     }
 
     pub(crate) fn select_first_system_metric(&mut self) {
-        self.ram_vram_selected_index = 0;
+        self.ram_vram_selected_index = if self.resource_panel == ResourcePanel::Memory
+            && self.ram_vram_selected_index >= SystemMetric::MEMORY_OVERVIEW_PANEL.len()
+        {
+            SystemMetric::MEMORY_OVERVIEW_PANEL.len()
+        } else {
+            0
+        };
         self.status = format!(
             "{} row: {}",
             self.selected_system_metric().panel_label(),
@@ -2758,7 +2779,13 @@ impl App {
     }
 
     pub(crate) fn select_last_system_metric(&mut self) {
-        self.ram_vram_selected_index = self.selected_resource_metrics().len().saturating_sub(1);
+        self.ram_vram_selected_index = if self.resource_panel == ResourcePanel::Memory
+            && self.ram_vram_selected_index < SystemMetric::MEMORY_OVERVIEW_PANEL.len()
+        {
+            SystemMetric::MEMORY_OVERVIEW_PANEL.len().saturating_sub(1)
+        } else {
+            self.selected_resource_metrics().len().saturating_sub(1)
+        };
         self.status = format!(
             "{} row: {}",
             self.selected_system_metric().panel_label(),

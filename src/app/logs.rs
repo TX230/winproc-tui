@@ -437,6 +437,7 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
         commit_limit: system.and_then(|metrics| u64_from_map(metrics, "commit_limit_bytes")),
         available_memory: system
             .and_then(|metrics| u64_from_map(metrics, "available_memory_bytes")),
+        modified_memory: system.and_then(|metrics| u64_from_map(metrics, "modified_memory_bytes")),
         standby_memory: system.and_then(|metrics| u64_from_map(metrics, "standby_memory_bytes")),
         free_zeroed_memory: system
             .and_then(|metrics| u64_from_map(metrics, "free_zeroed_memory_bytes")),
@@ -445,6 +446,8 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
             .and_then(|metrics| u64_from_map(metrics, "nonpaged_pool_bytes")),
         pages_input_per_sec: system
             .and_then(|metrics| u64_from_map(metrics, "pages_input_per_sec")),
+        pages_output_per_sec: system
+            .and_then(|metrics| u64_from_map(metrics, "pages_output_per_sec")),
         cpu_name: session.cpu_name.clone(),
         cpu_frequency_mhz: session.cpu_frequency_mhz,
         cpu_current_frequency_mhz: None,
@@ -698,7 +701,7 @@ mod tests {
             &path,
             &[
                 r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system":{"cpu_name":"CPU","gpu_adapters":[{"luid_high":1,"luid_low":2,"name":"GPU","dedicated_total_bytes":8000}]}}"#,
-                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"available_memory_bytes":7000,"thread_count":321,"gpu_adapters":[{"luid_high":1,"luid_low":2,"utilization_percent":74.0,"encode_average_percent":60.0,"encode_max_percent":100.0,"encode_engine_count":2,"dedicated_bytes":2000}],"cpu_percent":37,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5,"workset_shareable_bytes":512}}]}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"available_memory_bytes":7000,"modified_memory_bytes":750,"pages_input_per_sec":11,"pages_output_per_sec":7,"thread_count":321,"gpu_adapters":[{"luid_high":1,"luid_low":2,"utilization_percent":74.0,"encode_average_percent":60.0,"encode_max_percent":100.0,"encode_engine_count":2,"dedicated_bytes":2000}],"cpu_percent":37,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5,"workset_shareable_bytes":512}}]}"#,
             ],
         );
 
@@ -717,6 +720,9 @@ mod tests {
         assert_eq!(loaded.snapshot.network_sent_bytes_per_sec, Some(40_000_000));
         assert_eq!(loaded.snapshot.used_memory, 1000);
         assert_eq!(loaded.snapshot.available_memory, Some(7000));
+        assert_eq!(loaded.snapshot.modified_memory, Some(750));
+        assert_eq!(loaded.snapshot.pages_input_per_sec, Some(11));
+        assert_eq!(loaded.snapshot.pages_output_per_sec, Some(7));
         assert_eq!(loaded.snapshot.thread_count, Some(321));
         assert_eq!(loaded.snapshot.gpu_adapters.len(), 1);
         assert_eq!(loaded.snapshot.gpu_adapters[0].id.high, 1);
@@ -728,6 +734,14 @@ mod tests {
         );
         assert_eq!(loaded.snapshot.gpu_adapters[0].encode.engine_count, 2);
         assert_eq!(loaded.system_history.len(), 1);
+        assert_eq!(
+            loaded.system_history.samples()[0].value(SystemMetric::ModifiedMemory),
+            Some(750.0)
+        );
+        assert_eq!(
+            loaded.system_history.samples()[0].value(SystemMetric::PagesOutput),
+            Some(7.0)
+        );
         assert_eq!(
             loaded.system_history.samples()[0].value(SystemMetric::CpuAverage),
             Some(37.0)
