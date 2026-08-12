@@ -268,6 +268,8 @@ Recording logs are JSON Lines. The current writer outputs `schema_version: 2`.
 The reader currently loads only `schema_version: 2`.
 Compatibility with older schemas is deferred until v1.0.0 or later.
 
+At recording start, the writer copies the working Tracking List into the recording session. That fixed session copy supplies `tracked_names` and process matching for every frame until recording stops. The working list cannot be edited through the UI during recording. The version 2 reader remains tolerant of older version 2 logs whose frame-level `tracked_names` changed during a session; this writer-side clarification does not require a schema-version change.
+
 Record types:
 
 | `record_type` | Description |
@@ -287,7 +289,7 @@ Session record fields:
 | `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
 | `started_at` | string | RFC 3339 timestamp. |
 | `interval_seconds` | number | Fixed sampling interval metadata. Currently `1`. This is a recording-log field, not a user setting. |
-| `tracked_names` | string array | Tracking List at session start. |
+| `tracked_names` | string array | Fixed Tracking List copied into the recording session at start. |
 | `columns` | string array | Process metric columns currently displayed. |
 | `sort` | object | Sort column / direction. |
 | `system` | object | Supporting information such as CPU / GPU names. |
@@ -300,9 +302,9 @@ Frame record fields:
 | `record_type` | string | `frame`. |
 | `session_id` | string | Same ID as the session record. |
 | `captured_at` | string | RFC 3339 timestamp. |
-| `tracked_names` | string array | Tracking List at frame creation time. |
+| `tracked_names` | string array | Fixed session Tracking List; identical to the session record for logs written by the current version. |
 | `system_metrics` | object | System metrics recorded with the frame, including RAM/VRAM, CPU average, and System Activity values. |
-| `processes` | object array | Live processes matching the Tracking List. This can be empty when the configured tracked names have no live match. |
+| `processes` | object array | Live processes matching the fixed session Tracking List. This can be empty when the configured tracked names have no live match. |
 
 Process object fields:
 
@@ -314,8 +316,8 @@ Process object fields:
 | `start_time` | number | Present only when available. |
 | `metrics` | object | Only metrics that were collected. |
 
-A `frame` record outputs system metrics and the live processes matching the Tracking List.
-System metrics are recorded even when no live process currently matches the Tracking List.
+A `frame` record outputs system metrics and the live processes matching the fixed session Tracking List.
+System metrics are recorded even when no live process currently matches that list.
 System Activity fields are optional for compatibility with older logs and with systems where a PDH counter is unavailable.
 
 ```json

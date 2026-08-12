@@ -136,9 +136,13 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - `Recording` and `Log view` are mutually exclusive.
 - Starting recording requires at least one configured Tracking List entry.
 - Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array until a matching process appears.
+- Starting recording must copy the working Tracking List into session-owned recording scope. Session metadata, every frame's `tracked_names`, and process filtering must use that fixed copy.
+- While Recording is active, `t` and `Ctrl+T` must reject Tracking List changes with a visible notice. `Shift+T` remains available because it changes only the independent Tracked-only display.
 - Recording is unavailable in Log view, and Log view is unavailable during Recording.
-- Stopping recording must flush and close the recording log.
-- Quitting during recording must flush the recording log before exit.
+- `Ctrl+R` during Recording must open a stop confirmation that defaults to Continue; sampling and recording continue until Stop is confirmed.
+- Stopping recording must write the end record, flush, and close the recording log.
+- Quitting during recording must flush the recording log before exit. A cleanup failure cancels quit.
+- Recording create, write, and flush failures must open a visible error dialog. Keep partial logs and never rely only on transient status text for these failures.
 - In Log view, returning to Live must not be confused with quitting the app.
 - The header should make the active activity visible without adding noisy explanatory text.
 - Open Files is an explicit per-process investigation action. It lists disk files currently open by the selected live process.

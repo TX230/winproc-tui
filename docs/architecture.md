@@ -176,7 +176,8 @@ stateDiagram-v2
     [*] --> Live
 
     Live --> Recording: Ctrl+R / choose path
-    Recording --> Live: Ctrl+R / stop and flush
+    Recording --> Recording: Ctrl+R / confirm stop
+    Recording --> Live: confirm Stop / end, flush, close
 
     Live --> LogList: Ctrl+L
     LogView --> LogList: Ctrl+L
@@ -185,6 +186,7 @@ stateDiagram-v2
     LogView --> Live: Esc
 
     Recording --> Recording: Ctrl+L rejected
+    Recording --> Recording: t or Ctrl+T rejected
     LogView --> LogView: Ctrl+R rejected
 
     Live --> Exiting: quit
@@ -193,7 +195,11 @@ stateDiagram-v2
     Exiting --> [*]
 ```
 
-Starting recording requires at least one configured Tracking List name. It does not require a current live match: each frame still records system metrics and writes an empty `processes` array until a matching process appears. Stopping or quitting attempts an `end` record, flushes the buffer, and closes the file.
+Starting recording requires at least one configured Tracking List name. It does not require a current live match: each frame still records system metrics and writes an empty `processes` array until a matching process appears. `RecordingSession` owns a copy of the working Tracking List and its normalized lookup set, and both session metadata and every frame use that fixed scope. Plain `t` and `Ctrl+T` reject Tracking List changes during Recording; `Shift+T` remains available because `tracked_only` is independent display state.
+
+`Ctrl+R` opens a stop confirmation whose initial action is Continue. Sampling and frame writes continue while it is open, and the log is ended, flushed, and closed only after Stop is confirmed. Quit retains its existing single confirmation and performs the same writer cleanup directly rather than nesting the stop confirmation.
+
+Recording lifecycle failures are application state, not status-only feedback. A create/open failure keeps the path dialog available behind the error; a header, frame, end, newline, or flush failure drops the active session, preserves any partial file, and shows a recording error. A failure while quitting cancels the quit so the error remains visible. Error state renders above other recording and quit modals.
 
 Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
 
@@ -207,7 +213,8 @@ The most important implementation invariants are:
 - only one `winproc-tui` instance may run in a Windows session, and a second launch must exit before terminal setup or configuration access;
 - display pause must not pause sampling, history updates, freshness, or recording;
 - Recording and Log view must never be active together;
-- stopping or quitting Recording must flush and close the log;
+- one Recording session must use one fixed Tracking List copy for its session record, frame metadata, and process filtering;
+- stopping or quitting Recording must flush and close the log, and cleanup failure must remain visible instead of exiting silently;
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
 - the working Tracking List must not overwrite a saved named definition without an explicit save action;
 - the built-in empty Tracking List must remain virtual and must not be stored among saved named definitions;

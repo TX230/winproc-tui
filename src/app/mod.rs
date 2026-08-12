@@ -60,6 +60,7 @@ pub(crate) use state::ProcessLifecycle;
 pub(crate) use state::QuitConfirmSelection;
 pub(crate) use state::RecordingOverwriteSelection;
 pub(crate) use state::RecordingPathSelection;
+pub(crate) use state::RecordingStopSelection;
 #[cfg(test)]
 pub(crate) use state::SAMPLE_STALE_AFTER_SECONDS;
 pub(crate) use state::SampleFreshness;

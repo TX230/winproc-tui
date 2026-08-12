@@ -80,11 +80,13 @@ pub(crate) use process_table::{
 use quit_confirm::draw_quit_confirm;
 pub(crate) use quit_confirm::quit_confirm_button_at;
 use recording_dialog::{
-    draw_recording_no_tracked_warning, draw_recording_overwrite_confirm, draw_recording_path_dialog,
+    draw_recording_error, draw_recording_no_tracked_warning, draw_recording_overwrite_confirm,
+    draw_recording_path_dialog, draw_recording_stop_confirm, draw_recording_tracking_fixed,
 };
 pub(crate) use recording_dialog::{
-    recording_no_tracked_ok_button_area, recording_overwrite_button_at, recording_path_button_at,
-    recording_path_input_area,
+    recording_error_ok_button_area, recording_no_tracked_ok_button_area,
+    recording_overwrite_button_at, recording_path_button_at, recording_path_input_area,
+    recording_stop_button_at, recording_tracking_fixed_ok_button_area,
 };
 #[cfg(test)]
 pub(crate) use system_panel::{
@@ -152,6 +154,12 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     if app.show_recording_overwrite_confirmation {
         draw_recording_overwrite_confirm(frame, area, app, theme);
     }
+    if app.show_recording_tracking_fixed {
+        draw_recording_tracking_fixed(frame, area, app, theme);
+    }
+    if app.show_recording_stop_confirmation {
+        draw_recording_stop_confirm(frame, area, app, theme);
+    }
     if app.show_tracked_remove_confirmation {
         draw_tracked_remove_confirm(frame, area, app, theme);
     }
@@ -172,6 +180,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_quit_confirmation {
         draw_quit_confirm(frame, area, app, theme);
+    }
+    if app.recording_error.is_some() {
+        draw_recording_error(frame, area, app, theme);
     }
 }
 

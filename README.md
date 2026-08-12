@@ -50,10 +50,11 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 2. For targets you use repeatedly, press `Ctrl+T` and save the Tracking List with a name.
 3. If needed, press `Shift+T` to switch between All processes and Tracked-only. Tracked-only view is not required for recording.
 4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
-5. Press `Ctrl+R` again to stop recording and close the log.
+5. Press `Ctrl+R` again, then confirm `Stop` to stop recording and close the log. The default `Continue` action leaves recording active.
 6. Press `Ctrl+L` to select and inspect a saved log.
 
 Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. RAM / VRAM, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
+The recording start dialog shows how many names will be captured. That Tracking List is fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. Loading a list may ask for confirmation before discarding retained history for removed names. Press `?` in the app for the complete dialog controls.
 
@@ -68,11 +69,11 @@ Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain 
 | `Tab` / `Shift+Tab` | Move between panels.                        |
 | Arrow keys          | Select a row, column, or sample.            |
 | `Space`             | Add/remove the selected metric Graph.       |
-| `t`                 | Add/remove a process name in Tracking List. |
+| `t`                 | Add/remove a process name in Tracking List (Live only). |
 | `Shift+T`           | Switch between All processes / Tracked-only. |
-| `Ctrl+T`            | Open named Tracking Lists.                  |
+| `Ctrl+T`            | Open named Tracking Lists (Live only).      |
 | `Ctrl+F`            | Filter the process list.                    |
-| `Ctrl+R`            | Start/stop recording.                       |
+| `Ctrl+R`            | Start recording / confirm stopping.         |
 | `Ctrl+L`            | Open a saved log.                           |
 | `?`                 | Show all key bindings.                      |
 | `q` / `Esc`         | Go back or open the quit confirmation.      |
@@ -242,8 +243,8 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
 | `Ctrl+L`            | Open the log list.                                                  |
-| `Ctrl+T`            | Open Tracking Lists to load the built-in empty list, manage named lists, and set startup behavior. |
-| `Ctrl+R`            | Start / stop recording.                                             |
+| `Ctrl+T`            | Open Tracking Lists to load the built-in empty list, manage named lists, and set startup behavior (Live only). |
+| `Ctrl+R`            | Start recording or open the stop confirmation.                     |
 | `Ctrl+P`            | Pause / resume display updates; sampling and recording continue (unavailable in Log view). |
 | `Ctrl+Wheel`        | Change the Windows Terminal zoom level.                             |
 
@@ -263,7 +264,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | `Ctrl+Space`        | Add or remove the current live process row from the multi-selection.                  |
 | `Shift+Left/Right`  | Move the selected metric column left or right.                                        |
 | `w` / `Shift+W`     | Widen or narrow the selected column by one cell.                                      |
-| `t`                 | Add or remove the selected process name from the Tracking List.                       |
+| `t`                 | Add or remove the selected process name from the Tracking List (Live only).           |
 | `Shift+T`           | Toggle Tracked-only display.                                                          |
 | `d` / `Delete`      | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
 | `Enter`             | Open Process Info for the selected process.                                          |
@@ -308,11 +309,12 @@ Multiple Graphs share one absolute visible time range, cursor, selected time, an
 
 ## Recording and Log View
 
-Press `Ctrl+R` to start or stop recording.
+Press `Ctrl+R` to start recording or open its stop confirmation. Recording continues while that confirmation is open; `Continue` is selected by default.
 Recording requires at least one Tracking List entry and saves logs as JSON Lines (with the `.log` extension).
 Each frame records system metrics such as RAM / VRAM, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
-When recording starts, a save-path input dialog opens. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
+When recording starts, a save-path input dialog opens and shows how many Tracking List names will be fixed for the complete session. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
+While recording, `t` and `Ctrl+T` show a notice instead of changing the Tracking List. `Shift+T` remains available because it changes only the Tracked-only display. A log create, write, or flush failure stops recording, keeps any partial log, and opens a visible error dialog. A flush failure during quit cancels the quit.
 Log view cannot open during recording, and recording cannot start while Log view is open.
 
 Press `Ctrl+L` to open the log list.

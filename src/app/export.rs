@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env,
     fs::{self, File, OpenOptions},
     io::{BufWriter, Write},
@@ -10,8 +11,9 @@ use chrono::{DateTime, Local};
 use serde_json::{Map, Value, json};
 
 use crate::app::{
-    App, AppActivity, RecordingOverwriteSelection, RecordingPathSelection,
+    App, AppActivity, RecordingOverwriteSelection, RecordingPathSelection, RecordingStopSelection,
     path_completion::PathCompletion,
+    state::{RecordingErrorDialog, RecordingErrorKind},
 };
 use crate::model::{ProcessRow, Snapshot};
 
@@ -20,13 +22,18 @@ pub(crate) struct RecordingSession {
     session_id: String,
     started_at: DateTime<Local>,
     host: String,
-    writer: BufWriter<File>,
+    tracked_names: Vec<String>,
+    normalized_tracked_names: HashSet<String>,
+    writer: BufWriter<Box<dyn Write>>,
 }
 
 impl App {
     pub(crate) fn toggle_recording(&mut self) -> Result<()> {
         match self.activity() {
-            AppActivity::Recording => self.stop_recording(),
+            AppActivity::Recording => {
+                self.request_recording_stop();
+                Ok(())
+            }
             AppActivity::LogView => {
                 self.status = "Recording is unavailable in Log view".to_string();
                 Ok(())
@@ -46,6 +53,126 @@ impl App {
         self.show_recording_no_tracked_warning = false;
         self.ensure_visible_panel_focus();
         self.status = "Recording canceled".to_string();
+    }
+
+    pub(crate) fn request_recording_stop(&mut self) {
+        if self.recording_session.is_none() {
+            self.status = "Recording is not active".to_string();
+            return;
+        }
+        self.show_recording_stop_confirmation = true;
+        self.recording_stop_selection = RecordingStopSelection::Continue;
+        self.recording_stop_hovered = None;
+        self.status = "Stop recording?".to_string();
+    }
+
+    pub(crate) fn cancel_recording_stop(&mut self) {
+        self.show_recording_stop_confirmation = false;
+        self.recording_stop_selection = RecordingStopSelection::Continue;
+        self.recording_stop_hovered = None;
+        self.ensure_visible_panel_focus();
+        self.status = "Recording continues".to_string();
+    }
+
+    pub(crate) fn toggle_recording_stop_selection(&mut self) {
+        self.recording_stop_selection = self.recording_stop_selection.toggled();
+        self.recording_stop_hovered = None;
+    }
+
+    pub(crate) fn set_recording_stop_hovered(&mut self, selection: Option<RecordingStopSelection>) {
+        self.recording_stop_hovered = selection;
+    }
+
+    pub(crate) fn activate_recording_stop_selection(&mut self) {
+        match self.recording_stop_selection {
+            RecordingStopSelection::Stop => self.confirm_recording_stop(),
+            RecordingStopSelection::Continue => self.cancel_recording_stop(),
+        }
+    }
+
+    pub(crate) fn confirm_recording_stop(&mut self) {
+        let Some(path) = self
+            .recording_session
+            .as_ref()
+            .map(|session| session.path.clone())
+        else {
+            self.cancel_recording_stop();
+            return;
+        };
+        self.show_recording_stop_confirmation = false;
+        self.recording_stop_hovered = None;
+        if let Err(error) = self.stop_recording() {
+            self.present_active_recording_error(path, error);
+        }
+    }
+
+    pub(crate) fn dismiss_recording_tracking_fixed(&mut self) {
+        self.show_recording_tracking_fixed = false;
+        self.recording_tracking_fixed_ok_hovered = false;
+        self.ensure_visible_panel_focus();
+        self.status = "Recording continues".to_string();
+    }
+
+    pub(crate) fn dismiss_recording_error(&mut self) {
+        self.recording_error_ok_hovered = false;
+        let return_to_path_dialog = self
+            .recording_error
+            .take()
+            .is_some_and(|error| error.return_to_path_dialog);
+        if return_to_path_dialog {
+            self.show_recording_path_dialog = true;
+            self.recording_path_selection = RecordingPathSelection::Path;
+            self.recording_path_cursor = self
+                .recording_path_cursor
+                .min(self.recording_path_draft.len());
+            self.status = "Choose recording log path".to_string();
+        } else {
+            self.ensure_visible_panel_focus();
+            self.status = "Recording is not active".to_string();
+        }
+    }
+
+    fn present_recording_error(
+        &mut self,
+        path: PathBuf,
+        error: anyhow::Error,
+        kind: RecordingErrorKind,
+        return_to_path_dialog: bool,
+    ) {
+        self.recording_session = None;
+        self.show_quit_confirmation = false;
+        self.show_recording_path_dialog = return_to_path_dialog;
+        self.show_recording_stop_confirmation = false;
+        self.recording_stop_hovered = None;
+        self.show_recording_tracking_fixed = false;
+        self.recording_tracking_fixed_ok_hovered = false;
+        self.show_recording_overwrite_confirmation = false;
+        self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
+        self.recording_error = Some(RecordingErrorDialog {
+            path,
+            message: error.root_cause().to_string(),
+            kind,
+            return_to_path_dialog,
+        });
+        self.recording_error_ok_hovered = false;
+        self.status = match kind {
+            RecordingErrorKind::CouldNotStart => "Recording could not start".to_string(),
+            RecordingErrorKind::Stopped => {
+                "Recording stopped because the log could not be written".to_string()
+            }
+        };
+    }
+
+    pub(crate) fn present_active_recording_error(&mut self, path: PathBuf, error: anyhow::Error) {
+        self.present_recording_error(path, error, RecordingErrorKind::Stopped, false);
+    }
+
+    pub(crate) fn set_recording_tracking_fixed_ok_hovered(&mut self, hovered: bool) {
+        self.recording_tracking_fixed_ok_hovered = hovered;
+    }
+
+    pub(crate) fn set_recording_error_ok_hovered(&mut self, hovered: bool) {
+        self.recording_error_ok_hovered = hovered;
     }
 
     pub(crate) fn open_recording_path_dialog(&mut self) -> Result<()> {
@@ -269,12 +396,7 @@ impl App {
         let Some(session) = &self.recording_session else {
             return Ok(());
         };
-        let line = recording_frame_line(
-            session,
-            &self.snapshot,
-            &self.watch_list,
-            &self.normalized_watch_names,
-        )?;
+        let line = recording_frame_line(session, &self.snapshot)?;
         let session = self
             .recording_session
             .as_mut()
@@ -289,7 +411,21 @@ impl App {
             .with_context(|| format!("failed to write {}", session.path.display()))
     }
 
+    #[cfg(test)]
+    pub(crate) fn replace_recording_writer_for_test(&mut self, writer: Box<dyn Write>) {
+        if let Some(session) = self.recording_session.as_mut() {
+            session.writer = BufWriter::with_capacity(0, writer);
+        }
+    }
+
     fn start_recording(&mut self, path: PathBuf, overwrite: bool) -> Result<()> {
+        let recording_last_dir = match recording_parent_dir(&path) {
+            Ok(parent) => parent,
+            Err(error) => {
+                self.present_recording_error(path, error, RecordingErrorKind::CouldNotStart, true);
+                return Ok(());
+            }
+        };
         match open_recording_file(&path, overwrite) {
             Ok(file) => {
                 let started_at = Local::now();
@@ -300,10 +436,12 @@ impl App {
                     session_id,
                     started_at,
                     host,
-                    writer: BufWriter::new(file),
+                    tracked_names: self.watch_list.clone(),
+                    normalized_tracked_names: self.normalized_watch_names.clone(),
+                    writer: BufWriter::new(Box::new(file)),
                 });
                 self.recording_spinner_index = 0;
-                self.recording_last_dir = recording_parent_dir(&path)?;
+                self.recording_last_dir = recording_last_dir;
                 self.show_recording_path_dialog = false;
                 self.show_recording_overwrite_confirmation = false;
                 self.recording_path_completion.reset();
@@ -311,20 +449,39 @@ impl App {
 
                 if let Err(error) = self.write_recording_session_header() {
                     self.recording_session = None;
-                    self.status = format!("Recording stopped: {error}");
+                    self.present_recording_error(
+                        path,
+                        error,
+                        RecordingErrorKind::CouldNotStart,
+                        false,
+                    );
                     return Ok(());
                 }
                 if let Err(error) = self.write_current_recording_frame() {
                     self.recording_session = None;
-                    self.status = format!("Recording stopped: {error}");
+                    self.present_recording_error(
+                        path,
+                        error,
+                        RecordingErrorKind::CouldNotStart,
+                        false,
+                    );
+                    return Ok(());
+                }
+                if let Err(error) = self.flush_recording_writer() {
+                    self.recording_session = None;
+                    self.present_recording_error(
+                        path,
+                        error,
+                        RecordingErrorKind::CouldNotStart,
+                        false,
+                    );
                     return Ok(());
                 }
 
                 self.status = format!("Recording started: {}", path.display());
             }
             Err(error) => {
-                self.recording_session = None;
-                self.status = format!("Recording failed: {error}");
+                self.present_recording_error(path, error, RecordingErrorKind::CouldNotStart, true);
             }
         }
         Ok(())
@@ -347,6 +504,16 @@ impl App {
             .writer
             .write_all(b"\n")
             .with_context(|| format!("failed to write {}", session.path.display()))
+    }
+
+    fn flush_recording_writer(&mut self) -> Result<()> {
+        let Some(session) = self.recording_session.as_mut() else {
+            return Ok(());
+        };
+        session
+            .writer
+            .flush()
+            .with_context(|| format!("failed to flush {}", session.path.display()))
     }
 }
 
@@ -401,16 +568,15 @@ fn recording_parent_dir(path: &Path) -> Result<Option<PathBuf>> {
     }
 }
 
-fn recording_frame_line(
-    session: &RecordingSession,
-    snapshot: &Snapshot,
-    tracked_names: &[String],
-    normalized_tracked_names: &std::collections::HashSet<String>,
-) -> Result<String> {
+fn recording_frame_line(session: &RecordingSession, snapshot: &Snapshot) -> Result<String> {
     let processes = snapshot
         .processes
         .iter()
-        .filter(|process| normalized_tracked_names.contains(&process.name.to_ascii_lowercase()))
+        .filter(|process| {
+            session
+                .normalized_tracked_names
+                .contains(&process.name.to_ascii_lowercase())
+        })
         .map(process_json)
         .collect::<Vec<_>>();
 
@@ -419,7 +585,7 @@ fn recording_frame_line(
         "record_type": "frame",
         "session_id": session.session_id,
         "captured_at": snapshot.captured_at.to_rfc3339(),
-        "tracked_names": tracked_names,
+        "tracked_names": &session.tracked_names,
         "system_metrics": system_metrics_json(snapshot),
         "processes": processes,
     });
@@ -441,7 +607,7 @@ fn recording_session_line(session: &RecordingSession, app: &App) -> Result<Strin
         "host": session.host,
         "started_at": session.started_at.to_rfc3339(),
         "interval_seconds": super::SAMPLING_INTERVAL_SECONDS,
-        "tracked_names": &app.watch_list,
+        "tracked_names": &session.tracked_names,
         "columns": columns,
         "sort": {
             "column": app.sort.column.label(),
@@ -635,12 +801,14 @@ mod tests {
             session_id: "20260504143012".to_string(),
             started_at: now,
             host: "PC01".to_string(),
-            writer: BufWriter::new(
+            tracked_names: vec!["app.exe".to_string()],
+            normalized_tracked_names: HashSet::from(["app.exe".to_string()]),
+            writer: BufWriter::new(Box::new(
                 OpenOptions::new()
                     .write(true)
                     .open(if cfg!(windows) { "NUL" } else { "/dev/null" })
                     .unwrap(),
-            ),
+            )),
         };
         let snapshot = Snapshot {
             captured_at: now,
@@ -674,10 +842,7 @@ mod tests {
                 row(2, "other.exe", Some(999), None),
             ],
         };
-        let tracked_names = vec!["app.exe".to_string()];
-        let normalized = HashSet::from(["app.exe".to_string()]);
-
-        let line = recording_frame_line(&session, &snapshot, &tracked_names, &normalized).unwrap();
+        let line = recording_frame_line(&session, &snapshot).unwrap();
         let value: Value = serde_json::from_str(&line).unwrap();
 
         assert_eq!(value["schema_version"], 2);

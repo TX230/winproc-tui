@@ -55,7 +55,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+R",
-        label: "Toggle recording",
+        label: "Start recording / confirm stop",
     },
     HelpItem {
         key: "Ctrl+P",
@@ -184,7 +184,7 @@ const CPU_ROWS: &[HelpItem] = &[HelpItem {
 const TRACKING_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "t",
-        label: "Track / Untrack selected process",
+        label: "Track / Untrack selected process (Live only)",
     },
     HelpItem {
         key: "Shift+T",
@@ -192,7 +192,7 @@ const TRACKING_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+T",
-        label: "Open/load Tracking Lists",
+        label: "Open/load Tracking Lists (Live only)",
     },
 ];
 

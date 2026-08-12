@@ -7031,7 +7031,10 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("v/d/l") && rendered.contains("Samples / Delta / layout"),
             "{rendered}"
         );
-        assert!(rendered.contains("Toggle recording"), "{rendered}");
+        assert!(
+            rendered.contains("Start recording / confirm stop"),
+            "{rendered}"
+        );
         assert!(rendered.contains("Pause / Resume"), "{rendered}");
         assert!(rendered.contains("Copy selected row"), "{rendered}");
         assert!(!rendered.contains("Open Settings"), "{rendered}");
@@ -7646,6 +7649,162 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn recording_start_dialog_discloses_the_fixed_tracking_scope() {
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.open_recording_path_dialog().unwrap();
+
+        let rendered = render_app_to_text(&app, 100, 45);
+
+        assert!(
+            rendered.contains("Tracking List  1 name · fixed until recording stops."),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("WARNING"), "{rendered}");
+    }
+
+    #[test]
+    fn recording_rejects_tracking_list_changes_but_allows_tracked_only() {
+        let path = unique_recording_path("fixed-tracking-controls");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app(2, 10);
+        track_process_name(&mut app, "proc-0");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.show_recording_path_dialog = true;
+        app.confirm_recording_path().unwrap();
+
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.show_recording_tracking_fixed);
+        assert_eq!(app.watch_list, vec!["proc-0"]);
+        let rendered = render_app_to_text(&app, 260, 45);
+        assert!(
+            rendered.contains("Tracking List is fixed while recording."),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Stop recording before changing it."),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Ctrl+R Stop"), "{rendered}");
+        assert!(!rendered.contains("t Track"), "{rendered}");
+        assert!(!rendered.contains("Ctrl+T Lists"), "{rendered}");
+        assert!(rendered.contains("Shift+T Tracked-only"), "{rendered}");
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert!(app.show_recording_tracking_fixed);
+        assert!(app.tracked_lists_dialog.is_none());
+
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        let tracked_only_before = app.watch_enabled;
+        app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
+            .unwrap();
+        assert_ne!(app.watch_enabled, tracked_only_before);
+
+        app.stop_recording().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn ctrl_r_confirms_stop_and_defaults_to_continue() {
+        let path = unique_recording_path("confirm-stop");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.show_recording_path_dialog = true;
+        app.confirm_recording_path().unwrap();
+
+        app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+            .unwrap();
+
+        assert!(app.show_recording_stop_confirmation);
+        assert_eq!(
+            app.recording_stop_selection,
+            app::RecordingStopSelection::Continue
+        );
+        assert_eq!(app.activity(), AppActivity::Recording);
+        let rendered = render_app_to_text(&app, 100, 45);
+        assert!(
+            rendered.contains("Stop recording and close this log?"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Recording continues until Stop is confirmed."),
+            "{rendered}"
+        );
+        assert!(rendered.contains("[ Stop ]   [ Continue ]"), "{rendered}");
+
+        app.write_current_recording_frame().unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert!(app.show_recording_stop_confirmation);
+        assert_eq!(app.activity(), AppActivity::Recording);
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.show_recording_stop_confirmation);
+        assert_eq!(app.activity(), AppActivity::Recording);
+
+        app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.activity(), AppActivity::Live);
+        assert!(!app.show_recording_stop_confirmation);
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            contents
+                .lines()
+                .filter(|line| line.contains("\"record_type\":\"frame\""))
+                .count(),
+            2
+        );
+        assert!(
+            contents
+                .lines()
+                .last()
+                .unwrap()
+                .contains("\"record_type\":\"end\"")
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn recording_stop_buttons_support_hover_and_mouse_activation() {
+        let path = unique_recording_path("mouse-stop");
+        let _ = std::fs::remove_file(&path);
+        let screen = Rect::new(0, 0, 100, 45);
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.show_recording_path_dialog = true;
+        app.confirm_recording_path().unwrap();
+        app.request_recording_stop();
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position(&buffer, "[ Stop ]").expect("Stop button should render");
+        app.on_mouse(mouse_move(x + 2, y), screen);
+        let hovered = render_app_to_buffer(&app, screen.width, screen.height);
+        assert_eq!(hovered[(x, y)].bg, app.theme().focus_surface);
+
+        app.on_mouse(left_click(x + 2, y), screen);
+
+        assert_eq!(app.activity(), AppActivity::Live);
+        assert!(!app.show_recording_stop_confirmation);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn recording_no_tracked_warning_closes_with_escape_or_enter() {
         for key in [
             KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
@@ -8000,7 +8159,7 @@ processes = ["api.exe", "worker.exe"]
         app.recording_path_draft = "C:/logs/example.log".to_string();
         app.recording_path_cursor = "C:/logs/".len();
         let screen = Rect::new(0, 0, 100, 45);
-        let popup = Rect::new(11, 18, 78, 8);
+        let popup = Rect::new(11, 18, 78, 9);
         let expected_cursor =
             Position::new(popup.x + 1 + app.recording_path_cursor as u16, popup.y + 2);
 
@@ -8023,7 +8182,11 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("Enter activate · Esc close · Tab focus · Ctrl+Space complete"),
+            rendered.contains("Enter activate  Esc close  Tab focus  Ctrl+Space complete"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Tracking List  0 names · fixed until recording stops."),
             "{rendered}"
         );
         assert!(rendered.contains("[ Start ]   [ Cancel ]"), "{rendered}");
@@ -8110,6 +8273,109 @@ processes = ["api.exe", "worker.exe"]
 
         app.stop_recording().unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recording_open_failure_uses_a_visible_error_and_returns_to_path_input() {
+        let root = unique_recording_dir("open-error");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let parent_file = root.join("not-a-directory");
+        std::fs::write(&parent_file, "blocker").unwrap();
+        let path = parent_file.join("capture.log");
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+
+        app.confirm_recording_path().unwrap();
+
+        assert!(app.recording_session.is_none());
+        assert!(app.recording_error.is_some());
+        assert!(app.show_recording_path_dialog);
+        let rendered = render_app_to_text(&app, 100, 45);
+        assert!(rendered.contains("RECORDING ERROR"), "{rendered}");
+        assert!(
+            rendered.contains("Recording could not start."),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Log:"), "{rendered}");
+        assert!(rendered.contains("Error:"), "{rendered}");
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.recording_error.is_none());
+        assert!(app.show_recording_path_dialog);
+        assert_eq!(
+            app.recording_path_selection,
+            app::RecordingPathSelection::Path
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn periodic_recording_write_failure_stops_recording_and_shows_error() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let path = unique_recording_path("periodic-write-error");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.confirm_recording_path().unwrap();
+        app.replace_recording_writer_for_test(Box::new(AlwaysFailWriter));
+        let snapshot = app.snapshot.clone();
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.activity(), AppActivity::Live);
+        assert!(app.recording_session.is_none());
+        let error = app
+            .recording_error
+            .as_ref()
+            .expect("error should be visible");
+        assert_eq!(error.kind, app::state::RecordingErrorKind::Stopped);
+        assert!(path.exists(), "partial log should be retained");
+        let rendered = render_app_to_text(&app, 100, 45);
+        assert!(
+            rendered.contains("Recording stopped because the log could not be written."),
+            "{rendered}"
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn quit_is_canceled_when_recording_flush_fails() {
+        let path = unique_recording_path("quit-write-error");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.confirm_recording_path().unwrap();
+        app.replace_recording_writer_for_test(Box::new(AlwaysFailWriter));
+        app.request_quit_confirmation();
+
+        app.confirm_quit().unwrap();
+
+        assert!(!app.should_quit);
+        assert!(!app.show_quit_confirmation);
+        assert_eq!(app.activity(), AppActivity::Live);
+        assert!(app.recording_error.is_some());
+        let rendered = render_app_to_text(&app, 100, 45);
+        assert!(rendered.contains("RECORDING ERROR"), "{rendered}");
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -11846,6 +12112,18 @@ processes = ["api.exe", "worker.exe"]
             ))
     }
 
+    struct AlwaysFailWriter;
+
+    impl std::io::Write for AlwaysFailWriter {
+        fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("simulated recording write failure"))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::other("simulated recording flush failure"))
+        }
+    }
+
     fn unique_config_path(label: &str) -> std::path::PathBuf {
         std::env::current_dir()
             .unwrap()
@@ -12566,6 +12844,9 @@ processes = ["api.exe", "worker.exe"]
         app.show_recording_path_dialog = true;
 
         app.confirm_recording_path().unwrap();
+        app.watch_list = vec!["other.exe".to_string()];
+        app.normalized_watch_names = std::collections::HashSet::from(["other.exe".to_string()]);
+        app.write_current_recording_frame().unwrap();
         app.stop_recording().unwrap();
 
         let lines = std::fs::read_to_string(&path).unwrap();
@@ -12575,9 +12856,15 @@ processes = ["api.exe", "worker.exe"]
             .collect::<Vec<_>>();
         assert_eq!(records[0]["schema_version"], 2);
         assert_eq!(records[0]["record_type"], "session");
+        assert_eq!(records[0]["tracked_names"], serde_json::json!(["proc-0"]));
         assert_eq!(records[1]["record_type"], "frame");
         assert_eq!(records[1]["system_metrics"]["physical_memory_bytes"], 0);
-        assert_eq!(records[2]["record_type"], "end");
+        assert_eq!(records[1]["tracked_names"], serde_json::json!(["proc-0"]));
+        assert_eq!(records[2]["record_type"], "frame");
+        assert_eq!(records[2]["tracked_names"], serde_json::json!(["proc-0"]));
+        assert_eq!(records[2]["processes"][0]["name"], "proc-0");
+        assert_eq!(records[3]["record_type"], "end");
+        let _ = std::fs::remove_file(path);
     }
 
     fn buffer_to_text(buffer: &ratatui::buffer::Buffer) -> String {
@@ -12780,6 +13067,13 @@ processes = ["api.exe", "worker.exe"]
             recording_path_selection: app::RecordingPathSelection::Path,
             show_recording_overwrite_confirmation: false,
             recording_overwrite_selection: app::RecordingOverwriteSelection::Cancel,
+            show_recording_stop_confirmation: false,
+            recording_stop_selection: app::RecordingStopSelection::Continue,
+            recording_stop_hovered: None,
+            show_recording_tracking_fixed: false,
+            recording_tracking_fixed_ok_hovered: false,
+            recording_error: None,
+            recording_error_ok_hovered: false,
             show_tracked_remove_confirmation: false,
             tracked_remove_selection: TrackedRemoveSelection::Cancel,
             tracked_remove_name: String::new(),

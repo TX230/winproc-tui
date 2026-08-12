@@ -114,6 +114,12 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             ]
         }
     };
+    if app.activity() == AppActivity::Recording {
+        if app.focused_panel == FocusedPanel::Processes {
+            items.retain(|(key, _)| *key != "t" && *key != "Ctrl+T");
+        }
+        items.insert(0, ("Ctrl+R", "Stop"));
+    }
     if app.activity() == AppActivity::LogView {
         items.push(("Esc", "Live"));
     } else {

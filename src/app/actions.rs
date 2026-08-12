@@ -10,8 +10,8 @@ use crate::{
     app::{
         App, AppActivity, DetailsMetric, FocusedPanel, GraphHoverTarget, GraphId, GraphPanDrag,
         GraphPanDragButton, GraphSlot, ProcessInfoFocus, ProcessKillSelection,
-        QuitConfirmSelection, RecordingOverwriteSelection, TrackedListConfirmSelection,
-        TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
+        QuitConfirmSelection, RecordingOverwriteSelection, RecordingStopSelection,
+        TrackedListConfirmSelection, TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
@@ -29,12 +29,13 @@ use crate::{
         no_graph_metrics_warning_ok_button_area, process_info_close_button_area_for_screen,
         process_info_content_area_for_screen, process_info_tab_at, process_kill_button_at,
         process_metric_column_index_at, process_tracked_only_control_area, quit_confirm_button_at,
-        ram_vram_panel_area_for_screen, recording_no_tracked_ok_button_area,
-        recording_overwrite_button_at, recording_path_button_at, recording_path_input_area,
-        system_activity_panel_area_for_screen, system_info_ok_button_area_for_screen,
-        tracked_list_confirm_button_at, tracked_list_index_at, tracked_list_name_button_at,
-        tracked_list_save_name_area_for_screen, tracked_list_startup_area_for_screen,
-        tracked_lists_button_at, tracked_remove_button_at,
+        ram_vram_panel_area_for_screen, recording_error_ok_button_area,
+        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
+        recording_path_button_at, recording_path_input_area, recording_stop_button_at,
+        recording_tracking_fixed_ok_button_area, system_activity_panel_area_for_screen,
+        system_info_ok_button_area_for_screen, tracked_list_confirm_button_at,
+        tracked_list_index_at, tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
+        tracked_list_startup_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
     },
 };
 
@@ -47,6 +48,40 @@ impl App {
             return Ok(());
         }
         self.clear_graph_source_click();
+
+        if self.recording_error.is_some() {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => self.dismiss_recording_error(),
+                _ => {}
+            }
+            return Ok(());
+        }
+
+        if self.show_recording_stop_confirmation {
+            match key.code {
+                KeyCode::Enter => self.activate_recording_stop_selection(),
+                KeyCode::Esc => self.cancel_recording_stop(),
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
+                    self.cancel_recording_stop();
+                }
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
+                    self.confirm_recording_stop();
+                }
+                KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
+                    self.toggle_recording_stop_selection();
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
+        if self.show_recording_tracking_fixed {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => self.dismiss_recording_tracking_fixed(),
+                _ => {}
+            }
+            return Ok(());
+        }
 
         if self.show_display_area_warning {
             match key.code {
@@ -1363,9 +1398,55 @@ impl App {
         ) {
             self.clear_graph_source_click();
         }
-        if let Some(zoom_in) = terminal_zoom_direction(&mouse) {
+        if self.recording_error.is_none()
+            && !self.show_recording_stop_confirmation
+            && !self.show_recording_tracking_fixed
+            && let Some(zoom_in) = terminal_zoom_direction(&mouse)
+        {
             if let Err(error) = send_terminal_zoom_shortcut(zoom_in) {
                 self.status = format!("Terminal zoom failed: {error}");
+            }
+            return;
+        }
+
+        if self.recording_error.is_some() {
+            let over_ok = recording_error_ok_button_area(screen_area)
+                .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
+            if mouse.kind == MouseEventKind::Moved {
+                self.set_recording_error_ok_hovered(over_ok);
+                return;
+            }
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) && over_ok {
+                self.dismiss_recording_error();
+            }
+            return;
+        }
+
+        if self.show_recording_stop_confirmation {
+            let hovered = recording_stop_button_at(screen_area, mouse.column, mouse.row);
+            if mouse.kind == MouseEventKind::Moved {
+                self.set_recording_stop_hovered(hovered);
+                return;
+            }
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                match hovered {
+                    Some(RecordingStopSelection::Stop) => self.confirm_recording_stop(),
+                    Some(RecordingStopSelection::Continue) => self.cancel_recording_stop(),
+                    None => {}
+                }
+            }
+            return;
+        }
+
+        if self.show_recording_tracking_fixed {
+            let over_ok = recording_tracking_fixed_ok_button_area(screen_area)
+                .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
+            if mouse.kind == MouseEventKind::Moved {
+                self.set_recording_tracking_fixed_ok_hovered(over_ok);
+                return;
+            }
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) && over_ok {
+                self.dismiss_recording_tracking_fixed();
             }
             return;
         }

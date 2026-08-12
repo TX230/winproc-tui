@@ -652,6 +652,35 @@ impl RecordingOverwriteSelection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecordingStopSelection {
+    Stop,
+    Continue,
+}
+
+impl RecordingStopSelection {
+    pub(crate) fn toggled(self) -> Self {
+        match self {
+            Self::Stop => Self::Continue,
+            Self::Continue => Self::Stop,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecordingErrorKind {
+    CouldNotStart,
+    Stopped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordingErrorDialog {
+    pub(crate) path: PathBuf,
+    pub(crate) message: String,
+    pub(crate) kind: RecordingErrorKind,
+    pub(crate) return_to_path_dialog: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RecordingPathSelection {
     Path,
     Start,
@@ -883,6 +912,13 @@ pub(crate) struct App {
     pub(crate) recording_path_selection: RecordingPathSelection,
     pub(crate) show_recording_overwrite_confirmation: bool,
     pub(crate) recording_overwrite_selection: RecordingOverwriteSelection,
+    pub(crate) show_recording_stop_confirmation: bool,
+    pub(crate) recording_stop_selection: RecordingStopSelection,
+    pub(crate) recording_stop_hovered: Option<RecordingStopSelection>,
+    pub(crate) show_recording_tracking_fixed: bool,
+    pub(crate) recording_tracking_fixed_ok_hovered: bool,
+    pub(crate) recording_error: Option<RecordingErrorDialog>,
+    pub(crate) recording_error_ok_hovered: bool,
     pub(crate) show_tracked_remove_confirmation: bool,
     pub(crate) tracked_remove_selection: TrackedRemoveSelection,
     pub(crate) tracked_remove_name: String,
@@ -1100,6 +1136,13 @@ impl App {
             recording_path_selection: RecordingPathSelection::Path,
             show_recording_overwrite_confirmation: false,
             recording_overwrite_selection: RecordingOverwriteSelection::Cancel,
+            show_recording_stop_confirmation: false,
+            recording_stop_selection: RecordingStopSelection::Continue,
+            recording_stop_hovered: None,
+            show_recording_tracking_fixed: false,
+            recording_tracking_fixed_ok_hovered: false,
+            recording_error: None,
+            recording_error_ok_hovered: false,
             show_tracked_remove_confirmation: false,
             tracked_remove_selection: TrackedRemoveSelection::Cancel,
             tracked_remove_name: String::new(),
@@ -1358,6 +1401,9 @@ impl App {
             || self.show_recording_no_tracked_warning
             || self.show_recording_path_dialog
             || self.show_recording_overwrite_confirmation
+            || self.show_recording_stop_confirmation
+            || self.show_recording_tracking_fixed
+            || self.recording_error.is_some()
             || self.show_tracked_remove_confirmation
             || self.show_process_kill_confirmation
             || self.show_display_area_warning
@@ -3418,6 +3464,9 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn add_selected_process_to_watch_list(&mut self) {
+        if self.reject_tracking_list_change_while_recording() {
+            return;
+        }
         let Some(name) = self.selected_visible_process_name() else {
             self.status = "No process selected".to_string();
             return;
@@ -3427,6 +3476,9 @@ impl App {
     }
 
     pub(crate) fn toggle_selected_process_tracking(&mut self) {
+        if self.reject_tracking_list_change_while_recording() {
+            return;
+        }
         let Some(name) = self.selected_visible_process_name() else {
             self.status = "No process selected".to_string();
             return;
@@ -3461,6 +3513,10 @@ impl App {
     }
 
     pub(crate) fn confirm_tracked_remove(&mut self) {
+        if self.reject_tracking_list_change_while_recording() {
+            self.reset_tracked_remove_confirmation();
+            return;
+        }
         let name = self.tracked_remove_name.clone();
         let discarded = self
             .process_history
@@ -3512,6 +3568,9 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn remove_selected_process_from_watch_list(&mut self) {
+        if self.reject_tracking_list_change_while_recording() {
+            return;
+        }
         let Some(name) = self.selected_visible_process_name() else {
             self.status = "No process selected".to_string();
             return;
@@ -3538,7 +3597,21 @@ impl App {
         };
     }
 
+    pub(crate) fn reject_tracking_list_change_while_recording(&mut self) -> bool {
+        if self.activity() != AppActivity::Recording {
+            return false;
+        }
+
+        self.show_recording_tracking_fixed = true;
+        self.recording_tracking_fixed_ok_hovered = false;
+        self.status = "Tracking List is fixed while recording".to_string();
+        true
+    }
+
     pub(crate) fn open_tracked_lists(&mut self) {
+        if self.reject_tracking_list_change_while_recording() {
+            return;
+        }
         if self.activity() == AppActivity::LogView {
             self.status = "Tracking Lists are unavailable in Log view".to_string();
             return;
@@ -4347,6 +4420,10 @@ impl App {
         target_name: Option<String>,
         target_processes: Vec<String>,
     ) {
+        if self.reject_tracking_list_change_while_recording() {
+            self.tracked_lists_dialog = None;
+            return;
+        }
         let target_processes = dedupe_process_names(target_processes);
         let target_normalized = normalized_process_names(&target_processes);
         let removed_names = self
@@ -4387,6 +4464,10 @@ impl App {
     }
 
     fn apply_tracked_list_switch(&mut self, pending: PendingTrackedListSwitch) {
+        if self.reject_tracking_list_change_while_recording() {
+            self.tracked_lists_dialog = None;
+            return;
+        }
         let target_normalized = normalized_process_names(&pending.target_processes);
         let removed_names = self
             .watch_list
@@ -5945,7 +6026,17 @@ impl App {
 
     pub(crate) fn confirm_quit(&mut self) -> Result<()> {
         if self.recording_session.is_some() {
-            self.stop_recording()?;
+            let path = self
+                .recording_session
+                .as_ref()
+                .expect("recording session exists")
+                .path
+                .clone();
+            if let Err(error) = self.stop_recording() {
+                self.show_quit_confirmation = false;
+                self.present_active_recording_error(path, error);
+                return Ok(());
+            }
         }
         self.should_quit = true;
         self.show_quit_confirmation = false;
@@ -6699,9 +6790,15 @@ impl App {
             match self.write_current_recording_frame() {
                 Ok(()) => {}
                 Err(error) => {
+                    let path = self
+                        .recording_session
+                        .as_ref()
+                        .expect("recording session exists")
+                        .path
+                        .clone();
                     self.recording_session = None;
+                    self.present_active_recording_error(path, error);
                     recording_stopped = true;
-                    status_parts.push(format!("Recording stopped: {error}"));
                 }
             }
         }
