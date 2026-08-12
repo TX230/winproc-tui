@@ -105,7 +105,7 @@ Applying a live sample updates the current `Snapshot`, process and system histor
 
 ### 4.3 Sampling cycle
 
-`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies `GetPerformanceInfo` and Win32/DXGI-derived values, and returns `CollectSnapshotResult { snapshot, warning }`. GPU Engine, GPU Process Memory, and GPU Adapter Memory counters share one persistent query and are collected every second. DXGI adapter identity and capacity are initialized once and rechecked every five samples so a topology change can replace the cached static adapter list. The only five-second cached process extras are USER and GDI object counts.
+`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies `GetPerformanceInfo` and Win32/DXGI-derived values, and returns `CollectSnapshotResult { snapshot, warning }`. GPU Engine, GPU Process Memory, and GPU Adapter Memory counters share one persistent query and are collected every second. DXGI adapter identity and capacity are initialized once and rechecked every five samples so a topology change can replace the cached static adapter list. System GPU values join PDH instances to that catalog by LUID; a PDH-only LUID never creates an adapter entry. The only five-second cached process extras are USER and GDI object counts.
 
 The collection boundary deliberately produces one aggregate `Snapshot`. Individual collectors do not update `App`, histories, or widgets. Open Files is an explicit per-process investigation action rather than part of continuous sampling; it enumerates disk file handles only and remains off the UI thread.
 

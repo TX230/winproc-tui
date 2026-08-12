@@ -163,14 +163,9 @@ fn memory_title(app: &App, theme: Theme) -> Line<'static> {
 }
 
 fn gpu_title(app: &App) -> Line<'static> {
-    let count = app.display_snapshot().gpu_adapters.len();
-    let index = if count == 0 {
-        0
-    } else {
-        app.gpu_adapter_index.min(count - 1)
-    };
+    let (page, count) = app.gpu_adapter_page();
     Line::from(Span::styled(
-        format!("GPU {index}/{count}"),
+        format!("GPU {page}/{count}"),
         Style::default().add_modifier(Modifier::BOLD),
     ))
 }

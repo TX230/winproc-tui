@@ -50,6 +50,7 @@ Compact byte formatting is used in the Processes table and for Graph Y-axis tick
 The first system resource region contains a two-page `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPUs`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPUs`.
 
 Press `m` or `g` while the resource region has focus to select `MEM` or `GPU`. `Left` / `Right` change the MEM page or GPU adapter, `Up` / `Down` select a row, and `Space` or double-click adds or removes that row in the Graph Workspace.
+Page titles are one-based: the MEM panel uses `MEM 1/2` then `MEM 2/2`, and available GPU adapters use `GPU 1/N` through `GPU N/N`.
 
 ### MEM 1/2: Overview
 
@@ -73,7 +74,7 @@ Press `m` or `g` while the resource region has focus to select `MEM` or `GPU`. `
 
 ### GPU per adapter
 
-The title is `GPU n/N`. Adapter identity is the WDDM/DXGI LUID; values from different adapters are never summed. `Dedicated` and `Shared` capacity come from that adapter's DXGI description. They are capacity values, not WDDM budget values.
+The title is `GPU n/N`, using one-based page numbers for available adapters (`GPU 1/2`, then `GPU 2/2`). When no hardware adapter is available, it is `GPU 0/0`. Adapter identity is the WDDM/DXGI LUID; values from different adapters are never summed. Only adapters in the current DXGI hardware catalog are shown. PDH-only LUIDs, including the WARP software adapter, never create GPU panel entries. `Dedicated` and `Shared` capacity come from that adapter's DXGI description. They are capacity values, not WDDM budget values.
 
 | Display name | GPU adapter log field | Description | Primary source | Display format |
 |---|---|---|---|---|

@@ -2630,6 +2630,16 @@ impl App {
             .or_else(|| self.display_snapshot().gpu_adapters.first())
     }
 
+    pub(crate) fn gpu_adapter_page(&self) -> (usize, usize) {
+        let count = self.display_snapshot().gpu_adapters.len();
+        let page = if count == 0 {
+            0
+        } else {
+            self.gpu_adapter_index.min(count - 1) + 1
+        };
+        (page, count)
+    }
+
     pub(crate) fn selected_system_graph_slot(&self) -> Option<GraphSlot> {
         let metric = self.selected_system_metric();
         match self.resource_panel {
@@ -2677,13 +2687,8 @@ impl App {
         match self.resource_panel {
             ResourcePanel::Memory => format!("MEM page {}/2", self.memory_page + 1),
             ResourcePanel::Gpu => {
-                let count = self.display_snapshot().gpu_adapters.len();
-                let index = if count == 0 {
-                    0
-                } else {
-                    self.gpu_adapter_index.min(count - 1)
-                };
-                format!("GPU adapter {index}/{count}")
+                let (page, count) = self.gpu_adapter_page();
+                format!("GPU adapter {page}/{count}")
             }
         }
     }

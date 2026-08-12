@@ -6466,7 +6466,7 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 180, 30);
 
         assert!(rendered.contains("MEM 1/2"), "{rendered}");
-        assert!(rendered.contains("GPU 0/1"), "{rendered}");
+        assert!(rendered.contains("GPU 1/1"), "{rendered}");
         assert!(!rendered.contains("[Max samples: 7200]"), "{rendered}");
         for label in [
             "In use",
@@ -6481,6 +6481,31 @@ processes = ["api.exe", "worker.exe"]
         ] {
             assert!(rendered.contains(label), "missing {label}: {rendered}");
         }
+    }
+
+    #[test]
+    fn memory_and_gpu_panels_use_one_based_pages() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot
+            .gpu_adapters
+            .extend(std::iter::repeat_with(model::GpuAdapterSample::default).take(2));
+
+        let memory_first = render_app_to_text(&app, 180, 30);
+        assert!(memory_first.contains("MEM 1/2"), "{memory_first}");
+
+        app.select_next_resource_page();
+        let memory_second = render_app_to_text(&app, 180, 30);
+        assert!(memory_second.contains("MEM 2/2"), "{memory_second}");
+        assert_eq!(app.status, "MEM page 2/2");
+
+        app.select_resource_panel(app::ResourcePanel::Gpu);
+        let gpu_first = render_app_to_text(&app, 180, 30);
+        assert!(gpu_first.contains("GPU 1/2"), "{gpu_first}");
+
+        app.select_next_resource_page();
+        let gpu_second = render_app_to_text(&app, 180, 30);
+        assert!(gpu_second.contains("GPU 2/2"), "{gpu_second}");
+        assert_eq!(app.status, "GPU adapter 2/2");
     }
 
     #[test]

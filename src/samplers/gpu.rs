@@ -203,17 +203,6 @@ fn build_gpu_sample(
     let mut adapters = capacities.to_vec();
     let dedicated_by_adapter = adapter_memory_map(&adapter_dedicated_items);
     let shared_by_adapter = adapter_memory_map(&adapter_shared_items);
-    let mut discovered_ids = physical_totals
-        .keys()
-        .map(|key| key.adapter)
-        .chain(dedicated_by_adapter.keys().copied())
-        .chain(shared_by_adapter.keys().copied())
-        .collect::<Vec<_>>();
-    discovered_ids.sort_by_key(|id| (id.high, id.low));
-    discovered_ids.dedup();
-    for id in discovered_ids {
-        ensure_adapter(&mut adapters, id);
-    }
 
     for adapter in &mut adapters {
         let engine_values = physical_totals
@@ -302,15 +291,6 @@ fn adapter_memory_map(items: &[(String, u64)]) -> HashMap<GpuAdapterId, u64> {
         *entry = entry.saturating_add(*value);
     }
     values
-}
-
-fn ensure_adapter(adapters: &mut Vec<GpuAdapterSample>, id: GpuAdapterId) {
-    if !adapters.iter().any(|adapter| adapter.id == id) {
-        adapters.push(GpuAdapterSample {
-            id,
-            ..GpuAdapterSample::default()
-        });
-    }
 }
 
 fn parse_engine_instance(name: &str) -> Option<EngineInstance> {
@@ -518,5 +498,61 @@ mod tests {
         assert_eq!(sample.adapters[1].dedicated_used, Some(2_000));
         assert_eq!(sample.adapters[1].dedicated_total, Some(16_000));
         assert!(!sample.processes.contains_key(&30));
+    }
+
+    #[test]
+    fn gpu_sample_does_not_promote_pdh_only_adapters() {
+        let hardware = GpuAdapterId { high: 1, low: 2 };
+        let pdh_only = GpuAdapterId { high: 3, low: 4 };
+        let sample = build_gpu_sample(
+            &[GpuAdapterSample {
+                id: hardware,
+                name: Some("Hardware GPU".to_string()),
+                dedicated_total: Some(8_000),
+                ..GpuAdapterSample::default()
+            }],
+            vec![
+                (
+                    "pid_10_luid_0x1_0x2_phys_0_eng_0_engtype_3D".to_string(),
+                    25.0,
+                ),
+                (
+                    "pid_20_luid_0x3_0x4_phys_0_eng_0_engtype_3D".to_string(),
+                    75.0,
+                ),
+            ],
+            Vec::new(),
+            Vec::new(),
+            vec![
+                ("luid_0x1_0x2_phys_0".to_string(), 1_000),
+                ("luid_0x3_0x4_phys_0".to_string(), 2_000),
+            ],
+            Vec::new(),
+        );
+
+        assert_eq!(sample.adapters.len(), 1);
+        assert_eq!(sample.adapters[0].id, hardware);
+        assert_eq!(sample.adapters[0].utilization_percent, Some(25.0));
+        assert_eq!(sample.adapters[0].dedicated_used, Some(1_000));
+        assert_eq!(sample.processes[&20].utilization_percent, Some(75.0));
+        assert!(!sample.adapters.iter().any(|adapter| adapter.id == pdh_only));
+    }
+
+    #[test]
+    fn gpu_sample_requires_dxgi_catalog_for_system_adapters() {
+        let sample = build_gpu_sample(
+            &[],
+            vec![(
+                "pid_20_luid_0x3_0x4_phys_0_eng_0_engtype_3D".to_string(),
+                75.0,
+            )],
+            Vec::new(),
+            Vec::new(),
+            vec![("luid_0x3_0x4_phys_0".to_string(), 2_000)],
+            Vec::new(),
+        );
+
+        assert!(sample.adapters.is_empty());
+        assert_eq!(sample.processes[&20].utilization_percent, Some(75.0));
     }
 }
