@@ -137,6 +137,14 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Switch Info tabs",
     },
     HelpItem {
+        key: "Tab / Shift+Tab",
+        label: "Focus Info tabs / content / close",
+    },
+    HelpItem {
+        key: "Left/Right",
+        label: "Switch focused Info tabs",
+    },
+    HelpItem {
         key: "d/Delete",
         label: "Kill selected live process",
     },
@@ -514,7 +522,7 @@ fn help_lines(theme: Theme) -> Vec<Line<'static>> {
 
 fn help_hint() -> String {
     format!(
-        "Footer: focused actions. History: {}/{} normal/tracked. Neutral selects; amber marks.",
+        "Footer: focused actions. History: {}/{} normal/tracked. Green selects; amber marks.",
         format_integer(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as u64),
         format_integer(TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u64)
     )
@@ -566,13 +574,7 @@ fn shortcut_row(item: &HelpItem, key_width: usize, theme: Theme) -> ColumnRow {
     let label_len = item.label.chars().count();
     let width = key_len + pad + label_len;
     let spans = vec![
-        Span::styled(
-            item.key,
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.panel_alt)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(item.key, Style::default().fg(theme.key_hint)),
         Span::raw(" ".repeat(pad)),
         Span::styled(item.label, Style::default().fg(theme.text)),
     ];

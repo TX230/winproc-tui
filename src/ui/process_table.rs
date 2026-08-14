@@ -361,7 +361,7 @@ fn process_fixed_cell<'a>(
     if selected_cell {
         cell = cell.style(Style::default().bg(theme.table_intersection_surface));
     } else if selected {
-        cell = cell.style(Style::default().bg(theme.table_selection_surface));
+        cell = cell.style(Style::default().bg(theme.table_column_surface));
     }
     cell
 }
@@ -375,7 +375,7 @@ fn header_cell<'a>(
     let style = if selected {
         Style::default()
             .fg(theme.text)
-            .bg(theme.table_selection_surface)
+            .bg(theme.table_column_surface)
     } else {
         Style::default().fg(theme.text).bg(theme.panel)
     };
@@ -485,7 +485,7 @@ fn process_metric_cell(
         if selected_cell {
             cell = cell.style(Style::default().bg(theme.table_intersection_surface));
         } else if selected {
-            cell = cell.style(Style::default().bg(theme.table_selection_surface));
+            cell = cell.style(Style::default().bg(theme.table_column_surface));
         }
         return cell;
     }
@@ -500,7 +500,7 @@ fn process_metric_cell(
     if selected_cell {
         cell = cell.style(Style::default().bg(theme.table_intersection_surface));
     } else if selected {
-        cell = cell.style(Style::default().bg(theme.table_selection_surface));
+        cell = cell.style(Style::default().bg(theme.table_column_surface));
     }
     cell
 }
@@ -864,6 +864,14 @@ fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: 
 }
 
 fn process_tracked_only_title_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
+    if app.watch_enabled {
+        let plain = |color| Style::default().fg(color).remove_modifier(Modifier::BOLD);
+        return vec![
+            Span::styled("☑", plain(theme.tracked)),
+            Span::styled(" Tracked-only", plain(theme.text)),
+            Span::styled("(Shift+T)", plain(theme.muted)),
+        ];
+    }
     let label_style = process_title_segment_style(ProcessTitleSegmentKind::TrackedOnly, app, theme);
     vec![Span::styled(process_tracked_only_label(app), label_style)]
 }
@@ -1159,7 +1167,7 @@ mod tests {
     }
 
     #[test]
-    fn header_cells_use_quiet_neutral_surfaces() {
+    fn header_cells_use_the_column_selection_surface() {
         let theme = crate::ui::theme::THEMES[0];
         let ordinary = header_cell("PrivBytes", Alignment::Right, false, theme);
         let focused = header_cell("PrivBytes", Alignment::Right, true, theme);
@@ -1168,7 +1176,7 @@ mod tests {
         let focused_style = Styled::style(&focused);
 
         assert_eq!(ordinary_style.bg, Some(theme.panel));
-        assert_eq!(focused_style.bg, Some(theme.table_selection_surface));
+        assert_eq!(focused_style.bg, Some(theme.table_column_surface));
         assert!(!ordinary_style.add_modifier.contains(Modifier::UNDERLINED));
         assert!(!ordinary_style.add_modifier.contains(Modifier::BOLD));
         assert!(!focused_style.add_modifier.contains(Modifier::UNDERLINED));

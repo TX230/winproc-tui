@@ -229,6 +229,7 @@ pub(crate) enum ProcessInfoTab {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProcessInfoFocus {
+    Tabs,
     Content,
     Close,
 }
@@ -5026,18 +5027,21 @@ impl App {
     }
 
     pub(crate) fn next_process_info_tab(&mut self) -> Result<()> {
-        self.activate_process_info_tab(self.process_info_tab.next())
+        self.activate_process_info_tab(self.process_info_tab.next())?;
+        self.process_info_focus = ProcessInfoFocus::Content;
+        Ok(())
     }
 
     pub(crate) fn previous_process_info_tab(&mut self) -> Result<()> {
-        self.activate_process_info_tab(self.process_info_tab.previous())
+        self.activate_process_info_tab(self.process_info_tab.previous())?;
+        self.process_info_focus = ProcessInfoFocus::Content;
+        Ok(())
     }
 
     pub(crate) fn activate_process_info_tab(&mut self, tab: ProcessInfoTab) -> Result<()> {
         if !self.show_process_info_dialog {
             return Ok(());
         }
-        self.process_info_focus = ProcessInfoFocus::Content;
         if self.process_info_tab == tab {
             return Ok(());
         }
@@ -5058,12 +5062,17 @@ impl App {
     pub(crate) fn focus_next_process_info_control(&mut self) {
         self.process_info_focus = match self.process_info_focus {
             ProcessInfoFocus::Content => ProcessInfoFocus::Close,
-            ProcessInfoFocus::Close => ProcessInfoFocus::Content,
+            ProcessInfoFocus::Close => ProcessInfoFocus::Tabs,
+            ProcessInfoFocus::Tabs => ProcessInfoFocus::Content,
         };
     }
 
     pub(crate) fn focus_previous_process_info_control(&mut self) {
-        self.focus_next_process_info_control();
+        self.process_info_focus = match self.process_info_focus {
+            ProcessInfoFocus::Content => ProcessInfoFocus::Tabs,
+            ProcessInfoFocus::Tabs => ProcessInfoFocus::Close,
+            ProcessInfoFocus::Close => ProcessInfoFocus::Content,
+        };
     }
 
     fn active_process_info_scroll(&self) -> &ScrollableModalState {
@@ -5320,7 +5329,7 @@ impl App {
         self.process_info_generation = self.process_info_generation.wrapping_add(1).max(1);
         self.process_info_target = Some(target);
         self.process_info_tab = initial_tab;
-        self.process_info_focus = ProcessInfoFocus::Content;
+        self.process_info_focus = ProcessInfoFocus::Tabs;
         self.show_process_info_dialog = true;
         self.process_info_scroll.reset();
         self.process_info_image_scroll.reset();

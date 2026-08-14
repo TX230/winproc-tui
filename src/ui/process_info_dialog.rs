@@ -54,7 +54,13 @@ pub(crate) fn draw_process_info_dialog(
         panel_block_focused(process_info_title(app, theme), theme, true),
         layout.area,
     );
-    draw_tabs(frame, layout, app.process_info_tab, theme);
+    draw_tabs(
+        frame,
+        layout,
+        app.process_info_tab,
+        app.process_info_focus == ProcessInfoFocus::Tabs,
+        theme,
+    );
 
     match app.process_info_tab {
         ProcessInfoTab::Metrics => render_scrollable_lines(
@@ -62,6 +68,7 @@ pub(crate) fn draw_process_info_dialog(
             layout.content,
             process_info_metrics_lines(app, layout.content.width, theme),
             app.process_info_scroll_offset(),
+            app.process_info_focus == ProcessInfoFocus::Content,
             theme,
         ),
         ProcessInfoTab::Image => render_scrollable_lines(
@@ -69,6 +76,7 @@ pub(crate) fn draw_process_info_dialog(
             layout.content,
             process_info_image_lines(app, layout.content.width, theme),
             app.process_info_scroll_offset(),
+            app.process_info_focus == ProcessInfoFocus::Content,
             theme,
         ),
         ProcessInfoTab::Files => draw_open_files_tab(frame, layout.content, app, theme),
@@ -181,6 +189,7 @@ fn draw_tabs(
     frame: &mut ratatui::Frame<'_>,
     layout: ProcessInfoDialogLayout,
     active: ProcessInfoTab,
+    focused: bool,
     theme: Theme,
 ) {
     for (tab, area) in ProcessInfoTab::ALL.into_iter().zip(tab_areas(layout.tabs)) {
@@ -188,10 +197,14 @@ fn draw_tabs(
             continue;
         }
         let style = if tab == active {
-            Style::default()
-                .fg(theme.accent)
-                .bg(theme.panel)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            let style = if focused {
+                Style::default()
+                    .fg(theme.focus_border)
+                    .bg(theme.focus_surface)
+            } else {
+                Style::default().fg(theme.accent).bg(theme.panel)
+            };
+            style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
         } else {
             Style::default().fg(theme.muted).bg(theme.panel)
         };
@@ -421,6 +434,7 @@ fn render_scrollable_lines(
     area: Rect,
     lines: Vec<Line<'static>>,
     offset: usize,
+    focused: bool,
     theme: Theme,
 ) {
     let total = lines.len();
@@ -444,7 +458,15 @@ fn render_scrollable_lines(
         .thumb_symbol("█")
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
-        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
+        .thumb_style(
+            Style::default()
+                .fg(if focused {
+                    theme.focus_border
+                } else {
+                    theme.muted
+                })
+                .bg(theme.panel),
+        );
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut state);
 }
 
@@ -489,8 +511,8 @@ fn draw_footer(
     if let Some(area) = close_button_area(footer) {
         let style = if close_focused {
             Style::default()
-                .fg(theme.background)
-                .bg(theme.accent)
+                .fg(theme.text)
+                .bg(theme.focus_surface)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme.text).bg(theme.panel_alt)
@@ -504,7 +526,11 @@ fn draw_footer(
 }
 
 fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
-    let items = if app.process_info_detail_is_open() {
+    let items = if app.process_info_focus == ProcessInfoFocus::Tabs {
+        vec![("←/→", "tabs"), ("Tab", "next"), ("Esc", "close")]
+    } else if app.process_info_focus == ProcessInfoFocus::Close {
+        vec![("Enter", "close"), ("Tab", "next"), ("Esc", "close")]
+    } else if app.process_info_detail_is_open() {
         let copy_label = match app.process_info_tab {
             ProcessInfoTab::Dlls => "copy path",
             ProcessInfoTab::Environment => "copy variable",
@@ -512,44 +538,53 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         };
         vec![
             ("↑/↓", "scroll"),
+            ("Ctrl+C", copy_label),
             ("Esc/Enter", "back"),
             ("Ctrl+←/→", "tabs"),
-            ("Ctrl+C", copy_label),
-            ("Tab", "focus"),
+            ("Tab", "next"),
         ]
     } else {
-        let mut items = match app.process_info_tab {
-            ProcessInfoTab::Dlls | ProcessInfoTab::Environment => vec![
-                ("Ctrl+←/→", "tabs"),
-                ("↑/↓", "select"),
-                ("Enter", "details"),
-                ("Esc", "close"),
-                ("Tab", "focus"),
-            ],
-            _ => vec![
-                ("Ctrl+←/→", "tabs"),
-                ("↑/↓", "scroll"),
-                ("Esc/Enter", "close"),
-                ("Tab", "focus"),
-            ],
-        };
         match app.process_info_tab {
-            ProcessInfoTab::Image => items.push(("Ctrl+U", "refresh")),
-            ProcessInfoTab::Files => {
-                items.push(("Ctrl+U", "refresh"));
-                items.push(("Ctrl+C", "copy paths"));
-            }
-            ProcessInfoTab::Dlls => {
-                items.push(("Ctrl+U", "refresh"));
-                items.push(("Ctrl+C", "copy path"));
-            }
-            ProcessInfoTab::Environment => {
-                items.push(("Ctrl+U", "refresh"));
-                items.push(("Ctrl+C", "copy variable"));
-            }
-            ProcessInfoTab::Metrics => {}
+            ProcessInfoTab::Metrics => vec![
+                ("↑/↓", "scroll"),
+                ("Ctrl+←/→", "tabs"),
+                ("Tab", "next"),
+                ("Esc/Enter", "close"),
+            ],
+            ProcessInfoTab::Image => vec![
+                ("↑/↓", "scroll"),
+                ("Ctrl+U", "refresh"),
+                ("Ctrl+←/→", "tabs"),
+                ("Tab", "next"),
+                ("Esc/Enter", "close"),
+            ],
+            ProcessInfoTab::Files => vec![
+                ("↑/↓", "scroll"),
+                ("Ctrl+U", "refresh"),
+                ("Ctrl+C", "copy paths"),
+                ("Ctrl+←/→", "tabs"),
+                ("Tab", "next"),
+                ("Esc/Enter", "close"),
+            ],
+            ProcessInfoTab::Dlls => vec![
+                ("Enter", "details"),
+                ("Ctrl+U", "refresh"),
+                ("Ctrl+C", "copy path"),
+                ("↑/↓", "select"),
+                ("Ctrl+←/→", "tabs"),
+                ("Tab", "next"),
+                ("Esc", "close"),
+            ],
+            ProcessInfoTab::Environment => vec![
+                ("Enter", "details"),
+                ("Ctrl+U", "refresh"),
+                ("Ctrl+C", "copy variable"),
+                ("↑/↓", "select"),
+                ("Ctrl+←/→", "tabs"),
+                ("Tab", "next"),
+                ("Esc", "close"),
+            ],
         }
-        items
     };
     let mut spans = Vec::new();
     let mut used = 0usize;
@@ -564,9 +599,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         }
         spans.push(Span::styled(
             key.to_string(),
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.key_hint),
         ));
         spans.push(Span::styled(
             format!(" {label}"),

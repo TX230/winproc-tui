@@ -186,12 +186,7 @@ fn column_picker_shortcut_spans(theme: Theme) -> Vec<Span<'static>> {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
-        spans.push(Span::styled(
-            *key,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
+        spans.push(Span::styled(*key, Style::default().fg(theme.key_hint)));
         spans.push(Span::styled(
             format!(" {label}"),
             Style::default().fg(theme.text),

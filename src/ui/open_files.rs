@@ -5,7 +5,12 @@ use ratatui::{
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use crate::{App, app::AppActivity, samplers::open_files::OpenFileEntry, ui::Theme};
+use crate::{
+    App,
+    app::{AppActivity, ProcessInfoFocus},
+    samplers::open_files::OpenFileEntry,
+    ui::Theme,
+};
 
 const COUNT_COLUMN_WIDTH: usize = 5;
 const FILE_COLUMN_WIDTH: usize = 38;
@@ -169,6 +174,9 @@ fn set_open_files_filter_cursor(
     app: &App,
     line_count: usize,
 ) {
+    if app.process_info_focus != ProcessInfoFocus::Content {
+        return;
+    }
     let Some(report) = &app.open_files_result else {
         return;
     };
@@ -224,7 +232,15 @@ fn render_open_files_scrollbar(
         .thumb_symbol("█")
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
-        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
+        .thumb_style(
+            Style::default()
+                .fg(if app.process_info_focus == ProcessInfoFocus::Content {
+                    theme.focus_border
+                } else {
+                    theme.muted
+                })
+                .bg(theme.panel),
+        );
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut state);
 }
 

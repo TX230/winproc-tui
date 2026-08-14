@@ -89,13 +89,13 @@ mod tests {
     }
 
     #[test]
-    fn focused_panel_uses_thick_high_contrast_neutral_border() {
+    fn focused_panel_uses_thick_pale_green_border() {
         let theme = crate::ui::THEMES[0];
         let (symbol, style) = rendered_corner(panel_block_focused("Panel", theme, true));
 
         assert_eq!(symbol, "┏");
         assert_eq!(style.fg, Some(theme.focus_border));
-        assert_eq!(style.fg, Some(theme.accent));
+        assert_ne!(style.fg, Some(theme.accent));
     }
 
     #[test]

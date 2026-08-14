@@ -147,7 +147,7 @@ pub(crate) fn shortcut_spans(
         if index > 0 {
             spans.push(Span::raw("  "));
         }
-        spans.push(Span::styled(*key, Style::default().fg(theme.muted)));
+        spans.push(Span::styled(*key, Style::default().fg(theme.key_hint)));
         if !label.is_empty() {
             spans.push(Span::styled(
                 format!(" {label}"),

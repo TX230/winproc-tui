@@ -159,6 +159,7 @@ Input dispatch follows these rules:
 
 - Modal input has priority over the underlying panels.
 - Process Info tab, close-button, content, and scrollbar hit regions are derived from the same centered dialog layout used for drawing. Clicking outside the dialog neither dismisses it nor operates the underlying panels.
+- Process Info opens with its retained active tab focused, then cycles focus through Tabs, Content, and Close. Plain Left and Right switch tabs only while Tabs has focus, leaving Content free to use those keys for filter editing. Tab activation preserves the fixed dialog target, tab-specific state, lazy collection, and worker-generation boundaries.
 - Filter editing accepts text-editing and confirm/cancel input instead of normal navigation.
 - Non-modal actions depend on the current `FocusedPanel`.
 - MEM and GPU share `FocusedPanel::System`, while `ResourcePanel` acts as its subfocus. The forward focus cycle visits MEM then GPU, and the reverse cycle visits GPU then MEM; drawing and input both consume this combined state.

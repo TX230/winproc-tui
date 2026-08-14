@@ -99,7 +99,7 @@ pub(crate) fn draw_details_panel(
             layout.compact,
         );
     }
-    render_graph_workspace_scrollbar(frame, &layout, app.graph_scroll_row, theme);
+    render_graph_workspace_scrollbar(frame, &layout, app.graph_scroll_row, graph_focused, theme);
     if let Some(samples_area) = layout.samples {
         draw_active_samples_inspector(frame, samples_area, app, theme);
     }
@@ -189,6 +189,7 @@ fn render_graph_card(
             app.effective_graph_time_offset_seconds(),
             app.graph_y_axis_zero_min,
             app.active_ab_comparison(),
+            active,
             theme,
             y_label_width,
         );
@@ -207,6 +208,7 @@ fn render_graph_workspace_scrollbar(
     frame: &mut ratatui::Frame<'_>,
     layout: &GraphWorkspaceLayout,
     scroll_row: usize,
+    focused: bool,
     theme: Theme,
 ) {
     let Some(area) = layout.graph_scrollbar else {
@@ -225,7 +227,15 @@ fn render_graph_workspace_scrollbar(
         .thumb_symbol("█")
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
-        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
+        .thumb_style(
+            Style::default()
+                .fg(if focused {
+                    theme.focus_border
+                } else {
+                    theme.muted
+                })
+                .bg(theme.panel),
+        );
     frame.render_stateful_widget(scrollbar, area, &mut state);
 }
 
@@ -274,7 +284,13 @@ fn draw_active_samples_inspector(
         true,
         app.show_sample_delta,
     );
-    render_samples_scrollbar(frame, inner, viewport, theme);
+    render_samples_scrollbar(
+        frame,
+        inner,
+        viewport,
+        app.panel_has_focus(FocusedPanel::DetailsSamples),
+        theme,
+    );
 }
 
 fn active_graph_slot_style(theme: Theme) -> Style {
@@ -375,12 +391,14 @@ fn draw_samples_subpanel(
         let sample_selected =
             view_state.selected_exact && sample_index == view_state.selected_index;
         let style = if sample_selected {
-            Style::default().fg(theme.text).bg(theme.focus_surface)
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.table_selection_surface)
         } else {
             Style::default().fg(theme.text)
         };
         let row_bg = if sample_selected {
-            theme.focus_surface
+            theme.table_selection_surface
         } else {
             theme.panel
         };
@@ -562,6 +580,7 @@ fn render_samples_scrollbar(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
     viewport: SampleViewport,
+    focused: bool,
     theme: Theme,
 ) {
     if viewport.total <= viewport.rows {
@@ -581,7 +600,15 @@ fn render_samples_scrollbar(
         .thumb_symbol("█")
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
-        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
+        .thumb_style(
+            Style::default()
+                .fg(if focused {
+                    theme.focus_border
+                } else {
+                    theme.muted
+                })
+                .bg(theme.panel),
+        );
     frame.render_stateful_widget(scrollbar, area, &mut state);
 }
 
@@ -607,6 +634,7 @@ fn draw_graph_content(
     offset_seconds: u32,
     y_axis_zero_min: bool,
     comparison: Option<&AbComparison>,
+    active: bool,
     theme: Theme,
     y_label_width: usize,
 ) {
@@ -680,7 +708,7 @@ fn draw_graph_content(
         Dataset::default()
             .marker(Marker::Braille)
             .graph_type(GraphType::Line)
-            .style(graph_series_style(theme))
+            .style(graph_series_style(theme, active))
             .data(&plot_data),
     );
     let y_labels = pad_y_axis_labels(y_axis_labels(y_min, y_max, metric), y_label_width);
@@ -748,14 +776,16 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
         frame,
         controls.samples,
         app.show_samples_panel,
-        "  v: Samples",
+        "v",
+        "Samples",
         theme,
     );
     render_graph_toggle(
         frame,
         controls.delta,
         app.show_sample_delta,
-        "  d: Delta",
+        "d",
+        "Delta",
         theme,
     );
     render_graph_layout_mode(frame, controls.layout, app.graph_slot_layout.label(), theme);
@@ -763,14 +793,16 @@ fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &
         frame,
         controls.all_samples,
         app.graph_show_all_samples,
-        "  f: Fit all",
+        "f",
+        "Fit all",
         theme,
     );
     render_graph_toggle(
         frame,
         controls.y_axis,
         app.graph_y_axis_zero_min,
-        "  z: Min 0",
+        "z",
+        "Min 0",
         theme,
     );
 }
@@ -833,6 +865,7 @@ fn render_graph_toggle(
     frame: &mut ratatui::Frame<'_>,
     area: Option<Rect>,
     checked: bool,
+    key: &'static str,
     label: &'static str,
     theme: Theme,
 ) {
@@ -840,9 +873,16 @@ fn render_graph_toggle(
         return;
     };
     let mark = if checked { "☑" } else { "☐" };
+    let mark_color = if checked { theme.accent } else { theme.muted };
     let toggle = Paragraph::new(Line::from(vec![
-        Span::styled(mark, Style::default().fg(theme.accent).bg(theme.panel)),
-        Span::styled(label, Style::default().fg(theme.muted).bg(theme.panel)),
+        Span::styled(mark, Style::default().fg(mark_color).bg(theme.panel)),
+        Span::raw("  "),
+        Span::styled(key, Style::default().fg(theme.key_hint).bg(theme.panel)),
+        Span::styled(":", Style::default().fg(theme.muted).bg(theme.panel)),
+        Span::styled(
+            format!(" {label}"),
+            Style::default().fg(theme.text).bg(theme.panel),
+        ),
     ]))
     .style(Style::default().bg(theme.panel));
     frame.render_widget(toggle, toggle_area);
@@ -858,10 +898,12 @@ fn render_graph_layout_mode(
         return;
     };
     let content = Paragraph::new(Line::from(vec![
-        Span::styled("  l: ", Style::default().fg(theme.muted).bg(theme.panel)),
+        Span::raw("  "),
+        Span::styled("l", Style::default().fg(theme.key_hint).bg(theme.panel)),
+        Span::styled(":", Style::default().fg(theme.muted).bg(theme.panel)),
         Span::styled(
-            mode.to_string(),
-            Style::default().fg(theme.accent).bg(theme.panel),
+            format!(" {mode}"),
+            Style::default().fg(theme.text).bg(theme.panel),
         ),
     ]))
     .style(Style::default().bg(theme.panel));
@@ -1084,8 +1126,12 @@ fn selected_cursor_line_style(theme: Theme) -> Style {
     Style::default().fg(theme.cursor_guide)
 }
 
-fn graph_series_style(theme: Theme) -> Style {
-    Style::default().fg(theme.graph_line)
+fn graph_series_style(theme: Theme, active: bool) -> Style {
+    Style::default().fg(if active {
+        theme.active_series
+    } else {
+        theme.graph_line
+    })
 }
 
 fn delta_style(value: Option<f64>, previous: Option<f64>, selected: bool, theme: Theme) -> Style {
@@ -2186,9 +2232,13 @@ mod tests {
     }
 
     #[test]
-    fn graph_series_stays_grayscale_while_cursor_and_sample_delta_use_distinct_colors() {
+    fn graph_series_uses_active_color_only_for_the_active_slot() {
         for theme in crate::ui::theme::THEMES {
-            assert_eq!(graph_series_style(theme).fg, Some(theme.graph_line));
+            assert_eq!(
+                graph_series_style(theme, true).fg,
+                Some(theme.active_series)
+            );
+            assert_eq!(graph_series_style(theme, false).fg, Some(theme.graph_line));
             assert_eq!(
                 selected_cursor_line_style(theme).fg,
                 Some(theme.cursor_guide)

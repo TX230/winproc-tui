@@ -12,7 +12,9 @@ pub(crate) struct Theme {
     pub(crate) accent: Color,
     pub(crate) focus_border: Color,
     pub(crate) focus_surface: Color,
+    pub(crate) key_hint: Color,
     pub(crate) table_selection_surface: Color,
+    pub(crate) table_column_surface: Color,
     pub(crate) table_intersection_surface: Color,
     pub(crate) graph_line: Color,
     pub(crate) active_series: Color,
@@ -37,12 +39,14 @@ pub(crate) const THEMES: [Theme; 2] = [
         text: Color::Rgb(230, 226, 218),
         muted: Color::Rgb(154, 152, 146),
         accent: Color::Rgb(201, 206, 214),
-        focus_border: Color::Rgb(201, 206, 214),
+        focus_border: Color::Rgb(104, 196, 164),
         focus_surface: Color::Rgb(48, 52, 58),
-        table_selection_surface: Color::Rgb(45, 45, 45),
-        table_intersection_surface: Color::Rgb(70, 70, 70),
-        graph_line: Color::Rgb(245, 245, 245),
-        active_series: Color::Rgb(82, 196, 120),
+        key_hint: Color::Rgb(83, 151, 128),
+        table_selection_surface: Color::Rgb(19, 51, 48),
+        table_column_surface: Color::Rgb(29, 38, 42),
+        table_intersection_surface: Color::Rgb(32, 79, 73),
+        graph_line: Color::Rgb(139, 144, 150),
+        active_series: Color::Rgb(72, 190, 151),
         cursor_guide: Color::Rgb(101, 106, 112),
         success: Color::Rgb(120, 194, 139),
         warning: Color::Rgb(214, 170, 94),
@@ -61,12 +65,14 @@ pub(crate) const THEMES: [Theme; 2] = [
         text: Color::Rgb(37, 36, 33),
         muted: Color::Rgb(103, 99, 93),
         accent: Color::Rgb(66, 70, 76),
-        focus_border: Color::Rgb(66, 70, 76),
+        focus_border: Color::Rgb(32, 130, 94),
         focus_surface: Color::Rgb(212, 209, 202),
-        table_selection_surface: Color::Rgb(231, 231, 231),
-        table_intersection_surface: Color::Rgb(212, 212, 212),
-        graph_line: Color::Rgb(37, 36, 33),
-        active_series: Color::Rgb(21, 112, 59),
+        key_hint: Color::Rgb(54, 112, 91),
+        table_selection_surface: Color::Rgb(218, 239, 235),
+        table_column_surface: Color::Rgb(232, 234, 232),
+        table_intersection_surface: Color::Rgb(184, 222, 214),
+        graph_line: Color::Rgb(104, 109, 114),
+        active_series: Color::Rgb(16, 119, 79),
         cursor_guide: Color::Rgb(154, 150, 142),
         success: Color::Rgb(47, 114, 68),
         warning: Color::Rgb(147, 98, 20),
@@ -98,31 +104,51 @@ mod tests {
     }
 
     #[test]
-    fn built_in_themes_use_neutral_focus_and_semantic_status_colors() {
+    fn built_in_themes_separate_focus_selection_and_semantic_status_colors() {
         let dark = THEMES[0];
         assert_eq!(dark.accent, Color::Rgb(201, 206, 214));
-        assert_eq!(dark.focus_border, Color::Rgb(201, 206, 214));
-        assert_eq!(dark.focus_border, dark.accent);
+        assert_eq!(dark.focus_border, Color::Rgb(104, 196, 164));
+        assert_ne!(dark.focus_border, dark.accent);
         assert_eq!(dark.focus_surface, Color::Rgb(48, 52, 58));
-        assert_eq!(dark.table_selection_surface, Color::Rgb(45, 45, 45));
-        assert_eq!(dark.table_intersection_surface, Color::Rgb(70, 70, 70));
+        assert_eq!(dark.key_hint, Color::Rgb(83, 151, 128));
+        assert_ne!(dark.key_hint, dark.focus_border);
+        assert_eq!(dark.table_selection_surface, Color::Rgb(19, 51, 48));
+        assert_eq!(dark.table_column_surface, Color::Rgb(29, 38, 42));
+        assert_eq!(dark.table_intersection_surface, Color::Rgb(32, 79, 73));
+        assert_ne!(dark.table_selection_surface, dark.table_column_surface);
+        assert_ne!(
+            dark.table_selection_surface,
+            dark.table_intersection_surface
+        );
+        assert_ne!(dark.table_column_surface, dark.table_intersection_surface);
         assert_eq!(dark.cursor_guide, Color::Rgb(101, 106, 112));
-        assert_eq!(dark.graph_line, Color::Rgb(245, 245, 245));
-        assert_eq!(dark.active_series, Color::Rgb(82, 196, 120));
+        assert_eq!(dark.graph_line, Color::Rgb(139, 144, 150));
+        assert_eq!(dark.active_series, Color::Rgb(72, 190, 151));
+        assert_ne!(dark.focus_border, dark.active_series);
         assert_eq!(dark.success, Color::Rgb(120, 194, 139));
         assert_eq!(dark.tracked, Color::Rgb(185, 160, 106));
         assert_ne!(dark.warning, dark.tracked);
 
         let light = THEMES[1];
         assert_eq!(light.accent, Color::Rgb(66, 70, 76));
-        assert_eq!(light.focus_border, Color::Rgb(66, 70, 76));
-        assert_eq!(light.focus_border, light.accent);
+        assert_eq!(light.focus_border, Color::Rgb(32, 130, 94));
+        assert_ne!(light.focus_border, light.accent);
         assert_eq!(light.focus_surface, Color::Rgb(212, 209, 202));
-        assert_eq!(light.table_selection_surface, Color::Rgb(231, 231, 231));
-        assert_eq!(light.table_intersection_surface, Color::Rgb(212, 212, 212));
+        assert_eq!(light.key_hint, Color::Rgb(54, 112, 91));
+        assert_ne!(light.key_hint, light.focus_border);
+        assert_eq!(light.table_selection_surface, Color::Rgb(218, 239, 235));
+        assert_eq!(light.table_column_surface, Color::Rgb(232, 234, 232));
+        assert_eq!(light.table_intersection_surface, Color::Rgb(184, 222, 214));
+        assert_ne!(light.table_selection_surface, light.table_column_surface);
+        assert_ne!(
+            light.table_selection_surface,
+            light.table_intersection_surface
+        );
+        assert_ne!(light.table_column_surface, light.table_intersection_surface);
         assert_eq!(light.cursor_guide, Color::Rgb(154, 150, 142));
-        assert_eq!(light.graph_line, Color::Rgb(37, 36, 33));
-        assert_eq!(light.active_series, Color::Rgb(21, 112, 59));
+        assert_eq!(light.graph_line, Color::Rgb(104, 109, 114));
+        assert_eq!(light.active_series, Color::Rgb(16, 119, 79));
+        assert_ne!(light.focus_border, light.active_series);
         assert_eq!(light.success, Color::Rgb(47, 114, 68));
         assert_eq!(light.tracked, Color::Rgb(122, 103, 65));
         assert_ne!(light.warning, light.tracked);

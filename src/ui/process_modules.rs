@@ -5,7 +5,12 @@ use ratatui::{
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use crate::{App, app::AppActivity, model::ProcessModuleEntry, ui::Theme};
+use crate::{
+    App,
+    app::{AppActivity, ProcessInfoFocus},
+    model::ProcessModuleEntry,
+    ui::Theme,
+};
 
 pub(crate) fn draw_process_modules_tab(
     frame: &mut ratatui::Frame<'_>,
@@ -345,7 +350,10 @@ fn filter_input_view(value: &str, cursor: usize, width: usize) -> (String, usize
 }
 
 fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, total: usize) {
-    if app.process_modules_show_detail || app.process_modules_result.is_none() {
+    if app.process_info_focus != ProcessInfoFocus::Content
+        || app.process_modules_show_detail
+        || app.process_modules_result.is_none()
+    {
         return;
     }
     let filter_row = 1usize;
@@ -394,7 +402,15 @@ fn render_scrollbar(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme
         .thumb_symbol("█")
         .track_symbol(Some("│"))
         .style(Style::default().fg(theme.muted).bg(theme.panel))
-        .thumb_style(Style::default().fg(theme.accent).bg(theme.panel));
+        .thumb_style(
+            Style::default()
+                .fg(if app.process_info_focus == ProcessInfoFocus::Content {
+                    theme.focus_border
+                } else {
+                    theme.muted
+                })
+                .bg(theme.panel),
+        );
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut state);
 }
 

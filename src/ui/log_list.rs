@@ -369,7 +369,7 @@ fn shortcut_spans(items: &[(&str, &str)], theme: Theme) -> Vec<Span<'static>> {
         }
         spans.push(Span::styled(
             (*key).to_string(),
-            Style::default().fg(theme.muted),
+            Style::default().fg(theme.key_hint),
         ));
         spans.push(Span::styled(
             format!(" {label}"),

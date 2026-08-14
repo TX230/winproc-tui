@@ -272,7 +272,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | `f`                 | Open Process Info directly on the Files tab for the selected live process.            |
 | `g`                 | Open or close all configured Graphs at once.                                          |
 
-Process Info has `Metrics`, `Image`, `Files`, `DLLs`, and `Environment` tabs. Use `Ctrl+Right` / `Ctrl+Left` to switch tabs, `Ctrl+U` to refresh dynamic tabs, and `Ctrl+C` to copy the selected value. Dynamic details may be unavailable for protected, unsupported, or exited processes.
+Process Info has `Metrics`, `Image`, `Files`, `DLLs`, and `Environment` tabs. The dialog reopens with its last active tab focused. Use `Tab` / `Shift+Tab` to move focus among the tabs, content, and Close button. When the tabs are focused, `Left` / `Right` switches tabs; `Ctrl+Left` / `Ctrl+Right` remains available from any Process Info control. Use `Ctrl+U` to refresh dynamic tabs and `Ctrl+C` to copy the selected value. Dynamic details may be unavailable for protected, unsupported, or exited processes.
 
 When A/B points are set, `Metrics` shows Current − A or B − A using exact-time samples. Environment values can contain secrets; they are cleared when the dialog closes and are never added to recordings or Log view.
 

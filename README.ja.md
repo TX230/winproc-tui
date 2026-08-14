@@ -269,7 +269,7 @@ README には主要操作のみを掲載します。**実行中に** `?` **を�
 | `f`                 | 選択中の稼働プロセスの Process Info を Files タブで開く。 |
 | `g`                 | 設定済みの全 Graph を一括で開く / 閉じる。              |
 
-Process Info には `Metrics`、`Image`、`Files`、`DLLs`、`Environment` の各タブがあります。`Ctrl+Right` / `Ctrl+Left` でタブを切り替え、動的タブは `Ctrl+U` で更新し、選択中の値は `Ctrl+C` でコピーできます。保護されたプロセス、非対応のプロセス、終了済みプロセスでは取得できない項目があります。
+Process Info には `Metrics`、`Image`、`Files`、`DLLs`、`Environment` の各タブがあります。ダイアログを再度開くと、前回表示していたタブにフォーカスが置かれます。`Tab` / `Shift+Tab` でタブ、本文、Close ボタンの間を移動できます。タブにフォーカスがあるときは `Left` / `Right` でタブを切り替えられ、`Ctrl+Left` / `Ctrl+Right` は Process Info 内のどこからでも使用できます。動的タブは `Ctrl+U` で更新し、選択中の値は `Ctrl+C` でコピーできます。保護されたプロセス、非対応のプロセス、終了済みプロセスでは取得できない項目があります。
 
 A/B 点が設定されている場合、`Metrics` は完全一致する時刻のサンプルを使って Current − A または B − A を表示します。環境変数には秘密情報が含まれる場合があります。値はダイアログを閉じると消去され、Recording や Log view には保存しません。
 

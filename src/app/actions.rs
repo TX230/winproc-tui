@@ -500,6 +500,15 @@ impl App {
             match key.code {
                 KeyCode::Esc if self.close_process_info_detail() => {}
                 KeyCode::Esc => self.close_process_info_dialog(),
+                KeyCode::Enter if self.process_info_focus == ProcessInfoFocus::Tabs => {
+                    self.activate_process_info_tab(self.process_info_tab)?;
+                }
+                KeyCode::Char(' ')
+                    if key.modifiers.is_empty()
+                        && self.process_info_focus == ProcessInfoFocus::Tabs =>
+                {
+                    self.activate_process_info_tab(self.process_info_tab)?;
+                }
                 KeyCode::Enter if self.process_info_focus == ProcessInfoFocus::Close => {
                     self.close_process_info_dialog()
                 }
@@ -520,6 +529,18 @@ impl App {
                 }
                 KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.next_process_info_tab()?
+                }
+                KeyCode::Left
+                    if key.modifiers.is_empty()
+                        && self.process_info_focus == ProcessInfoFocus::Tabs =>
+                {
+                    self.activate_process_info_tab(self.process_info_tab.previous())?;
+                }
+                KeyCode::Right
+                    if key.modifiers.is_empty()
+                        && self.process_info_focus == ProcessInfoFocus::Tabs =>
+                {
+                    self.activate_process_info_tab(self.process_info_tab.next())?;
                 }
                 KeyCode::Tab
                     if key.modifiers.contains(KeyModifiers::SHIFT)
@@ -1692,16 +1713,25 @@ impl App {
 
         if self.show_process_info_dialog {
             match mouse.kind {
+                MouseEventKind::Moved
+                    if process_info_close_button_area_for_screen(screen_area)
+                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
+                {
+                    self.process_info_focus = ProcessInfoFocus::Close;
+                }
                 MouseEventKind::Down(MouseButton::Left)
                     if process_info_close_button_area_for_screen(screen_area)
                         .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
                 {
+                    self.process_info_focus = ProcessInfoFocus::Close;
                     self.close_process_info_dialog();
                 }
                 MouseEventKind::Down(MouseButton::Left) => {
                     if let Some(tab) = process_info_tab_at(screen_area, mouse.column, mouse.row) {
                         if let Err(error) = self.activate_process_info_tab(tab) {
                             self.status = format!("Process Info tab failed: {error}");
+                        } else {
+                            self.process_info_focus = ProcessInfoFocus::Tabs;
                         }
                     } else if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
                         && contains_point(

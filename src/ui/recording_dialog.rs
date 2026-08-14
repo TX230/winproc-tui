@@ -522,7 +522,7 @@ fn shortcut_line(items: &[(&str, &str)], theme: Theme) -> Line<'static> {
         }
         spans.push(Span::styled(
             (*key).to_string(),
-            Style::default().fg(theme.muted),
+            Style::default().fg(theme.key_hint),
         ));
         spans.push(Span::styled(
             format!(" {label}"),

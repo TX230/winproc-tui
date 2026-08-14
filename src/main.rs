@@ -2496,6 +2496,88 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn graph_and_samples_scrollbar_thumbs_follow_their_content_focus() {
+        let screen = Rect::new(0, 0, 160, 48);
+        let mut graph_app = make_test_app(1, 10);
+        for index in 0..8 {
+            add_test_graph(&mut graph_app, index);
+        }
+        graph_app.graph_slot_layout = GraphSlotLayout::OneColumn;
+        graph_app.show_samples_panel = false;
+        graph_app.focused_panel = FocusedPanel::DetailsGraph;
+        app::sync_layout_state(&mut graph_app, screen);
+        let details = main_panel_areas_for_app(screen, &graph_app)
+            .details
+            .unwrap();
+        let graph_scrollbar = ui::layout::graph_workspace_layout(details, &graph_app)
+            .graph_scrollbar
+            .expect("graph scrollbar");
+        let focused_graph = render_app_to_buffer(&graph_app, screen.width, screen.height);
+        assert!(area_contains_foreground(
+            &focused_graph,
+            graph_scrollbar,
+            graph_app.theme().focus_border
+        ));
+
+        graph_app.focused_panel = FocusedPanel::Processes;
+        let inactive_graph = render_app_to_buffer(&graph_app, screen.width, screen.height);
+        assert!(!area_contains_foreground(
+            &inactive_graph,
+            graph_scrollbar,
+            graph_app.theme().focus_border
+        ));
+        assert!(area_contains_foreground(
+            &inactive_graph,
+            graph_scrollbar,
+            graph_app.theme().muted
+        ));
+
+        let mut samples_app = make_test_app(1, 10);
+        assign_private_graph(&mut samples_app);
+        let tracked_names = ["proc-0".to_string()].into_iter().collect();
+        for offset in 0..100 {
+            samples_app.process_history.record_snapshot(
+                samples_app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &samples_app.snapshot.processes,
+                &tracked_names,
+            );
+        }
+        samples_app.show_samples_panel = true;
+        samples_app.focused_panel = FocusedPanel::DetailsSamples;
+        samples_app.select_details_sample_latest();
+        app::sync_layout_state(&mut samples_app, screen);
+        let details = main_panel_areas_for_app(screen, &samples_app)
+            .details
+            .unwrap();
+        let samples = ui::layout::graph_workspace_layout(details, &samples_app)
+            .samples
+            .expect("Samples inspector");
+        let samples_content = samples.inner(ratatui::layout::Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+        let focused_samples = render_app_to_buffer(&samples_app, screen.width, screen.height);
+        assert!(area_contains_foreground(
+            &focused_samples,
+            samples_content,
+            samples_app.theme().focus_border
+        ));
+
+        samples_app.focused_panel = FocusedPanel::DetailsGraph;
+        let inactive_samples = render_app_to_buffer(&samples_app, screen.width, screen.height);
+        assert!(!area_contains_foreground(
+            &inactive_samples,
+            samples_content,
+            samples_app.theme().focus_border
+        ));
+        assert!(area_contains_foreground(
+            &inactive_samples,
+            samples_content,
+            samples_app.theme().muted
+        ));
+    }
+
+    #[test]
     fn graph_focus_keys_zoom_pan_and_select_samples() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
@@ -3904,7 +3986,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn graph_series_stay_grayscale_and_active_slot_tokens_match_in_both_themes() {
+    fn active_graph_series_and_slot_tokens_match_in_both_themes() {
         let screen = Rect::new(0, 0, 180, 70);
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(1, 10);
@@ -3957,12 +4039,12 @@ processes = ["api.exe", "worker.exe"]
             let buffer = render_app_to_buffer(&app, screen.width, screen.height);
 
             assert!(
-                area_contains_foreground(&buffer, active_plot, theme.graph_line),
-                "theme={theme_index}: active series should stay monochrome"
+                area_contains_foreground(&buffer, active_plot, theme.active_series),
+                "theme={theme_index}: active series should use the active data color"
             );
             assert!(
-                !area_contains_foreground(&buffer, active_plot, theme.active_series),
-                "theme={theme_index}: active series should not carry the selection color"
+                !area_contains_foreground(&buffer, active_plot, theme.graph_line),
+                "theme={theme_index}: active series should not use the inactive color"
             );
             assert!(
                 area_contains_foreground(&buffer, inactive_plot, theme.graph_line),
@@ -4525,6 +4607,42 @@ processes = ["api.exe", "worker.exe"]
         app.graph_y_axis_zero_min = false;
         let rendered = render_app_to_text(&app, 120, 45);
         assert!(rendered.contains("☐  z: Min 0"), "{rendered}");
+    }
+
+    #[test]
+    fn graph_shared_controls_follow_footer_shortcut_color_roles_in_both_themes() {
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+            assign_private_graph(&mut app);
+            app.show_samples_panel = true;
+            app.show_sample_delta = true;
+            app.graph_slot_layout = GraphSlotLayout::ThreeColumns;
+            app.graph_show_all_samples = false;
+            app.graph_y_axis_zero_min = true;
+
+            let buffer = render_app_to_buffer(&app, 140, 45);
+
+            let (checked_x, checked_y) = find_text_position(&buffer, "☑  v: Samples")
+                .expect("checked Graph option should render");
+            assert_eq!(buffer[(checked_x, checked_y)].fg, theme.accent);
+            assert_eq!(buffer[(checked_x + 3, checked_y)].fg, theme.key_hint);
+            assert_eq!(buffer[(checked_x + 4, checked_y)].fg, theme.muted);
+            assert_eq!(buffer[(checked_x + 6, checked_y)].fg, theme.text);
+
+            let (layout_x, layout_y) =
+                find_text_position(&buffer, "l: 3 cols").expect("layout option should render");
+            assert_eq!(buffer[(layout_x, layout_y)].fg, theme.key_hint);
+            assert_eq!(buffer[(layout_x + 1, layout_y)].fg, theme.muted);
+            assert_eq!(buffer[(layout_x + 3, layout_y)].fg, theme.text);
+
+            let (unchecked_x, unchecked_y) = find_text_position(&buffer, "☐  f: Fit all")
+                .expect("unchecked Graph option should render");
+            assert_eq!(buffer[(unchecked_x, unchecked_y)].fg, theme.muted);
+            assert_eq!(buffer[(unchecked_x + 3, unchecked_y)].fg, theme.key_hint);
+            assert_eq!(buffer[(unchecked_x + 4, unchecked_y)].fg, theme.muted);
+            assert_eq!(buffer[(unchecked_x + 6, unchecked_y)].fg, theme.text);
+        }
     }
 
     #[test]
@@ -5924,7 +6042,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_table_unifies_row_column_and_header_selection_surfaces() {
+    fn process_table_distinguishes_row_column_header_and_intersection_surfaces() {
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(2, 10);
             app.theme_index = theme_index;
@@ -5942,14 +6060,8 @@ processes = ["api.exe", "worker.exe"]
                 find_text_position(&buffer, "PrivBytes").expect("selected header should render");
 
             assert_eq!(buffer[(row_x, row_y)].bg, theme.table_selection_surface);
-            assert_eq!(
-                buffer[(column_x, column_y)].bg,
-                theme.table_selection_surface
-            );
-            assert_eq!(
-                buffer[(header_x, header_y)].bg,
-                theme.table_selection_surface
-            );
+            assert_eq!(buffer[(column_x, column_y)].bg, theme.table_column_surface);
+            assert_eq!(buffer[(header_x, header_y)].bg, theme.table_column_surface);
             assert_eq!(
                 buffer[(intersection_x, intersection_y)].bg,
                 theme.table_intersection_surface
@@ -5958,6 +6070,7 @@ processes = ["api.exe", "worker.exe"]
                 theme.table_intersection_surface,
                 theme.table_selection_surface
             );
+            assert_ne!(theme.table_column_surface, theme.table_selection_surface);
         }
     }
 
@@ -5977,7 +6090,7 @@ processes = ["api.exe", "worker.exe"]
                 find_text_position(&buffer, "PID").expect("ordinary process header should render");
 
             assert_eq!(buffer[(pid_x, pid_y)].bg, theme.panel);
-            assert_eq!(buffer[(x, y)].bg, theme.table_selection_surface);
+            assert_eq!(buffer[(x, y)].bg, theme.table_column_surface);
 
             for offset in 0.."PrivBytes".len() as u16 {
                 assert!(
@@ -6009,7 +6122,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn neutral_first_header_and_footer_roles_apply_to_both_themes() {
+    fn header_and_footer_roles_apply_to_both_themes() {
         for theme_index in 0..ui::THEMES.len() {
             let mut app = make_test_app(1, 10);
             app.theme_index = theme_index;
@@ -6035,7 +6148,7 @@ processes = ["api.exe", "worker.exe"]
 
             let (shortcut_x, shortcut_y) = find_text_position(&buffer, "c Columns")
                 .expect("process shortcut should be rendered");
-            assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, theme.muted);
+            assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, theme.key_hint);
         }
     }
 
@@ -6340,6 +6453,11 @@ processes = ["api.exe", "worker.exe"]
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let (x, y) = find_text_position(&buffer, "☐ Tracked-only(Shift+T)")
             .expect("unchecked tracked-only control should render in the process title");
+        assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].muted);
+        let (shortcut_x, shortcut_y) = find_text_position(&buffer, "(Shift+T)")
+            .expect("tracked-only shortcut should render in the process title");
+        assert_eq!(shortcut_y, y);
+        assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, ui::THEMES[0].muted);
 
         app.on_mouse(
             MouseEvent {
@@ -6721,6 +6839,9 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
+        assert!(app.show_process_info_dialog);
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
         assert!(!app.show_process_info_dialog);
     }
 
@@ -7213,7 +7334,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("[ Close ]"), "{rendered}");
         assert!(rendered.contains("Footer: focused actions."), "{rendered}");
         assert!(
-            rendered.contains("Neutral selects; amber marks."),
+            rendered.contains("Green selects; amber marks."),
             "{rendered}"
         );
         assert!(!rendered_lower.contains("baseline"), "{rendered}");
@@ -7254,9 +7375,9 @@ processes = ["api.exe", "worker.exe"]
         let (key_x, key_y) =
             find_text_position(&buffer, "Ctrl+F").expect("shortcut key should be rendered");
         let key_cell = &buffer[(key_x, key_y)];
-        assert_eq!(key_cell.fg, theme.text);
-        assert_eq!(key_cell.bg, theme.panel_alt);
-        assert!(key_cell.modifier.contains(ratatui::style::Modifier::BOLD));
+        assert_eq!(key_cell.fg, theme.key_hint);
+        assert_eq!(key_cell.bg, theme.panel);
+        assert!(!key_cell.modifier.contains(ratatui::style::Modifier::BOLD));
 
         let label_cell = &buffer[(key_x + "Ctrl+F ".len() as u16, key_y)];
         assert_eq!(label_cell.fg, theme.text);
@@ -8227,7 +8348,7 @@ processes = ["api.exe", "worker.exe"]
 
         let (enter_x, enter_y) =
             find_text_position(&buffer, shortcut).expect("shortcut line should render");
-        assert_eq!(buffer[(enter_x, enter_y)].fg, app.theme().muted);
+        assert_eq!(buffer[(enter_x, enter_y)].fg, app.theme().key_hint);
         assert_eq!(buffer[(enter_x + 6, enter_y)].fg, app.theme().text);
     }
 
@@ -8367,7 +8488,7 @@ processes = ["api.exe", "worker.exe"]
                 .expect("recording shortcut should render");
             let (activate_x, _) =
                 find_text_position(&hint_buffer, "activate").expect("shortcut label should render");
-            assert_eq!(hint_buffer[(enter_x, hint_y)].fg, theme.muted);
+            assert_eq!(hint_buffer[(enter_x, hint_y)].fg, theme.key_hint);
             assert_eq!(hint_buffer[(activate_x, hint_y)].fg, theme.text);
 
             app.recording_path_selection = app::RecordingPathSelection::Start;
@@ -8838,8 +8959,8 @@ processes = ["api.exe", "worker.exe"]
         let (key_x, key_y) =
             find_text_position(&buffer, "Up/Down").expect("shortcut key should be rendered");
         let key_cell = &buffer[(key_x, key_y)];
-        assert_eq!(key_cell.fg, theme.accent);
-        assert!(key_cell.modifier.contains(ratatui::style::Modifier::BOLD));
+        assert_eq!(key_cell.fg, theme.key_hint);
+        assert!(!key_cell.modifier.contains(ratatui::style::Modifier::BOLD));
 
         let label_cell = &buffer[(key_x + "Up/Down ".len() as u16, key_y)];
         assert_eq!(label_cell.fg, theme.text);
@@ -9616,6 +9737,7 @@ processes = ["api.exe", "worker.exe"]
         );
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Files;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
         let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         app.open_files_result = Some(OpenFilesReport {
             pid: 0,
@@ -10031,7 +10153,7 @@ processes = ["api.exe", "worker.exe"]
         app.open_selected_process_info_dialog().unwrap();
 
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Image);
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         assert_eq!(app.process_info_target_process().unwrap().name, "proc-1");
     }
 
@@ -10066,7 +10188,79 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_info_ctrl_left_right_cycles_while_tab_moves_control_focus() {
+    fn process_info_scrollbar_thumb_follows_content_focus() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        let screen = Rect::new(0, 0, 60, 12);
+        app.set_screen_area(screen);
+        app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+        let scrollbar = ui::process_info_scrollbar_area_for_screen(screen, &app)
+            .expect("Process Info scrollbar");
+
+        let tabs_focused = render_app_to_buffer(&app, screen.width, screen.height);
+        assert!(!area_contains_foreground(
+            &tabs_focused,
+            scrollbar,
+            app.theme().focus_border
+        ));
+        assert!(area_contains_foreground(
+            &tabs_focused,
+            scrollbar,
+            app.theme().muted
+        ));
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        let content_focused = render_app_to_buffer(&app, screen.width, screen.height);
+        assert!(area_contains_foreground(
+            &content_focused,
+            scrollbar,
+            app.theme().focus_border
+        ));
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        let inactive = render_app_to_buffer(&app, screen.width, screen.height);
+        assert!(!area_contains_foreground(
+            &inactive,
+            scrollbar,
+            app.theme().focus_border
+        ));
+        assert!(area_contains_foreground(
+            &inactive,
+            scrollbar,
+            app.theme().muted
+        ));
+    }
+
+    #[test]
+    fn narrow_process_info_footer_keeps_dynamic_tab_primary_actions() {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        let screen = Rect::new(0, 0, 60, 12);
+        app.set_screen_area(screen);
+        app.process_info_focus = app::ProcessInfoFocus::Content;
+
+        app.process_info_tab = app::ProcessInfoTab::Dlls;
+        let dlls = render_app_to_text(&app, screen.width, screen.height);
+        assert!(dlls.contains("Enter details"), "{dlls}");
+        assert!(dlls.contains("Ctrl+U refresh"), "{dlls}");
+        assert!(dlls.contains("Ctrl+C copy path"), "{dlls}");
+
+        app.process_info_tab = app::ProcessInfoTab::Environment;
+        let environment = render_app_to_text(&app, screen.width, screen.height);
+        assert!(environment.contains("Enter details"), "{environment}");
+        assert!(environment.contains("Ctrl+U refresh"), "{environment}");
+        assert!(
+            environment.contains("Ctrl+C copy variable"),
+            "{environment}"
+        );
+    }
+
+    #[test]
+    fn process_info_tabs_content_and_close_cycle_without_changing_the_fixed_target() {
         let (sampling_worker, _, _) = SamplingWorker::test_pair();
         let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
         let (open_files_worker, _open_files_request_rx, _) = OpenFilesWorker::test_pair();
@@ -10084,15 +10278,58 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 120, 40);
         let initial = render_app_to_buffer(&app, screen.width, screen.height);
         let (close_x, close_y) = find_text_position(&initial, "[ Close ]").unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         assert_eq!(initial[(close_x, close_y)].bg, app.theme().panel_alt);
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
         let focused = render_app_to_buffer(&app, screen.width, screen.height);
         let (close_x, close_y) = find_text_position(&focused, "[ Close ]").unwrap();
-        assert_eq!(focused[(close_x, close_y)].bg, app.theme().accent);
+        assert_eq!(focused[(close_x, close_y)].bg, app.theme().focus_surface);
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        let tabs_focused = render_app_to_buffer(&app, screen.width, screen.height);
+        let tabs_area = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen).tabs;
+        let (tab_x, tab_y) = find_text_position_in_area(&tabs_focused, tabs_area, "Metrics")
+            .expect("active Process Info tab should render");
+        assert_eq!(tabs_focused[(tab_x, tab_y)].fg, app.theme().focus_border);
+        assert_eq!(tabs_focused[(tab_x, tab_y)].bg, app.theme().focus_surface);
+        assert!(
+            tabs_focused[(tab_x, tab_y)]
+                .modifier
+                .contains(Modifier::BOLD | Modifier::UNDERLINED)
+        );
+        assert!(buffer_to_text(&tabs_focused).contains("←/→ tabs  Tab next  Esc close"));
+        let (hint_x, hint_y) = find_text_position(&tabs_focused, "←/→ tabs")
+            .expect("tab-focus shortcut should render");
+        assert_eq!(tabs_focused[(hint_x, hint_y)].fg, app.theme().key_hint);
+        assert!(
+            !tabs_focused[(hint_x, hint_y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
+        assert_eq!(
+            tabs_focused[(hint_x + "←/→ ".chars().count() as u16, hint_y)].fg,
+            app.theme().text
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
             .unwrap();
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
@@ -10102,12 +10339,44 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
 
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+
         for expected in [
             app::ProcessInfoTab::Image,
             app::ProcessInfoTab::Files,
             app::ProcessInfoTab::Dlls,
             app::ProcessInfoTab::Environment,
             app::ProcessInfoTab::Metrics,
+        ] {
+            app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+                .unwrap();
+            assert_eq!(app.process_info_tab, expected);
+            assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        }
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Environment);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.show_process_info_dialog);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        let filter_before = app.process_environment_filter.clone();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.show_process_info_dialog);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        assert_eq!(app.process_environment_filter, filter_before);
+
+        for expected in [
+            app::ProcessInfoTab::Metrics,
+            app::ProcessInfoTab::Image,
+            app::ProcessInfoTab::Files,
+            app::ProcessInfoTab::Dlls,
+            app::ProcessInfoTab::Environment,
         ] {
             app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
                 .unwrap();
@@ -10124,10 +10393,14 @@ processes = ["api.exe", "worker.exe"]
         );
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
             .unwrap();
-        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Environment);
-        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL))
-            .unwrap();
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Dlls);
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.show_process_info_dialog);
     }
 
     #[test]
@@ -10145,19 +10418,30 @@ processes = ["api.exe", "worker.exe"]
 
         app.on_mouse(left_click(image_point.0, image_point.1), screen);
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Image);
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
 
         let selected = app.selected_visible_process_identity();
         let focused = app.focused_panel;
         app.on_mouse(left_click(0, 10), screen);
         assert!(app.show_process_info_dialog);
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         assert_eq!(app.selected_visible_process_identity(), selected);
         assert_eq!(app.focused_panel, focused);
 
+        app.on_mouse(left_click(layout.content.x, layout.content.y), screen);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+
         let close = ui::process_info_close_button_area_for_screen(screen).unwrap();
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: close.x,
+                row: close.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
         app.on_mouse(left_click(close.x, close.y), screen);
         assert!(!app.show_process_info_dialog);
     }
@@ -10411,6 +10695,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Dlls;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
         let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         let mut entry = test_process_module_entry(
             "a-very-long-module-name-that-does-not-fit.dll",
@@ -10455,6 +10740,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Dlls;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
         let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         app.process_modules_result_identity = Some(identity.clone());
         app.process_modules_result = Some(test_process_modules_report(
@@ -10672,6 +10958,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Environment;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
         let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         let long_value = "C:\\one;C:\\two;C:\\three;C:\\four;C:\\five;C:\\six";
         let mut report = test_process_environment_report(
@@ -10706,6 +10993,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Environment;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
         let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         app.process_environment_result_identity = Some(identity.clone());
         app.process_environment_result = Some(test_process_environment_report(
@@ -10755,6 +11043,7 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Environment;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
         let identity = app.process_info_target.as_ref().unwrap().identity.clone();
         let long_value = format!("{}VALUE-END", "abcdefghij".repeat(20));
         app.process_environment_result_identity = Some(identity.clone());
@@ -11434,6 +11723,22 @@ processes = ["api.exe", "worker.exe"]
         assert_ne!(state_cell.fg, ui::THEMES[0].warning);
         assert_eq!(state_cell.bg, ui::THEMES[0].panel);
         assert!(!state_cell.modifier.contains(Modifier::BOLD));
+
+        let (label_x, label_y) = find_text_position(&buffer, "Tracked-only")
+            .expect("tracked-only label should be rendered");
+        assert_eq!(label_y, state_y);
+        assert_eq!(buffer[(label_x, label_y)].fg, ui::THEMES[0].text);
+        assert!(!buffer[(label_x, label_y)].modifier.contains(Modifier::BOLD));
+
+        let (shortcut_x, shortcut_y) = find_text_position(&buffer, "(Shift+T)")
+            .expect("tracked-only shortcut should be rendered");
+        assert_eq!(shortcut_y, state_y);
+        assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, ui::THEMES[0].muted);
+        assert!(
+            !buffer[(shortcut_x, shortcut_y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
 
         let (filter_x, filter_y) = find_text_position(&buffer, "Filter \"target\"")
             .expect("filter state should be rendered");
@@ -12182,6 +12487,7 @@ processes = ["api.exe", "worker.exe"]
     fn show_process_info_files_tab(app: &mut App) {
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_tab = app::ProcessInfoTab::Files;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
     }
 
     fn test_open_files_report(name: &str, pid: u32, file_name: &str) -> OpenFilesReport {
