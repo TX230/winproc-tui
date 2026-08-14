@@ -2542,12 +2542,28 @@ impl App {
     }
 
     pub(crate) fn cycle_focus(&mut self) {
-        self.focused_panel = self.next_focus_target();
+        if self.focused_panel == FocusedPanel::System
+            && self.resource_panel == ResourcePanel::Memory
+        {
+            self.select_resource_panel(ResourcePanel::Gpu);
+        } else {
+            self.focused_panel = self.next_focus_target();
+            if self.focused_panel == FocusedPanel::System {
+                self.select_resource_panel(ResourcePanel::Memory);
+            }
+        }
         self.status = self.focus_status();
     }
 
     pub(crate) fn cycle_focus_previous(&mut self) {
-        self.focused_panel = self.previous_focus_target();
+        if self.focused_panel == FocusedPanel::System && self.resource_panel == ResourcePanel::Gpu {
+            self.select_resource_panel(ResourcePanel::Memory);
+        } else {
+            self.focused_panel = self.previous_focus_target();
+            if self.focused_panel == FocusedPanel::System {
+                self.select_resource_panel(ResourcePanel::Gpu);
+            }
+        }
         self.status = self.focus_status();
     }
 
@@ -2588,6 +2604,10 @@ impl App {
 
     fn focus_status(&self) -> String {
         match self.focused_panel {
+            FocusedPanel::System => match self.resource_panel {
+                ResourcePanel::Memory => "Focus: MEM".to_string(),
+                ResourcePanel::Gpu => "Focus: GPU".to_string(),
+            },
             FocusedPanel::DetailsGraph => {
                 format!(
                     "Focus: Graph {}/{}",

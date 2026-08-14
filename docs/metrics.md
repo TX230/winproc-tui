@@ -49,7 +49,7 @@ Compact byte formatting is used in the Processes table and for Graph Y-axis tick
 
 The first system resource region contains a two-column `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPUs`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPUs` when space permits.
 
-Press `m` or `g` while the resource region has focus to select `MEM` or `GPU`. For MEM, `Left` / `Right` move between columns and `Up` / `Down` select a row within the current column. For GPU, `Left` / `Right` change the adapter and `Up` / `Down` select a row. `Space` or double-click adds or removes the selected row in the Graph Workspace.
+`Tab` / `Shift+Tab` treat `MEM` and `GPU` as separate stops in the normal panel focus cycle. Press `m` or `g` while either resource panel has focus to jump directly to `MEM` or `GPU`. For MEM, `Left` / `Right` move between columns and `Up` / `Down` select a row within the current column. For GPU, `Left` / `Right` change the adapter and `Up` / `Down` select a row. `Space` or double-click adds or removes the selected row in the Graph Workspace.
 All ten MEM rows are visible at once under the title `MEM`. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.
 
 ### MEM left column: Overview

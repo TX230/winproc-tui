@@ -4042,6 +4042,29 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn tab_moves_focus_chrome_from_mem_to_gpu() {
+        let screen = Rect::new(0, 0, 180, 30);
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::System;
+        app.resource_panel = app::ResourcePanel::Memory;
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Gpu);
+        assert_eq!(app.status, "Focus: GPU");
+
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let memory = ui::ram_vram_panel_area_for_screen(screen, &app);
+        let gpu = ui::gpu_panel_area_for_screen(screen, &app);
+        assert_eq!(buffer[(memory.x, memory.y)].symbol(), "╭");
+        assert_eq!(buffer[(memory.x, memory.y)].fg, app.theme().border);
+        assert_eq!(buffer[(gpu.x, gpu.y)].symbol(), "┏");
+        assert_eq!(buffer[(gpu.x, gpu.y)].fg, app.theme().focus_border);
+    }
+
+    #[test]
     fn top_level_panel_titles_follow_their_border_color_in_both_themes() {
         let screen = Rect::new(0, 0, 180, 60);
         for theme_index in 0..ui::THEMES.len() {
@@ -10851,6 +10874,8 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Memory);
+        assert_eq!(app.status, "Focus: MEM");
 
         let identity = app.selected_visible_process_identity().unwrap();
         app.add_or_reveal_graph_source(
@@ -10862,6 +10887,11 @@ processes = ["api.exe", "worker.exe"]
             FocusedPanel::Processes,
         );
         let active_id = app.active_graph_id;
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Gpu);
+        assert_eq!(app.status, "Focus: GPU");
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
@@ -10881,6 +10911,7 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Memory);
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
@@ -10897,6 +10928,16 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Gpu);
+        assert_eq!(app.status, "Focus: GPU");
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Memory);
+        assert_eq!(app.status, "Focus: MEM");
     }
 
     #[test]
@@ -10919,6 +10960,7 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert_eq!(app.focused_panel, FocusedPanel::System);
+        assert_eq!(app.resource_panel, app::ResourcePanel::Memory);
         assert_eq!(app.active_graph_id, active_id);
     }
 

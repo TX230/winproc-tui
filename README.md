@@ -27,9 +27,9 @@ winproc-tui
 
 Only one `winproc-tui` instance can run in a Windows session. If one is already running, another launch exits before changing the terminal or loading session settings.
 
-The upper panels show system-wide memory, per-adapter GPU activity and memory, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows and columns.
+The upper panels show system-wide memory, per-adapter GPU activity and memory, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels, including separate focus stops for MEM and GPU, and the arrow keys to select rows and columns.
 
-MEM, GPU, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names. With the MEM/GPU resource region focused, use `m` / `g` to select the resource view. `Left` / `Right` moves between the two MEM columns or changes the GPU adapter.
+MEM, GPU, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names. With MEM or GPU focused, use `m` / `g` to jump directly between them. `Left` / `Right` moves between the two MEM columns or changes the GPU adapter.
 
 ### 2. Graph Process Metrics
 
