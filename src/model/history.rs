@@ -471,6 +471,7 @@ impl SystemHistory {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.samples.len()
     }
