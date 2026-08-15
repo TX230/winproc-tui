@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{AppActivity, FocusedPanel, GraphSlot, GraphSourceState, ResourcePanel},
+    app::{FocusedPanel, GraphSlot, GraphSourceState, ResourcePanel},
     model::{DiskUsageSample, SystemMetric},
     ui::{
         Theme,
@@ -34,7 +34,7 @@ pub(crate) fn draw_system_panel(
     let memory_columns = memory_usage_columns(app, theme);
 
     let memory_block = panel_block_focused(
-        memory_title(app, theme),
+        memory_title(),
         theme,
         app.panel_has_focus(FocusedPanel::System) && app.resource_panel == ResourcePanel::Memory,
     );
@@ -123,25 +123,11 @@ fn system_info_dialog_area(area: Rect) -> Rect {
     )
 }
 
-fn memory_title(app: &App, theme: Theme) -> Line<'static> {
-    let mut spans = vec![Span::styled(
+fn memory_title() -> Line<'static> {
+    Line::from(Span::styled(
         "MEM",
         Style::default().add_modifier(ratatui::style::Modifier::BOLD),
-    )];
-    if app.activity() == AppActivity::LogView {
-        spans.push(Span::styled(" | ", Style::default().fg(theme.muted)));
-        spans.push(Span::styled(
-            format!(
-                "[Samples: {}]",
-                format_integer(app.display_system_history().len() as u64)
-            ),
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.panel_alt)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ));
-    }
-    Line::from(spans)
+    ))
 }
 
 fn gpu_title(app: &App) -> Line<'static> {

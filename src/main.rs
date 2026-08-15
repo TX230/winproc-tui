@@ -3534,7 +3534,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn log_view_process_title_omits_history_counts() {
+    fn log_view_panel_titles_omit_history_counts() {
         let mut app = make_test_app(1, 10);
         app.log_view_path = Some(std::path::PathBuf::from("long.log"));
         app.process_history = ProcessHistory::default();
@@ -3549,7 +3549,7 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 30);
 
-        assert!(rendered.contains("[Samples: 7,201]"), "{rendered}");
+        assert!(!rendered.contains("[Samples:"), "{rendered}");
         assert!(
             rendered.contains("PROCESSES · 1 visible · ☐ Tracked-only(Shift+T)"),
             "{rendered}"
