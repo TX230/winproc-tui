@@ -36,7 +36,7 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | Whole-number decimal `KB/s` in Processes; Graph, Samples, and copy use the adaptive rate format described below |
-| `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | Whole-number `Kbps` below 1 Mbps; otherwise whole-number `Mbps` |
+| `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | Whole-number decimal `KB/s` in Processes; Graph, Samples, and copy use the adaptive rate format described below |
 | `Full Path` | `path` | Executable path. Used to distinguish same-name processes from different build or working directories. | `sysinfo::Process::exe()` | Path text, shortened from the start when the cell is narrow |
 
 When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
@@ -281,7 +281,7 @@ When start time is available, it is included in the identity to avoid mixing his
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |
-| Process `IO Read/s` in Processes | Whole-number decimal `KB/s`. |
+| Process I/O in Processes | Whole-number decimal `KB/s`. |
 | Other process I/O displays | Whole-number `Kbps` below 1 Mbps; otherwise whole-number `Mbps`. |
 | CPU% | 1 decimal place. |
 | GPU% | 1 decimal place. |

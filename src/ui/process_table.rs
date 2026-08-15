@@ -11,7 +11,7 @@ use crate::{
     model::{MetricColumn, ProcessColumnWidths, ProcessRow, SortColumn, SortDirection},
     ui::{
         Theme,
-        format::{format_compact_bytes, format_integer, format_io_rate, format_kb_per_sec},
+        format::{format_compact_bytes, format_integer, format_kb_per_sec},
         graph_slot::graph_value_style,
         layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
@@ -987,7 +987,7 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn, column_widt
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::IoWriteBytesPerSec => process
             .io_write_bytes_per_sec
-            .map(format_io_rate)
+            .map(format_kb_per_sec)
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::FullPath => process
             .executable_path
@@ -1089,7 +1089,7 @@ mod tests {
     }
 
     #[test]
-    fn io_read_column_uses_decimal_kilobytes_per_second() {
+    fn process_io_columns_use_decimal_kilobytes_per_second() {
         let process = ProcessRow {
             pid: 1,
             name: "app.exe".to_string(),
@@ -1109,12 +1109,16 @@ mod tests {
             gpu_shared_bytes: None,
             dotnet_heap_bytes: None,
             io_read_bytes_per_sec: Some(12_345_678),
-            io_write_bytes_per_sec: None,
+            io_write_bytes_per_sec: Some(98_765_432),
         };
 
         assert_eq!(
             format_process_column(&process, MetricColumn::IoReadBytesPerSec, 12),
             "12,346 KB/s"
+        );
+        assert_eq!(
+            format_process_column(&process, MetricColumn::IoWriteBytesPerSec, 12),
+            "98,765 KB/s"
         );
     }
 
