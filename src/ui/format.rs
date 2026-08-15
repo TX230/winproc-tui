@@ -128,6 +128,11 @@ pub(crate) fn format_io_rate(bytes_per_sec: u64) -> String {
     }
 }
 
+pub(crate) fn format_kb_per_sec(bytes_per_sec: u64) -> String {
+    let whole_kb = bytes_per_sec / 1_000 + u64::from(bytes_per_sec % 1_000 >= 500);
+    format!("{} KB/s", format_integer(whole_kb))
+}
+
 pub(crate) fn format_signed_mbps(bytes_per_sec: i128) -> String {
     let mbps = ((bytes_per_sec as f64 * 8.0) / 1_000_000.0).round() as i128;
     format!("{} Mbps", format_signed_integer(mbps))
@@ -181,5 +186,12 @@ mod tests {
         assert_eq!(format_signed_io_rate(-62_500), "-500 Kbps");
         assert_eq!(format_signed_io_rate(0), "+0 Kbps");
         assert_eq!(format_signed_io_rate(125_000), "+1 Mbps");
+    }
+
+    #[test]
+    fn byte_rates_use_whole_decimal_kilobytes_per_second() {
+        assert_eq!(format_kb_per_sec(499), "0 KB/s");
+        assert_eq!(format_kb_per_sec(500), "1 KB/s");
+        assert_eq!(format_kb_per_sec(12_345_678), "12,346 KB/s");
     }
 }

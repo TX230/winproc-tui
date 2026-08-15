@@ -11,7 +11,7 @@ use crate::{
     model::{MetricColumn, ProcessColumnWidths, ProcessRow, SortColumn, SortDirection},
     ui::{
         Theme,
-        format::{format_compact_bytes, format_integer, format_io_rate},
+        format::{format_compact_bytes, format_integer, format_io_rate, format_kb_per_sec},
         graph_slot::graph_value_style,
         layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
@@ -983,7 +983,7 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn, column_widt
         MetricColumn::GpuSharedBytes => format_optional_compact_bytes(process.gpu_shared_bytes),
         MetricColumn::IoReadBytesPerSec => process
             .io_read_bytes_per_sec
-            .map(format_io_rate)
+            .map(format_kb_per_sec)
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::IoWriteBytesPerSec => process
             .io_write_bytes_per_sec
@@ -1086,6 +1086,36 @@ mod tests {
     fn pid_column_width_matches_practical_pid_width() {
         assert_eq!(SortColumn::Pid.default_width(), 6);
         assert!(SortColumn::Pid.min_width() >= 5);
+    }
+
+    #[test]
+    fn io_read_column_uses_decimal_kilobytes_per_second() {
+        let process = ProcessRow {
+            pid: 1,
+            name: "app.exe".to_string(),
+            executable_path: None,
+            start_time: Some(1_700_000_001),
+            cpu_percent: None,
+            private_bytes: None,
+            workset_bytes: None,
+            workset_private_bytes: None,
+            workset_shareable_bytes: None,
+            thread_count: None,
+            handle_count: None,
+            user_object_count: None,
+            gdi_object_count: None,
+            gpu_percent: None,
+            gpu_dedicated_bytes: None,
+            gpu_shared_bytes: None,
+            dotnet_heap_bytes: None,
+            io_read_bytes_per_sec: Some(12_345_678),
+            io_write_bytes_per_sec: None,
+        };
+
+        assert_eq!(
+            format_process_column(&process, MetricColumn::IoReadBytesPerSec, 12),
+            "12,346 KB/s"
+        );
     }
 
     #[test]
