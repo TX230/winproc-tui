@@ -200,10 +200,24 @@ const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
     },
 ];
 
-const CPU_ROWS: &[HelpItem] = &[HelpItem {
-    key: "Space",
-    label: "Toggle CPU Usage Graph",
-}];
+const CPU_ROWS: &[HelpItem] = &[
+    HelpItem {
+        key: "↑/↓",
+        label: "Select Usage / Threads / Processes / Per-core",
+    },
+    HelpItem {
+        key: "Home/End",
+        label: "Select Usage / Per-core",
+    },
+    HelpItem {
+        key: "Space",
+        label: "Toggle selected metric Graph",
+    },
+    HelpItem {
+        key: "Enter",
+        label: "Open selected Per-core usage",
+    },
+];
 
 const TRACKING_ROWS: &[HelpItem] = &[
     HelpItem {
@@ -382,7 +396,7 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
         rows: SYSTEM_ACTIVITY_ROWS,
     },
     HelpSection {
-        title: "CPUs",
+        title: "CPU",
         focus_hint: None,
         rows: CPU_ROWS,
     },

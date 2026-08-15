@@ -47,10 +47,10 @@ Compact byte formatting is used in the Processes table and for Graph Y-axis tick
 
 ## MEM and GPU Panels
 
-The first system resource region contains a two-column `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPUs`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPUs` when space permits.
+The first system resource region contains a two-column `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPU`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPU` when space permits.
 
 `Tab` / `Shift+Tab` treat `MEM` and `GPU` as separate stops in the normal panel focus cycle. Press `m` or `g` while either resource panel has focus to jump directly to `MEM` or `GPU`. For MEM, `Left` / `Right` move between columns and `Up` / `Down` select a row within the current column. For GPU, `Left` / `Right` change the adapter and `Up` / `Down` select a row. `Space` or double-click adds or removes the selected row in the Graph Workspace.
-All ten MEM rows are visible at once under the title `MEM`. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.
+All nine MEM rows are visible at once under the title `MEM`. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.
 
 ### MEM left column: Overview
 
@@ -73,9 +73,7 @@ The MEM panel omits parenthetical capacity percentages for `In use` and `Commit 
 | `Nonpaged Pool` | `nonpaged_pool_bytes` | Nonpageable kernel pool allocation. | `GetPerformanceInfo` (`KernelNonpaged`) | MB |
 | `Pages In/s` | `pages_input_per_sec` | Pages read from disk to resolve hard page faults. | PDH `\Memory\Pages Input/sec` | Integer pages/s |
 | `Pages Out/s` | `pages_output_per_sec` | Pages written to disk so physical pages can be repurposed. | PDH `\Memory\Pages Output/sec` | Integer pages/s |
-| `Threads` | `thread_count` | System thread count. | `GetPerformanceInfo` (`ThreadCount`) | Integer |
-
-`process_count` remains in recording frames for system context and schema compatibility, but it is not a MEM panel or Graph source. `Pages Out/s` is shown instead because it is a more direct indicator of memory pressure that causes page writeback.
+`Threads` is displayed in the CPU panel instead of MEM. `Pages Out/s` remains the final pressure row because it directly indicates memory pressure that causes page writeback.
 
 ### GPU per adapter
 
@@ -95,20 +93,22 @@ GPU Engine instance names are parsed for PID, LUID, physical-engine index, engin
 
 ## CPU Panel
 
-The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after the MEM/GPU resource region and `NW/DISK`.
-It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
-When the `CPUs` panel has focus, `Space` or double-click adds or removes `CPU Usage` in the Graph Workspace.
-Like registered values in `PROCESSES`, MEM, GPU, and `NW/DISK`, a registered `CPU Usage` value is green and the active Graph value is bold. These source panels do not show Graph slot ordinals or reserve width for them.
+The `CPU` panel is the rightmost compact system-pressure display in the top panel row, after the MEM/GPU resource region and `NW/DISK`. Its width depends on the fixed summary rows rather than the number of logical CPUs.
 
-| Display | Description | Primary source | Format |
-|---|---|---|---|
-| `CPU Usage` | Average utilization across logical CPUs. | `sysinfo` CPU refresh | Three-character right-aligned integer percent, with a colored horizontal bar when panel height allows |
-| `P-core` / `E-core` clock | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | Four-character right-aligned integer `MHz`; omitted when the current-frequency counters are unavailable |
-| Per-logical-CPU cells | Utilization for each logical CPU. P/E groups are labeled when Windows reports distinct efficiency classes. | `sysinfo` CPU usage and `GetLogicalProcessorInformationEx(RelationProcessorCore)` | One block glyph from `▁` to `█`; `0%` is displayed as `▁` |
+`Up` / `Down` moves through `Usage`, `Threads`, `Processes`, and the bottom `[Per-core Usage (P/E)]` button; `Home` / `End` jumps to the first or last item. `Space` or double-click adds or removes a selected metric in the Graph Workspace. `Enter` opens the dialog when the Per-core button has focus; clicking the button opens it directly. `Enter` or `Esc` closes the dialog. The button uses the shared focus-surface background and bold text while hovered.
 
-If P/E classification is not available or all logical CPUs report the same `EfficiencyClass`, the panel omits P/E grouping labels and falls back to the ordinary CPU clock summary.
-`CPU Usage` is retained in `SystemHistory`, can be graphed, and is stored in recording frames as `system_metrics.cpu_percent`.
-The per-logical-CPU cells are intended for quick visual pressure checks, not recording history.
+Like registered values in `PROCESSES`, MEM, GPU, and `NW/DISK`, a registered `Usage`, `Threads`, or `Processes` value is green and the active Graph value is bold. `Freq(P/E)` is display-only. Source panels do not show Graph slot ordinals or reserve width for them.
+
+| Display | Log field | Description | Primary source | Format |
+|---|---|---|---|---|
+| `Usage` | `cpu_percent`, `cpu_user_percent`, `cpu_kernel_percent` | Total processor utilization with its user-mode (`U`) and privileged/kernel-mode (`K`) components. | PDH `\Processor Information(_Total)\% Processor Time`, `% User Time`, and `% Privileged Time`; total falls back to the `sysinfo` CPU refresh | `nn% (U nn%, K nn%)`; unavailable components use `--` |
+| `Freq(P/E)` | Not recorded | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | `P MHz / E MHz`; the slash and E value are omitted when no E core is classified |
+| `[Per-core Usage (P/E)]` dialog | Not recorded | Utilization for every logical CPU, with `P`, `E`, or `-` when classification is unavailable. | `sysinfo` CPU usage and `GetLogicalProcessorInformationEx(RelationProcessorCore)` | One row per logical CPU as `CPU n (P/E/-) nn%` |
+| `Threads` | `thread_count` | System thread count. | `GetPerformanceInfo` (`ThreadCount`) | Integer; graphable |
+| `Processes` | `process_count` | System process count. | `GetPerformanceInfo` (`ProcessCount`); fallback is the collected process count | Integer; graphable and recorded |
+
+If P/E classification is unavailable or all logical CPUs report the same `EfficiencyClass`, `Freq(P/E)` uses the ordinary current-clock summary without an E segment and dialog rows use `-`.
+`Usage`, `Threads`, and `Processes` are retained in `SystemHistory` and can be graphed. Total, user, and kernel utilization plus the process count are stored in recording frames; older schema-v2 logs without the new user/kernel fields show `--` for those two components. Per-logical-CPU values and frequency are not recorded, so the per-core dialog reports that state in Log view.
 
 ## NW/DISK Activity
 
@@ -267,7 +267,7 @@ The one-second GPU-memory cadence was validated with a local Windows benchmark u
 |---|---:|---|
 | General process | 120 | About 2 minutes. |
 | Tracked process | 7,200 | About 2 hours. |
-| System metrics | 7,200 | Used for MEM, per-adapter GPU, System Activity, and CPU Usage graphs. |
+| System metrics | 7,200 | Used for MEM, per-adapter GPU, System Activity, CPU Usage, system Threads, and system Processes graphs. |
 
 Process history identity consists of PID, process name, and start time.
 When start time is available, it is included in the identity to avoid mixing history after PID reuse.
@@ -394,6 +394,8 @@ Every optional MEM, GPU, and process field is omitted when unavailable. New reco
       }
     ],
     "cpu_percent": 37,
+    "cpu_user_percent": 29,
+    "cpu_kernel_percent": 8,
     "disk_read_bytes_per_sec": 10000000,
     "disk_write_bytes_per_sec": 20000000,
     "disk_queue_length": 1.5,

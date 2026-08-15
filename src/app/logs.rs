@@ -191,7 +191,6 @@ pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
 
     let mut snapshot = last_snapshot.context("log contains no frames")?;
     sort_process_rows(&mut snapshot.processes, sort);
-    snapshot.process_count = snapshot.processes.len();
     summary.tracked_names = tracked_names.clone();
     summary.error = None;
     Ok(LoadedLog {
@@ -456,6 +455,12 @@ fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
         cpu_total_usage_percent: system
             .and_then(|metrics| u64_from_map(metrics, "cpu_percent"))
             .and_then(|value| u8::try_from(value.min(100)).ok()),
+        cpu_user_usage_percent: system
+            .and_then(|metrics| u64_from_map(metrics, "cpu_user_percent"))
+            .and_then(|value| u8::try_from(value.min(100)).ok()),
+        cpu_kernel_usage_percent: system
+            .and_then(|metrics| u64_from_map(metrics, "cpu_kernel_percent"))
+            .and_then(|value| u8::try_from(value.min(100)).ok()),
         cpu_logical_processors: Vec::new(),
         cpu_topology: session.cpu_topology.clone(),
         cpu_cache: session.cpu_cache.clone(),
@@ -701,7 +706,7 @@ mod tests {
             &path,
             &[
                 r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system":{"cpu_name":"CPU","gpu_adapters":[{"luid_high":1,"luid_low":2,"name":"GPU","dedicated_total_bytes":8000}]}}"#,
-                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"available_memory_bytes":7000,"modified_memory_bytes":750,"pages_input_per_sec":11,"pages_output_per_sec":7,"thread_count":321,"gpu_adapters":[{"luid_high":1,"luid_low":2,"utilization_percent":74.0,"encode_average_percent":60.0,"encode_max_percent":100.0,"encode_engine_count":2,"dedicated_bytes":2000}],"cpu_percent":37,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5,"workset_shareable_bytes":512}}]}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"system_metrics":{"physical_memory_bytes":1000,"total_memory_bytes":8000,"available_memory_bytes":7000,"modified_memory_bytes":750,"pages_input_per_sec":11,"pages_output_per_sec":7,"process_count":214,"thread_count":321,"gpu_adapters":[{"luid_high":1,"luid_low":2,"utilization_percent":74.0,"encode_average_percent":60.0,"encode_max_percent":100.0,"encode_engine_count":2,"dedicated_bytes":2000}],"cpu_percent":37,"cpu_user_percent":29,"cpu_kernel_percent":8,"disk_read_bytes_per_sec":10000000,"disk_write_bytes_per_sec":20000000,"disk_queue_length":1.5,"network_received_bytes_per_sec":30000000,"network_sent_bytes_per_sec":40000000},"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":null,"handle_count":5,"workset_shareable_bytes":512}}]}"#,
             ],
         );
 
@@ -710,6 +715,8 @@ mod tests {
         assert_eq!(loaded.summary.schema_version, Some(2));
         assert_eq!(loaded.snapshot.cpu_name.as_deref(), Some("CPU"));
         assert_eq!(loaded.snapshot.cpu_total_usage_percent, Some(37));
+        assert_eq!(loaded.snapshot.cpu_user_usage_percent, Some(29));
+        assert_eq!(loaded.snapshot.cpu_kernel_usage_percent, Some(8));
         assert_eq!(loaded.snapshot.disk_read_bytes_per_sec, Some(10_000_000));
         assert_eq!(loaded.snapshot.disk_write_bytes_per_sec, Some(20_000_000));
         assert_eq!(loaded.snapshot.disk_queue_length, Some(1.5));
@@ -723,6 +730,7 @@ mod tests {
         assert_eq!(loaded.snapshot.modified_memory, Some(750));
         assert_eq!(loaded.snapshot.pages_input_per_sec, Some(11));
         assert_eq!(loaded.snapshot.pages_output_per_sec, Some(7));
+        assert_eq!(loaded.snapshot.process_count, 214);
         assert_eq!(loaded.snapshot.thread_count, Some(321));
         assert_eq!(loaded.snapshot.gpu_adapters.len(), 1);
         assert_eq!(loaded.snapshot.gpu_adapters[0].id.high, 1);
@@ -746,12 +754,34 @@ mod tests {
             loaded.system_history.samples()[0].value(SystemMetric::CpuAverage),
             Some(37.0)
         );
+        assert_eq!(
+            loaded.system_history.samples()[0].value(SystemMetric::ProcessCount),
+            Some(214.0)
+        );
         assert_eq!(loaded.snapshot.processes[0].private_bytes, None);
         assert_eq!(loaded.snapshot.processes[0].handle_count, Some(5));
         assert_eq!(
             loaded.snapshot.processes[0].workset_shareable_bytes,
             Some(512)
         );
+    }
+
+    #[test]
+    fn v2_log_without_cpu_components_keeps_them_unavailable() {
+        let path = unique_log_path("v2-cpu-compat");
+        write_lines(
+            &path,
+            &[
+                r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":[]}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":[],"system_metrics":{"cpu_percent":37},"processes":[]}"#,
+            ],
+        );
+
+        let loaded = load_log(&path, SortSpec::default()).unwrap();
+
+        assert_eq!(loaded.snapshot.cpu_total_usage_percent, Some(37));
+        assert_eq!(loaded.snapshot.cpu_user_usage_percent, None);
+        assert_eq!(loaded.snapshot.cpu_kernel_usage_percent, None);
     }
 
     #[test]

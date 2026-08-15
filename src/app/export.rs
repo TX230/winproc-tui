@@ -627,6 +627,16 @@ fn system_metrics_json(snapshot: &Snapshot) -> Value {
     );
     insert_u64(
         &mut metrics,
+        "cpu_user_percent",
+        snapshot.cpu_user_usage_percent.map(u64::from),
+    );
+    insert_u64(
+        &mut metrics,
+        "cpu_kernel_percent",
+        snapshot.cpu_kernel_usage_percent.map(u64::from),
+    );
+    insert_u64(
+        &mut metrics,
         "disk_read_bytes_per_sec",
         snapshot.disk_read_bytes_per_sec,
     );
@@ -831,6 +841,8 @@ mod tests {
             cpu_p_core_frequency_mhz: None,
             cpu_e_core_frequency_mhz: None,
             cpu_total_usage_percent: Some(37),
+            cpu_user_usage_percent: Some(29),
+            cpu_kernel_usage_percent: Some(8),
             cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
@@ -867,7 +879,10 @@ mod tests {
         );
         assert_eq!(value["system_metrics"]["pages_input_per_sec"], 11);
         assert_eq!(value["system_metrics"]["pages_output_per_sec"], 7);
+        assert_eq!(value["system_metrics"]["process_count"], 2);
         assert_eq!(value["system_metrics"]["cpu_percent"], 37);
+        assert_eq!(value["system_metrics"]["cpu_user_percent"], 29);
+        assert_eq!(value["system_metrics"]["cpu_kernel_percent"], 8);
         assert_eq!(
             value["system_metrics"]["disk_read_bytes_per_sec"],
             10_000_000

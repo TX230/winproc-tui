@@ -23,6 +23,8 @@ pub(crate) struct Snapshot {
     pub(crate) cpu_p_core_frequency_mhz: Option<u64>,
     pub(crate) cpu_e_core_frequency_mhz: Option<u64>,
     pub(crate) cpu_total_usage_percent: Option<u8>,
+    pub(crate) cpu_user_usage_percent: Option<u8>,
+    pub(crate) cpu_kernel_usage_percent: Option<u8>,
     pub(crate) cpu_logical_processors: Vec<CpuLogicalProcessorSample>,
     pub(crate) cpu_topology: Option<String>,
     pub(crate) cpu_cache: Option<String>,

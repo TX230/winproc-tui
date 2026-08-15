@@ -1,4 +1,5 @@
 pub(crate) mod column_picker;
+mod cpu_core_dialog;
 mod cpu_panel;
 pub(crate) mod details_panel;
 pub(crate) mod footer;
@@ -36,6 +37,12 @@ pub(crate) use column_picker::{
     column_picker_index_at, column_picker_page_size_for_screen, column_picker_row_for_index,
     column_picker_scroll_max_for_page_size, column_picker_scrollbar_area,
 };
+use cpu_core_dialog::draw_cpu_core_dialog;
+pub(crate) use cpu_core_dialog::{
+    cpu_core_dialog_content_area, cpu_core_dialog_page_size_for_screen,
+    cpu_core_dialog_scrollbar_area, cpu_core_dialog_total_rows,
+};
+pub(crate) use cpu_panel::{cpu_metric_at_position, cpu_per_core_button_area};
 use details_panel::draw_details_panel;
 use footer::draw_footer;
 pub(crate) use format::fmt_bytes;
@@ -130,6 +137,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_process_info_dialog {
         draw_process_info_dialog(frame, area, app, theme);
+    }
+    if app.show_cpu_core_dialog {
+        draw_cpu_core_dialog(frame, area, app, theme);
     }
     if app.show_system_info_dialog {
         draw_system_info_dialog(frame, area, app, theme);

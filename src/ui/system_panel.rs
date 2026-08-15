@@ -483,16 +483,6 @@ fn memory_usage_columns(app: &App, theme: Theme) -> [Vec<Line<'static>>; 2] {
                 theme,
             ),
         ),
-        (
-            SystemMetric::ThreadCount,
-            render_summary_graph_slot_value_line_with_label_width(
-                system_metric_graph_state(app, SystemMetric::ThreadCount),
-                "Threads",
-                SUMMARY_ROW_LABEL_WIDTH,
-                &format_optional_integer(snapshot.thread_count),
-                theme,
-            ),
-        ),
     ];
 
     let selected_metric = app.selected_system_metric();

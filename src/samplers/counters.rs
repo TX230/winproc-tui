@@ -38,6 +38,9 @@ pub(crate) struct SystemCounterSampler {
     network_sent_counter: Option<PDH_HCOUNTER>,
     cpu_frequency_counter: Option<PDH_HCOUNTER>,
     cpu_performance_counter: Option<PDH_HCOUNTER>,
+    cpu_total_usage_counter: Option<PDH_HCOUNTER>,
+    cpu_user_usage_counter: Option<PDH_HCOUNTER>,
+    cpu_kernel_usage_counter: Option<PDH_HCOUNTER>,
 }
 
 pub(crate) struct ProcessCounterSampler {
@@ -124,6 +127,16 @@ impl SystemCounterSampler {
                 query,
                 "\\Processor Information(*)\\% Processor Performance",
             );
+            let cpu_total_usage_counter = add_optional_pdh_counter(
+                query,
+                "\\Processor Information(_Total)\\% Processor Time",
+            );
+            let cpu_user_usage_counter =
+                add_optional_pdh_counter(query, "\\Processor Information(_Total)\\% User Time");
+            let cpu_kernel_usage_counter = add_optional_pdh_counter(
+                query,
+                "\\Processor Information(_Total)\\% Privileged Time",
+            );
 
             ensure_pdh_success(PdhCollectQueryData(query), "priming system counter query")?;
 
@@ -147,6 +160,9 @@ impl SystemCounterSampler {
                 network_sent_counter,
                 cpu_frequency_counter,
                 cpu_performance_counter,
+                cpu_total_usage_counter,
+                cpu_user_usage_counter,
+                cpu_kernel_usage_counter,
             })
         }
     }
@@ -187,6 +203,13 @@ impl SystemCounterSampler {
                 cpu_frequencies_mhz: read_cpu_current_frequency_items(
                     self.cpu_frequency_counter,
                     self.cpu_performance_counter,
+                ),
+                cpu_total_usage_percent: read_optional_pdh_double_value(
+                    self.cpu_total_usage_counter,
+                ),
+                cpu_user_usage_percent: read_optional_pdh_double_value(self.cpu_user_usage_counter),
+                cpu_kernel_usage_percent: read_optional_pdh_double_value(
+                    self.cpu_kernel_usage_counter,
                 ),
             })
         }

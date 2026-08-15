@@ -536,7 +536,10 @@ impl GraphSlot {
             } => GraphValueFormat::QueueLength,
             Self::System {
                 metric:
-                    SystemMetric::PagesInput | SystemMetric::PagesOutput | SystemMetric::ThreadCount,
+                    SystemMetric::PagesInput
+                    | SystemMetric::PagesOutput
+                    | SystemMetric::ThreadCount
+                    | SystemMetric::ProcessCount,
             } => GraphValueFormat::Count,
             Self::System { .. } => GraphValueFormat::Bytes,
         }
@@ -649,7 +652,7 @@ impl FocusedPanel {
         match self {
             Self::System => "MEM/GPU",
             Self::SystemActivity => "NW/DISK",
-            Self::Cpu => "CPUs",
+            Self::Cpu => "CPU",
             Self::Processes => "Processes",
             Self::DetailsGraph => "Graph",
             Self::DetailsSamples => "Samples",
@@ -866,6 +869,8 @@ pub(crate) struct App {
     pub(crate) process_info_environment_scroll: ScrollableModalState,
     pub(crate) process_info_target: Option<ProcessInfoDialogTarget>,
     pub(crate) process_info_generation: u64,
+    pub(crate) show_cpu_core_dialog: bool,
+    pub(crate) cpu_core_scroll: ScrollableModalState,
     pub(crate) show_system_info_dialog: bool,
     pub(crate) log_summaries: Vec<LogSummary>,
     pub(crate) log_list_dir: Option<PathBuf>,
@@ -883,6 +888,7 @@ pub(crate) struct App {
     pub(crate) graph_scrollbar_dragging: bool,
     pub(crate) graph_scrollbar_grab_offset: usize,
     pub(crate) graph_hovered_target: Option<GraphHoverTarget>,
+    pub(crate) cpu_per_core_hovered: bool,
     pub(crate) graph_return_focus: FocusedPanel,
     pub(crate) graph_source_last_click: Option<GraphSourceClick>,
     pub(crate) details_target: DetailsTarget,
@@ -928,6 +934,7 @@ pub(crate) struct App {
     pub(crate) resource_panel: ResourcePanel,
     pub(crate) gpu_adapter_index: usize,
     pub(crate) system_activity_selected_index: usize,
+    pub(crate) cpu_selected_index: usize,
     pub(crate) process_info_cache: HashMap<ProcessIdentity, ProcessInfo>,
     pub(crate) process_info_display_identity: Option<ProcessIdentity>,
     pub(crate) pending_process_info: Option<PendingProcessInfo>,
@@ -1102,6 +1109,11 @@ impl App {
             },
             process_info_target: None,
             process_info_generation: 0,
+            show_cpu_core_dialog: false,
+            cpu_core_scroll: ScrollableModalState {
+                page_size: 1,
+                ..ScrollableModalState::default()
+            },
             show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
@@ -1119,6 +1131,7 @@ impl App {
             graph_scrollbar_dragging: false,
             graph_scrollbar_grab_offset: 0,
             graph_hovered_target: None,
+            cpu_per_core_hovered: false,
             graph_return_focus: FocusedPanel::Processes,
             graph_source_last_click: None,
             details_target: DetailsTarget::Process,
@@ -1163,6 +1176,7 @@ impl App {
             resource_panel: ResourcePanel::Memory,
             gpu_adapter_index: 0,
             system_activity_selected_index: 0,
+            cpu_selected_index: 0,
             process_info_cache: HashMap::new(),
             process_info_display_identity: None,
             pending_process_info: None,
@@ -1270,6 +1284,7 @@ impl App {
             || self.show_log_list
             || self.show_log_dir_dialog
             || self.show_process_info_dialog
+            || self.show_cpu_core_dialog
             || self.show_system_info_dialog
             || self.show_quit_confirmation
             || self.show_recording_no_tracked_warning
@@ -2482,8 +2497,11 @@ impl App {
     pub(crate) fn select_previous_resource_page(&mut self) {
         match self.resource_panel {
             ResourcePanel::Memory => {
-                if self.ram_vram_selected_index >= SystemMetric::MEMORY_OVERVIEW_PANEL.len() {
-                    self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_sub(5);
+                let left_len = SystemMetric::MEMORY_OVERVIEW_PANEL.len();
+                if self.ram_vram_selected_index >= left_len {
+                    let row = self.ram_vram_selected_index.saturating_sub(left_len);
+                    self.ram_vram_selected_index =
+                        row.min(SystemMetric::MEMORY_OVERVIEW_PANEL.len().saturating_sub(1));
                 }
             }
             ResourcePanel::Gpu => self.gpu_adapter_index = self.gpu_adapter_index.saturating_sub(1),
@@ -2494,8 +2512,11 @@ impl App {
     pub(crate) fn select_next_resource_page(&mut self) {
         match self.resource_panel {
             ResourcePanel::Memory => {
-                if self.ram_vram_selected_index < SystemMetric::MEMORY_OVERVIEW_PANEL.len() {
-                    self.ram_vram_selected_index = self.ram_vram_selected_index.saturating_add(5);
+                let left_len = SystemMetric::MEMORY_OVERVIEW_PANEL.len();
+                let right_len = SystemMetric::MEMORY_PRESSURE_PANEL.len();
+                if self.ram_vram_selected_index < left_len && right_len > 0 {
+                    self.ram_vram_selected_index =
+                        left_len.saturating_add(self.ram_vram_selected_index.min(right_len - 1));
                 }
             }
             ResourcePanel::Gpu => {
@@ -2522,6 +2543,26 @@ impl App {
             .get(self.system_activity_selected_index)
             .copied()
             .unwrap_or(SystemMetric::NetworkReceived)
+    }
+
+    pub(crate) fn selected_cpu_metric(&self) -> Option<SystemMetric> {
+        SystemMetric::CPU_PANEL
+            .get(self.cpu_selected_index)
+            .copied()
+    }
+
+    pub(crate) fn cpu_per_core_selected(&self) -> bool {
+        self.cpu_selected_index == SystemMetric::CPU_PANEL.len()
+    }
+
+    fn cpu_item_count() -> usize {
+        SystemMetric::CPU_PANEL.len().saturating_add(1)
+    }
+
+    fn selected_cpu_item_label(&self) -> &'static str {
+        self.selected_cpu_metric()
+            .map(SystemMetric::label)
+            .unwrap_or("Per-core Usage (P/E)")
     }
 
     pub(crate) fn select_previous_system_metric(&mut self) {
@@ -2573,6 +2614,34 @@ impl App {
             "NW/DISK row: {}",
             self.selected_system_activity_metric().label()
         );
+    }
+
+    pub(crate) fn select_previous_cpu_item(&mut self) {
+        self.cpu_selected_index = self.cpu_selected_index.saturating_sub(1);
+        self.status = format!("CPU row: {}", self.selected_cpu_item_label());
+    }
+
+    pub(crate) fn select_next_cpu_item(&mut self) {
+        self.cpu_selected_index = self
+            .cpu_selected_index
+            .saturating_add(1)
+            .min(Self::cpu_item_count().saturating_sub(1));
+        self.status = format!("CPU row: {}", self.selected_cpu_item_label());
+    }
+
+    pub(crate) fn select_first_cpu_item(&mut self) {
+        self.cpu_selected_index = 0;
+        self.status = format!("CPU row: {}", self.selected_cpu_item_label());
+    }
+
+    pub(crate) fn select_last_cpu_item(&mut self) {
+        self.cpu_selected_index = Self::cpu_item_count().saturating_sub(1);
+        self.status = format!("CPU row: {}", self.selected_cpu_item_label());
+    }
+
+    pub(crate) fn select_cpu_item_index(&mut self, index: usize) {
+        self.cpu_selected_index = index.min(Self::cpu_item_count().saturating_sub(1));
+        self.status = format!("CPU row: {}", self.selected_cpu_item_label());
     }
 
     pub(crate) fn select_first_system_metric(&mut self) {
@@ -2678,15 +2747,16 @@ impl App {
         );
     }
 
-    pub(crate) fn toggle_cpu_average_graph(&mut self) {
+    pub(crate) fn toggle_selected_cpu_graph(&mut self) {
         if self.focused_panel != FocusedPanel::Cpu {
-            self.status = "Graph registration requires CPUs focus".to_string();
+            self.status = "Graph registration requires CPU focus".to_string();
             return;
         }
-        self.toggle_graph_source(
-            GraphSlot::system(SystemMetric::CpuAverage),
-            FocusedPanel::Cpu,
-        );
+        let Some(metric) = self.selected_cpu_metric() else {
+            self.status = "Per-core Usage is not a Graph metric".to_string();
+            return;
+        };
+        self.toggle_graph_source(GraphSlot::system(metric), FocusedPanel::Cpu);
     }
 
     pub(crate) fn apply_selected_system_metric_to_visible_details(&mut self) {
@@ -4795,6 +4865,41 @@ impl App {
 
     fn process_info_total_rows(&self) -> usize {
         crate::ui::process_info_total_rows(self)
+    }
+
+    pub(crate) fn open_cpu_core_dialog(&mut self) {
+        self.cpu_core_scroll.reset();
+        self.show_cpu_core_dialog = true;
+        self.status = "Per-core CPU usage shown".to_string();
+    }
+
+    pub(crate) fn close_cpu_core_dialog(&mut self) {
+        self.cpu_core_scroll.stop_drag();
+        self.show_cpu_core_dialog = false;
+        self.status = "Per-core CPU usage closed".to_string();
+    }
+
+    pub(crate) fn set_cpu_core_page_size(&mut self, page_size: usize) {
+        let total = crate::ui::cpu_core_dialog_total_rows(self);
+        self.cpu_core_scroll.set_page_size(page_size, total);
+    }
+
+    pub(crate) fn scroll_cpu_core_up(&mut self, amount: usize) {
+        self.cpu_core_scroll.scroll_up(amount);
+    }
+
+    pub(crate) fn scroll_cpu_core_down(&mut self, amount: usize) {
+        let total = crate::ui::cpu_core_dialog_total_rows(self);
+        self.cpu_core_scroll.scroll_down(amount, total);
+    }
+
+    pub(crate) fn scroll_cpu_core_home(&mut self) {
+        self.cpu_core_scroll.scroll_home();
+    }
+
+    pub(crate) fn scroll_cpu_core_end(&mut self) {
+        let total = crate::ui::cpu_core_dialog_total_rows(self);
+        self.cpu_core_scroll.scroll_end(total);
     }
 
     pub(crate) fn open_system_info_dialog(&mut self) {

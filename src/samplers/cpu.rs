@@ -22,6 +22,9 @@ use crate::{
 pub(crate) fn collect_cpu_summary(
     system: &System,
     current_frequencies_mhz: &[(usize, u64)],
+    total_usage_percent: Option<f64>,
+    user_usage_percent: Option<f64>,
+    kernel_usage_percent: Option<f64>,
 ) -> CpuSummarySample {
     let cpu = system.cpus().first();
     let name = cpu.map(|cpu| cpu.brand().trim()).unwrap_or_default();
@@ -45,7 +48,10 @@ pub(crate) fn collect_cpu_summary(
             cpu_core_kind(index, &topology.logical_efficiency_classes)
                 == Some(CpuCoreKind::Efficiency)
         }),
-        total_usage_percent: average_cpu_usage_percent(system),
+        total_usage_percent: optional_cpu_percent_u8(total_usage_percent)
+            .or_else(|| average_cpu_usage_percent(system)),
+        user_usage_percent: optional_cpu_percent_u8(user_usage_percent),
+        kernel_usage_percent: optional_cpu_percent_u8(kernel_usage_percent),
         logical_processors: collect_logical_processor_usage(
             system,
             &topology.logical_efficiency_classes,
@@ -206,7 +212,7 @@ fn collect_logical_processor_usage(
         .iter()
         .enumerate()
         .map(|(index, cpu)| CpuLogicalProcessorSample {
-            usage_percent: two_digit_cpu_percent(cpu.cpu_usage()),
+            usage_percent: cpu_percent_u8(cpu.cpu_usage()),
             kind: cpu_core_kind(index, efficiency_classes),
         })
         .collect()
@@ -256,16 +262,20 @@ fn cpu_core_kind(index: usize, efficiency_classes: &[Option<u8>]) -> Option<CpuC
     }
 }
 
-fn two_digit_cpu_percent(value: f32) -> u8 {
-    cpu_percent_u8(value).min(99)
-}
-
 fn cpu_percent_u8(value: f32) -> u8 {
     if !value.is_finite() || value <= 0.0 {
         0
     } else {
         value.round().clamp(0.0, 100.0) as u8
     }
+}
+
+fn optional_cpu_percent_u8(value: Option<f64>) -> Option<u8> {
+    value.and_then(|value| {
+        value
+            .is_finite()
+            .then(|| value.round().clamp(0.0, 100.0) as u8)
+    })
 }
 
 fn collect_cpu_name_from_registry() -> Option<String> {
@@ -393,5 +403,11 @@ mod tests {
             average_current_frequency_mhz(&frequencies, |index, _| index > 3),
             None
         );
+    }
+
+    #[test]
+    fn logical_cpu_usage_preserves_full_utilization() {
+        assert_eq!(cpu_percent_u8(100.0), 100);
+        assert_eq!(cpu_percent_u8(101.0), 100);
     }
 }

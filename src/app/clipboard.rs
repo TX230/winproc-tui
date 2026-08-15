@@ -15,7 +15,7 @@ impl App {
         match self.focused_panel {
             FocusedPanel::System => self.copy_selected_system_row_to_clipboard(),
             FocusedPanel::SystemActivity => self.copy_selected_system_activity_row_to_clipboard(),
-            FocusedPanel::Cpu => self.copy_cpu_average_to_clipboard(),
+            FocusedPanel::Cpu => self.copy_selected_cpu_row_to_clipboard(),
             FocusedPanel::Processes => self.copy_selected_process_row_to_clipboard(),
             FocusedPanel::DetailsSamples if self.show_details => {
                 self.copy_selected_sample_row_to_clipboard()
@@ -141,12 +141,16 @@ impl App {
         Ok(())
     }
 
-    fn copy_cpu_average_to_clipboard(&mut self) -> Result<()> {
-        let value = selected_system_row_text(self, SystemMetric::CpuAverage);
+    fn copy_selected_cpu_row_to_clipboard(&mut self) -> Result<()> {
+        let Some(metric) = self.selected_cpu_metric() else {
+            self.status = "Per-core Usage has no single value to copy".to_string();
+            return Ok(());
+        };
+        let value = selected_system_row_text(self, metric);
 
         match copy_text_to_clipboard(&value) {
             Ok(()) => {
-                self.status = "Copied row: CPU Usage".to_string();
+                self.status = format!("Copied row: {}", metric.label());
             }
             Err(error) => {
                 self.status = format!("Clipboard copy failed: {error}");
@@ -234,10 +238,21 @@ fn selected_process_row_text(process: &ProcessRow, columns: &[MetricColumn]) -> 
 fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
     let snapshot = app.display_snapshot();
     let value = match metric {
-        SystemMetric::CpuAverage => snapshot
-            .cpu_total_usage_percent
-            .map(|value| format!("{}%", value.min(100)))
-            .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::CpuAverage => format!(
+            "{} (U {}, K {})",
+            snapshot
+                .cpu_total_usage_percent
+                .map(|value| format!("{}%", value.min(100)))
+                .unwrap_or_else(|| "--".to_string()),
+            snapshot
+                .cpu_user_usage_percent
+                .map(|value| format!("{}%", value.min(100)))
+                .unwrap_or_else(|| "--".to_string()),
+            snapshot
+                .cpu_kernel_usage_percent
+                .map(|value| format!("{}%", value.min(100)))
+                .unwrap_or_else(|| "--".to_string())
+        ),
         SystemMetric::PhysicalMemory => {
             format_memory_row_value(Some(snapshot.used_memory), Some(snapshot.total_memory))
         }
@@ -263,6 +278,7 @@ fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
             .thread_count
             .map(format_integer)
             .unwrap_or_else(|| "--".to_string()),
+        SystemMetric::ProcessCount => format_integer(snapshot.process_count as u64),
         SystemMetric::GpuUtilization | SystemMetric::GpuEncode | SystemMetric::GpuDecode => app
             .selected_gpu_adapter()
             .and_then(|adapter| match metric {

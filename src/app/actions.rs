@@ -13,7 +13,9 @@ use crate::{
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
-        column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
+        column_picker_index_at, column_picker_scrollbar_area, cpu_core_dialog_content_area,
+        cpu_core_dialog_scrollbar_area, cpu_metric_at_position, cpu_panel_area_for_screen,
+        cpu_per_core_button_area,
         details_panel::graph_y_axis_label_width,
         gpu_panel_area_for_screen, help_scrollbar_area,
         layout::{
@@ -663,6 +665,22 @@ impl App {
             return Ok(());
         }
 
+        if self.show_cpu_core_dialog {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => self.close_cpu_core_dialog(),
+                KeyCode::Up => self.scroll_cpu_core_up(1),
+                KeyCode::Down => self.scroll_cpu_core_down(1),
+                KeyCode::PageUp => self.scroll_cpu_core_up(self.cpu_core_scroll.page_size.max(1)),
+                KeyCode::PageDown => {
+                    self.scroll_cpu_core_down(self.cpu_core_scroll.page_size.max(1))
+                }
+                KeyCode::Home => self.scroll_cpu_core_home(),
+                KeyCode::End => self.scroll_cpu_core_end(),
+                _ => {}
+            }
+            return Ok(());
+        }
+
         if self.show_system_info_dialog {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_system_info_dialog(),
@@ -1010,12 +1028,32 @@ impl App {
 
         if self.focused_panel == FocusedPanel::Cpu {
             match key.code {
+                KeyCode::Up => {
+                    self.select_previous_cpu_item();
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    self.select_next_cpu_item();
+                    return Ok(());
+                }
+                KeyCode::Home => {
+                    self.select_first_cpu_item();
+                    return Ok(());
+                }
+                KeyCode::End => {
+                    self.select_last_cpu_item();
+                    return Ok(());
+                }
                 KeyCode::Enter => {
-                    self.status = "CPUs metric selected: CPU Usage".to_string();
+                    if self.cpu_per_core_selected() {
+                        self.open_cpu_core_dialog();
+                    } else if let Some(metric) = self.selected_cpu_metric() {
+                        self.status = format!("CPU metric selected: {}", metric.label());
+                    }
                     return Ok(());
                 }
                 KeyCode::Char(' ') => {
-                    self.toggle_cpu_average_graph();
+                    self.toggle_selected_cpu_graph();
                     return Ok(());
                 }
                 KeyCode::Char(ch @ '1'..='4') if key.modifiers.is_empty() => {
@@ -1320,9 +1358,13 @@ impl App {
         if has_modal_focus {
             self.clear_graph_source_click();
             self.graph_hovered_target = None;
+            self.cpu_per_core_hovered = false;
         } else {
             self.graph_hovered_target =
                 graph_hover_target_at(self, screen_area, mouse.column, mouse.row);
+            self.cpu_per_core_hovered =
+                cpu_per_core_button_area(cpu_panel_area_for_screen(screen_area, self))
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
             if mouse.kind == MouseEventKind::Moved {
                 return;
             }
@@ -1595,6 +1637,52 @@ impl App {
             return;
         }
 
+        if self.show_cpu_core_dialog {
+            let scrollbar = cpu_core_dialog_scrollbar_area(
+                screen_area,
+                self,
+                self.cpu_core_scroll.page_size.max(1),
+            );
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left)
+                    if scrollbar
+                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
+                {
+                    let area = scrollbar.expect("checked scrollbar");
+                    let total = crate::ui::cpu_core_dialog_total_rows(self);
+                    self.cpu_core_scroll.start_drag(area, mouse.row, total);
+                    self.cpu_core_scroll.drag_to(area, mouse.row, total);
+                }
+                MouseEventKind::Drag(MouseButton::Left) if self.cpu_core_scroll.dragging => {
+                    if let Some(area) = scrollbar {
+                        let total = crate::ui::cpu_core_dialog_total_rows(self);
+                        self.cpu_core_scroll.drag_to(area, mouse.row, total);
+                    }
+                }
+                MouseEventKind::Up(MouseButton::Left) => self.cpu_core_scroll.stop_drag(),
+                MouseEventKind::ScrollUp
+                    if contains_point(
+                        cpu_core_dialog_content_area(screen_area, self),
+                        mouse.column,
+                        mouse.row,
+                    ) =>
+                {
+                    self.scroll_cpu_core_up(1);
+                }
+                MouseEventKind::ScrollDown
+                    if contains_point(
+                        cpu_core_dialog_content_area(screen_area, self),
+                        mouse.column,
+                        mouse.row,
+                    ) =>
+                {
+                    self.scroll_cpu_core_down(1);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         if self.show_system_info_dialog {
             return;
         }
@@ -1634,6 +1722,15 @@ impl App {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                if cpu_per_core_button_area(cpu_panel_area_for_screen(screen_area, self))
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+                {
+                    self.focused_panel = FocusedPanel::Cpu;
+                    self.select_last_cpu_item();
+                    self.clear_graph_source_click();
+                    self.open_cpu_core_dialog();
+                    return;
+                }
                 if self.activate_graph_span_control_at(mouse.column, mouse.row, screen_area) {
                     return;
                 }
@@ -1682,6 +1779,7 @@ impl App {
                 self.focus_panel_at(mouse.column, mouse.row, screen_area);
                 self.select_system_metric_row_at(mouse.column, mouse.row, screen_area);
                 self.select_system_activity_metric_row_at(mouse.column, mouse.row, screen_area);
+                self.select_cpu_metric_row_at(mouse.column, mouse.row, screen_area);
                 self.select_process_row_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_from_graph_at(mouse.column, mouse.row, screen_area);
@@ -2087,7 +2185,7 @@ impl App {
 
         if contains_point(cpu_panel_area_for_screen(screen_area, self), x, y) {
             self.focused_panel = FocusedPanel::Cpu;
-            self.status = "Focus: CPUs".to_string();
+            self.status = "Focus: CPU".to_string();
             return;
         }
 
@@ -2197,6 +2295,19 @@ impl App {
             return;
         }
         self.select_system_activity_metric_index(usize::from(y - first_row_y));
+    }
+
+    fn select_cpu_metric_row_at(&mut self, x: u16, y: u16, screen_area: Rect) {
+        let panel = cpu_panel_area_for_screen(screen_area, self);
+        let Some(metric) = cpu_metric_at_position(panel, x, y) else {
+            return;
+        };
+        if let Some(index) = crate::model::SystemMetric::CPU_PANEL
+            .iter()
+            .position(|candidate| *candidate == metric)
+        {
+            self.select_cpu_item_index(index);
+        }
     }
 
     fn scroll_at(&mut self, x: u16, y: u16, screen_area: Rect, up: bool) {
@@ -2362,11 +2473,7 @@ fn system_activity_graph_source_at(
 }
 
 fn cpu_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {
-    let area = cpu_panel_area_for_screen(screen_area, app).inner(Margin {
-        horizontal: 1,
-        vertical: 1,
-    });
-    contains_point(area, x, y).then(|| GraphSlot::system(crate::model::SystemMetric::CpuAverage))
+    cpu_metric_at_position(cpu_panel_area_for_screen(screen_area, app), x, y).map(GraphSlot::system)
 }
 
 fn contains_point(area: Rect, x: u16, y: u16) -> bool {

@@ -256,13 +256,20 @@ fn collect_snapshot(
         .as_mut()
         .map(|sampler| sampler.sample())
         .transpose();
-    let cpu_frequencies_mhz = sampled_counters
+    let sampled_system_counters = sampled_counters
         .as_ref()
         .ok()
-        .and_then(|sample| sample.as_ref())
+        .and_then(|sample| sample.as_ref());
+    let cpu_frequencies_mhz = sampled_system_counters
         .map(|sample| sample.cpu_frequencies_mhz.as_slice())
         .unwrap_or(&[]);
-    let cpu_summary = collect_cpu_summary(system, cpu_frequencies_mhz);
+    let cpu_summary = collect_cpu_summary(
+        system,
+        cpu_frequencies_mhz,
+        sampled_system_counters.and_then(|sample| sample.cpu_total_usage_percent),
+        sampled_system_counters.and_then(|sample| sample.cpu_user_usage_percent),
+        sampled_system_counters.and_then(|sample| sample.cpu_kernel_usage_percent),
+    );
 
     let mapped_counters =
         map_memory_counters(total_memory, fallback_available_memory, sampled_counters);
@@ -293,6 +300,8 @@ fn collect_snapshot(
             cpu_p_core_frequency_mhz: cpu_summary.p_core_frequency_mhz,
             cpu_e_core_frequency_mhz: cpu_summary.e_core_frequency_mhz,
             cpu_total_usage_percent: cpu_summary.total_usage_percent,
+            cpu_user_usage_percent: cpu_summary.user_usage_percent,
+            cpu_kernel_usage_percent: cpu_summary.kernel_usage_percent,
             cpu_logical_processors: cpu_summary.logical_processors,
             cpu_topology: cpu_summary.topology,
             cpu_cache: cpu_summary.caches,

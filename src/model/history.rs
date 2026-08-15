@@ -22,6 +22,7 @@ pub(crate) enum SystemMetric {
     PagesInput,
     PagesOutput,
     ThreadCount,
+    ProcessCount,
     GpuUtilization,
     GpuEncode,
     GpuDecode,
@@ -42,14 +43,13 @@ impl SystemMetric {
         Self::FreeZeroedMemory,
         Self::Committed,
     ];
-    pub(crate) const MEMORY_PRESSURE_PANEL: [Self; 5] = [
+    pub(crate) const MEMORY_PRESSURE_PANEL: [Self; 4] = [
         Self::PagedPool,
         Self::NonpagedPool,
         Self::PagesInput,
         Self::PagesOutput,
-        Self::ThreadCount,
     ];
-    pub(crate) const MEMORY_PANEL: [Self; 10] = [
+    pub(crate) const MEMORY_PANEL: [Self; 9] = [
         Self::PhysicalMemory,
         Self::ModifiedMemory,
         Self::StandbyMemory,
@@ -59,8 +59,9 @@ impl SystemMetric {
         Self::NonpagedPool,
         Self::PagesInput,
         Self::PagesOutput,
-        Self::ThreadCount,
     ];
+    pub(crate) const CPU_PANEL: [Self; 3] =
+        [Self::CpuAverage, Self::ThreadCount, Self::ProcessCount];
     pub(crate) const GPU_PANEL: [Self; 5] = [
         Self::GpuUtilization,
         Self::GpuEncode,
@@ -89,6 +90,7 @@ impl SystemMetric {
             Self::PagesInput => "Pages In/s",
             Self::PagesOutput => "Pages Out/s",
             Self::ThreadCount => "Threads",
+            Self::ProcessCount => "Processes",
             Self::GpuUtilization => "Usage",
             Self::GpuEncode => "Encode",
             Self::GpuDecode => "Decode",
@@ -104,7 +106,7 @@ impl SystemMetric {
 
     pub(crate) fn panel_label(self) -> &'static str {
         match self {
-            Self::CpuAverage => "CPUs",
+            Self::CpuAverage | Self::ThreadCount | Self::ProcessCount => "CPU",
             Self::PhysicalMemory
             | Self::ModifiedMemory
             | Self::StandbyMemory
@@ -113,8 +115,7 @@ impl SystemMetric {
             | Self::PagedPool
             | Self::NonpagedPool
             | Self::PagesInput
-            | Self::PagesOutput
-            | Self::ThreadCount => "MEM",
+            | Self::PagesOutput => "MEM",
             Self::GpuUtilization
             | Self::GpuEncode
             | Self::GpuDecode
@@ -349,6 +350,7 @@ pub(crate) struct SystemSample {
     pub(crate) pages_input_per_sec: Option<u64>,
     pub(crate) pages_output_per_sec: Option<u64>,
     pub(crate) thread_count: Option<u64>,
+    pub(crate) process_count: Option<u64>,
     pub(crate) gpu_adapters: Vec<crate::model::GpuAdapterSample>,
     pub(crate) network_received_bytes_per_sec: Option<u64>,
     pub(crate) network_sent_bytes_per_sec: Option<u64>,
@@ -372,6 +374,7 @@ impl SystemSample {
             pages_input_per_sec: snapshot.pages_input_per_sec,
             pages_output_per_sec: snapshot.pages_output_per_sec,
             thread_count: snapshot.thread_count,
+            process_count: u64::try_from(snapshot.process_count).ok(),
             gpu_adapters: snapshot.gpu_adapters.clone(),
             network_received_bytes_per_sec: snapshot.network_received_bytes_per_sec,
             network_sent_bytes_per_sec: snapshot.network_sent_bytes_per_sec,
@@ -396,6 +399,7 @@ impl SystemSample {
             SystemMetric::PagesInput => self.pages_input_per_sec.map(|value| value as f64),
             SystemMetric::PagesOutput => self.pages_output_per_sec.map(|value| value as f64),
             SystemMetric::ThreadCount => self.thread_count.map(|value| value as f64),
+            SystemMetric::ProcessCount => self.process_count.map(|value| value as f64),
             SystemMetric::GpuUtilization
             | SystemMetric::GpuEncode
             | SystemMetric::GpuDecode
@@ -737,6 +741,8 @@ mod tests {
             cpu_p_core_frequency_mhz: None,
             cpu_e_core_frequency_mhz: None,
             cpu_total_usage_percent: None,
+            cpu_user_usage_percent: None,
+            cpu_kernel_usage_percent: None,
             cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,

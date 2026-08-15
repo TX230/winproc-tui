@@ -29,7 +29,9 @@ winproc-tui
 
 画面上部にはシステム全体のメモリ、GPU アダプター別の負荷とメモリ、ネットワーク / ディスク、CPU 使用率が表示され、`PROCESSES` パネルには実行中のプロセスが並びます。`Tab` / `Shift+Tab` でパネルを移動します。MEM と GPU はそれぞれ独立した移動先です。方向キーで行やカラムを選択します。
 
-MEM、GPU、平均 CPU 使用率、NW/DISK の System Activity は、プロセス名を登録しなくても起動時から自動的に履歴を保持します。Tracking List はプロセス名だけを対象にします。MEM または GPU にフォーカスがあるときは、`m` / `g` で両者を直接切り替えられます。`Left` / `Right` では MEM の左右列、または GPU アダプターを切り替えます。
+MEM、GPU、CPU の Usage / Threads / Processes、NW/DISK の System Activity は、プロセス名を登録しなくても起動時から自動的に履歴を保持します。Tracking List はプロセス名だけを対象にします。MEM または GPU にフォーカスがあるときは、`m` / `g` で両者を直接切り替えられます。`Left` / `Right` では MEM の左右列、または GPU アダプターを切り替えます。
+
+コンパクトな `CPU` パネルには、全体使用率とユーザー / カーネル内訳、P/E コアの周波数、システム全体の Threads と Processes を表示します。`Up` / `Down` で Usage、Threads、Processes、最下段の `[Per-core Usage (P/E)]` ボタンを選択します。Usage、Threads、Processes は Graph 対象です。Per-core ボタンにフォーカスして `Enter` を押すか、ボタンをクリックすると論理 CPU ごとの使用率をスクロール可能なダイアログに表示し、`Enter` または `Esc` で閉じます。
 
 ### 2. プロセスのメトリクスを Graph で見る
 
@@ -38,7 +40,7 @@ MEM、GPU、平均 CPU 使用率、NW/DISK の System Activity は、プロセ�
 3. `Space` を押すかメトリクスのセルをダブルクリックすると、Graph Workspace に追加されます。同じ操作をもう一度行うと削除されます。
 4. ほかのメトリクスでも同じ操作を行うと、最大 16 個の Graph を比較できます。一覧内を移動すると、操作中のカードが表示範囲へ追従します。
 
-`Space` とダブルクリックは、どちらも選択中の Graph だけを追加 / 削除します。MEM、GPU、NW/DISK の選択中メトリクス、CPUS の CPU Usage でも同じ操作を使えます。`PROCESSES` とコンパクトなシステムパネルでは、Graph 登録済みの値を緑、アクティブな Graph の値を太字で表示し、Graph スロット番号用の幅は確保しません。
+`Space` とダブルクリックは、どちらも選択中の Graph だけを追加 / 削除します。MEM、GPU、NW/DISK、CPU パネルの選択中メトリクスでも同じ操作を使えます。`PROCESSES` とコンパクトなシステムパネルでは、Graph 登録済みの値を緑、アクティブな Graph の値を太字で表示し、Graph スロット番号用の幅は確保しません。
 
 ### 3. 2 時点の差を比較する
 
@@ -53,7 +55,7 @@ Graph または Samples にフォーカスを移し、`Left` / `Right` でサン
 5. もう一度 `Ctrl+R` を押し、`y` を押すと記録を終了してログを閉じます。`Enter`、`Esc`、`n` では記録を継続します。
 6. `Ctrl+L` で保存済みログを選び、内容を確認します。
 
-記録開始には、Tracking List へのプロセス名の登録が 1 件以上必要です。登録した名前に一致するプロセスが現在実行されていなくても記録は開始できます。MEM、GPU アダプター別メトリクス、平均 CPU 使用率、System Activity は登録不要で各フレームに記録され、プロセス一覧は一致するプロセスが現れるまで空になります。
+記録開始には、Tracking List へのプロセス名の登録が 1 件以上必要です。登録した名前に一致するプロセスが現在実行されていなくても記録は開始できます。MEM、GPU アダプター別メトリクス、CPU の集計値、System Activity は登録不要で各フレームに記録されます。論理 CPU ごとの使用率は記録されず、プロセス一覧は一致するプロセスが現れるまで空になります。
 記録開始ダイアログには対象名の件数が表示され、その Tracking List がセッション終了まで固定されます。記録中は `t` と `Ctrl+T` を使用できません。表示だけを切り替える `Shift+T` の Tracked-only は引き続き使用できます。
 
 Tracking Lists ダイアログでは、名前付きプロセスリストのロード、保存、名前変更、削除を行えます。`Empty (default)` は作業中リストだけを空にし、Tracked-only は変更しません。`Tracking List startup` は `Resume last`、`Choose list`、`Start empty` を選ぶ左寄せの枠付きラジオグループです。`Tab` でフォーカスし、`Left` / `Right` / `Space` で変更して、`Enter` または `Esc` でダイアログを閉じます。リストのロードによって除外対象の保持履歴が失われる場合は確認を表示します。追跡名を削除する際にこの確認が必要な場合は、`Enter` で削除し、`Esc` でキャンセルします。ダイアログ内の全操作は、実行中に `?` で確認できます。

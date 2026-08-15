@@ -34,9 +34,18 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             ("Ctrl+C", "Copy"),
             ("i", "System info"),
         ],
-        FocusedPanel::SystemActivity | FocusedPanel::Cpu => {
+        FocusedPanel::SystemActivity => {
             vec![("Space", "Graph"), ("Ctrl+C", "Copy"), ("i", "System info")]
         }
+        FocusedPanel::Cpu if app.cpu_per_core_selected() => {
+            vec![("↑/↓", "Item"), ("Enter", "Open"), ("i", "System info")]
+        }
+        FocusedPanel::Cpu => vec![
+            ("↑/↓", "Item"),
+            ("Space", "Graph"),
+            ("Ctrl+C", "Copy"),
+            ("i", "System info"),
+        ],
         FocusedPanel::Processes => {
             vec![
                 ("Space", "Graph"),

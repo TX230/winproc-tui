@@ -29,7 +29,9 @@ Only one `winproc-tui` instance can run in a Windows session. If one is already 
 
 The upper panels show system-wide memory, per-adapter GPU activity and memory, network / disk activity, and CPU usage. The `PROCESSES` panel lists running processes. Use `Tab` / `Shift+Tab` to move between panels, including separate focus stops for MEM and GPU, and the arrow keys to select rows and columns.
 
-MEM, GPU, average CPU usage, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names. With MEM or GPU focused, use `m` / `g` to jump directly between them. `Left` / `Right` moves between the two MEM columns or changes the GPU adapter.
+MEM, GPU, CPU Usage / Threads / Processes, and NW/DISK System Activity retain history automatically from startup without registering a process name. The Tracking List applies only to process names. With MEM or GPU focused, use `m` / `g` to jump directly between them. `Left` / `Right` moves between the two MEM columns or changes the GPU adapter.
+
+The compact `CPU` panel shows total usage with user/kernel components, P/E-core frequency, system Threads, and Processes. `Up` / `Down` selects Usage, Threads, Processes, or the bottom `[Per-core Usage (P/E)]` button. Usage, Threads, and Processes can be graphed. Press `Enter` on the Per-core button, or click it, to inspect each logical CPU in a scrollable dialog; `Enter` or `Esc` closes it.
 
 ### 2. Graph Process Metrics
 
@@ -38,7 +40,7 @@ MEM, GPU, average CPU usage, and NW/DISK System Activity retain history automati
 3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace. Repeat the same operation to remove it.
 4. Repeat the operation on other metrics to compare up to 16 Graphs. The active card stays visible as you move through the ordered list.
 
-`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, and NW/DISK panels and for CPU Usage in CPUS. Across `PROCESSES` and the compact system panels, registered metric values are green and the active Graph value is bold; source panels do not reserve space for Graph slot numbers.
+`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, NW/DISK, and CPU panels. Across `PROCESSES` and the compact system panels, registered metric values are green and the active Graph value is bold; source panels do not reserve space for Graph slot numbers.
 
 ### 3. Compare Two Points
 
@@ -53,7 +55,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 5. Press `Ctrl+R` again, then press `y` to stop recording and close the log. `Enter`, `Esc`, or `n` leaves recording active.
 6. Press `Ctrl+L` to select and inspect a saved log.
 
-Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
+Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, aggregate CPU values, and System Activity require no registration and are recorded in every frame; per-core usage is not recorded, and the process list remains empty until a match appears.
 The recording start dialog shows how many names will be captured. That Tracking List is fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `?` in the app for the complete dialog controls.

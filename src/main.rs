@@ -795,6 +795,9 @@ processes = ["api.exe", "worker.exe"]
                 network_received_bytes_per_sec: Some(5_000),
                 network_sent_bytes_per_sec: Some(6_000),
                 cpu_frequencies_mhz: Vec::new(),
+                cpu_total_usage_percent: None,
+                cpu_user_usage_percent: None,
+                cpu_kernel_usage_percent: None,
             })),
         );
 
@@ -4212,7 +4215,7 @@ processes = ["api.exe", "worker.exe"]
                 (
                     FocusedPanel::Cpu,
                     ui::cpu_panel_area_for_screen(screen, &app),
-                    "CPUS",
+                    "CPU",
                 ),
                 (
                     FocusedPanel::Processes,
@@ -4946,8 +4949,22 @@ processes = ["api.exe", "worker.exe"]
                 GraphSlot::system(SystemMetric::NetworkReceived),
             ),
             (
-                find_text_position(&buffer, "CPU Usage").unwrap(),
+                find_text_position_in_area(
+                    &buffer,
+                    ui::cpu_panel_area_for_screen(screen, &app),
+                    "Usage",
+                )
+                .unwrap(),
                 GraphSlot::system(SystemMetric::CpuAverage),
+            ),
+            (
+                find_text_position_in_area(
+                    &buffer,
+                    ui::cpu_panel_area_for_screen(screen, &app),
+                    "Processes",
+                )
+                .unwrap(),
+                GraphSlot::system(SystemMetric::ProcessCount),
             ),
         ];
 
@@ -6231,11 +6248,7 @@ processes = ["api.exe", "worker.exe"]
 
             app.focused_panel = FocusedPanel::Cpu;
             assert_eq!(
-                selected_background(
-                    &app,
-                    ui::cpu_panel_area_for_screen(screen, &app),
-                    "CPU Usage",
-                ),
+                selected_background(&app, ui::cpu_panel_area_for_screen(screen, &app), "Usage",),
                 process_background
             );
         }
@@ -6938,7 +6951,11 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(value_column("Nonpaged Pool", "2,097 MB"), paged_pool_column);
         assert_eq!(value_column("Pages In/s", "25"), paged_pool_column);
         assert_eq!(value_column("Pages Out/s", "15"), paged_pool_column);
-        assert_eq!(value_column("Threads", "4,335"), paged_pool_column);
+        assert!(
+            !rendered
+                .lines()
+                .any(|line| { line.contains("Threads") && line.contains("Paged Pool") })
+        );
     }
 
     #[test]
@@ -6966,6 +6983,21 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn memory_column_navigation_clamps_to_the_shorter_pressure_column() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::System;
+        app.ram_vram_selected_index = SystemMetric::MEMORY_OVERVIEW_PANEL.len() - 1;
+
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.selected_system_metric(), SystemMetric::PagesOutput);
+
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.selected_system_metric(), SystemMetric::FreeZeroedMemory);
+    }
+
+    #[test]
     fn system_activity_panel_shows_network_disk_and_queue_metrics() {
         let mut app = make_test_app(3, 10);
         app.snapshot.network_received_bytes_per_sec = Some(30_000_000);
@@ -6982,7 +7014,7 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.find("NW/DISK").unwrap() < rendered.find("CPUS").unwrap(),
+            rendered.find("NW/DISK").unwrap() < rendered.find("CPU").unwrap(),
             "{rendered}"
         );
         assert!(rendered.contains("Net Rx   240 Mbps"), "{rendered}");
@@ -7830,11 +7862,14 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn cpu_panel_renders_average_frequency_and_core_cells() {
+    fn cpu_panel_renders_compact_summary_and_per_core_control() {
         let mut app = make_test_app(3, 10);
         app.snapshot.cpu_total_usage_percent = Some(42);
+        app.snapshot.cpu_user_usage_percent = Some(31);
+        app.snapshot.cpu_kernel_usage_percent = Some(11);
         app.snapshot.cpu_p_core_frequency_mhz = Some(3_200);
         app.snapshot.cpu_e_core_frequency_mhz = Some(1_800);
+        app.snapshot.thread_count = Some(4_335);
         app.snapshot.cpu_logical_processors = vec![
             CpuLogicalProcessorSample {
                 usage_percent: 1,
@@ -7852,13 +7887,145 @@ processes = ["api.exe", "worker.exe"]
 
         let rendered = render_app_to_text(&app, 120, 45);
 
-        assert!(rendered.contains("CPUS"), "{rendered}");
-        assert!(rendered.contains("CPU Usage ["), "{rendered}");
-        assert!(rendered.contains("]  42%"), "{rendered}");
-        assert!(rendered.contains("P-core 3200 MHz"), "{rendered}");
-        assert!(rendered.contains("E-core 1800 MHz"), "{rendered}");
-        assert!(rendered.contains("Per-core Usage (P/E)"), "{rendered}");
-        assert!(rendered.contains("P ▁▂  E █"), "{rendered}");
+        assert!(rendered.contains("CPU"), "{rendered}");
+        assert!(
+            rendered.contains("Usage       42% (U 31%, K 11%)"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Freq(P/E)  3200 MHz / 1800 MHz"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("[Per-core Usage (P/E)]"), "{rendered}");
+        assert!(rendered.contains("Threads    4,335"), "{rendered}");
+        assert!(rendered.contains("Processes  3"), "{rendered}");
+        assert!(!rendered.contains("P ▁▂"), "{rendered}");
+
+        let screen = Rect::new(0, 0, 120, 45);
+        let area = ui::cpu_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (_, threads_y) = find_text_position_in_area(&buffer, area, "Threads").unwrap();
+        let (_, processes_y) = find_text_position_in_area(&buffer, area, "Processes").unwrap();
+        let (_, per_core_y) =
+            find_text_position_in_area(&buffer, area, "[Per-core Usage (P/E)]").unwrap();
+        assert!(threads_y < processes_y && processes_y < per_core_y);
+    }
+
+    #[test]
+    fn cpu_frequency_omits_e_segment_when_no_e_core_exists() {
+        let mut app = make_test_app(3, 10);
+        app.snapshot.cpu_p_core_frequency_mhz = Some(3_200);
+        app.snapshot.cpu_e_core_frequency_mhz = Some(1_800);
+        app.snapshot.cpu_logical_processors = vec![CpuLogicalProcessorSample {
+            usage_percent: 25,
+            kind: Some(CpuCoreKind::Performance),
+        }];
+
+        let rendered = render_app_to_text(&app, 120, 30);
+
+        assert!(rendered.contains("Freq(P/E)  3200 MHz"), "{rendered}");
+        assert!(!rendered.contains("3200 MHz /"), "{rendered}");
+    }
+
+    #[test]
+    fn cpu_panel_width_does_not_grow_with_logical_cpu_count() {
+        let screen = Rect::new(0, 0, 180, 30);
+        let mut small = make_test_app(3, 10);
+        small.snapshot.cpu_logical_processors = vec![CpuLogicalProcessorSample {
+            usage_percent: 25,
+            kind: Some(CpuCoreKind::Performance),
+        }];
+        let mut large = make_test_app(3, 10);
+        large.snapshot.cpu_logical_processors = vec![
+            CpuLogicalProcessorSample {
+                usage_percent: 25,
+                kind: Some(CpuCoreKind::Performance),
+            };
+            128
+        ];
+
+        assert_eq!(
+            ui::cpu_panel_area_for_screen(screen, &small).width,
+            ui::cpu_panel_area_for_screen(screen, &large).width
+        );
+    }
+
+    #[test]
+    fn cpu_per_core_control_hovers_and_opens_a_scrollable_dialog() {
+        let screen = Rect::new(0, 0, 100, 15);
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+            app.snapshot.cpu_logical_processors = (0..40)
+                .map(|index| CpuLogicalProcessorSample {
+                    usage_percent: index as u8,
+                    kind: Some(if index % 2 == 0 {
+                        CpuCoreKind::Performance
+                    } else {
+                        CpuCoreKind::Efficiency
+                    }),
+                })
+                .collect();
+            app.focused_panel = FocusedPanel::Cpu;
+            app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.cpu_per_core_selected());
+            app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+                .unwrap();
+            assert_eq!(app.selected_cpu_metric(), Some(SystemMetric::ProcessCount));
+            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.cpu_per_core_selected());
+            let button = ui::cpu_per_core_button_area(ui::cpu_panel_area_for_screen(screen, &app))
+                .expect("per-core button should render");
+
+            let selected = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(
+                selected[(button.x, button.y)].bg,
+                theme.table_selection_surface
+            );
+
+            app.on_mouse(mouse_move(button.x, button.y), screen);
+            let hovered = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(hovered[(button.x, button.y)].bg, theme.focus_surface);
+            assert!(
+                hovered[(button.x, button.y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
+
+            app.on_mouse(mouse_move(0, screen.height - 1), screen);
+            assert!(!app.cpu_per_core_hovered);
+            let unhovered = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(
+                unhovered[(button.x, button.y)].bg,
+                theme.table_selection_surface
+            );
+
+            app.on_mouse(left_click(button.x, button.y), screen);
+            assert!(app.show_cpu_core_dialog);
+            assert_eq!(app.focused_panel, FocusedPanel::Cpu);
+            assert!(app.graph_entries.is_empty());
+            app::sync_layout_state(&mut app, screen);
+
+            app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.cpu_core_scroll.offset > 0);
+            let dialog = render_app_to_text(&app, screen.width, screen.height);
+            assert!(dialog.contains("PER-CORE CPU USAGE"), "{dialog}");
+            assert!(dialog.contains("CPU 39 (E)"), "{dialog}");
+            assert!(dialog.contains("Enter/Esc Close"), "{dialog}");
+
+            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+                .unwrap();
+            assert!(!app.show_cpu_core_dialog);
+            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.show_cpu_core_dialog);
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                .unwrap();
+            assert!(!app.show_cpu_core_dialog);
+        }
     }
 
     #[test]
@@ -7889,9 +8056,8 @@ processes = ["api.exe", "worker.exe"]
         let area = ui::cpu_panel_area_for_screen(screen, &app);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let rendered = buffer_to_text(&buffer);
-        assert!(rendered.contains("CPU Usage ["), "{rendered}");
-        assert!(!rendered.contains("1  CPU Usage ["), "{rendered}");
-        assert!(rendered.contains("]  42%"), "{rendered}");
+        assert!(rendered.contains("Usage       42%"), "{rendered}");
+        assert!(!rendered.contains("1  Usage"), "{rendered}");
         assert!(
             rendered.contains("Slot#1 · CPU Usage · SYSTEM"),
             "{rendered}"
@@ -7902,6 +8068,96 @@ processes = ["api.exe", "worker.exe"]
         let value = &buffer[(x, y)];
         assert_eq!(value.fg, app.theme().active_series);
         assert!(value.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn cpu_panel_can_select_graph_and_copy_threads() {
+        let mut app = make_test_app(3, 10);
+        app.focused_panel = FocusedPanel::Cpu;
+        app.snapshot.thread_count = Some(4_335);
+        app.system_history.record_snapshot(&app.snapshot);
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.selected_cpu_metric(), Some(SystemMetric::ThreadCount));
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(
+            app.active_graph_slot(),
+            Some(&GraphSlot::system(SystemMetric::ThreadCount))
+        );
+        assert_eq!(
+            app.graph_slot_samples(app.active_graph_slot().unwrap())[0].value,
+            Some(4_335.0)
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(
+            app::clipboard::last_copied_text().as_deref(),
+            Some("Threads\t4,335")
+        );
+    }
+
+    #[test]
+    fn cpu_panel_can_select_graph_and_copy_processes() {
+        let mut app = make_test_app(214, 10);
+        app.focused_panel = FocusedPanel::Cpu;
+        app.system_history.record_snapshot(&app.snapshot);
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.selected_cpu_metric(), Some(SystemMetric::ProcessCount));
+
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.active_graph_slot(),
+            Some(&GraphSlot::system(SystemMetric::ProcessCount))
+        );
+        assert_eq!(
+            app.active_graph_slot().map(GraphSlot::value_format),
+            Some(GraphValueFormat::Count)
+        );
+        assert_eq!(
+            app.graph_slot_samples(app.active_graph_slot().unwrap())[0].value,
+            Some(214.0)
+        );
+
+        let screen = Rect::new(0, 0, 180, 45);
+        let area = ui::cpu_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let metric_view = buffer_to_text(&buffer);
+        assert!(metric_view.contains("Space Graph"), "{metric_view}");
+        let (x, y) = find_text_position_in_area(&buffer, area, "214")
+            .expect("registered Processes value should render");
+        assert_eq!(buffer[(x, y)].fg, app.theme().active_series);
+        assert!(buffer[(x, y)].modifier.contains(Modifier::BOLD));
+
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(
+            app::clipboard::last_copied_text().as_deref(),
+            Some("Processes\t214")
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.show_cpu_core_dialog);
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.selected_cpu_metric(), None);
+        assert!(app.cpu_per_core_selected());
+        let per_core_view = render_app_to_text(&app, screen.width, screen.height);
+        assert!(per_core_view.contains("Enter Open"), "{per_core_view}");
+        assert!(!per_core_view.contains("Space Graph"), "{per_core_view}");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.show_cpu_core_dialog);
     }
 
     #[test]
@@ -7926,11 +8182,11 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(value.fg, app.theme().active_series);
         assert!(!value.modifier.contains(Modifier::BOLD));
-        assert!(find_text_position_in_area(&buffer, area, "10 CPU Usage [").is_none());
+        assert!(find_text_position_in_area(&buffer, area, "10 Usage").is_none());
     }
 
     #[test]
-    fn clicking_cpu_panel_moves_focus_to_cpus() {
+    fn clicking_cpu_panel_moves_focus_to_cpu() {
         let mut app = make_test_app(3, 10);
         let screen = Rect::new(0, 0, 120, 45);
         let area = ui::cpu_panel_area_for_screen(screen, &app);
@@ -7938,7 +8194,7 @@ processes = ["api.exe", "worker.exe"]
         app.on_mouse(left_click(area.x + 1, area.y + 1), screen);
 
         assert_eq!(app.focused_panel, FocusedPanel::Cpu);
-        assert_eq!(app.status, "Focus: CPUs");
+        assert_eq!(app.status, "CPU row: CPU Usage");
     }
 
     #[test]
@@ -9106,13 +9362,15 @@ processes = ["api.exe", "worker.exe"]
         let mut app = make_test_app(1, 10);
         app.focused_panel = FocusedPanel::Cpu;
         app.snapshot.cpu_total_usage_percent = Some(37);
+        app.snapshot.cpu_user_usage_percent = Some(29);
+        app.snapshot.cpu_kernel_usage_percent = Some(8);
 
         app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
             .unwrap();
 
         assert_eq!(
             app::clipboard::last_copied_text().as_deref(),
-            Some("CPU Usage\t37%")
+            Some("CPU Usage\t37% (U 29%, K 8%)")
         );
         assert_eq!(app.status, "Copied row: CPU Usage");
     }
@@ -9175,8 +9433,7 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 100, 20);
         assert_eq!(rendered.matches("SYSTEM INFO").count(), 1, "{rendered}");
         assert!(!rendered.contains("System Activity"), "{rendered}");
-        assert!(!rendered.contains("CPUS"), "{rendered}");
-        assert!(!rendered.contains("CPU Usage ["), "{rendered}");
+        assert!(!rendered.contains("[Per-core Usage (P/E)]"), "{rendered}");
         assert!(!rendered.contains("Net Rx"), "{rendered}");
         assert!(!rendered.contains("Disk Q"), "{rendered}");
         assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
@@ -13585,6 +13842,11 @@ processes = ["api.exe", "worker.exe"]
             },
             process_info_target: None,
             process_info_generation: 0,
+            show_cpu_core_dialog: false,
+            cpu_core_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
+                page_size: 1,
+                ..ui::widgets::scrollable_modal::ScrollableModalState::default()
+            },
             show_system_info_dialog: false,
             log_summaries: Vec::new(),
             log_list_dir: None,
@@ -13602,6 +13864,7 @@ processes = ["api.exe", "worker.exe"]
             graph_scrollbar_dragging: false,
             graph_scrollbar_grab_offset: 0,
             graph_hovered_target: None,
+            cpu_per_core_hovered: false,
             graph_return_focus: FocusedPanel::Processes,
             graph_source_last_click: None,
             details_target: DetailsTarget::Process,
@@ -13649,6 +13912,7 @@ processes = ["api.exe", "worker.exe"]
             resource_panel: app::ResourcePanel::Memory,
             gpu_adapter_index: 0,
             system_activity_selected_index: 0,
+            cpu_selected_index: 0,
             process_info_cache: std::collections::HashMap::new(),
             process_info_display_identity: None,
             pending_process_info: None,
@@ -13706,6 +13970,8 @@ processes = ["api.exe", "worker.exe"]
             cpu_p_core_frequency_mhz: None,
             cpu_e_core_frequency_mhz: None,
             cpu_total_usage_percent: None,
+            cpu_user_usage_percent: None,
+            cpu_kernel_usage_percent: None,
             cpu_logical_processors: Vec::new(),
             cpu_topology: None,
             cpu_cache: None,
