@@ -10,7 +10,7 @@
 Windows アプリのメモリ、ハンドル、GUI リソース、GPU メモリ、I/O などの現在値と時間変化をターミナルで確認できます。最大 16 個の Graph、A/B 比較、ログ記録と保存ログ表示により、開発・検証時のリソース挙動を調査できます。
 Process Explorer や System Informer のような網羅的なシステム調査ではなく、対象プロセスの変化を素早く追うことに特化しています。Rust/Ratatui で作られています。
 
-![winproc-tui のメイン画面。システムとプロセスのメトリクス、5 枚の Graph、Samples、A/B 比較を表示している](assets/screenshots/main-screen.png)
+![winproc-tui のメイン画面。システムとプロセスのメトリクス、Graph Workspace、Samples、A/B 比較を表示している](assets/screenshots/main-screen.png)
 
 _システムの状態とともにプロセスのプライベートメモリ増加を確認し、A/B マーカーで 2 時点を比較している例です。_
 
@@ -41,6 +41,10 @@ MEM、GPU、CPU の Usage / Threads / Processes、NW/DISK の System Activity �
 4. ほかのメトリクスでも同じ操作を行うと、最大 16 個の Graph を比較できます。一覧内を移動すると、操作中のカードが表示範囲へ追従します。
 
 `Space` とダブルクリックは、どちらも選択中の Graph だけを追加 / 削除します。MEM、GPU、NW/DISK、CPU パネルの選択中メトリクスでも同じ操作を使えます。`PROCESSES` とコンパクトなシステムパネルでは、Graph 登録済みの値を緑、アクティブな Graph の値を太字で表示し、Graph スロット番号用の幅は確保しません。
+
+![12 個のメトリクスを 3 カラムで表示した Graph Workspace](assets/screenshots/main-screen-12slots.png)
+
+_プロセスとシステムの概要を残したまま、12 個のメトリクスを 3 カラムの Graph Workspace で比較している例です。_
 
 ### 3. 2 時点の差を比較する
 

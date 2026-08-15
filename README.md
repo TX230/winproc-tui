@@ -10,7 +10,7 @@ Languages: [English](README.md) | [Japanese](README.ja.md)
 It shows current values and changes over time for memory, handles, GUI resources, GPU memory, I/O, and other Windows process metrics. Up to 16 Graphs, A/B comparison, recording, and saved-log review support resource-behavior investigations during development and verification.
 Rather than providing the broad system inspection of Process Explorer or System Informer, it focuses on quickly following changes in a specific process. It is built with Rust/Ratatui.
 
-![winproc-tui main screen showing system and process metrics, five Graphs, Samples, and A/B comparison](assets/screenshots/main-screen.png)
+![winproc-tui main screen showing system and process metrics, the Graph Workspace, Samples, and A/B comparison](assets/screenshots/main-screen.png)
 
 _Investigating private memory growth alongside system activity and comparing two points with A/B markers._
 
@@ -41,6 +41,10 @@ The compact `CPU` panel shows total usage with user/kernel components, P/E-core 
 4. Repeat the operation on other metrics to compare up to 16 Graphs. The active card stays visible as you move through the ordered list.
 
 `Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, NW/DISK, and CPU panels. Across `PROCESSES` and the compact system panels, registered metric values are green and the active Graph value is bold; source panels do not reserve space for Graph slot numbers.
+
+![Graph Workspace showing 12 metrics in a three-column layout](assets/screenshots/main-screen-12slots.png)
+
+_A three-column Graph Workspace comparing 12 metrics while preserving the process and system overview._
 
 ### 3. Compare Two Points
 
