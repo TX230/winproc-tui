@@ -2618,6 +2618,50 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn samples_scrollbar_keeps_one_column_gap_after_values() {
+        let screen = Rect::new(0, 0, 160, 48);
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        let tracked_names = ["proc-0".to_string()].into_iter().collect();
+        for offset in 0..100 {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &tracked_names,
+            );
+        }
+        app.show_samples_panel = true;
+        app.focused_panel = FocusedPanel::DetailsSamples;
+        app.select_details_sample_latest();
+
+        for show_delta in [false, true] {
+            app.show_sample_delta = show_delta;
+            app::sync_layout_state(&mut app, screen);
+            let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+            let samples = ui::layout::graph_workspace_layout(details, &app)
+                .samples
+                .expect("Samples inspector");
+            let content = samples.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 1,
+            });
+            let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+            let scrollbar_x = content.right().saturating_sub(1);
+            let sample_row_y = content.y.saturating_add(1);
+
+            assert_ne!(
+                buffer[(scrollbar_x.saturating_sub(2), sample_row_y)].symbol(),
+                " "
+            );
+            assert_eq!(
+                buffer[(scrollbar_x.saturating_sub(1), sample_row_y)].symbol(),
+                " "
+            );
+            assert_ne!(buffer[(scrollbar_x, sample_row_y)].symbol(), " ");
+        }
+    }
+
+    #[test]
     fn graph_focus_keys_zoom_pan_and_select_samples() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
