@@ -63,7 +63,6 @@ pub(crate) use state::TrackedListsView;
 #[cfg(test)]
 pub(crate) use state::VisibleProcessEntry;
 pub(crate) use state::VisibleProcessRow;
-pub(crate) use state::distinct_process_kill_image_names;
 
 pub(crate) fn run_tui(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,

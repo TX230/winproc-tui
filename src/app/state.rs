@@ -4556,19 +4556,18 @@ impl App {
             return false;
         }
 
-        let image_count = distinct_process_kill_image_names(&targets).len();
         let row_count = targets.len();
         self.process_kill_targets = targets;
         self.show_process_kill_confirmation = true;
-        self.status = format!("Confirm kill for {row_count} selected rows / {image_count} images");
+        self.status = format!("Confirm kill for {row_count} selected process(es)");
         true
     }
 
     pub(crate) fn confirm_process_kill(&mut self) {
-        let image_names = distinct_process_kill_image_names(&self.process_kill_targets);
-        let attempts = image_names
+        let attempts = self
+            .process_kill_targets
             .iter()
-            .map(|image_name| taskkill_force_image(image_name))
+            .map(taskkill_force_pid)
             .collect::<Vec<_>>();
         self.reset_process_kill_confirmation();
         self.clear_process_multi_selection();
@@ -4576,15 +4575,15 @@ impl App {
         let succeeded = attempts.iter().filter(|attempt| attempt.success).count();
         let failed = attempts.len().saturating_sub(succeeded);
         self.status = match (succeeded, failed) {
-            (0, 0) => "No process image names selected".to_string(),
-            (_, 0) => format!("Killed {succeeded} process image name(s)"),
+            (0, 0) => "No process PIDs selected".to_string(),
+            (_, 0) => format!("Killed {succeeded} process(es)"),
             (0, _) => format!(
-                "Kill failed for {failed} image name(s): {}",
-                failed_taskkill_names(&attempts)
+                "Kill failed for {failed} process(es): {}",
+                failed_taskkill_targets(&attempts)
             ),
             _ => format!(
                 "Killed {succeeded}; failed {failed}: {}",
-                failed_taskkill_names(&attempts)
+                failed_taskkill_targets(&attempts)
             ),
         };
     }
@@ -6992,44 +6991,47 @@ fn preserve_process_row_order(
     });
 }
 
-pub(crate) fn distinct_process_kill_image_names(targets: &[ProcessKillTarget]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut names = Vec::new();
-    for target in targets {
-        let key = target.name.trim().to_ascii_lowercase();
-        if key.is_empty() || !seen.insert(key) {
-            continue;
-        }
-        names.push(target.name.clone());
-    }
-    names
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TaskkillAttempt {
-    image_name: String,
+    pid: u32,
+    name: String,
     success: bool,
 }
 
-fn taskkill_force_image(image_name: &str) -> TaskkillAttempt {
+fn taskkill_force_pid(target: &ProcessKillTarget) -> TaskkillAttempt {
     let success = Command::new("taskkill")
-        .args(["/f", "/im", image_name])
+        .args(taskkill_force_pid_args(target.pid))
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false);
     TaskkillAttempt {
-        image_name: image_name.to_string(),
+        pid: target.pid,
+        name: target.name.clone(),
         success,
     }
 }
 
-fn failed_taskkill_names(attempts: &[TaskkillAttempt]) -> String {
+fn taskkill_force_pid_args(pid: u32) -> [String; 3] {
+    ["/f".to_string(), "/pid".to_string(), pid.to_string()]
+}
+
+fn failed_taskkill_targets(attempts: &[TaskkillAttempt]) -> String {
     attempts
         .iter()
         .filter(|attempt| !attempt.success)
-        .map(|attempt| attempt.image_name.as_str())
+        .map(|attempt| format!("{} ({})", attempt.pid, attempt.name))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod process_kill_tests {
+    use super::taskkill_force_pid_args;
+
+    #[test]
+    fn taskkill_targets_one_pid() {
+        assert_eq!(taskkill_force_pid_args(42), ["/f", "/pid", "42"]);
+    }
 }
 
 fn tracked_live_identities(

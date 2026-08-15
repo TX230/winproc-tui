@@ -1198,7 +1198,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_kill_confirmation_uses_multi_selection_and_distinct_image_names() {
+    fn process_kill_confirmation_keeps_every_selected_pid() {
         let mut app = make_test_app(3, 10);
         app.snapshot.processes[0].name = "same.exe".to_string();
         app.snapshot.processes[1].name = "same.exe".to_string();
@@ -1217,8 +1217,15 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.show_process_kill_confirmation);
         assert_eq!(app.process_kill_targets.len(), 3);
         assert_eq!(
-            app::distinct_process_kill_image_names(&app.process_kill_targets),
-            vec!["same.exe".to_string(), "other.exe".to_string()]
+            app.process_kill_targets
+                .iter()
+                .map(|target| target.pid)
+                .collect::<Vec<_>>(),
+            app.snapshot
+                .processes
+                .iter()
+                .map(|process| process.pid)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -1235,7 +1242,7 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 100, 45);
         let popup = process_kill_dialog_area(screen);
         assert_eq!(popup.width, 64);
-        assert_eq!(popup.height, 10);
+        assert_eq!(popup.height, 9);
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let shortcut = "Enter Kill  Esc Cancel";
@@ -1260,6 +1267,9 @@ processes = ["api.exe", "worker.exe"]
         assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
         assert!(!rendered.contains("y Kill"), "{rendered}");
         assert!(!rendered.contains("n Cancel"), "{rendered}");
+        assert!(rendered.contains("PIDs:"), "{rendered}");
+        assert!(!rendered.contains("Image names:"), "{rendered}");
+        assert!(!rendered.contains("terminates all"), "{rendered}");
     }
 
     #[test]
@@ -1270,7 +1280,7 @@ processes = ["api.exe", "worker.exe"]
             .on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
         assert!(!confirm.show_process_kill_confirmation);
-        assert_eq!(confirm.status, "No process image names selected");
+        assert_eq!(confirm.status, "No process PIDs selected");
 
         let mut cancel = make_test_app(1, 10);
         cancel.show_process_kill_confirmation = true;

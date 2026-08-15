@@ -164,6 +164,7 @@ Input dispatch follows these rules:
 - Non-modal actions depend on the current `FocusedPanel`.
 - MEM and GPU share `FocusedPanel::System`, while `ResourcePanel` acts as its subfocus. The forward focus cycle visits MEM then GPU, and the reverse cycle visits GPU then MEM; drawing and input both consume this combined state.
 - Key press and repeat events are handled; release events are ignored to avoid duplicate processing while preserving terminal key repeat.
+- Process kill confirmation captures each selected live process as a `ProcessKillTarget` and executes `taskkill /f /pid` once per captured PID. It never expands the target set by image name.
 - Drawing and mouse hit testing derive panel, Graph Workspace, card, Samples, scrollbar, and interactive-control regions from shared layout helpers. Processes table rendering, horizontal visibility, cell formatting, and header hit testing consume the same identity-based resolved column widths. Display-only truncation cues never replace the complete process name or executable path held in application state.
 - Source double-click state stores the semantic `GraphSlot` and click time rather than screen coordinates. Scroll, drag, modal input, a different source, or more than 500 ms between clicks prevents the pair from adding or removing a Graph.
 

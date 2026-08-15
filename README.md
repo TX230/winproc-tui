@@ -278,7 +278,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 
 Process Info has `Metrics`, `Image`, `Files`, `DLLs`, and `Environment` tabs. The dialog reopens with its last active tab focused. `Metrics` and `Image` have no interactive content control, so `Tab` / `Shift+Tab` keeps focus on the tabs and `Up` / `Down` scrolls the content. On `Files`, `DLLs`, and `Environment`, `Tab` / `Shift+Tab` moves focus between the tabs and content. When the tabs are focused, `Left` / `Right` switches tabs; `Ctrl+Left` / `Ctrl+Right` remains available from either focus. Use `Ctrl+U` to refresh dynamic tabs, `Ctrl+C` to copy the selected value, and `Esc` to close the dialog. Dynamic details may be unavailable for protected, unsupported, or exited processes.
 
-In the process-kill confirmation, `Enter` runs `taskkill /f /im` for the selected image names and `Esc` cancels. `y` and `n` are not assigned in this dialog.
+In the process-kill confirmation, `Enter` runs `taskkill /f /pid` separately for each selected live process PID and `Esc` cancels. Other processes with the same image name are not targeted. `y` and `n` are not assigned in this dialog.
 
 When A/B points are set, `Metrics` shows Current − A or B − A using exact-time samples. Environment values can contain secrets; they are cleared when the dialog closes and are never added to recordings or Log view.
 

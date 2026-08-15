@@ -6,12 +6,12 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, distinct_process_kill_image_names},
+    app::App,
     ui::{Theme, footer::warning_shortcut_spans, widgets::confirm_dialog},
 };
 
 const POPUP_WIDTH: u16 = 64;
-const POPUP_HEIGHT: u16 = 10;
+const POPUP_HEIGHT: u16 = 9;
 
 pub(crate) fn draw_process_kill_confirm(
     frame: &mut ratatui::Frame<'_>,
@@ -20,8 +20,12 @@ pub(crate) fn draw_process_kill_confirm(
     theme: Theme,
 ) {
     let popup = process_kill_dialog_area(area);
-    let image_names = distinct_process_kill_image_names(&app.process_kill_targets);
-    let image_list = compact_image_name_list(&image_names, 54);
+    let pids = app
+        .process_kill_targets
+        .iter()
+        .map(|target| target.pid)
+        .collect::<Vec<_>>();
+    let pid_list = compact_pid_list(&pids, 54);
     let lines = Text::from(vec![
         Line::from(Span::styled(
             "Kill Selected Processes?",
@@ -35,12 +39,8 @@ pub(crate) fn draw_process_kill_confirm(
             Style::default().fg(theme.text),
         )),
         Line::from(Span::styled(
-            format!("Image names: {image_list}"),
+            format!("PIDs: {pid_list}"),
             Style::default().fg(theme.text),
-        )),
-        Line::from(Span::styled(
-            "taskkill /f /im terminates all matching image names.",
-            Style::default().fg(theme.warning),
         )),
         Line::from(Span::styled("Continue?", Style::default().fg(theme.text))),
         Line::from(""),
@@ -68,8 +68,12 @@ pub(crate) fn process_kill_dialog_area(area: Rect) -> Rect {
     )
 }
 
-fn compact_image_name_list(names: &[String], max_chars: usize) -> String {
-    let joined = names.join(", ");
+fn compact_pid_list(pids: &[u32], max_chars: usize) -> String {
+    let joined = pids
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
     if joined.chars().count() <= max_chars {
         return joined;
     }
