@@ -7,24 +7,23 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{TrackedListConfirmSelection, TrackedListsButton, TrackedListsView},
-    config::EMPTY_TRACKED_LIST_NAME,
+    app::TrackedListsView,
+    config::{EMPTY_TRACKED_LIST_NAME, TrackedListStartup},
     ui::{
         Theme,
+        footer::{shortcut_spans, warning_shortcut_spans},
         widgets::{
             block::{panel_block, panel_block_focused, panel_title},
-            confirm_dialog::{
-                self, button_areas, button_line, button_line_with_hover, centered_dialog_rect,
-            },
+            confirm_dialog::{self, centered_dialog_rect},
         },
     },
 };
 
 const DIALOG_WIDTH: u16 = 74;
-const DIALOG_HEIGHT: u16 = 21;
+const DIALOG_HEIGHT: u16 = 24;
 const LOAD_AREA_ROW: u16 = 0;
 const LOAD_AREA_HEIGHT: u16 = 11;
-const LOAD_HINT_ROW: u16 = 0;
+const LOAD_INSTRUCTION_ROW: u16 = 0;
 const LIST_ROW: u16 = 2;
 const LIST_HEIGHT: u16 = 7;
 const SAVE_AREA_ROW: u16 = 11;
@@ -32,29 +31,20 @@ const SAVE_AREA_HEIGHT: u16 = 6;
 const SAVE_SUMMARY_ROW: u16 = 0;
 const SAVE_INPUT_ROW: u16 = 1;
 const SAVE_ERROR_ROW: u16 = 2;
-const STARTUP_ROW: u16 = 17;
-const FOOTER_BUTTON_ROW: u16 = 18;
+const STARTUP_AREA_ROW: u16 = 17;
+const STARTUP_AREA_HEIGHT: u16 = 3;
+const SHORTCUT_ROW: u16 = 21;
 const SAVE_NAME_LABEL: &str = "List name: ";
-const SAVE_BUTTON_WIDTH: u16 = 8;
 const LIST_NAME_WIDTH: usize = 22;
 const MIN_PROCESS_PREVIEW_WIDTH: usize = 12;
 const NAME_DIALOG_WIDTH: u16 = 58;
 const NAME_DIALOG_HEIGHT: u16 = 8;
 const NAME_INPUT_ROW: u16 = 2;
 const NAME_ERROR_ROW: u16 = 3;
-const NAME_BUTTON_ROW: u16 = 5;
+const NAME_SHORTCUT_ROW: u16 = 5;
 const CONFIRM_DIALOG_WIDTH: u16 = 64;
 const CONFIRM_DIALOG_HEIGHT: u16 = 8;
-const CONFIRM_BUTTON_ROW: u16 = 5;
-
-const SAVE_BUTTONS: [(&str, TrackedListsButton); 1] = [(" Save ", TrackedListsButton::Save)];
-const FOOTER_BUTTONS: [(&str, TrackedListsButton); 1] = [(" Close ", TrackedListsButton::Close)];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrackedListNameButton {
-    Apply,
-    Cancel,
-}
+const CONFIRM_SHORTCUT_ROW: u16 = 5;
 
 pub(crate) fn draw_tracked_lists(
     frame: &mut ratatui::Frame<'_>,
@@ -94,9 +84,8 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     let load_content = load_block.inner(load_area);
     frame.render_widget(load_block, load_area);
     frame.render_widget(
-        Paragraph::new("Up/Down selects · Enter loads · Click Empty loads · F2/Del saved only")
-            .style(Style::default().fg(theme.muted)),
-        row(load_content, LOAD_HINT_ROW),
+        Paragraph::new("Select a Tracking List to load.").style(Style::default().fg(theme.muted)),
+        row(load_content, LOAD_INSTRUCTION_ROW),
     );
 
     let list_area = Rect::new(
@@ -107,6 +96,8 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     );
     let offset = app.tracked_lists_scroll_offset();
     let selected = app.tracked_lists_index();
+    let list_focused =
+        !app.tracked_lists_save_name_focused() && !app.tracked_lists_startup_focused();
     let lines = (offset..app.tracked_lists_entry_count())
         .take(list_area.height as usize)
         .map(|index| {
@@ -126,10 +117,15 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
                 (list.name.as_str(), list.processes.as_slice(), is_active)
             };
             let is_selected = index == selected;
-            let style = if is_selected {
+            let style = if is_selected && list_focused {
                 Style::default()
                     .fg(theme.text)
                     .bg(theme.highlight)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_selected {
+                Style::default()
+                    .fg(theme.text)
+                    .bg(theme.selection)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.text)
@@ -182,30 +178,20 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
 
     draw_save_name_input(frame, save_content, app, theme);
 
-    let startup_style = if app.tracked_lists_startup_focused() {
-        Style::default()
-            .fg(theme.text)
-            .bg(theme.focus_surface)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.text).bg(theme.panel_alt)
-    };
+    let startup_area = startup_area(content);
+    let startup_block = panel_block(panel_title("TRACKING LIST STARTUP"), theme);
+    let startup_content = startup_block.inner(startup_area);
+    frame.render_widget(startup_block, startup_area);
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("Tracking List startup  ", Style::default().fg(theme.muted)),
-            Span::styled(
-                format!("< {} >", app.runtime.tracked_list_startup.label()),
-                startup_style,
-            ),
-        ]))
-        .alignment(Alignment::Center),
-        row(content, STARTUP_ROW),
+        Paragraph::new(startup_radio_line(app, theme)),
+        row(startup_content, 0),
     );
-
     frame.render_widget(
-        Paragraph::new(tracked_lists_button_line(FOOTER_BUTTONS, app, theme))
-            .alignment(Alignment::Center),
-        row(content, FOOTER_BUTTON_ROW),
+        Paragraph::new(Line::from(shortcut_spans(
+            &tracked_lists_shortcuts(app),
+            theme,
+        ))),
+        row(content, SHORTCUT_ROW),
     );
 }
 
@@ -218,7 +204,7 @@ fn draw_save_name_input(
     let Some((draft, cursor, error)) = app.tracked_lists_save_name() else {
         return;
     };
-    let (label_area, input_area, button_area) = save_name_row_areas(save_content);
+    let (label_area, input_area) = save_name_row_areas(save_content);
     frame.render_widget(
         Paragraph::new(SAVE_NAME_LABEL).style(Style::default().fg(theme.text)),
         label_area,
@@ -235,10 +221,6 @@ fn draw_save_name_input(
         Style::default().fg(theme.text).bg(theme.panel_alt)
     };
     frame.render_widget(Paragraph::new(padded).style(input_style), input_area);
-    frame.render_widget(
-        Paragraph::new(tracked_lists_button_line(SAVE_BUTTONS, app, theme)),
-        button_area,
-    );
     if let Some(error) = error {
         frame.render_widget(
             Paragraph::new(error).style(Style::default().fg(theme.danger)),
@@ -261,19 +243,51 @@ fn draw_save_name_input(
     }
 }
 
-fn tracked_lists_button_line<const N: usize>(
-    buttons: [(&'static str, TrackedListsButton); N],
-    app: &App,
-    theme: Theme,
-) -> Line<'static> {
-    let focused = app.tracked_lists_focused_button();
-    let hovered = app.tracked_lists_hovered_button();
-    let highlighted = hovered.or(focused);
-    let highlighted_index = buttons
-        .iter()
-        .position(|(_, button)| Some(*button) == highlighted);
-    let buttons = buttons.map(|(label, _)| (label, false));
-    button_line_with_hover(&buttons, highlighted_index, theme)
+fn startup_radio_line(app: &App, theme: Theme) -> Line<'static> {
+    let mut spans = Vec::new();
+    for (index, startup) in TrackedListStartup::ALL.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::raw("  "));
+        }
+        let selected = startup == app.runtime.tracked_list_startup;
+        let marker = if selected { "(*)" } else { "( )" };
+        let style = if selected && app.tracked_lists_startup_focused() {
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.focus_surface)
+                .add_modifier(Modifier::BOLD)
+        } else if selected {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.text)
+        };
+        spans.push(Span::styled(format!("{marker} {}", startup.label()), style));
+    }
+    Line::from(spans)
+}
+
+fn tracked_lists_shortcuts(app: &App) -> Vec<(&'static str, &'static str)> {
+    if app.tracked_lists_save_name_focused() {
+        vec![("Enter", "Save"), ("Tab", "Focus"), ("Esc", "Close")]
+    } else if app.tracked_lists_startup_focused() {
+        vec![
+            ("←/→", "Select"),
+            ("Space", "Select"),
+            ("Tab", "Focus"),
+            ("Enter/Esc", "Close"),
+        ]
+    } else {
+        vec![
+            ("↑/↓", "Select"),
+            ("Enter", "Load"),
+            ("F2", "Rename"),
+            ("Del", "Delete"),
+            ("Tab", "Focus"),
+            ("Esc", "Close"),
+        ]
+    }
 }
 
 fn tracked_list_row_text(
@@ -380,6 +394,10 @@ fn draw_name_input(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
+        Paragraph::new("Enter a new name.").style(Style::default().fg(theme.text)),
+        row(content, 0),
+    );
+    frame.render_widget(
         Paragraph::new("Name").style(Style::default().fg(theme.muted)),
         row(content, 1),
     );
@@ -394,9 +412,11 @@ fn draw_name_input(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
         );
     }
     frame.render_widget(
-        Paragraph::new(button_line(&[(" Save ", true), (" Cancel ", false)], theme))
-            .alignment(Alignment::Right),
-        row(content, NAME_BUTTON_ROW),
+        Paragraph::new(Line::from(shortcut_spans(
+            &[("Enter", "Save"), ("Esc", "Cancel")],
+            theme,
+        ))),
+        row(content, NAME_SHORTCUT_ROW),
     );
     frame.set_cursor_position(Position::new(
         input_area.x.saturating_add(cursor_x as u16),
@@ -405,7 +425,7 @@ fn draw_name_input(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
 }
 
 fn draw_delete_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let Some(TrackedListsView::ConfirmDelete { name, selection }) = app.tracked_lists_view() else {
+    let Some(TrackedListsView::ConfirmDelete { name, .. }) = app.tracked_lists_view() else {
         return;
     };
     draw_confirm(
@@ -414,15 +434,13 @@ fn draw_delete_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, th
         "DELETE SAVED TRACKING LIST?",
         &format!("Delete \"{name}\"? The working Tracking List is kept."),
         "This cannot be undone.",
-        " Delete ",
-        *selection,
+        "Delete",
         theme,
     );
 }
 
 fn draw_switch_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let Some(TrackedListsView::ConfirmSwitch { pending, selection }) = app.tracked_lists_view()
-    else {
+    let Some(TrackedListsView::ConfirmSwitch { pending, .. }) = app.tracked_lists_view() else {
         return;
     };
     draw_confirm(
@@ -453,8 +471,7 @@ fn draw_switch_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, th
                 "s"
             }
         ),
-        " Load ",
-        *selection,
+        "Load",
         theme,
     );
 }
@@ -466,8 +483,7 @@ fn draw_confirm(
     title: &'static str,
     message: &str,
     detail: &str,
-    apply_label: &'static str,
-    selection: TrackedListConfirmSelection,
+    apply_shortcut_label: &'static str,
     theme: Theme,
 ) {
     let popup = centered_dialog_rect(area, CONFIRM_DIALOG_WIDTH, CONFIRM_DIALOG_HEIGHT);
@@ -486,15 +502,12 @@ fn draw_confirm(
         row(content, 2),
     );
     frame.render_widget(
-        Paragraph::new(button_line(
-            &[
-                (apply_label, selection == TrackedListConfirmSelection::Apply),
-                (" Cancel ", selection == TrackedListConfirmSelection::Cancel),
-            ],
+        Paragraph::new(Line::from(warning_shortcut_spans(
+            &[("Enter/Esc/n", "Cancel"), ("y", apply_shortcut_label)],
             theme,
-        ))
+        )))
         .alignment(Alignment::Center),
-        row(content, CONFIRM_BUTTON_ROW),
+        row(content, CONFIRM_SHORTCUT_ROW),
     );
 }
 
@@ -540,22 +553,6 @@ pub(crate) fn tracked_list_index_at(
     (index < list_count).then_some(index)
 }
 
-pub(crate) fn tracked_lists_button_at(area: Rect, x: u16, y: u16) -> Option<TrackedListsButton> {
-    let popup = tracked_lists_dialog_area(area);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let save = save_area(content).inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let (_, _, save_button) = save_name_row_areas(save);
-    contains(save_button, x, y)
-        .then_some(TrackedListsButton::Save)
-        .or_else(|| button_at(content, FOOTER_BUTTON_ROW, &FOOTER_BUTTONS, x, y))
-}
-
 pub(crate) fn tracked_list_save_name_area_for_screen(area: Rect) -> Option<Rect> {
     let popup = tracked_lists_dialog_area(area);
     let content = popup.inner(ratatui::layout::Margin {
@@ -566,86 +563,27 @@ pub(crate) fn tracked_list_save_name_area_for_screen(area: Rect) -> Option<Rect>
         vertical: 1,
         horizontal: 1,
     });
-    let (_, input, _) = save_name_row_areas(save);
+    let (_, input) = save_name_row_areas(save);
     (input.width > 0).then_some(input)
 }
 
-pub(crate) fn tracked_list_startup_area_for_screen(area: Rect) -> Option<Rect> {
+pub(crate) fn tracked_list_startup_at_for_screen(
+    area: Rect,
+    x: u16,
+    y: u16,
+) -> Option<TrackedListStartup> {
     let popup = tracked_lists_dialog_area(area);
     let content = popup.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
     });
-    let startup = row(content, STARTUP_ROW);
-    (startup.width > 0 && startup.height > 0).then_some(startup)
-}
-
-pub(crate) fn tracked_list_name_button_at(
-    area: Rect,
-    x: u16,
-    y: u16,
-) -> Option<TrackedListNameButton> {
-    let popup = centered_dialog_rect(area, NAME_DIALOG_WIDTH, NAME_DIALOG_HEIGHT);
-    let content = popup.inner(ratatui::layout::Margin {
+    let startup_content = startup_area(content).inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
     });
-    let buttons = confirm_dialog::right_aligned_button_areas(
-        content,
-        NAME_BUTTON_ROW,
-        &[" Save ", " Cancel "],
-    );
-    buttons
+    startup_option_areas(row(startup_content, 0))
         .into_iter()
-        .enumerate()
-        .find(|(_, button)| contains(*button, x, y))
-        .map(|(index, _)| {
-            if index == 0 {
-                TrackedListNameButton::Apply
-            } else {
-                TrackedListNameButton::Cancel
-            }
-        })
-}
-
-pub(crate) fn tracked_list_confirm_button_at(
-    area: Rect,
-    x: u16,
-    y: u16,
-    apply_label: &'static str,
-) -> Option<TrackedListConfirmSelection> {
-    let popup = centered_dialog_rect(area, CONFIRM_DIALOG_WIDTH, CONFIRM_DIALOG_HEIGHT);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let buttons = button_areas(content, CONFIRM_BUTTON_ROW, &[apply_label, " Cancel "]);
-    buttons
-        .into_iter()
-        .enumerate()
-        .find(|(_, button)| contains(*button, x, y))
-        .map(|(index, _)| {
-            if index == 0 {
-                TrackedListConfirmSelection::Apply
-            } else {
-                TrackedListConfirmSelection::Cancel
-            }
-        })
-}
-
-fn button_at(
-    content: Rect,
-    row: u16,
-    buttons: &[(&'static str, TrackedListsButton)],
-    x: u16,
-    y: u16,
-) -> Option<TrackedListsButton> {
-    let labels = buttons.iter().map(|(label, _)| *label).collect::<Vec<_>>();
-    button_areas(content, row, &labels)
-        .into_iter()
-        .enumerate()
-        .find(|(_, button)| contains(*button, x, y))
-        .map(|(index, _)| buttons[index].1)
+        .find_map(|(startup, option)| contains(option, x, y).then_some(startup))
 }
 
 fn tracked_lists_dialog_area(area: Rect) -> Rect {
@@ -670,42 +608,41 @@ fn save_area(content: Rect) -> Rect {
     )
 }
 
-fn save_name_row_areas(save_content: Rect) -> (Rect, Rect, Rect) {
+fn startup_area(content: Rect) -> Rect {
+    Rect::new(
+        content.x,
+        content.y.saturating_add(STARTUP_AREA_ROW),
+        content.width,
+        STARTUP_AREA_HEIGHT.min(content.height.saturating_sub(STARTUP_AREA_ROW)),
+    )
+}
+
+fn save_name_row_areas(save_content: Rect) -> (Rect, Rect) {
     let label_width = (SAVE_NAME_LABEL.chars().count() as u16).min(save_content.width);
-    let gap = 0;
-    let button_gap = u16::from(
-        save_content.width
-            > label_width
-                .saturating_add(gap)
-                .saturating_add(SAVE_BUTTON_WIDTH),
-    );
-    let input_width = save_content
-        .width
-        .saturating_sub(label_width)
-        .saturating_sub(gap)
-        .saturating_sub(button_gap)
-        .saturating_sub(SAVE_BUTTON_WIDTH);
+    let input_width = save_content.width.saturating_sub(label_width);
     let y = save_content.y.saturating_add(SAVE_INPUT_ROW);
     let label = Rect::new(save_content.x, y, label_width, 1);
     let input = Rect::new(
-        save_content
-            .x
-            .saturating_add(label_width)
-            .saturating_add(gap),
+        save_content.x.saturating_add(label_width),
         y,
         input_width,
         1,
     );
-    let button = Rect::new(
-        input
-            .x
-            .saturating_add(input.width)
-            .saturating_add(button_gap),
-        y,
-        SAVE_BUTTON_WIDTH.min(save_content.right().saturating_sub(input.right())),
-        1,
-    );
-    (label, input, button)
+    (label, input)
+}
+
+fn startup_option_areas(area: Rect) -> Vec<(TrackedListStartup, Rect)> {
+    let mut x = area.x;
+    TrackedListStartup::ALL
+        .into_iter()
+        .map(|startup| {
+            let width = (4 + startup.label().chars().count()) as u16;
+            let available = area.right().saturating_sub(x);
+            let option = Rect::new(x, area.y, width.min(available), area.height.min(1));
+            x = x.saturating_add(width).saturating_add(2);
+            (startup, option)
+        })
+        .collect()
 }
 
 fn row(content: Rect, offset: u16) -> Rect {

@@ -14,6 +14,7 @@ pub(crate) struct Theme {
     pub(crate) focus_surface: Color,
     pub(crate) key_hint: Color,
     pub(crate) table_selection_surface: Color,
+    pub(crate) table_multi_selection_surface: Color,
     pub(crate) table_column_surface: Color,
     pub(crate) table_intersection_surface: Color,
     pub(crate) graph_line: Color,
@@ -43,7 +44,8 @@ pub(crate) const THEMES: [Theme; 2] = [
         focus_surface: Color::Rgb(48, 52, 58),
         key_hint: Color::Rgb(83, 151, 128),
         table_selection_surface: Color::Rgb(19, 51, 48),
-        table_column_surface: Color::Rgb(29, 38, 42),
+        table_multi_selection_surface: Color::Rgb(45, 48, 52),
+        table_column_surface: Color::Rgb(39, 49, 54),
         table_intersection_surface: Color::Rgb(32, 79, 73),
         graph_line: Color::Rgb(139, 144, 150),
         active_series: Color::Rgb(72, 190, 151),
@@ -69,7 +71,8 @@ pub(crate) const THEMES: [Theme; 2] = [
         focus_surface: Color::Rgb(212, 209, 202),
         key_hint: Color::Rgb(54, 112, 91),
         table_selection_surface: Color::Rgb(218, 239, 235),
-        table_column_surface: Color::Rgb(232, 234, 232),
+        table_multi_selection_surface: Color::Rgb(215, 211, 203),
+        table_column_surface: Color::Rgb(215, 221, 218),
         table_intersection_surface: Color::Rgb(184, 222, 214),
         graph_line: Color::Rgb(104, 109, 114),
         active_series: Color::Rgb(16, 119, 79),
@@ -113,8 +116,14 @@ mod tests {
         assert_eq!(dark.key_hint, Color::Rgb(83, 151, 128));
         assert_ne!(dark.key_hint, dark.focus_border);
         assert_eq!(dark.table_selection_surface, Color::Rgb(19, 51, 48));
-        assert_eq!(dark.table_column_surface, Color::Rgb(29, 38, 42));
+        assert_eq!(dark.table_multi_selection_surface, Color::Rgb(45, 48, 52));
+        assert_eq!(dark.table_column_surface, Color::Rgb(39, 49, 54));
         assert_eq!(dark.table_intersection_surface, Color::Rgb(32, 79, 73));
+        assert_ne!(dark.table_multi_selection_surface, dark.panel);
+        assert_ne!(
+            dark.table_multi_selection_surface,
+            dark.table_column_surface
+        );
         assert_ne!(dark.table_selection_surface, dark.table_column_surface);
         assert_ne!(
             dark.table_selection_surface,
@@ -137,8 +146,17 @@ mod tests {
         assert_eq!(light.key_hint, Color::Rgb(54, 112, 91));
         assert_ne!(light.key_hint, light.focus_border);
         assert_eq!(light.table_selection_surface, Color::Rgb(218, 239, 235));
-        assert_eq!(light.table_column_surface, Color::Rgb(232, 234, 232));
+        assert_eq!(
+            light.table_multi_selection_surface,
+            Color::Rgb(215, 211, 203)
+        );
+        assert_eq!(light.table_column_surface, Color::Rgb(215, 221, 218));
         assert_eq!(light.table_intersection_surface, Color::Rgb(184, 222, 214));
+        assert_ne!(light.table_multi_selection_surface, light.panel);
+        assert_ne!(
+            light.table_multi_selection_surface,
+            light.table_column_surface
+        );
         assert_ne!(light.table_selection_surface, light.table_column_surface);
         assert_ne!(
             light.table_selection_surface,

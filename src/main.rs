@@ -39,8 +39,8 @@ use app::run_tui;
 #[cfg(test)]
 use app::{
     AppActivity, DetailsMetric, DetailsTarget, FocusedPanel, GraphHoverTarget, GraphSlot,
-    GraphSlotLayout, GraphValueFormat, PROCESS_INFO_DEBOUNCE, QuitConfirmSelection,
-    SAMPLE_STALE_AFTER_SECONDS, SampleFreshness, TrackedRemoveSelection, VisibleProcessEntry,
+    GraphSlotLayout, GraphValueFormat, PROCESS_INFO_DEBOUNCE, SAMPLE_STALE_AFTER_SECONDS,
+    SampleFreshness, VisibleProcessEntry,
 };
 use cli::Cli;
 #[cfg(test)]
@@ -91,13 +91,11 @@ use samplers::{CollectSnapshotResult, SamplingWorker};
 #[cfg(test)]
 use std::sync::mpsc::{self, TryRecvError};
 #[cfg(test)]
-use ui::layout::centered_rect;
-#[cfg(test)]
 use ui::{
     GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, THEMES, details_graph_area_for_app,
     details_samples_area_for_app, details_shared_controls_area_for_app, main_panel_areas,
-    main_panel_areas_for_app, process_kill_button_at, process_kill_dialog_area,
-    process_table_visible_column_count, screen_layout, tracked_remove_dialog_area,
+    main_panel_areas_for_app, process_kill_dialog_area, process_table_visible_column_count,
+    screen_layout, tracked_remove_dialog_area,
 };
 #[cfg(test)]
 use ui::{
@@ -1222,7 +1220,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_kill_confirmation_dialog_is_compact_and_clickable() {
+    fn process_kill_confirmation_dialog_is_compact_and_keyboard_only() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::Processes;
         app.snapshot.processes[0].name = "msedge.exe".to_string();
@@ -1234,21 +1232,59 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 100, 45);
         let popup = process_kill_dialog_area(screen);
         assert_eq!(popup.width, 64);
-        assert_eq!(popup.height, 11);
+        assert_eq!(popup.height, 10);
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let shortcut = "Enter Kill  Esc Cancel";
+        let (enter_x, shortcut_y) = find_text_position(&buffer, shortcut)
+            .expect("process-kill shortcuts should follow footer formatting");
+        assert_eq!(buffer[(popup.x, popup.y)].fg, app.theme().warning);
+        assert_eq!(buffer[(enter_x, shortcut_y)].fg, app.theme().warning);
         assert!(
-            find_text_position(&buffer, "Enter Select  Esc Cancel  y Kill").is_some(),
-            "process-kill shortcuts should follow footer formatting"
+            buffer[(enter_x, shortcut_y)]
+                .modifier
+                .contains(Modifier::BOLD)
         );
-        let (kill_x, kill_y) =
-            find_text_position(&buffer, "[ Kill ]").expect("kill button should render");
+        let esc_x = enter_x + "Enter Kill  ".chars().count() as u16;
+        assert_eq!(buffer[(esc_x, shortcut_y)].fg, app.theme().warning);
+        assert!(
+            buffer[(esc_x, shortcut_y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
+        let rendered = render_app_to_text(&app, screen.width, screen.height);
+        assert!(!rendered.contains("[ Kill ]"), "{rendered}");
+        assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
+        assert!(!rendered.contains("y Kill"), "{rendered}");
+        assert!(!rendered.contains("n Cancel"), "{rendered}");
+    }
 
-        assert!(kill_y < popup.bottom());
-        assert_eq!(
-            process_kill_button_at(screen, kill_x + 2, kill_y),
-            Some(app::ProcessKillSelection::Kill)
-        );
+    #[test]
+    fn process_kill_confirmation_uses_enter_and_escape_only() {
+        let mut confirm = make_test_app(1, 10);
+        confirm.show_process_kill_confirmation = true;
+        confirm
+            .on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!confirm.show_process_kill_confirmation);
+        assert_eq!(confirm.status, "No process image names selected");
+
+        let mut cancel = make_test_app(1, 10);
+        cancel.show_process_kill_confirmation = true;
+        cancel
+            .on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!cancel.show_process_kill_confirmation);
+        assert_eq!(cancel.status, "Process kill canceled");
+
+        for key in ['y', 'n'] {
+            let mut ignored = make_test_app(1, 10);
+            ignored.show_process_kill_confirmation = true;
+            ignored
+                .on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE))
+                .unwrap();
+            assert!(ignored.show_process_kill_confirmation);
+        }
     }
 
     #[test]
@@ -1975,6 +2011,7 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Select a metric, then press Space or double-click it."),
             "{rendered}"
         );
+        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
@@ -2142,7 +2179,7 @@ processes = ["api.exe", "worker.exe"]
         for (ordinal, entry) in app.graph_entries.iter().enumerate() {
             let state = app
                 .graph_source_state(&entry.source)
-                .expect("registered source should have a slot number");
+                .expect("registered source should have display state");
             assert_eq!(state.ordinal, ordinal);
             assert_eq!(state.active, entry.id == ids[10]);
         }
@@ -4292,6 +4329,76 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn dialog_shortcut_guidance_is_separated_from_content_by_a_blank_row() {
+        let screen = Rect::new(0, 0, 180, 60);
+        let mut cases = Vec::new();
+
+        let mut help = make_test_app(3, 10);
+        help.show_help = true;
+        cases.push((
+            "help",
+            render_app_to_buffer(&help, screen.width, screen.height),
+            "↑/↓ Scroll  PageUp/PageDown Page",
+        ));
+
+        let mut logs = make_test_app(3, 10);
+        logs.show_log_list = true;
+        cases.push((
+            "logs",
+            render_app_to_buffer(&logs, screen.width, screen.height),
+            "↑/↓ select  Enter open",
+        ));
+
+        let mut process_info = make_test_app(3, 10);
+        process_info.open_selected_process_info_dialog().unwrap();
+        cases.push((
+            "process-info",
+            render_app_to_buffer(&process_info, screen.width, screen.height),
+            "←/→ tabs",
+        ));
+
+        let mut system_info = make_test_app(3, 10);
+        system_info.show_system_info_dialog = true;
+        cases.push((
+            "system-info",
+            render_app_to_buffer(&system_info, screen.width, screen.height),
+            "Enter/Esc Close",
+        ));
+
+        let mut tracked_lists = make_test_app(3, 10);
+        tracked_lists.open_tracked_lists();
+        cases.push((
+            "tracking-lists",
+            render_app_to_buffer(&tracked_lists, screen.width, screen.height),
+            "↑/↓ Select  Enter Load",
+        ));
+
+        let mut recording = make_test_app(3, 10);
+        recording.show_recording_path_dialog = true;
+        cases.push((
+            "recording",
+            render_app_to_buffer(&recording, screen.width, screen.height),
+            "Enter start  Esc cancel  Ctrl+Space complete",
+        ));
+
+        let mut log_directory = make_test_app(3, 10);
+        log_directory.show_log_list = true;
+        log_directory.open_log_dir_dialog().unwrap();
+        cases.push((
+            "log-directory",
+            render_app_to_buffer(&log_directory, screen.width, screen.height),
+            "Enter apply  Esc cancel  Ctrl+Space complete",
+        ));
+
+        for (name, buffer, shortcuts) in cases {
+            assert_blank_row_above_text(&buffer, shortcuts);
+            let (_, y) = find_text_position(&buffer, shortcuts)
+                .unwrap_or_else(|| panic!("{name} shortcuts should render"));
+            assert!(y > 0, "{name} shortcuts should have a separator row");
+        }
+    }
+
+    #[test]
     fn clicking_graph_workspace_top_rule_moves_focus_to_graphs() {
         let mut app = make_test_app(3, 10);
         assign_private_graph(&mut app);
@@ -5004,17 +5111,17 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn tracked_lists_close_button_closes_with_mouse() {
-        let screen = Rect::new(0, 0, 120, 45);
+    fn tracked_lists_uses_keyboard_actions_without_buttons() {
         let mut app = make_test_app(2, 10);
         app.open_tracked_lists();
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ Close ]")
-            .expect("Tracking Lists close button should render");
+        let rendered = render_app_to_text(&app, 120, 45);
 
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(app.tracked_lists_dialog.is_none());
+        assert!(!rendered.contains("[ Save ]"), "{rendered}");
+        assert!(!rendered.contains("[ Close ]"), "{rendered}");
+        assert!(rendered.contains("↑/↓ Select"), "{rendered}");
+        assert!(!rendered.contains("Up/Down Select"), "{rendered}");
+        assert!(rendered.contains("Enter Load"), "{rendered}");
+        assert!(rendered.contains("Esc Close"), "{rendered}");
     }
 
     #[test]
@@ -5028,8 +5135,7 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(rendered.contains("LOAD TRACKING LIST"), "{rendered}");
         assert!(
-            rendered
-                .contains("Up/Down selects · Enter loads · Click Empty loads · F2/Del saved only"),
+            rendered.contains("Select a Tracking List to load."),
             "{rendered}"
         );
         assert!(rendered.contains("Empty (default)"), "{rendered}");
@@ -5039,10 +5145,29 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(rendered.contains("Current: Browser"), "{rendered}");
         assert!(rendered.contains("List name:  Browser"), "{rendered}");
-        assert!(rendered.contains("Tracking List startup"), "{rendered}");
-        assert!(rendered.contains("< Resume last >"), "{rendered}");
+        assert!(rendered.contains("TRACKING LIST STARTUP"), "{rendered}");
+        assert!(rendered.contains("(*) Resume last"), "{rendered}");
+        assert!(rendered.contains("( ) Choose list"), "{rendered}");
+        assert!(rendered.contains("( ) Start empty"), "{rendered}");
         assert!(!rendered.contains("[ Rename ]"), "{rendered}");
         assert!(!rendered.contains("[ Delete ]"), "{rendered}");
+    }
+
+    #[test]
+    fn tracked_lists_dims_selected_row_when_list_loses_focus() {
+        let mut app = make_test_app(1, 10);
+        app.open_tracked_lists();
+
+        let focused = render_app_to_buffer(&app, 120, 45);
+        let (x, y) = find_text_position(&focused, "Empty (default)")
+            .expect("selected Tracking List row should render");
+        assert_eq!(focused[(x, y)].bg, app.theme().highlight);
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .unwrap();
+        let unfocused = render_app_to_buffer(&app, 120, 45);
+        assert_eq!(unfocused[(x, y)].bg, app.theme().selection);
+        assert_ne!(focused[(x, y)].bg, unfocused[(x, y)].bg);
     }
 
     #[test]
@@ -5093,7 +5218,7 @@ processes = ["api.exe", "worker.exe"]
             .find(|line| line.contains("Empty (default)"))
             .expect("built-in empty row should render");
         assert!(empty_row.contains("Empty (default) (*)"), "{empty_row}");
-        assert!(rendered.contains("Enter/Click Load Empty"), "{rendered}");
+        assert!(rendered.contains("Enter Load"), "{rendered}");
         assert!(!rendered.contains("New Empty"), "{rendered}");
         assert!(app.runtime.saved_tracked_lists.is_empty());
 
@@ -5243,31 +5368,21 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn tracked_lists_tab_cycles_list_and_every_button() {
+    fn tracked_lists_tab_cycles_list_name_and_startup_controls() {
         let mut app = make_test_app(1, 10);
         app.open_tracked_lists();
-        let expected = [
-            (None, true, false),
-            (Some(app::TrackedListsButton::Save), false, false),
-            (None, false, true),
-            (Some(app::TrackedListsButton::Close), false, false),
-            (None, false, false),
-        ];
+        let expected = [(true, false), (false, true), (false, false)];
 
-        for (focused, save_name_focused, startup_focused) in expected {
+        for (save_name_focused, startup_focused) in expected {
             app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
                 .unwrap();
-            assert_eq!(app.tracked_lists_focused_button(), focused);
             assert_eq!(app.tracked_lists_save_name_focused(), save_name_focused);
             assert_eq!(app.tracked_lists_startup_focused(), startup_focused);
         }
 
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(
-            app.tracked_lists_focused_button(),
-            Some(app::TrackedListsButton::Close)
-        );
+        assert!(app.tracked_lists_startup_focused());
     }
 
     #[test]
@@ -5316,26 +5431,11 @@ processes = ["api.exe", "worker.exe"]
             app.tracked_lists_view(),
             Some(app::TrackedListsView::ConfirmDelete { name, .. }) if name == "API"
         ));
-    }
-
-    #[test]
-    fn tracked_lists_mouse_hover_highlights_button() {
-        let screen = Rect::new(0, 0, 120, 45);
-        let mut app = make_test_app(1, 10);
-        app.open_tracked_lists();
-        let initial = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&initial, "[ Save ]").expect("Save button should render");
-        assert_eq!(initial[(x + 2, y)].bg, ui::THEMES[0].panel_alt);
-
-        app.on_mouse(mouse_move(x + 2, y), screen);
-
-        assert_eq!(
-            app.tracked_lists_hovered_button(),
-            Some(app::TrackedListsButton::Save)
+        let rendered = render_app_to_text(&app, 120, 45);
+        assert!(
+            rendered.contains("Enter/Esc/n Cancel  y Delete"),
+            "{rendered}"
         );
-        let hovered = render_app_to_buffer(&app, screen.width, screen.height);
-        assert_eq!(hovered[(x + 2, y)].bg, ui::THEMES[0].focus_surface);
-        assert!(hovered[(x + 2, y)].modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -5381,7 +5481,7 @@ processes = ["api.exe", "worker.exe"]
         let screen = Rect::new(0, 0, 120, 45);
         let mut app = make_test_app(1, 10);
         app.open_tracked_lists();
-        for _ in 0..3 {
+        for _ in 0..2 {
             app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
                 .unwrap();
         }
@@ -5394,18 +5494,25 @@ processes = ["api.exe", "worker.exe"]
             config::TrackedListStartup::ChooseList
         );
 
-        let startup = ui::tracked_list_startup_area_for_screen(screen)
-            .expect("startup control should render");
-        app.on_mouse(left_click(startup.x + 1, startup.y), screen);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position(&buffer, "( ) Start empty")
+            .expect("Start empty radio option should render");
+        app.on_mouse(left_click(x + 2, y), screen);
         assert_eq!(
             app.runtime.tracked_list_startup,
             config::TrackedListStartup::StartEmpty
         );
         assert!(app.tracked_lists_startup_focused());
+
+        let rendered = render_app_to_text(&app, screen.width, screen.height);
+        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.tracked_lists_dialog.is_none());
     }
 
     #[test]
-    fn tracked_list_delete_confirmation_applies_with_mouse() {
+    fn tracked_list_delete_confirmation_requires_keyboard_confirmation() {
         let screen = Rect::new(0, 0, 120, 45);
         let mut app = make_test_app(1, 10);
         app.runtime.saved_tracked_lists = vec![config::SavedTrackedList {
@@ -5415,11 +5522,11 @@ processes = ["api.exe", "worker.exe"]
         app.open_tracked_lists();
         app.move_tracked_list_selection_down(1);
         app.request_delete_selected_tracked_list();
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ Delete ]")
-            .expect("Tracking List delete button should render");
+        app.on_mouse(left_click(screen.width / 2, screen.height / 2), screen);
 
-        app.on_mouse(left_click(x + 2, y), screen);
+        assert_eq!(app.runtime.saved_tracked_lists.len(), 1);
+        app.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE))
+            .unwrap();
 
         assert!(app.runtime.saved_tracked_lists.is_empty());
         assert!(matches!(
@@ -6075,6 +6182,96 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn compact_system_rows_use_the_process_selection_surface_in_both_themes() {
+        let screen = Rect::new(0, 0, 180, 30);
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(2, 10);
+            app.theme_index = theme_index;
+            app.snapshot
+                .gpu_adapters
+                .push(model::GpuAdapterSample::default());
+            let selected_background = |app: &App, area: Rect, label: &str| {
+                let buffer = render_app_to_buffer(app, screen.width, screen.height);
+                let (x, y) = find_text_position_in_area(&buffer, area, label)
+                    .unwrap_or_else(|| panic!("selected row should render: {label}"));
+                buffer[(x, y)].bg
+            };
+
+            app.focused_panel = FocusedPanel::Processes;
+            let process_area = main_panel_areas_for_app(screen, &app).processes.area;
+            let process_background = selected_background(&app, process_area, "proc-0");
+            assert_eq!(process_background, theme.table_selection_surface);
+
+            app.focused_panel = FocusedPanel::System;
+            app.select_resource_panel(app::ResourcePanel::Memory);
+            assert_eq!(
+                selected_background(
+                    &app,
+                    ui::ram_vram_panel_area_for_screen(screen, &app),
+                    "In use",
+                ),
+                process_background
+            );
+
+            app.select_resource_panel(app::ResourcePanel::Gpu);
+            assert_eq!(
+                selected_background(&app, ui::gpu_panel_area_for_screen(screen, &app), "Usage",),
+                process_background
+            );
+
+            app.focused_panel = FocusedPanel::SystemActivity;
+            assert_eq!(
+                selected_background(
+                    &app,
+                    ui::system_activity_panel_area_for_screen(screen, &app),
+                    "Net Rx",
+                ),
+                process_background
+            );
+
+            app.focused_panel = FocusedPanel::Cpu;
+            assert_eq!(
+                selected_background(
+                    &app,
+                    ui::cpu_panel_area_for_screen(screen, &app),
+                    "CPU Usage",
+                ),
+                process_background
+            );
+        }
+    }
+
+    #[test]
+    fn process_table_multi_selection_uses_a_stronger_dedicated_surface() {
+        for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
+            let mut app = make_test_app(3, 10);
+            app.theme_index = theme_index;
+            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+                .unwrap();
+
+            let buffer = render_app_to_buffer(&app, 100, 30);
+            let (multi_x, multi_y) = find_text_position(&buffer, "proc-0")
+                .expect("multi-selected process row should render");
+            let (current_x, current_y) =
+                find_text_position(&buffer, "proc-1").expect("current process row should render");
+
+            assert_eq!(
+                buffer[(multi_x, multi_y)].bg,
+                theme.table_multi_selection_surface
+            );
+            assert_eq!(
+                buffer[(current_x, current_y)].bg,
+                theme.table_selection_surface
+            );
+            assert_ne!(theme.table_multi_selection_surface, theme.panel);
+            assert_ne!(
+                theme.table_multi_selection_surface,
+                theme.table_selection_surface
+            );
+        }
+    }
+
+    #[test]
     fn process_table_underlines_header_name_without_underlining_sort_arrow() {
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(1, 10);
@@ -6167,7 +6364,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_table_highlights_graph_metric_cell_and_keeps_tracked_name_plain() {
+    fn process_table_colors_graphed_value_without_a_slot_number_and_keeps_name_plain() {
         let mut app = make_test_app(1, 10);
         app.snapshot.processes[0].name = "target.exe".to_string();
         app.snapshot.processes[0].private_bytes = Some(107_374_182_400);
@@ -6193,21 +6390,18 @@ processes = ["api.exe", "worker.exe"]
         let tracked_x = (0..name_x)
             .find(|&x| buffer[(x, name_y)].symbol() == "T")
             .expect("tracked marker should be rendered beside the process name");
-        let graph_slot_number_x = (1..MetricColumn::PrivateBytes.width())
-            .find_map(|offset| {
-                let x = value_x.checked_sub(offset)?;
-                (buffer[(x, value_y)].symbol() == "1").then_some(x)
-            })
-            .expect("Graph slot number should be rendered in the metric cell");
-        let graph_slot_number_cell = &buffer[(graph_slot_number_x, value_y)];
         let value_cell = &buffer[(value_x, value_y)];
         let tracked_cell = &buffer[(tracked_x, name_y)];
+        let value_width = "107.4 GB".chars().count() as u16;
+        let cell_start = value_x.saturating_sub(
+            MetricColumn::PrivateBytes
+                .width()
+                .saturating_sub(value_width),
+        );
 
-        assert_eq!(graph_slot_number_cell.symbol(), "1");
-        assert_eq!(graph_slot_number_cell.fg, ui::THEMES[0].active_series);
-        assert_ne!(graph_slot_number_cell.bg, ui::THEMES[0].active_series);
-        assert!(graph_slot_number_cell.modifier.contains(Modifier::BOLD));
-        assert_eq!(value_cell.fg, ui::THEMES[0].text);
+        assert!((cell_start..value_x).all(|x| buffer[(x, value_y)].symbol() == " "));
+        assert_eq!(value_cell.fg, ui::THEMES[0].active_series);
+        assert!(value_cell.modifier.contains(Modifier::BOLD));
         assert_ne!(value_cell.bg, ui::THEMES[0].warning);
         assert_eq!(buffer[(name_x, name_y)].fg, ui::THEMES[0].text);
         assert_eq!(tracked_cell.fg, ui::THEMES[0].background);
@@ -6554,9 +6748,10 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn ram_vram_graph_number_uses_slot_ordinal_and_active_series_color() {
+    fn ram_vram_active_graph_colors_the_value_without_a_slot_ordinal() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::System;
+        app.snapshot.modified_memory = Some(424_000_000);
 
         app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
             .unwrap();
@@ -6569,13 +6764,15 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(app.show_details);
 
-        let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1  Modified")
-            .expect("MEM Graph slot number should render");
-        let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].active_series);
-        assert_ne!(marker.bg, ui::THEMES[0].active_series);
-        assert!(marker.modifier.contains(Modifier::BOLD));
+        let screen = Rect::new(0, 0, 120, 45);
+        let area = ui::ram_vram_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position_in_area(&buffer, area, "424 MB")
+            .expect("registered MEM value should render");
+        let value = &buffer[(x, y)];
+        assert_eq!(value.fg, app.theme().active_series);
+        assert!(value.modifier.contains(Modifier::BOLD));
+        assert!(find_text_position_in_area(&buffer, area, "1  Modified").is_none());
         let rendered = buffer_to_text(&buffer);
         assert!(
             rendered.contains("Slot#1 · Modified · SYSTEM"),
@@ -6584,8 +6781,9 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn ram_vram_inactive_two_digit_graph_number_matches_process_style() {
+    fn ram_vram_inactive_graph_colors_the_value_without_bold_or_an_ordinal() {
         let mut app = make_test_app(3, 10);
+        app.snapshot.standby_memory = Some(616_000_000);
         let ids = (0..9)
             .map(|index| add_test_graph(&mut app, index))
             .collect::<Vec<_>>();
@@ -6595,13 +6793,16 @@ processes = ["api.exe", "worker.exe"]
         ));
         assert!(app.set_active_graph(ids[0]));
 
-        let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "10 Standby")
-            .expect("two-digit MEM Graph slot number should keep a label gap");
-        let marker = &buffer[(x, y)];
+        let screen = Rect::new(0, 0, 120, 45);
+        let area = ui::ram_vram_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position_in_area(&buffer, area, "616 MB")
+            .expect("registered MEM value should render");
+        let value = &buffer[(x, y)];
 
-        assert_eq!(marker.fg, ui::THEMES[0].graph_line);
-        assert!(marker.modifier.contains(Modifier::BOLD));
+        assert_eq!(value.fg, app.theme().active_series);
+        assert!(!value.modifier.contains(Modifier::BOLD));
+        assert!(find_text_position_in_area(&buffer, area, "10 Standby").is_none());
     }
 
     #[test]
@@ -6687,6 +6888,34 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn gpu_active_graph_colors_the_value_without_a_slot_ordinal() {
+        let mut app = make_test_app(3, 10);
+        let adapter = model::GpuAdapterSample {
+            name: Some("Test GPU".to_string()),
+            utilization_percent: Some(56.0),
+            ..model::GpuAdapterSample::default()
+        };
+        let slot = GraphSlot::gpu(
+            adapter.id,
+            adapter.name.as_deref().unwrap(),
+            SystemMetric::GpuUtilization,
+        );
+        app.snapshot.gpu_adapters.push(adapter);
+        assert!(app.add_or_reveal_graph_source(slot, FocusedPanel::System));
+
+        let screen = Rect::new(0, 0, 180, 30);
+        let area = ui::gpu_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position_in_area(&buffer, area, "56%")
+            .expect("registered GPU value should render");
+        let value = &buffer[(x, y)];
+
+        assert_eq!(value.fg, app.theme().active_series);
+        assert!(value.modifier.contains(Modifier::BOLD));
+        assert!(find_text_position_in_area(&buffer, area, "1  Usage").is_none());
+    }
+
+    #[test]
     fn memory_pressure_panel_aligns_all_value_columns() {
         let mut app = make_test_app(3, 10);
         app.snapshot.paged_pool_memory = Some(2_769_000_000);
@@ -6764,10 +6993,10 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn system_activity_space_assigns_graph_and_shows_slot_number() {
+    fn system_activity_space_assigns_graph_and_colors_the_value() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::SystemActivity;
-        app.snapshot.disk_queue_length = Some(1.5);
+        app.snapshot.disk_queue_length = Some(91.0);
         app.system_history.record_snapshot(&app.snapshot);
 
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
@@ -6793,20 +7022,22 @@ processes = ["api.exe", "worker.exe"]
             app.graph_slot_samples(app.active_graph_slot().unwrap())
                 .last()
                 .and_then(|sample| sample.value),
-            Some(1.5)
+            Some(91.0)
         );
 
-        let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("1  Disk Q"), "{rendered}");
+        let screen = Rect::new(0, 0, 120, 45);
+        let area = ui::system_activity_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let rendered = buffer_to_text(&buffer);
+        assert!(rendered.contains("Disk Q    91"), "{rendered}");
+        assert!(!rendered.contains("1  Disk Q"), "{rendered}");
         assert!(rendered.contains("Slot#1 · Disk Q · SYSTEM"), "{rendered}");
 
-        let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1  Disk Q")
-            .expect("NW/DISK Graph slot number should render");
-        let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].active_series);
-        assert_ne!(marker.bg, ui::THEMES[0].active_series);
-        assert!(marker.modifier.contains(Modifier::BOLD));
+        let (x, y) = find_text_position_in_area(&buffer, area, "91")
+            .expect("registered NW/DISK value should render");
+        let value = &buffer[(x, y)];
+        assert_eq!(value.fg, app.theme().active_series);
+        assert!(value.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -7331,7 +7562,8 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(!rendered.contains("F6"), "{rendered}");
-        assert!(rendered.contains("[ Close ]"), "{rendered}");
+        assert!(!rendered.contains("[ Close ]"), "{rendered}");
+        assert!(rendered.contains("Esc/Enter/? Close"), "{rendered}");
         assert!(rendered.contains("Footer: focused actions."), "{rendered}");
         assert!(
             rendered.contains("Green selects; amber marks."),
@@ -7417,7 +7649,10 @@ processes = ["api.exe", "worker.exe"]
         app.scroll_help_end();
         let bottom_rendered = render_app_to_text(&app, screen.width, screen.height);
 
-        assert!(bottom_rendered.contains("[ Close ]"), "{bottom_rendered}");
+        assert!(
+            bottom_rendered.contains("Esc/Enter/? Close"),
+            "{bottom_rendered}"
+        );
         assert!(
             !bottom_rendered.contains("Esc / Enter closes this help dialog."),
             "{bottom_rendered}"
@@ -7650,26 +7885,29 @@ processes = ["api.exe", "worker.exe"]
             Some(42.0)
         );
 
-        let rendered = render_app_to_text(&app, 120, 45);
-        assert!(rendered.contains("1  CPU Usage ["), "{rendered}");
+        let screen = Rect::new(0, 0, 180, 45);
+        let area = ui::cpu_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let rendered = buffer_to_text(&buffer);
+        assert!(rendered.contains("CPU Usage ["), "{rendered}");
+        assert!(!rendered.contains("1  CPU Usage ["), "{rendered}");
         assert!(rendered.contains("]  42%"), "{rendered}");
         assert!(
             rendered.contains("Slot#1 · CPU Usage · SYSTEM"),
             "{rendered}"
         );
 
-        let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "1  CPU Usage [")
-            .expect("CPU Graph slot number should render");
-        let marker = &buffer[(x, y)];
-        assert_eq!(marker.fg, ui::THEMES[0].active_series);
-        assert_ne!(marker.bg, ui::THEMES[0].active_series);
-        assert!(marker.modifier.contains(Modifier::BOLD));
+        let (x, y) = find_text_position_in_area(&buffer, area, "42%")
+            .expect("registered CPU value should render");
+        let value = &buffer[(x, y)];
+        assert_eq!(value.fg, app.theme().active_series);
+        assert!(value.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
-    fn cpu_inactive_two_digit_graph_number_matches_process_style() {
+    fn cpu_inactive_graph_colors_the_value_without_bold_or_an_ordinal() {
         let mut app = make_test_app(3, 10);
+        app.snapshot.cpu_total_usage_percent = Some(73);
         let ids = (0..9)
             .map(|index| add_test_graph(&mut app, index))
             .collect::<Vec<_>>();
@@ -7679,13 +7917,16 @@ processes = ["api.exe", "worker.exe"]
         ));
         assert!(app.set_active_graph(ids[0]));
 
-        let buffer = render_app_to_buffer(&app, 120, 45);
-        let (x, y) = find_text_position(&buffer, "10 CPU Usage [")
-            .expect("two-digit CPU Graph slot number should keep a label gap");
-        let marker = &buffer[(x, y)];
+        let screen = Rect::new(0, 0, 180, 45);
+        let area = ui::cpu_panel_area_for_screen(screen, &app);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position_in_area(&buffer, area, "73%")
+            .expect("registered CPU value should render");
+        let value = &buffer[(x, y)];
 
-        assert_eq!(marker.fg, ui::THEMES[0].graph_line);
-        assert!(marker.modifier.contains(Modifier::BOLD));
+        assert_eq!(value.fg, app.theme().active_series);
+        assert!(!value.modifier.contains(Modifier::BOLD));
+        assert!(find_text_position_in_area(&buffer, area, "10 CPU Usage [").is_none());
     }
 
     #[test]
@@ -7737,10 +7978,9 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.show_quit_confirmation);
-        assert_eq!(app.quit_confirm_selection, QuitConfirmSelection::Cancel);
         assert!(!app.should_quit);
 
-        app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.show_quit_confirmation);
@@ -7748,7 +7988,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn quit_confirmation_dialog_uses_clear_copy_without_extra_key_help() {
+    fn quit_confirmation_dialog_uses_footer_style_key_help() {
         let mut app = make_test_app(1, 10);
 
         app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
@@ -7760,8 +8000,9 @@ processes = ["api.exe", "worker.exe"]
             !rendered.contains("Close winproc-tui and return to terminal."),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Quit ]"), "{rendered}");
-        assert!(rendered.contains("[ Cancel ]"), "{rendered}");
+        assert!(!rendered.contains("[ Quit ]"), "{rendered}");
+        assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
+        assert!(rendered.contains("Enter/q Quit  Esc Cancel"), "{rendered}");
         assert!(
             !rendered.contains("Confirm before closing the monitor"),
             "{rendered}"
@@ -7770,10 +8011,30 @@ processes = ["api.exe", "worker.exe"]
             !rendered.contains("Enter selects / Esc cancels / q quits"),
             "{rendered}"
         );
+        let buffer = render_app_to_buffer(&app, 100, 45);
+        let (_, message_y) =
+            find_text_position(&buffer, "Quit winproc-tui?").expect("quit message should render");
+        let (shortcut_x, shortcut_y) = find_text_position(&buffer, "Enter/q Quit  Esc Cancel")
+            .expect("quit shortcuts should render");
+        assert_eq!(shortcut_y, message_y + 2);
+        assert_blank_row_above_text(&buffer, "Enter/q Quit  Esc Cancel");
+        assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, app.theme().warning);
+        assert!(
+            buffer[(shortcut_x, shortcut_y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
+        let esc_x = shortcut_x + "Enter/q Quit  ".chars().count() as u16;
+        assert_eq!(buffer[(esc_x, shortcut_y)].fg, app.theme().warning);
+        assert!(
+            buffer[(esc_x, shortcut_y)]
+                .modifier
+                .contains(Modifier::BOLD)
+        );
     }
 
     #[test]
-    fn quit_confirmation_dialog_keeps_buttons_on_one_row_on_narrow_screens() {
+    fn quit_confirmation_dialog_keeps_shortcuts_on_one_row_on_narrow_screens() {
         let mut app = make_test_app(1, 10);
 
         app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
@@ -7785,7 +8046,9 @@ processes = ["api.exe", "worker.exe"]
             !rendered.contains("Close winproc-tui and return to terminal."),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Quit ]   [ Cancel ]"), "{rendered}");
+        assert!(!rendered.contains("[ Quit ]"), "{rendered}");
+        assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
+        assert!(rendered.contains("Enter/q Quit  Esc Cancel"), "{rendered}");
         assert!(
             !rendered.contains("Enter selects / Esc cancels / q quits"),
             "{rendered}"
@@ -7822,28 +8085,10 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn quit_confirmation_enter_activates_default_cancel() {
+    fn quit_confirmation_enter_confirms_quit() {
         let mut app = make_test_app(1, 10);
 
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-            .unwrap();
-
-        assert!(!app.show_quit_confirmation);
-        assert!(!app.should_quit);
-    }
-
-    #[test]
-    fn quit_confirmation_enter_confirms_when_quit_is_selected() {
-        let mut app = make_test_app(1, 10);
-
-        app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
-            .unwrap();
-        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.quit_confirm_selection, QuitConfirmSelection::Quit);
-
+        app.request_quit_confirmation();
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
@@ -7852,24 +8097,16 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn quit_confirmation_switches_buttons_with_tab_and_arrows() {
+    fn quit_confirmation_ignores_navigation_keys() {
         let mut app = make_test_app(1, 10);
 
         app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(app.quit_confirm_selection, QuitConfirmSelection::Cancel);
-
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.quit_confirm_selection, QuitConfirmSelection::Quit);
-
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.quit_confirm_selection, QuitConfirmSelection::Cancel);
-
-        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.quit_confirm_selection, QuitConfirmSelection::Quit);
+        for code in [KeyCode::Tab, KeyCode::Right, KeyCode::Left] {
+            app.on_key(KeyEvent::new(code, KeyModifiers::NONE)).unwrap();
+            assert!(app.show_quit_confirmation);
+            assert!(!app.should_quit);
+        }
     }
 
     #[test]
@@ -7909,11 +8146,8 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Track a process before starting recording."),
             "{rendered}"
         );
-        assert!(rendered.contains("[ OK ]"), "{rendered}");
-        assert!(
-            !rendered.contains("Press Enter or Esc to close."),
-            "{rendered}"
-        );
+        assert!(!rendered.contains("[ OK ]"), "{rendered}");
+        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
     }
 
     #[test]
@@ -7956,10 +8190,8 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Stop recording before changing it."),
             "{rendered}"
         );
-        assert!(rendered.contains("Ctrl+R Stop"), "{rendered}");
-        assert!(!rendered.contains("t Track"), "{rendered}");
-        assert!(!rendered.contains("Ctrl+T Lists"), "{rendered}");
-        assert!(rendered.contains("Shift+T Tracked-only"), "{rendered}");
+        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
+        assert!(!rendered.contains("Ctrl+R Stop"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
@@ -7994,10 +8226,6 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.show_recording_stop_confirmation);
-        assert_eq!(
-            app.recording_stop_selection,
-            app::RecordingStopSelection::Continue
-        );
         assert_eq!(app.activity(), AppActivity::Recording);
         let rendered = render_app_to_text(&app, 100, 45);
         assert!(
@@ -8008,7 +8236,19 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Recording continues until Stop is confirmed."),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Stop ]   [ Continue ]"), "{rendered}");
+        assert!(!rendered.contains("[ Stop ]"), "{rendered}");
+        assert!(!rendered.contains("[ Continue ]"), "{rendered}");
+        assert!(
+            rendered.contains("Enter/Esc/n Continue  y Stop"),
+            "{rendered}"
+        );
+        let buffer = render_app_to_buffer(&app, 100, 45);
+        for shortcut in ["Enter/Esc/n Continue", "y Stop"] {
+            let (key_x, key_y) = find_text_position(&buffer, shortcut)
+                .unwrap_or_else(|| panic!("{shortcut} should render"));
+            assert_eq!(buffer[(key_x, key_y)].fg, app.theme().warning);
+            assert!(buffer[(key_x, key_y)].modifier.contains(Modifier::BOLD));
+        }
 
         app.write_current_recording_frame().unwrap();
         app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
@@ -8047,32 +8287,6 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_stop_buttons_support_hover_and_mouse_activation() {
-        let path = unique_recording_path("mouse-stop");
-        let _ = std::fs::remove_file(&path);
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        track_process_name(&mut app, "proc-0");
-        app.recording_path_draft = path.display().to_string();
-        app.recording_path_cursor = app.recording_path_draft.len();
-        app.show_recording_path_dialog = true;
-        app.confirm_recording_path().unwrap();
-        app.request_recording_stop();
-
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ Stop ]").expect("Stop button should render");
-        app.on_mouse(mouse_move(x + 2, y), screen);
-        let hovered = render_app_to_buffer(&app, screen.width, screen.height);
-        assert_eq!(hovered[(x, y)].bg, app.theme().focus_surface);
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert_eq!(app.activity(), AppActivity::Live);
-        assert!(!app.show_recording_stop_confirmation);
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
     fn recording_no_tracked_warning_closes_with_escape_or_enter() {
         for key in [
             KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
@@ -8089,107 +8303,39 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn warning_ok_buttons_close_with_mouse() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        app.show_no_graph_metrics_warning = true;
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ OK ]").expect("OK button should render");
+    fn warning_dialogs_group_close_keys_and_color_all_keys_like_the_border() {
+        let mut display = make_test_app(1, 10);
+        display.show_display_area_warning = true;
 
-        app.on_mouse(left_click(x + 2, y), screen);
+        let mut metric = make_test_app(1, 10);
+        metric.show_metric_column_warning = true;
 
-        assert!(!app.show_no_graph_metrics_warning);
+        let mut graph = make_test_app(1, 10);
+        graph.show_no_graph_metrics_warning = true;
+
+        let mut recording = make_test_app(1, 10);
+        recording.show_recording_no_tracked_warning = true;
+
+        for (app, name) in [
+            (display, "display-area"),
+            (metric, "metric"),
+            (graph, "graph"),
+            (recording, "recording"),
+        ] {
+            let buffer = render_app_to_buffer(&app, 100, 45);
+            let (key_x, key_y) = find_text_position(&buffer, "Enter/Esc Close")
+                .unwrap_or_else(|| panic!("{name} warning should show grouped close shortcuts"));
+            assert_eq!(buffer[(key_x, key_y)].fg, app.theme().warning, "{name}");
+            assert!(
+                buffer[(key_x, key_y)].modifier.contains(Modifier::BOLD),
+                "{name}"
+            );
+            assert_blank_row_above_text(&buffer, "Enter/Esc Close");
+        }
     }
 
     #[test]
-    fn quit_confirmation_buttons_activate_with_mouse() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        app.request_quit_confirmation();
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ Quit ]").expect("Quit button should render");
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(!app.show_quit_confirmation);
-        assert!(app.should_quit);
-    }
-
-    #[test]
-    fn recording_no_tracked_ok_button_closes_with_mouse() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        app.show_recording_no_tracked_warning = true;
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ OK ]").expect("OK button should render");
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(!app.show_recording_no_tracked_warning);
-        assert_eq!(app.status, "Recording canceled");
-    }
-
-    #[test]
-    fn recording_overwrite_buttons_are_clickable_over_path_dialog() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        app.show_recording_path_dialog = true;
-        app.show_recording_overwrite_confirmation = true;
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        assert!(
-            find_text_position(&buffer, "Enter Select  Esc Cancel  y Overwrite").is_some(),
-            "overwrite shortcuts should follow footer formatting"
-        );
-        let (x, y) =
-            find_text_position(&buffer, "[ Cancel ]").expect("Cancel button should render");
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(app.show_recording_path_dialog);
-        assert!(!app.show_recording_overwrite_confirmation);
-        assert_eq!(app.status, "Overwrite canceled");
-    }
-
-    #[test]
-    fn recording_path_cancel_button_closes_with_mouse() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        app.show_recording_path_dialog = true;
-        app.recording_path_draft = "C:/logs/example.log".to_string();
-        app.recording_path_cursor = app.recording_path_draft.len();
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) =
-            find_text_position(&buffer, "[ Cancel ]").expect("Cancel button should render");
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(!app.show_recording_path_dialog);
-        assert_eq!(app.status, "Recording canceled");
-    }
-
-    #[test]
-    fn recording_path_start_button_starts_with_mouse() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let path = unique_recording_path("mouse-start");
-        let _ = std::fs::remove_file(&path);
-        let mut app = make_test_app(1, 10);
-        track_process_name(&mut app, "proc-0");
-        app.show_recording_path_dialog = true;
-        app.recording_path_draft = path.display().to_string();
-        app.recording_path_cursor = app.recording_path_draft.len();
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ Start ]").expect("Start button should render");
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(!app.show_recording_path_dialog);
-        assert!(app.recording_session.is_some());
-        app.stop_recording().unwrap();
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn recording_path_dialog_tab_moves_focus_to_start_button() {
+    fn recording_path_dialog_keeps_input_focused_without_buttons() {
         let mut app = make_test_app(1, 10);
         app.show_recording_path_dialog = true;
         app.recording_path_draft = std::env::current_dir()
@@ -8200,34 +8346,20 @@ processes = ["api.exe", "worker.exe"]
             .display()
             .to_string();
         app.recording_path_cursor = app.recording_path_draft.len();
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Path
-        );
+        let before = app.recording_path_draft.clone();
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Start
-        );
+        assert_eq!(app.recording_path_draft, before);
         assert!(app.status.is_empty());
 
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Cancel
-        );
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
-            .unwrap();
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Start
-        );
-
         let rendered = render_app_to_text(&app, 100, 45);
-        assert!(rendered.contains("[ Start ]   [ Cancel ]"), "{rendered}");
+        assert!(!rendered.contains("[ Start ]"), "{rendered}");
+        assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
+        assert!(
+            rendered.contains("Enter start  Esc cancel  Ctrl+Space complete"),
+            "{rendered}"
+        );
     }
 
     #[test]
@@ -8240,10 +8372,6 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
             .unwrap();
 
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Path
-        );
         assert!(app.recording_path_cursor < app.recording_path_draft.len());
     }
 
@@ -8302,24 +8430,6 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn tracked_remove_cancel_button_closes_with_mouse() {
-        let screen = Rect::new(0, 0, 100, 45);
-        let mut app = make_test_app(1, 10);
-        app.show_tracked_remove_confirmation = true;
-        app.tracked_remove_name = "proc-0".to_string();
-        app.tracked_remove_total_samples = 7_200;
-        app.tracked_remove_discarded_samples = 7_080;
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) =
-            find_text_position(&buffer, "[ Cancel ]").expect("Cancel button should render");
-
-        app.on_mouse(left_click(x + 2, y), screen);
-
-        assert!(!app.show_tracked_remove_confirmation);
-        assert_eq!(app.status, "Tracked removal canceled");
-    }
-
-    #[test]
     fn tracked_remove_confirmation_is_compact_left_aligned_and_uses_footer_shortcuts() {
         let screen = Rect::new(0, 0, 120, 45);
         let mut app = make_test_app(1, 10);
@@ -8330,7 +8440,7 @@ processes = ["api.exe", "worker.exe"]
 
         let popup = tracked_remove_dialog_area(screen);
         assert_eq!(popup.width, 74);
-        assert_eq!(popup.height, 10);
+        assert_eq!(popup.height, 9);
 
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
         let message = "target.exe has 143 in-memory samples.";
@@ -8342,14 +8452,20 @@ processes = ["api.exe", "worker.exe"]
             "message body should be left aligned"
         );
 
-        let shortcut = "Enter Select  Esc Cancel  y Remove";
+        assert_eq!(buffer[(popup.x, popup.y)].fg, app.theme().warning);
+
+        let shortcut = "Enter Remove  Esc Cancel";
         assert!(find_text_position(&buffer, shortcut).is_some());
-        assert!(find_text_position(&buffer, "Enter selects / Esc cancels / y removes").is_none());
+        assert!(find_text_position(&buffer, "Enter removes / Esc cancels").is_none());
 
         let (enter_x, enter_y) =
             find_text_position(&buffer, shortcut).expect("shortcut line should render");
-        assert_eq!(buffer[(enter_x, enter_y)].fg, app.theme().key_hint);
+        assert_eq!(buffer[(enter_x, enter_y)].fg, app.theme().warning);
+        assert!(buffer[(enter_x, enter_y)].modifier.contains(Modifier::BOLD));
         assert_eq!(buffer[(enter_x + 6, enter_y)].fg, app.theme().text);
+        let esc_x = enter_x + "Enter Remove  ".chars().count() as u16;
+        assert_eq!(buffer[(esc_x, enter_y)].fg, app.theme().warning);
+        assert!(buffer[(esc_x, enter_y)].modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -8380,12 +8496,13 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_no_tracked_warning_takes_focus_border_from_previous_panel() {
+    fn recording_no_tracked_warning_uses_warning_title_and_border() {
         let mut app = make_test_app(1, 10);
         app.focused_panel = FocusedPanel::Processes;
         app.show_recording_no_tracked_warning = true;
 
-        assert_modal_focus_border(&app, 52, 16);
+        let buffer = render_app_to_buffer(&app, 100, 45);
+        assert_title_style(&buffer, "WARNING", app.theme().warning);
     }
 
     #[test]
@@ -8427,7 +8544,7 @@ processes = ["api.exe", "worker.exe"]
         app.recording_path_draft = "C:/logs/example.log".to_string();
         app.recording_path_cursor = "C:/logs/".len();
         let screen = Rect::new(0, 0, 100, 45);
-        let popup = Rect::new(11, 18, 78, 9);
+        let popup = Rect::new(11, 18, 78, 8);
         let expected_cursor =
             Position::new(popup.x + 1 + app.recording_path_cursor as u16, popup.y + 2);
 
@@ -8450,14 +8567,15 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("Enter activate  Esc close  Tab focus  Ctrl+Space complete"),
+            rendered.contains("Enter start  Esc cancel  Ctrl+Space complete"),
             "{rendered}"
         );
         assert!(
             rendered.contains("Tracking List  0 names · fixed until recording stops."),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Start ]   [ Cancel ]"), "{rendered}");
+        assert!(!rendered.contains("[ Start ]"), "{rendered}");
+        assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
         assert!(!rendered.contains("Log file path"), "{rendered}");
         assert!(
             !rendered.contains("Specify the log file path."),
@@ -8475,7 +8593,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_dialog_actions_use_semantic_roles_in_both_themes() {
+    fn recording_dialog_shortcuts_use_footer_roles_in_both_themes() {
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(1, 10);
             app.theme_index = theme_index;
@@ -8484,38 +8602,33 @@ processes = ["api.exe", "worker.exe"]
             app.recording_path_cursor = app.recording_path_draft.len();
 
             let hint_buffer = render_app_to_buffer(&app, 100, 45);
-            let (enter_x, hint_y) = find_text_position(&hint_buffer, "Enter activate")
+            let (enter_x, hint_y) = find_text_position(&hint_buffer, "Enter start")
                 .expect("recording shortcut should render");
-            let (activate_x, _) =
-                find_text_position(&hint_buffer, "activate").expect("shortcut label should render");
+            let (start_x, _) =
+                find_text_position(&hint_buffer, "start").expect("shortcut label should render");
             assert_eq!(hint_buffer[(enter_x, hint_y)].fg, theme.key_hint);
-            assert_eq!(hint_buffer[(activate_x, hint_y)].fg, theme.text);
-
-            app.recording_path_selection = app::RecordingPathSelection::Start;
-
-            let path_buffer = render_app_to_buffer(&app, 100, 45);
-            let (start_x, start_y) =
-                find_text_position(&path_buffer, "[ Start ]").expect("Start button should render");
-            let (cancel_x, _) = find_text_position(&path_buffer, "[ Cancel ]")
-                .expect("Cancel button should render");
-            let button_midpoint = (start_x as i32 + cancel_x as i32 + 10) / 2;
-            assert!((button_midpoint - 50).abs() <= 1);
-            assert_eq!(path_buffer[(start_x, start_y)].bg, theme.accent);
-            assert_ne!(path_buffer[(start_x, start_y)].bg, theme.warning);
+            assert_eq!(hint_buffer[(start_x, hint_y)].fg, theme.text);
 
             app.show_recording_overwrite_confirmation = true;
-            app.recording_overwrite_selection = app::RecordingOverwriteSelection::Overwrite;
             let overwrite_buffer = render_app_to_buffer(&app, 100, 45);
-            let (overwrite_x, overwrite_y) = find_text_position(&overwrite_buffer, "[ Overwrite ]")
-                .expect("Overwrite button should render");
-            assert_eq!(
-                overwrite_buffer[(overwrite_x, overwrite_y)].bg,
-                theme.warning
+            let (cancel_x, overwrite_y) =
+                find_text_position(&overwrite_buffer, "Enter/Esc/n Cancel")
+                    .expect("overwrite cancel shortcut should render");
+            assert_eq!(overwrite_buffer[(cancel_x, overwrite_y)].fg, theme.warning);
+            assert!(
+                overwrite_buffer[(cancel_x, overwrite_y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
             );
-            assert_ne!(
-                overwrite_buffer[(overwrite_x, overwrite_y)].bg,
-                theme.accent
+            let (y_x, overwrite_y) = find_text_position(&overwrite_buffer, "y Overwrite")
+                .expect("overwrite shortcut should render");
+            assert_eq!(overwrite_buffer[(y_x, overwrite_y)].fg, theme.warning);
+            assert!(
+                overwrite_buffer[(y_x, overwrite_y)]
+                    .modifier
+                    .contains(Modifier::BOLD)
             );
+            assert_eq!(overwrite_buffer[(y_x + 2, overwrite_y)].fg, theme.text);
         }
     }
 
@@ -8570,16 +8683,13 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(rendered.contains("Log:"), "{rendered}");
         assert!(rendered.contains("Error:"), "{rendered}");
+        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
         assert!(app.recording_error.is_none());
         assert!(app.show_recording_path_dialog);
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Path
-        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -8656,17 +8766,11 @@ processes = ["api.exe", "worker.exe"]
         app.show_recording_path_dialog = true;
         app.recording_path_draft = directory.display().to_string();
         app.recording_path_cursor = app.recording_path_draft.len();
-        app.recording_path_selection = app::RecordingPathSelection::Start;
-
         app.confirm_recording_path().unwrap();
 
         assert!(app.show_recording_path_dialog);
         assert!(!app.show_recording_overwrite_confirmation);
         assert!(app.recording_session.is_none());
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Path
-        );
         assert_eq!(app.status, "Recording path must be a file, not a directory");
         assert!(directory.is_dir());
         std::fs::remove_dir_all(directory).unwrap();
@@ -8681,7 +8785,6 @@ processes = ["api.exe", "worker.exe"]
         track_process_name(&mut app, "proc-0");
         app.show_recording_path_dialog = true;
         app.show_recording_overwrite_confirmation = true;
-        app.recording_overwrite_selection = app::RecordingOverwriteSelection::Overwrite;
         app.recording_path_draft = directory.display().to_string();
         app.recording_path_cursor = app.recording_path_draft.len();
 
@@ -8690,10 +8793,6 @@ processes = ["api.exe", "worker.exe"]
         assert!(app.show_recording_path_dialog);
         assert!(!app.show_recording_overwrite_confirmation);
         assert!(app.recording_session.is_none());
-        assert_eq!(
-            app.recording_path_selection,
-            app::RecordingPathSelection::Path
-        );
         assert_eq!(app.status, "Recording path must be a file, not a directory");
         assert!(directory.is_dir());
         std::fs::remove_dir_all(directory).unwrap();
@@ -8715,10 +8814,6 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(app.show_recording_path_dialog);
         assert!(app.show_recording_overwrite_confirmation);
-        assert_eq!(
-            app.recording_overwrite_selection,
-            app::RecordingOverwriteSelection::Cancel
-        );
 
         let _ = std::fs::remove_file(path);
     }
@@ -8907,29 +9002,7 @@ processes = ["api.exe", "worker.exe"]
     fn column_picker_panel_fits_rendered_content_height() {
         let popup = column_picker_area(Rect::new(0, 0, 100, 45));
 
-        assert_eq!(popup.height, MetricColumn::ALL.len() as u16 + 8);
-    }
-
-    #[test]
-    fn column_picker_close_button_click_closes_dialog() {
-        let mut app = make_test_app(1, 10);
-        app.show_column_picker = true;
-        let screen = Rect::new(0, 0, 100, 45);
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, "[ Close ]")
-            .expect("column picker close button should be rendered");
-
-        app.on_mouse(
-            MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: x,
-                row: y,
-                modifiers: KeyModifiers::NONE,
-            },
-            screen,
-        );
-
-        assert!(!app.show_column_picker);
+        assert_eq!(popup.height, MetricColumn::ALL.len() as u16 + 6);
     }
 
     #[test]
@@ -8943,10 +9016,10 @@ processes = ["api.exe", "worker.exe"]
 
         assert!(!rendered.contains("Descriptions are concise"), "{rendered}");
         assert!(
-            rendered.contains("Up/Down select  Space toggle  Enter/Esc close"),
+            rendered.contains("↑/↓ select  Space toggle  Enter/Esc close"),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Close ]"), "{rendered}");
+        assert!(!rendered.contains("[ Close ]"), "{rendered}");
 
         let (title_x, title_y) = find_text_position(&buffer, "Select process columns")
             .expect("column picker title should be rendered");
@@ -8957,13 +9030,14 @@ processes = ["api.exe", "worker.exe"]
         assert!(title_cell.modifier.contains(ratatui::style::Modifier::BOLD));
 
         let (key_x, key_y) =
-            find_text_position(&buffer, "Up/Down").expect("shortcut key should be rendered");
+            find_text_position(&buffer, "↑/↓").expect("shortcut key should be rendered");
         let key_cell = &buffer[(key_x, key_y)];
         assert_eq!(key_cell.fg, theme.key_hint);
         assert!(!key_cell.modifier.contains(ratatui::style::Modifier::BOLD));
 
-        let label_cell = &buffer[(key_x + "Up/Down ".len() as u16, key_y)];
+        let label_cell = &buffer[(key_x + "↑/↓ ".chars().count() as u16, key_y)];
         assert_eq!(label_cell.fg, theme.text);
+        assert_blank_row_above_text(&buffer, "↑/↓ select  Space toggle  Enter/Esc close");
     }
 
     #[test]
@@ -9105,6 +9179,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(!rendered.contains("CPU Usage ["), "{rendered}");
         assert!(!rendered.contains("Net Rx"), "{rendered}");
         assert!(!rendered.contains("Disk Q"), "{rendered}");
+        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
@@ -10158,7 +10233,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_info_small_dialog_scrolls_without_overwriting_close_button() {
+    fn process_info_small_dialog_scrolls_without_overwriting_footer_shortcuts() {
         let mut app = make_test_app(1, 10);
         let captured_at = app.snapshot.captured_at;
         let process = app.snapshot.processes[0].clone();
@@ -10179,18 +10254,31 @@ processes = ["api.exe", "worker.exe"]
             screen,
         );
         assert_eq!(app.process_info_scroll.offset, 1);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
             .unwrap();
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
 
         let rendered = render_app_to_text(&app, screen.width, screen.height);
         assert!(rendered.contains("I/O Write Throughput"), "{rendered}");
-        assert!(rendered.contains("[ Close ]"), "{rendered}");
+        assert!(!rendered.contains("[ Close ]"), "{rendered}");
+        assert!(rendered.contains("Esc close"), "{rendered}");
     }
 
     #[test]
     fn process_info_scrollbar_thumb_follows_content_focus() {
         let mut app = make_test_app(1, 10);
         app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = app::ProcessInfoTab::Dlls;
+        let identity = app.process_info_target.as_ref().unwrap().identity.clone();
+        app.process_modules_result_identity = Some(identity.clone());
+        app.process_modules_result = Some(test_process_modules_report(
+            &identity.name,
+            identity.pid,
+            (0..20)
+                .map(|index| test_process_module_entry(&format!("module-{index}.dll"), "Test"))
+                .collect(),
+        ));
         let screen = Rect::new(0, 0, 60, 12);
         app.set_screen_area(screen);
         app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
@@ -10221,7 +10309,7 @@ processes = ["api.exe", "worker.exe"]
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         let inactive = render_app_to_buffer(&app, screen.width, screen.height);
         assert!(!area_contains_foreground(
             &inactive,
@@ -10260,7 +10348,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_info_tabs_content_and_close_cycle_without_changing_the_fixed_target() {
+    fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
         let (sampling_worker, _, _) = SamplingWorker::test_pair();
         let (process_info_worker, _, _) = ProcessInfoWorker::test_pair();
         let (open_files_worker, _open_files_request_rx, _) = OpenFilesWorker::test_pair();
@@ -10275,27 +10363,17 @@ processes = ["api.exe", "worker.exe"]
         app.open_selected_process_info_dialog().unwrap();
         app.process_info_scroll.offset = 4;
 
-        let screen = Rect::new(0, 0, 120, 40);
-        let initial = render_app_to_buffer(&app, screen.width, screen.height);
-        let (close_x, close_y) = find_text_position(&initial, "[ Close ]").unwrap();
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
-        assert_eq!(initial[(close_x, close_y)].bg, app.theme().panel_alt);
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
 
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
-        let focused = render_app_to_buffer(&app, screen.width, screen.height);
-        let (close_x, close_y) = find_text_position(&focused, "[ Close ]").unwrap();
-        assert_eq!(focused[(close_x, close_y)].bg, app.theme().focus_surface);
-
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
             .unwrap();
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        let screen = Rect::new(0, 0, 120, 40);
         let tabs_focused = render_app_to_buffer(&app, screen.width, screen.height);
         let tabs_area = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen).tabs;
         let (tab_x, tab_y) = find_text_position_in_area(&tabs_focused, tabs_area, "Metrics")
@@ -10307,7 +10385,7 @@ processes = ["api.exe", "worker.exe"]
                 .modifier
                 .contains(Modifier::BOLD | Modifier::UNDERLINED)
         );
-        assert!(buffer_to_text(&tabs_focused).contains("←/→ tabs  Tab next  Esc close"));
+        assert!(buffer_to_text(&tabs_focused).contains("←/→ tabs  ↑/↓ scroll  Esc close"));
         let (hint_x, hint_y) = find_text_position(&tabs_focused, "←/→ tabs")
             .expect("tab-focus shortcut should render");
         assert_eq!(tabs_focused[(hint_x, hint_y)].fg, app.theme().key_hint);
@@ -10321,26 +10399,9 @@ processes = ["api.exe", "worker.exe"]
             app.theme().text
         );
 
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
-            .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
-            .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
-            .unwrap();
-        assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::CONTROL))
             .unwrap();
         assert_eq!(app.process_info_tab, app::ProcessInfoTab::Metrics);
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
-
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
-            .unwrap();
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
 
         for expected in [
@@ -10354,6 +10415,14 @@ processes = ["api.exe", "worker.exe"]
                 .unwrap();
             assert_eq!(app.process_info_tab, expected);
             assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+            if matches!(
+                expected,
+                app::ProcessInfoTab::Metrics | app::ProcessInfoTab::Image
+            ) {
+                app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+                    .unwrap();
+                assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+            }
         }
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
             .unwrap();
@@ -10381,7 +10450,15 @@ processes = ["api.exe", "worker.exe"]
             app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
                 .unwrap();
             assert_eq!(app.process_info_tab, expected);
-            assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+            let expected_focus = if matches!(
+                expected,
+                app::ProcessInfoTab::Metrics | app::ProcessInfoTab::Image
+            ) {
+                app::ProcessInfoFocus::Tabs
+            } else {
+                app::ProcessInfoFocus::Content
+            };
+            assert_eq!(app.process_info_focus, expected_focus);
         }
 
         assert_eq!(app.process_info_scroll.offset, 4);
@@ -10397,14 +10474,12 @@ processes = ["api.exe", "worker.exe"]
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-            .unwrap();
-        assert!(!app.show_process_info_dialog);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        assert!(app.show_process_info_dialog);
     }
 
     #[test]
-    fn process_info_mouse_tabs_close_and_outside_click_are_modal() {
+    fn process_info_mouse_tabs_content_and_outside_click_are_modal() {
         let mut app = make_test_app(2, 10);
         app.open_selected_process_info_dialog().unwrap();
         let screen = Rect::new(0, 0, 200, 60);
@@ -10429,21 +10504,8 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(app.focused_panel, focused);
 
         app.on_mouse(left_click(layout.content.x, layout.content.y), screen);
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
-
-        let close = ui::process_info_close_button_area_for_screen(screen).unwrap();
-        app.on_mouse(
-            MouseEvent {
-                kind: MouseEventKind::Moved,
-                column: close.x,
-                row: close.y,
-                modifiers: KeyModifiers::NONE,
-            },
-            screen,
-        );
-        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Close);
-        app.on_mouse(left_click(close.x, close.y), screen);
-        assert!(!app.show_process_info_dialog);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        assert!(app.show_process_info_dialog);
     }
 
     #[test]
@@ -11066,7 +11128,8 @@ processes = ["api.exe", "worker.exe"]
 
         let detail = render_app_to_text(&app, screen.width, screen.height);
         assert!(detail.contains("VALUE-END"), "{detail}");
-        assert!(detail.contains("[ Close ]"), "{detail}");
+        assert!(!detail.contains("[ Close ]"), "{detail}");
+        assert!(detail.contains("Esc/Enter back"), "{detail}");
     }
 
     #[test]
@@ -11490,20 +11553,22 @@ processes = ["api.exe", "worker.exe"]
 
         app.load_selected_tracked_list();
 
-        let Some(app::TrackedListsView::ConfirmSwitch { pending, selection }) =
-            app.tracked_lists_view()
+        let Some(app::TrackedListsView::ConfirmSwitch { pending }) = app.tracked_lists_view()
         else {
             panic!("expected tracked-list switch confirmation");
         };
-        assert_eq!(*selection, app::TrackedListConfirmSelection::Cancel);
         assert_eq!(pending.removed_name_count, 1);
         assert_eq!(pending.affected_name_count, 1);
         assert_eq!(pending.discarded_sample_count, 1);
         assert_eq!(app.watch_list, vec!["old.exe"]);
         assert_eq!(selected_process_history_sample_count(&app, "old.exe"), 121);
+        let rendered = render_app_to_text(&app, 120, 45);
+        assert!(
+            rendered.contains("Enter/Esc/n Cancel  y Load"),
+            "{rendered}"
+        );
 
-        app.set_tracked_list_confirmation_selection(app::TrackedListConfirmSelection::Apply);
-        app.activate_tracked_list_confirmation();
+        app.confirm_tracked_list_action();
 
         assert_eq!(app.watch_list, vec!["api.exe"]);
         assert_eq!(app.runtime.active_tracked_list.as_deref(), Some("API"));
@@ -11522,19 +11587,16 @@ processes = ["api.exe", "worker.exe"]
 
         app.load_selected_tracked_list();
 
-        let Some(app::TrackedListsView::ConfirmSwitch { pending, selection }) =
-            app.tracked_lists_view()
+        let Some(app::TrackedListsView::ConfirmSwitch { pending }) = app.tracked_lists_view()
         else {
             panic!("expected built-in empty switch confirmation");
         };
-        assert_eq!(*selection, app::TrackedListConfirmSelection::Cancel);
         assert_eq!(pending.target_name, None);
         assert!(pending.target_processes.is_empty());
         assert_eq!(pending.discarded_sample_count, 1);
         assert_eq!(app.watch_list, vec!["old.exe"]);
 
-        app.set_tracked_list_confirmation_selection(app::TrackedListConfirmSelection::Apply);
-        app.activate_tracked_list_confirmation();
+        app.confirm_tracked_list_action();
 
         assert!(app.watch_list.is_empty());
         assert!(app.watch_enabled);
@@ -11554,9 +11616,8 @@ processes = ["api.exe", "worker.exe"]
         }];
         app.open_tracked_lists();
         app.request_delete_selected_tracked_list();
-        app.set_tracked_list_confirmation_selection(app::TrackedListConfirmSelection::Apply);
 
-        app.activate_tracked_list_confirmation();
+        app.confirm_tracked_list_action();
 
         assert!(app.runtime.saved_tracked_lists.is_empty());
         assert_eq!(app.runtime.active_tracked_list, None);
@@ -11881,7 +11942,6 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.show_tracked_remove_confirmation);
-        assert_eq!(app.tracked_remove_selection, TrackedRemoveSelection::Cancel);
         assert_eq!(app.tracked_remove_name, "target.exe");
         assert_eq!(app.tracked_remove_total_samples, 121);
         assert_eq!(app.tracked_remove_discarded_samples, 1);
@@ -11905,40 +11965,11 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(rendered.contains("Continue?"), "{rendered}");
-        assert!(
-            rendered.contains("Enter Select  Esc Cancel  y Remove"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("Enter Remove  Esc Cancel"), "{rendered}");
     }
 
     #[test]
     fn tracked_remove_confirm_cancels_without_pruning() {
-        for key in [
-            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
-        ] {
-            let mut app = make_test_app(1, 10);
-            app.snapshot.processes[0].name = "target.exe".to_string();
-            track_process_name(&mut app, "target.exe");
-            record_tracked_process_history_samples(&mut app, "target.exe", 121);
-            app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
-                .unwrap();
-
-            app.on_key(key).unwrap();
-
-            assert!(!app.show_tracked_remove_confirmation);
-            assert_eq!(app.watch_list, vec!["target.exe"]);
-            assert_eq!(
-                selected_process_history_sample_count(&app, "target.exe"),
-                121
-            );
-            assert_eq!(app.status, "Tracked removal canceled");
-        }
-    }
-
-    #[test]
-    fn tracked_remove_confirm_with_y_removes_and_prunes_history() {
         let mut app = make_test_app(1, 10);
         app.snapshot.processes[0].name = "target.exe".to_string();
         track_process_name(&mut app, "target.exe");
@@ -11946,20 +11977,20 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
-        app.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.show_tracked_remove_confirmation);
-        assert!(app.watch_list.is_empty());
+        assert_eq!(app.watch_list, vec!["target.exe"]);
         assert_eq!(
             selected_process_history_sample_count(&app, "target.exe"),
-            120
+            121
         );
-        assert!(app.status.contains("discarded 1 older samples"));
+        assert_eq!(app.status, "Tracked removal canceled");
     }
 
     #[test]
-    fn tracked_remove_confirm_with_remove_selection_removes_and_prunes_history() {
+    fn tracked_remove_confirm_with_enter_removes_and_prunes_history() {
         let mut app = make_test_app(1, 10);
         app.snapshot.processes[0].name = "target.exe".to_string();
         track_process_name(&mut app, "target.exe");
@@ -11967,9 +11998,6 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
             .unwrap();
 
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.tracked_remove_selection, TrackedRemoveSelection::Remove);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
@@ -11979,6 +12007,7 @@ processes = ["api.exe", "worker.exe"]
             selected_process_history_sample_count(&app, "target.exe"),
             120
         );
+        assert!(app.status.contains("discarded 1 older samples"));
     }
 
     #[test]
@@ -12625,12 +12654,6 @@ processes = ["api.exe", "worker.exe"]
         }
     }
 
-    fn assert_modal_focus_border(app: &App, popup_percent_x: u16, popup_percent_y: u16) {
-        let screen = Rect::new(0, 0, 100, 45);
-        let popup = centered_rect(popup_percent_x, popup_percent_y, screen);
-        assert_modal_rect_focus_border(app, popup);
-    }
-
     fn assert_modal_rect_focus_border(app: &App, popup: Rect) {
         let screen = Rect::new(0, 0, 100, 45);
         let buffer = render_app_to_buffer(app, screen.width, screen.height);
@@ -12683,6 +12706,10 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 120, 45);
 
         assert!(!rendered.contains("Log sessions"), "{rendered}");
+        assert!(
+            rendered.contains("Select a log file and press Enter."),
+            "{rendered}"
+        );
         assert!(rendered.contains("Dir C:/logs"), "{rendered}");
         assert!(rendered.contains("d change dir"), "{rendered}");
         assert!(rendered.contains("00:02:05"), "{rendered}");
@@ -12692,10 +12719,13 @@ processes = ["api.exe", "worker.exe"]
             !rendered.contains("C:/logs/winproc-tui-demo.log"),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Open ]"), "{rendered}");
-        assert!(rendered.contains("[ Directory ]"), "{rendered}");
-        assert!(rendered.contains("[ Refresh ]"), "{rendered}");
-        assert!(rendered.contains("[ Close ]"), "{rendered}");
+        for button in ["[ Open ]", "[ Directory ]", "[ Refresh ]", "[ Close ]"] {
+            assert!(!rendered.contains(button), "{rendered}");
+        }
+        assert!(
+            rendered.contains("↑/↓ select  Enter open  d change dir  r refresh  Esc close"),
+            "{rendered}"
+        );
     }
 
     #[test]
@@ -12707,9 +12737,8 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 120, 45);
 
         assert!(
-            rendered.contains(
-                "No .log files here. Close and use Ctrl+R to record, or choose Directory."
-            ),
+            rendered
+                .contains("No .log files. Press d to change directory; Esc then Ctrl+R to record."),
             "{rendered}"
         );
     }
@@ -12733,64 +12762,6 @@ processes = ["api.exe", "worker.exe"]
         assert_eq!(recording[(recording_x - 1, recording_y)].symbol(), "┏");
         assert_eq!(logs[(logs_x + 76, logs_y)].symbol(), "┓");
         assert_eq!(recording[(recording_x + 76, recording_y)].symbol(), "┓");
-    }
-
-    #[test]
-    fn log_list_tab_cycles_list_and_buttons() {
-        let mut app = make_test_app(1, 10);
-        app.show_log_list = true;
-
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.log_list_focus, app::LogListFocus::Open);
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
-            .unwrap();
-        assert_eq!(app.log_list_focus, app::LogListFocus::Directory);
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
-            .unwrap();
-        assert_eq!(app.log_list_focus, app::LogListFocus::Open);
-    }
-
-    #[test]
-    fn log_list_buttons_activate_with_mouse() {
-        let screen = Rect::new(0, 0, 120, 45);
-        let mut app = make_test_app(1, 10);
-        app.show_log_list = true;
-        app.log_list_dir = Some(std::env::current_dir().unwrap());
-        app.log_summaries = vec![app::logs::LogSummary {
-            path: std::path::PathBuf::from("missing.log"),
-            schema_version: Some(2),
-            session_id: None,
-            started_at: Some(Local::now()),
-            ended_at: None,
-            host: None,
-            tracked_names: Vec::new(),
-            frame_count: 0,
-            error: None,
-        }];
-
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (open_x, open_y) = find_text_position(&buffer, "[ Open ]").unwrap();
-        app.on_mouse(left_click(open_x + 2, open_y), screen);
-        assert!(app.log_load_worker.is_some());
-        app.log_load_worker = None;
-
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (directory_x, directory_y) = find_text_position(&buffer, "[ Directory ]").unwrap();
-        app.on_mouse(left_click(directory_x + 2, directory_y), screen);
-        assert!(app.show_log_dir_dialog);
-        app.cancel_log_dir_dialog();
-
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (refresh_x, refresh_y) = find_text_position(&buffer, "[ Refresh ]").unwrap();
-        app.on_mouse(left_click(refresh_x + 2, refresh_y), screen);
-        assert!(app.log_list_worker.is_some());
-        app.log_list_worker = None;
-
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (close_x, close_y) = find_text_position(&buffer, "[ Close ]").unwrap();
-        app.on_mouse(left_click(close_x + 2, close_y), screen);
-        assert!(!app.show_log_list);
     }
 
     #[test]
@@ -12927,18 +12898,19 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn log_dir_dialog_shows_shortcuts_above_directory_input() {
+    fn log_dir_dialog_shows_shortcuts_below_directory_input() {
         let mut app = make_test_app(1, 10);
         app.show_log_list = true;
         app.open_log_dir_dialog().unwrap();
         let buffer = render_app_to_buffer(&app, 120, 45);
         let (_, shortcut_y) =
-            find_text_position(&buffer, "Tab focus").expect("focus shortcut should render");
+            find_text_position(&buffer, "Enter apply  Esc cancel  Ctrl+Space complete")
+                .expect("directory shortcuts should render");
         assert!(find_text_position(&buffer, "Ctrl+Space complete").is_some());
         let (_, label_y) =
             find_text_position(&buffer, "Directory").expect("directory label should render");
 
-        assert!(shortcut_y < label_y);
+        assert!(shortcut_y > label_y);
     }
 
     #[test]
@@ -13015,16 +12987,13 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn log_dir_cancel_button_closes_dialog() {
+    fn log_dir_escape_closes_dialog() {
         let mut app = make_test_app(1, 10);
         app.show_log_list = true;
         app.log_list_dir = Some(std::env::current_dir().unwrap());
         app.open_log_dir_dialog().unwrap();
-        let screen = Rect::new(0, 0, 120, 45);
-        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, y) = find_text_position(&buffer, " Cancel ").expect("cancel button should render");
-
-        app.on_mouse(left_click(x, y), screen);
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
 
         assert!(!app.show_log_dir_dialog);
     }
@@ -13368,6 +13337,19 @@ processes = ["api.exe", "worker.exe"]
         None
     }
 
+    fn assert_blank_row_above_text(buffer: &ratatui::buffer::Buffer, needle: &str) {
+        let (x, y) = find_text_position(buffer, needle)
+            .unwrap_or_else(|| panic!("shortcut guidance should render: {needle}"));
+        assert!(y > 0, "shortcut guidance has no preceding row: {needle}");
+        for offset in 0..needle.chars().count() as u16 {
+            assert_eq!(
+                buffer[(x + offset, y - 1)].symbol(),
+                " ",
+                "row above shortcut guidance is not blank: {needle}"
+            );
+        }
+    }
+
     fn find_text_position_in_area(
         buffer: &ratatui::buffer::Buffer,
         area: Rect,
@@ -13511,29 +13493,20 @@ processes = ["api.exe", "worker.exe"]
             show_column_picker: false,
             tracked_lists_dialog: None,
             show_quit_confirmation: false,
-            quit_confirm_selection: QuitConfirmSelection::Cancel,
             show_recording_no_tracked_warning: false,
             show_recording_path_dialog: false,
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: app::path_completion::PathCompletionState::default(),
-            recording_path_selection: app::RecordingPathSelection::Path,
             show_recording_overwrite_confirmation: false,
-            recording_overwrite_selection: app::RecordingOverwriteSelection::Cancel,
             show_recording_stop_confirmation: false,
-            recording_stop_selection: app::RecordingStopSelection::Continue,
-            recording_stop_hovered: None,
             show_recording_tracking_fixed: false,
-            recording_tracking_fixed_ok_hovered: false,
             recording_error: None,
-            recording_error_ok_hovered: false,
             show_tracked_remove_confirmation: false,
-            tracked_remove_selection: TrackedRemoveSelection::Cancel,
             tracked_remove_name: String::new(),
             tracked_remove_total_samples: 0,
             tracked_remove_discarded_samples: 0,
             show_process_kill_confirmation: false,
-            process_kill_selection: app::ProcessKillSelection::Cancel,
             process_kill_targets: Vec::new(),
             show_display_area_warning: false,
             show_metric_column_warning: false,
@@ -13549,7 +13522,6 @@ processes = ["api.exe", "worker.exe"]
                 ..ui::widgets::scrollable_modal::ScrollableModalState::default()
             },
             show_log_list: false,
-            log_list_focus: app::LogListFocus::List,
             log_list_index: 0,
             log_list_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,
@@ -13559,7 +13531,6 @@ processes = ["api.exe", "worker.exe"]
             log_dir_draft: String::new(),
             log_dir_cursor: 0,
             log_dir_completion: app::path_completion::PathCompletionState::default(),
-            log_dir_selection: app::LogDirSelection::Path,
             log_dir_error: None,
             open_files_scroll: ui::widgets::scrollable_modal::ScrollableModalState {
                 page_size: 1,

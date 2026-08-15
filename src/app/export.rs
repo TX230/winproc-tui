@@ -11,7 +11,7 @@ use chrono::{DateTime, Local};
 use serde_json::{Map, Value, json};
 
 use crate::app::{
-    App, AppActivity, RecordingOverwriteSelection, RecordingPathSelection, RecordingStopSelection,
+    App, AppActivity,
     path_completion::PathCompletion,
     state::{RecordingErrorDialog, RecordingErrorKind},
 };
@@ -61,33 +61,13 @@ impl App {
             return;
         }
         self.show_recording_stop_confirmation = true;
-        self.recording_stop_selection = RecordingStopSelection::Continue;
-        self.recording_stop_hovered = None;
         self.status = "Stop recording?".to_string();
     }
 
     pub(crate) fn cancel_recording_stop(&mut self) {
         self.show_recording_stop_confirmation = false;
-        self.recording_stop_selection = RecordingStopSelection::Continue;
-        self.recording_stop_hovered = None;
         self.ensure_visible_panel_focus();
         self.status = "Recording continues".to_string();
-    }
-
-    pub(crate) fn toggle_recording_stop_selection(&mut self) {
-        self.recording_stop_selection = self.recording_stop_selection.toggled();
-        self.recording_stop_hovered = None;
-    }
-
-    pub(crate) fn set_recording_stop_hovered(&mut self, selection: Option<RecordingStopSelection>) {
-        self.recording_stop_hovered = selection;
-    }
-
-    pub(crate) fn activate_recording_stop_selection(&mut self) {
-        match self.recording_stop_selection {
-            RecordingStopSelection::Stop => self.confirm_recording_stop(),
-            RecordingStopSelection::Continue => self.cancel_recording_stop(),
-        }
     }
 
     pub(crate) fn confirm_recording_stop(&mut self) {
@@ -100,7 +80,6 @@ impl App {
             return;
         };
         self.show_recording_stop_confirmation = false;
-        self.recording_stop_hovered = None;
         if let Err(error) = self.stop_recording() {
             self.present_active_recording_error(path, error);
         }
@@ -108,20 +87,17 @@ impl App {
 
     pub(crate) fn dismiss_recording_tracking_fixed(&mut self) {
         self.show_recording_tracking_fixed = false;
-        self.recording_tracking_fixed_ok_hovered = false;
         self.ensure_visible_panel_focus();
         self.status = "Recording continues".to_string();
     }
 
     pub(crate) fn dismiss_recording_error(&mut self) {
-        self.recording_error_ok_hovered = false;
         let return_to_path_dialog = self
             .recording_error
             .take()
             .is_some_and(|error| error.return_to_path_dialog);
         if return_to_path_dialog {
             self.show_recording_path_dialog = true;
-            self.recording_path_selection = RecordingPathSelection::Path;
             self.recording_path_cursor = self
                 .recording_path_cursor
                 .min(self.recording_path_draft.len());
@@ -143,18 +119,14 @@ impl App {
         self.show_quit_confirmation = false;
         self.show_recording_path_dialog = return_to_path_dialog;
         self.show_recording_stop_confirmation = false;
-        self.recording_stop_hovered = None;
         self.show_recording_tracking_fixed = false;
-        self.recording_tracking_fixed_ok_hovered = false;
         self.show_recording_overwrite_confirmation = false;
-        self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
         self.recording_error = Some(RecordingErrorDialog {
             path,
             message: error.root_cause().to_string(),
             kind,
             return_to_path_dialog,
         });
-        self.recording_error_ok_hovered = false;
         self.status = match kind {
             RecordingErrorKind::CouldNotStart => "Recording could not start".to_string(),
             RecordingErrorKind::Stopped => {
@@ -167,14 +139,6 @@ impl App {
         self.present_recording_error(path, error, RecordingErrorKind::Stopped, false);
     }
 
-    pub(crate) fn set_recording_tracking_fixed_ok_hovered(&mut self, hovered: bool) {
-        self.recording_tracking_fixed_ok_hovered = hovered;
-    }
-
-    pub(crate) fn set_recording_error_ok_hovered(&mut self, hovered: bool) {
-        self.recording_error_ok_hovered = hovered;
-    }
-
     pub(crate) fn open_recording_path_dialog(&mut self) -> Result<()> {
         if let Some(session) = &self.recording_session {
             self.status = format!("Recording already active: {}", session.path.display());
@@ -185,10 +149,8 @@ impl App {
         self.recording_path_draft = path.display().to_string();
         self.recording_path_cursor = self.recording_path_draft.len();
         self.recording_path_completion.reset();
-        self.recording_path_selection = RecordingPathSelection::Path;
         self.show_recording_path_dialog = true;
         self.show_recording_overwrite_confirmation = false;
-        self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
         self.status = "Choose recording log path".to_string();
         Ok(())
     }
@@ -197,7 +159,6 @@ impl App {
         self.show_recording_path_dialog = false;
         self.show_recording_overwrite_confirmation = false;
         self.recording_path_completion.reset();
-        self.recording_path_selection = RecordingPathSelection::Path;
         self.ensure_visible_panel_focus();
         self.status = "Recording canceled".to_string();
     }
@@ -301,7 +262,6 @@ impl App {
         }
         if path.exists() {
             self.show_recording_overwrite_confirmation = true;
-            self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
             self.status = format!("Overwrite existing log? {}", path.display());
             return Ok(());
         }
@@ -309,33 +269,8 @@ impl App {
         self.start_recording(path, false)
     }
 
-    pub(crate) fn activate_recording_path_selection(&mut self) -> Result<()> {
-        match self.recording_path_selection {
-            RecordingPathSelection::Path | RecordingPathSelection::Start => {
-                self.confirm_recording_path()
-            }
-            RecordingPathSelection::Cancel => {
-                self.cancel_recording_path_dialog();
-                Ok(())
-            }
-        }
-    }
-
-    pub(crate) fn focus_next_recording_path_control(&mut self) {
-        self.recording_path_selection = self.recording_path_selection.next();
-    }
-
-    pub(crate) fn focus_previous_recording_path_control(&mut self) {
-        self.recording_path_selection = self.recording_path_selection.previous();
-    }
-
-    pub(crate) fn toggle_recording_overwrite_selection(&mut self) {
-        self.recording_overwrite_selection = self.recording_overwrite_selection.toggled();
-    }
-
     pub(crate) fn cancel_recording_overwrite_confirmation(&mut self) {
         self.show_recording_overwrite_confirmation = false;
-        self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
         self.ensure_visible_panel_focus();
         self.status = "Overwrite canceled".to_string();
     }
@@ -354,20 +289,8 @@ impl App {
         }
 
         self.show_recording_overwrite_confirmation = false;
-        self.recording_overwrite_selection = RecordingOverwriteSelection::Cancel;
-        self.recording_path_selection = RecordingPathSelection::Path;
         self.status = "Recording path must be a file, not a directory".to_string();
         true
-    }
-
-    pub(crate) fn activate_recording_overwrite_selection(&mut self) -> Result<()> {
-        match self.recording_overwrite_selection {
-            RecordingOverwriteSelection::Overwrite => self.confirm_recording_overwrite(),
-            RecordingOverwriteSelection::Cancel => {
-                self.cancel_recording_overwrite_confirmation();
-                Ok(())
-            }
-        }
     }
 
     pub(crate) fn stop_recording(&mut self) -> Result<()> {
@@ -445,7 +368,6 @@ impl App {
                 self.show_recording_path_dialog = false;
                 self.show_recording_overwrite_confirmation = false;
                 self.recording_path_completion.reset();
-                self.recording_path_selection = RecordingPathSelection::Start;
 
                 if let Err(error) = self.write_recording_session_header() {
                     self.recording_session = None;

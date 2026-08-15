@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Alignment, Rect},
+    layout::Rect,
     prelude::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::Paragraph,
@@ -8,19 +8,18 @@ use ratatui::{
 use crate::{
     App,
     model::MetricColumn,
-    ui::{Theme, widgets::scrollable_modal::ScrollableModal},
+    ui::{Theme, footer::shortcut_spans, widgets::scrollable_modal::ScrollableModal},
 };
 
 const HEADER_TITLE: &str = "Select process columns";
-const CLOSE_BUTTON: &str = "[ Close ]";
 const SHORTCUT_ITEMS: [(&str, &str); 3] = [
-    ("Up/Down", "select"),
+    ("↑/↓", "select"),
     ("Space", "toggle"),
     ("Enter/Esc", "close"),
 ];
-const HEADER_AND_GAP_LINE_COUNT: u16 = 3;
+const HEADER_AND_GAP_LINE_COUNT: u16 = 2;
 const LABEL_WIDTH: usize = 10;
-const CLOSE_AREA_HEIGHT: u16 = 3;
+const FOOTER_HEIGHT: u16 = 1;
 
 pub(crate) fn draw_column_picker(
     frame: &mut ratatui::Frame<'_>,
@@ -33,7 +32,6 @@ pub(crate) fn draw_column_picker(
             HEADER_TITLE,
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         )),
-        Line::from(column_picker_shortcut_spans(theme)),
         Line::from(""),
     ];
 
@@ -80,17 +78,10 @@ pub(crate) fn draw_column_picker(
         false,
         theme,
     );
-    if let Some(area) = column_picker_close_button_area_in_footer(layout.footer) {
+    if !layout.footer.is_empty() {
         frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                CLOSE_BUTTON,
-                Style::default()
-                    .fg(theme.background)
-                    .bg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )))
-            .alignment(Alignment::Center),
-            area,
+            Paragraph::new(Line::from(shortcut_spans(&SHORTCUT_ITEMS, theme))),
+            layout.footer,
         );
     }
 }
@@ -120,23 +111,6 @@ pub(crate) fn column_picker_index_at(
     (index < MetricColumn::ALL.len()).then_some(index)
 }
 
-pub(crate) fn column_picker_close_button_area_for_screen(area: Rect) -> Option<Rect> {
-    column_picker_close_button_area(column_picker_modal().area(area))
-}
-
-pub(crate) fn column_picker_close_button_area(popup: Rect) -> Option<Rect> {
-    if popup.width < 11 || popup.height < 4 {
-        return None;
-    }
-    let width = 11;
-    Some(Rect::new(
-        popup.x + popup.width.saturating_sub(width) / 2,
-        popup.bottom().saturating_sub(3),
-        width,
-        1,
-    ))
-}
-
 pub(crate) fn column_picker_page_size_for_screen(area: Rect) -> usize {
     column_picker_modal().page_size(area)
 }
@@ -150,19 +124,15 @@ pub(crate) fn column_picker_scrollbar_area(area: Rect, page_size: usize) -> Opti
 }
 
 fn column_picker_content_width() -> u16 {
-    [
-        HEADER_TITLE.chars().count(),
-        column_picker_shortcut_width(),
-        CLOSE_BUTTON.chars().count(),
-    ]
-    .into_iter()
-    .chain(
-        MetricColumn::ALL
-            .iter()
-            .map(|column| column_picker_row_width(*column)),
-    )
-    .max()
-    .unwrap_or_default() as u16
+    [HEADER_TITLE.chars().count(), column_picker_shortcut_width()]
+        .into_iter()
+        .chain(
+            MetricColumn::ALL
+                .iter()
+                .map(|column| column_picker_row_width(*column)),
+        )
+        .max()
+        .unwrap_or_default() as u16
 }
 
 fn column_picker_content_height() -> u16 {
@@ -180,21 +150,6 @@ fn column_picker_row_width(column: MetricColumn) -> usize {
     .count()
 }
 
-fn column_picker_shortcut_spans(theme: Theme) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    for (index, (key, label)) in SHORTCUT_ITEMS.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::raw("  "));
-        }
-        spans.push(Span::styled(*key, Style::default().fg(theme.key_hint)));
-        spans.push(Span::styled(
-            format!(" {label}"),
-            Style::default().fg(theme.text),
-        ));
-    }
-    spans
-}
-
 fn column_picker_shortcut_width() -> usize {
     SHORTCUT_ITEMS
         .iter()
@@ -204,19 +159,6 @@ fn column_picker_shortcut_width() -> usize {
             key.chars().count() + label.chars().count() + 1 + separator_width
         })
         .sum()
-}
-
-fn column_picker_close_button_area_in_footer(footer: Rect) -> Option<Rect> {
-    if footer.width < 11 || footer.height == 0 {
-        return None;
-    }
-    let width = 11;
-    Some(Rect::new(
-        footer.x + footer.width.saturating_sub(width) / 2,
-        footer.y.saturating_add(1),
-        width,
-        1,
-    ))
 }
 
 fn description_style(index: usize, app: &App, selected: bool, theme: Theme) -> Style {
@@ -241,7 +183,7 @@ fn column_picker_modal() -> ScrollableModal {
         "COLUMNS",
         column_picker_content_width(),
         column_picker_content_height(),
-        CLOSE_AREA_HEIGHT,
+        FOOTER_HEIGHT,
     )
     .with_bold_title()
 }

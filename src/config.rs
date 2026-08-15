@@ -119,6 +119,8 @@ pub(crate) enum TrackedListStartup {
 }
 
 impl TrackedListStartup {
+    pub(crate) const ALL: [Self; 3] = [Self::ResumeLast, Self::ChooseList, Self::StartEmpty];
+
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::ResumeLast => "Resume last",

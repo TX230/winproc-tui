@@ -11,9 +11,10 @@ use crate::{
     model::{DiskUsageSample, SystemMetric},
     ui::{
         Theme,
-        cpu_panel::draw_cpu_panel,
+        cpu_panel::{cpu_panel_lines_for_app, draw_cpu_panel},
+        footer::shortcut_spans,
         format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
-        graph_slot::{GRAPH_SLOT_NUMBER_GAP, GRAPH_SLOT_NUMBER_WIDTH, graph_slot_number_span},
+        graph_slot::graph_value_style,
         layout::system_panel_area_for_screen,
         widgets::block::{panel_block_focused, panel_title},
     },
@@ -101,53 +102,25 @@ pub(crate) fn draw_system_info_dialog(
         content,
     );
 
-    if let Some(area) = system_info_ok_button_area_in_popup(popup) {
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                "[ OK ]",
-                Style::default()
-                    .fg(theme.background)
-                    .bg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ))),
-            area,
-        );
-    }
+    frame.render_widget(
+        Paragraph::new(Line::from(shortcut_spans(&[("Enter/Esc", "Close")], theme))),
+        Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1),
+    );
 }
 
 fn system_info_dialog_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
     system_info_lines(app, theme)
 }
 
-pub(crate) fn system_info_ok_button_area_for_screen(area: Rect) -> Option<Rect> {
-    system_info_ok_button_area_in_popup(system_info_dialog_area(area))
-}
-
 fn system_info_dialog_area(area: Rect) -> Rect {
     let width = 100.min(area.width);
-    let height = 20.min(area.height);
+    let height = 21.min(area.height);
     Rect::new(
         area.x + area.width.saturating_sub(width) / 2,
         area.y + area.height.saturating_sub(height) / 2,
         width,
         height,
     )
-}
-
-fn system_info_ok_button_area_in_popup(popup: Rect) -> Option<Rect> {
-    if popup.width < 6 || popup.height < 4 {
-        return None;
-    }
-    let inner = popup.inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    Some(Rect::new(
-        inner.x + inner.width.saturating_sub(6) / 2,
-        inner.bottom().saturating_sub(1),
-        6,
-        1,
-    ))
 }
 
 fn memory_title(app: &App, theme: Theme) -> Line<'static> {
@@ -232,7 +205,7 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
     rows.into_iter()
         .map(|(metric, line)| {
             if app.panel_has_focus(FocusedPanel::SystemActivity) && metric == selected_metric {
-                line.style(Style::default().bg(theme.highlight))
+                line.style(Style::default().bg(theme.table_selection_surface))
             } else {
                 line
             }
@@ -296,26 +269,15 @@ fn render_summary_graph_slot_value_line_with_label_width(
     theme: Theme,
 ) -> Line<'static> {
     Line::from(vec![
-        graph_slot_prefix_span(graph_state, theme),
         Span::styled(
             format!("{label:<label_width$}"),
             Style::default().fg(theme.muted),
         ),
         Span::styled(
             value.to_string(),
-            Style::default()
-                .fg(theme.text)
-                .add_modifier(ratatui::style::Modifier::BOLD),
+            graph_value_style(Style::default().fg(theme.text), graph_state, theme),
         ),
     ])
-}
-
-fn graph_slot_prefix_span(graph_state: Option<GraphSourceState>, theme: Theme) -> Span<'static> {
-    graph_slot_number_span(
-        graph_state,
-        GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
-        theme,
-    )
 }
 
 pub(crate) fn ram_vram_panel_area_for_screen(screen_area: Rect, app: &App) -> Rect {
@@ -368,14 +330,15 @@ fn top_panel_areas(area: Rect, app: &App) -> [Rect; 4] {
     let memory_columns = memory_usage_columns(app, app.theme());
     let gpu_lines = gpu_usage_lines(app, app.theme());
     let activity_lines = system_activity_lines(app, app.theme());
+    let cpu_lines = cpu_panel_lines_for_app(app, app.theme(), area.height.saturating_sub(2));
     let memory_desired = desired_memory_panel_width(&memory_columns, 28);
     let gpu_desired = desired_panel_width(&gpu_lines, 28);
     let activity_desired = desired_panel_width(&activity_lines, 14);
-    let cpu_minimum = 24;
+    let cpu_desired = desired_panel_width(&cpu_lines, 24);
     let wide = memory_desired
         .saturating_add(gpu_desired)
         .saturating_add(activity_desired)
-        .saturating_add(cpu_minimum)
+        .saturating_add(cpu_desired)
         <= area.width;
     let (memory_width, gpu_width) = if wide {
         (memory_desired, gpu_desired)
@@ -388,7 +351,7 @@ fn top_panel_areas(area: Rect, app: &App) -> [Rect; 4] {
         .width
         .saturating_sub(memory_width)
         .saturating_sub(gpu_width);
-    let activity_width = activity_desired.min(remaining.saturating_sub(cpu_minimum.min(remaining)));
+    let activity_width = activity_desired.min(remaining.saturating_sub(cpu_desired.min(remaining)));
     let cpu_width = remaining.saturating_sub(activity_width);
     [
         Rect::new(area.x, area.y, memory_width, area.height),
@@ -540,7 +503,7 @@ fn memory_usage_columns(app: &App, theme: Theme) -> [Vec<Line<'static>>; 2] {
                     && app.resource_panel == ResourcePanel::Memory
                     && metric == selected_metric
                 {
-                    line.style(Style::default().bg(theme.highlight))
+                    line.style(Style::default().bg(theme.table_selection_surface))
                 } else {
                     line
                 }
@@ -621,7 +584,7 @@ fn gpu_usage_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
                 && app.resource_panel == ResourcePanel::Gpu
                 && metric == selected
             {
-                line.style(Style::default().bg(theme.highlight))
+                line.style(Style::default().bg(theme.table_selection_surface))
             } else {
                 line
             }
@@ -654,18 +617,15 @@ fn render_gpu_percent_line(
     let slot = adapter.map(|adapter| {
         GraphSlot::gpu(adapter.id, adapter.name.as_deref().unwrap_or("GPU"), metric)
     });
+    let graph_state = slot.as_ref().and_then(|slot| app.graph_source_state(slot));
     Line::from(vec![
-        graph_slot_prefix_span(
-            slot.as_ref().and_then(|slot| app.graph_source_state(slot)),
-            theme,
-        ),
         Span::styled(
             format!("{label:<GPU_ROW_LABEL_WIDTH$}"),
             Style::default().fg(theme.muted),
         ),
         Span::styled(
             value,
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            graph_value_style(Style::default().fg(theme.text), graph_state, theme),
         ),
         Span::styled(suffix, Style::default().fg(theme.muted)),
     ])
@@ -683,24 +643,17 @@ fn render_gpu_memory_line(
     let slot = adapter.map(|adapter| {
         GraphSlot::gpu(adapter.id, adapter.name.as_deref().unwrap_or("GPU"), metric)
     });
-    let mut spans = vec![graph_slot_number_span(
-        slot.as_ref().and_then(|slot| app.graph_source_state(slot)),
-        GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
+    let graph_state = slot.as_ref().and_then(|slot| app.graph_source_state(slot));
+    render_summary_line_with_label_width(
+        label,
+        GPU_ROW_LABEL_WIDTH,
+        used,
+        total,
+        None,
+        false,
+        graph_value_style(Style::default().fg(theme.text), graph_state, theme),
         theme,
-    )];
-    spans.extend(
-        render_summary_line_with_label_width(
-            label,
-            GPU_ROW_LABEL_WIDTH,
-            used,
-            total,
-            None,
-            false,
-            theme,
-        )
-        .spans,
-    );
-    Line::from(spans)
+    )
 }
 
 fn format_optional_integer(value: Option<u64>) -> String {
@@ -934,6 +887,7 @@ pub(crate) fn render_summary_line(
         total,
         suffix,
         true,
+        Style::default().fg(theme.text),
         theme,
     )
 }
@@ -945,6 +899,7 @@ fn render_summary_line_with_label_width(
     total: Option<u64>,
     suffix: Option<&str>,
     show_ratio: bool,
+    value_style: Style,
     theme: Theme,
 ) -> Line<'static> {
     let ratio_value = show_ratio.then(|| ratio_optional(used, total)).flatten();
@@ -959,11 +914,11 @@ fn render_summary_line_with_label_width(
         format!("{title:<label_width$}"),
         Style::default().fg(theme.muted),
     )];
-    spans.push(Span::styled(stats, Style::default().fg(theme.text)));
+    spans.push(Span::styled(stats, value_style));
     if let Some(ratio_value) = ratio_value {
         spans.push(Span::styled(
             format!(" ({:>3.0}%)", ratio_value * 100.0),
-            Style::default().fg(theme.text),
+            value_style,
         ));
     }
     if !suffix_text.is_empty() {
@@ -981,24 +936,16 @@ fn render_summary_graph_slot_line(
     suffix: Option<&str>,
     theme: Theme,
 ) -> Line<'static> {
-    let mut spans = vec![graph_slot_number_span(
-        graph_state,
-        GRAPH_SLOT_NUMBER_WIDTH + GRAPH_SLOT_NUMBER_GAP,
+    render_summary_line_with_label_width(
+        title,
+        SUMMARY_ROW_LABEL_WIDTH,
+        used,
+        total,
+        suffix,
+        false,
+        graph_value_style(Style::default().fg(theme.text), graph_state, theme),
         theme,
-    )];
-    spans.extend(
-        render_summary_line_with_label_width(
-            title,
-            SUMMARY_ROW_LABEL_WIDTH,
-            used,
-            total,
-            suffix,
-            false,
-            theme,
-        )
-        .spans,
-    );
-    Line::from(spans)
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

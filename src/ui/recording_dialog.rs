@@ -1,17 +1,16 @@
 use ratatui::{
     layout::{Alignment, Position, Rect},
-    prelude::{Color, Modifier, Style},
+    prelude::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
 use crate::{
+    app::App,
     app::state::RecordingErrorKind,
-    app::{App, RecordingOverwriteSelection, RecordingPathSelection, RecordingStopSelection},
     ui::{
         Theme,
-        footer::shortcut_spans,
-        layout::centered_rect,
+        footer::{shortcut_spans, warning_shortcut_spans},
         widgets::{
             block::{panel_block_focused, panel_title},
             confirm_dialog,
@@ -22,20 +21,16 @@ use crate::{
 const RECORDING_PATH_WIDTH: u16 = 78;
 const RECORDING_PATH_HEIGHT: u16 = 9;
 const RECORDING_PATH_INPUT_ROW: u16 = 1;
-const RECORDING_PATH_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 6;
 const RECORDING_OVERWRITE_WIDTH: u16 = 48;
-const RECORDING_OVERWRITE_HEIGHT: u16 = 8;
-const OVERWRITE_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 4;
-const NO_TRACKED_BUTTON_ROW_FROM_CONTENT_TOP: u16 = 4;
+const RECORDING_OVERWRITE_HEIGHT: u16 = 7;
+const RECORDING_NO_TRACKED_WIDTH: u16 = 52;
+const RECORDING_NO_TRACKED_HEIGHT: u16 = 7;
 const RECORDING_FIXED_WIDTH: u16 = 58;
 const RECORDING_FIXED_HEIGHT: u16 = 6;
-const RECORDING_FIXED_BUTTON_ROW: u16 = 3;
 const RECORDING_STOP_WIDTH: u16 = 62;
-const RECORDING_STOP_HEIGHT: u16 = 8;
-const RECORDING_STOP_BUTTON_ROW: u16 = 4;
+const RECORDING_STOP_HEIGHT: u16 = 7;
 const RECORDING_ERROR_WIDTH: u16 = 72;
 const RECORDING_ERROR_HEIGHT: u16 = 8;
-const RECORDING_ERROR_BUTTON_ROW: u16 = 5;
 
 pub(crate) fn draw_recording_path_dialog(
     frame: &mut ratatui::Frame<'_>,
@@ -96,42 +91,28 @@ pub(crate) fn draw_recording_path_dialog(
     frame.render_widget(
         Paragraph::new(shortcut_line(
             &[
-                ("Enter", "activate"),
-                ("Esc", "close"),
-                ("Tab", "focus"),
+                ("Enter", "start"),
+                ("Esc", "cancel"),
                 ("Ctrl+Space", "complete"),
             ],
             theme,
         )),
-        Rect::new(content.x, content.y.saturating_add(5), content.width, 1),
-    );
-    frame.render_widget(
-        Paragraph::new(recording_path_button_line(
-            app.recording_path_selection,
-            theme,
-        ))
-        .alignment(Alignment::Center),
         Rect::new(
             content.x,
-            content
-                .y
-                .saturating_add(RECORDING_PATH_BUTTON_ROW_FROM_CONTENT_TOP),
+            content.bottom().saturating_sub(1),
             content.width,
             1,
         ),
     );
-    if app.recording_path_selection == RecordingPathSelection::Path {
-        frame.set_cursor_position(Position::new(
-            input_area.x.saturating_add(cursor_x as u16),
-            input_area.y,
-        ));
-    }
+    frame.set_cursor_position(Position::new(
+        input_area.x.saturating_add(cursor_x as u16),
+        input_area.y,
+    ));
 }
 
 pub(crate) fn draw_recording_tracking_fixed(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
-    app: &App,
     theme: Theme,
 ) {
     let popup =
@@ -146,13 +127,7 @@ pub(crate) fn draw_recording_tracking_fixed(
             Style::default().fg(theme.text),
         )),
         Line::from(""),
-        Line::from(vec![button(
-            " OK ",
-            true,
-            app.recording_tracking_fixed_ok_hovered,
-            theme.accent,
-            theme,
-        )]),
+        Line::from(shortcut_spans(&[("Enter/Esc", "Close")], theme)),
     ]);
 
     frame.render_widget(Clear, popup);
@@ -164,30 +139,13 @@ pub(crate) fn draw_recording_tracking_fixed(
     );
 }
 
-pub(crate) fn recording_tracking_fixed_ok_button_area(area: Rect) -> Option<Rect> {
-    let popup =
-        confirm_dialog::centered_dialog_rect(area, RECORDING_FIXED_WIDTH, RECORDING_FIXED_HEIGHT);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    confirm_dialog::button_areas(content, RECORDING_FIXED_BUTTON_ROW, &[" OK "])
-        .into_iter()
-        .next()
-}
-
 pub(crate) fn draw_recording_stop_confirm(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
-    app: &App,
     theme: Theme,
 ) {
     let popup =
         confirm_dialog::centered_dialog_rect(area, RECORDING_STOP_WIDTH, RECORDING_STOP_HEIGHT);
-    let hovered = app.recording_stop_hovered.map(|selection| match selection {
-        RecordingStopSelection::Stop => 0,
-        RecordingStopSelection::Continue => 1,
-    });
     let lines = Text::from(vec![
         Line::from(Span::styled(
             "Stop recording and close this log?",
@@ -199,27 +157,8 @@ pub(crate) fn draw_recording_stop_confirm(
             Style::default().fg(theme.text),
         )),
         Line::from(""),
-        confirm_dialog::button_line_with_hover(
-            &[
-                (
-                    " Stop ",
-                    app.recording_stop_selection == RecordingStopSelection::Stop,
-                ),
-                (
-                    " Continue ",
-                    app.recording_stop_selection == RecordingStopSelection::Continue,
-                ),
-            ],
-            hovered,
-            theme,
-        ),
-        Line::from(shortcut_spans(
-            &[
-                ("Enter", "Select"),
-                ("Esc", "Continue"),
-                ("y", "Stop"),
-                ("n", "Continue"),
-            ],
+        Line::from(warning_shortcut_spans(
+            &[("Enter/Esc/n", "Continue"), ("y", "Stop")],
             theme,
         )),
     ]);
@@ -231,34 +170,6 @@ pub(crate) fn draw_recording_stop_confirm(
             .alignment(Alignment::Center),
         popup,
     );
-}
-
-pub(crate) fn recording_stop_button_at(
-    area: Rect,
-    x: u16,
-    y: u16,
-) -> Option<RecordingStopSelection> {
-    let popup =
-        confirm_dialog::centered_dialog_rect(area, RECORDING_STOP_WIDTH, RECORDING_STOP_HEIGHT);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    confirm_dialog::button_areas(
-        content,
-        RECORDING_STOP_BUTTON_ROW,
-        &[" Stop ", " Continue "],
-    )
-    .into_iter()
-    .enumerate()
-    .find(|(_, area)| x >= area.x && x < area.right() && y >= area.y && y < area.bottom())
-    .map(|(index, _)| {
-        if index == 0 {
-            RecordingStopSelection::Stop
-        } else {
-            RecordingStopSelection::Continue
-        }
-    })
 }
 
 pub(crate) fn draw_recording_error(
@@ -292,13 +203,7 @@ pub(crate) fn draw_recording_error(
             ),
         ]),
         Line::from(""),
-        Line::from(vec![button(
-            " OK ",
-            true,
-            app.recording_error_ok_hovered,
-            theme.danger,
-            theme,
-        )]),
+        Line::from(shortcut_spans(&[("Enter/Esc", "Close")], theme)),
     ]);
 
     frame.render_widget(Clear, popup);
@@ -308,18 +213,6 @@ pub(crate) fn draw_recording_error(
             .alignment(Alignment::Center),
         popup,
     );
-}
-
-pub(crate) fn recording_error_ok_button_area(area: Rect) -> Option<Rect> {
-    let popup =
-        confirm_dialog::centered_dialog_rect(area, RECORDING_ERROR_WIDTH, RECORDING_ERROR_HEIGHT);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    confirm_dialog::button_areas(content, RECORDING_ERROR_BUTTON_ROW, &[" OK "])
-        .into_iter()
-        .next()
 }
 
 pub(crate) fn recording_path_input_area(area: Rect) -> Rect {
@@ -335,35 +228,6 @@ pub(crate) fn recording_path_input_area(area: Rect) -> Rect {
         content.width,
         1,
     )
-}
-
-pub(crate) fn recording_path_button_at(
-    area: Rect,
-    x: u16,
-    y: u16,
-) -> Option<RecordingPathSelection> {
-    let popup =
-        confirm_dialog::centered_dialog_rect(area, RECORDING_PATH_WIDTH, RECORDING_PATH_HEIGHT);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let buttons = confirm_dialog::button_areas(
-        content,
-        RECORDING_PATH_BUTTON_ROW_FROM_CONTENT_TOP,
-        &[" Start ", " Cancel "],
-    );
-    buttons
-        .into_iter()
-        .enumerate()
-        .find(|(_, area)| x >= area.x && x < area.right() && y >= area.y && y < area.bottom())
-        .map(|(index, _)| {
-            if index == 0 {
-                RecordingPathSelection::Start
-            } else {
-                RecordingPathSelection::Cancel
-            }
-        })
 }
 
 pub(crate) fn draw_recording_overwrite_confirm(
@@ -384,16 +248,15 @@ pub(crate) fn draw_recording_overwrite_confirm(
             Style::default().fg(theme.text),
         )),
         Line::from(""),
-        overwrite_button_line(app.recording_overwrite_selection, theme),
-        Line::from(shortcut_spans(
-            &[("Enter", "Select"), ("Esc", "Cancel"), ("y", "Overwrite")],
+        Line::from(warning_shortcut_spans(
+            &[("Enter/Esc/n", "Cancel"), ("y", "Overwrite")],
             theme,
         )),
     ]);
 
     frame.render_widget(Clear, popup);
     let dialog = Paragraph::new(lines)
-        .block(recording_block(panel_title("CONFIRM"), theme))
+        .block(confirm_dialog::warning_block("CONFIRM", theme))
         .alignment(Alignment::Center);
     frame.render_widget(dialog, popup);
 }
@@ -403,7 +266,11 @@ pub(crate) fn draw_recording_no_tracked_warning(
     area: Rect,
     theme: Theme,
 ) {
-    let popup = centered_rect(52, 16, area);
+    let popup = confirm_dialog::centered_dialog_rect(
+        area,
+        RECORDING_NO_TRACKED_WIDTH,
+        RECORDING_NO_TRACKED_HEIGHT,
+    );
     let lines = Text::from(vec![
         Line::from(Span::styled(
             "No tracked processes",
@@ -415,42 +282,14 @@ pub(crate) fn draw_recording_no_tracked_warning(
             Style::default().fg(theme.text),
         )),
         Line::from(""),
-        confirm_dialog::button_line(&[(" OK ", true)], theme),
+        Line::from(warning_shortcut_spans(&[("Enter/Esc", "Close")], theme)),
     ]);
 
     frame.render_widget(Clear, popup);
     let dialog = Paragraph::new(lines)
-        .block(recording_block(panel_title("WARNING"), theme))
+        .block(confirm_dialog::warning_block("WARNING", theme))
         .alignment(Alignment::Center);
     frame.render_widget(dialog, popup);
-}
-
-pub(crate) fn recording_overwrite_button_at(
-    area: Rect,
-    x: u16,
-    y: u16,
-) -> Option<RecordingOverwriteSelection> {
-    let popup = recording_overwrite_dialog_area(area);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let buttons = confirm_dialog::button_areas(
-        content,
-        OVERWRITE_BUTTON_ROW_FROM_CONTENT_TOP,
-        &[" Overwrite ", " Cancel "],
-    );
-    buttons
-        .into_iter()
-        .enumerate()
-        .find(|(_, area)| x >= area.x && x < area.right() && y >= area.y && y < area.bottom())
-        .map(|(index, _)| {
-            if index == 0 {
-                RecordingOverwriteSelection::Overwrite
-            } else {
-                RecordingOverwriteSelection::Cancel
-            }
-        })
 }
 
 fn recording_overwrite_dialog_area(area: Rect) -> Rect {
@@ -459,17 +298,6 @@ fn recording_overwrite_dialog_area(area: Rect) -> Rect {
         RECORDING_OVERWRITE_WIDTH,
         RECORDING_OVERWRITE_HEIGHT,
     )
-}
-
-pub(crate) fn recording_no_tracked_ok_button_area(area: Rect) -> Option<Rect> {
-    let popup = centered_rect(52, 16, area);
-    let content = popup.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    confirm_dialog::button_areas(content, NO_TRACKED_BUTTON_ROW_FROM_CONTENT_TOP, &[" OK "])
-        .into_iter()
-        .next()
 }
 
 fn recording_block<'a>(title: impl Into<Line<'a>>, theme: Theme) -> ratatui::widgets::Block<'a> {
@@ -494,26 +322,6 @@ fn recording_error_block(theme: Theme) -> Block<'static> {
         .style(Style::default().bg(theme.panel))
 }
 
-fn recording_path_button_line(selection: RecordingPathSelection, theme: Theme) -> Line<'static> {
-    Line::from(vec![
-        button(
-            " Start ",
-            selection == RecordingPathSelection::Start,
-            false,
-            theme.accent,
-            theme,
-        ),
-        Span::raw("   "),
-        button(
-            " Cancel ",
-            selection == RecordingPathSelection::Cancel,
-            false,
-            theme.accent,
-            theme,
-        ),
-    ])
-}
-
 fn shortcut_line(items: &[(&str, &str)], theme: Theme) -> Line<'static> {
     let mut spans = Vec::new();
     for (index, (key, label)) in items.iter().enumerate() {
@@ -530,64 +338,6 @@ fn shortcut_line(items: &[(&str, &str)], theme: Theme) -> Line<'static> {
         ));
     }
     Line::from(spans)
-}
-
-fn overwrite_button_line(selection: RecordingOverwriteSelection, theme: Theme) -> Line<'static> {
-    Line::from(vec![
-        button(
-            " Overwrite ",
-            selection == RecordingOverwriteSelection::Overwrite,
-            false,
-            theme.warning,
-            theme,
-        ),
-        Span::raw("   "),
-        button(
-            " Cancel ",
-            selection == RecordingOverwriteSelection::Cancel,
-            false,
-            theme.warning,
-            theme,
-        ),
-    ])
-}
-
-fn button(
-    label: &'static str,
-    selected: bool,
-    hovered: bool,
-    selected_background: Color,
-    theme: Theme,
-) -> Span<'static> {
-    if hovered {
-        Span::styled(
-            format!("[{label}]"),
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.focus_surface)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else if selected {
-        Span::styled(
-            format!("[{label}]"),
-            Style::default()
-                .fg(confirm_button_text(theme))
-                .bg(selected_background)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::styled(
-            format!("[{label}]"),
-            Style::default().fg(theme.text).bg(theme.panel_alt),
-        )
-    }
-}
-
-fn confirm_button_text(theme: Theme) -> Color {
-    match theme.name {
-        "Light" => theme.background,
-        _ => Color::Black,
-    }
 }
 
 fn path_input_view(value: &str, cursor: usize, width: usize) -> (String, usize) {

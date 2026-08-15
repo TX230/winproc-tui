@@ -98,7 +98,7 @@ GPU Engine instance names are parsed for PID, LUID, physical-engine index, engin
 The `CPUs` panel is the rightmost compact system-pressure display in the top panel row, after the MEM/GPU resource region and `NW/DISK`.
 It shows average CPU usage, current clock summaries when available, and per-logical-CPU utilization cells.
 When the `CPUs` panel has focus, `Space` or double-click adds or removes `CPU Usage` in the Graph Workspace.
-The left edge of the panel content reserves two character cells for a Graph slot marker, matching the MEM/GPU summary rows. The marker is accented when that source is the active Graph and muted when it is registered but inactive.
+Like registered values in `PROCESSES`, MEM, GPU, and `NW/DISK`, a registered `CPU Usage` value is green and the active Graph value is bold. These source panels do not show Graph slot ordinals or reserve width for them.
 
 | Display | Description | Primary source | Format |
 |---|---|---|---|

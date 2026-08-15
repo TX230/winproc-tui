@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Alignment, Rect},
+    layout::Rect,
     prelude::{Modifier, Style},
     text::{Line, Span},
     widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
@@ -24,8 +24,7 @@ use crate::{
     },
 };
 
-const PROCESS_INFO_MODAL: ScrollableModal = ScrollableModal::new("", 138, 20, 2);
-const CLOSE_BUTTON: &str = "[ Close ]";
+const PROCESS_INFO_MODAL: ScrollableModal = ScrollableModal::new("", 138, 20, 1);
 const TAB_HORIZONTAL_PADDING: u16 = 2;
 const IMAGE_LABEL_WIDTH: usize = 16;
 const METRIC_LABEL_WIDTH: usize = 22;
@@ -86,13 +85,7 @@ pub(crate) fn draw_process_info_dialog(
         }
     }
 
-    draw_footer(
-        frame,
-        layout.footer,
-        app,
-        app.process_info_focus == ProcessInfoFocus::Close,
-        theme,
-    );
+    draw_footer(frame, layout.footer, app, theme);
 }
 
 pub(crate) fn process_info_dialog_layout_for_screen(screen: Rect) -> ProcessInfoDialogLayout {
@@ -145,10 +138,6 @@ pub(crate) fn process_info_tab_at(screen: Rect, x: u16, y: u16) -> Option<Proces
         .into_iter()
         .zip(tab_areas(layout.tabs))
         .find_map(|(tab, area)| contains_point(area, x, y).then_some(tab))
-}
-
-pub(crate) fn process_info_close_button_area_for_screen(screen: Rect) -> Option<Rect> {
-    close_button_area(process_info_dialog_layout_for_screen(screen).footer)
 }
 
 pub(crate) fn process_info_scrollbar_area_for_screen(screen: Rect, app: &App) -> Option<Rect> {
@@ -491,45 +480,24 @@ fn scrollbar_position(total: usize, rows: usize, offset: usize) -> usize {
     (offset.min(max_offset) * total.saturating_sub(1) + max_offset / 2) / max_offset
 }
 
-fn draw_footer(
-    frame: &mut ratatui::Frame<'_>,
-    footer: Rect,
-    app: &App,
-    close_focused: bool,
-    theme: Theme,
-) {
+fn draw_footer(frame: &mut ratatui::Frame<'_>, footer: Rect, app: &App, theme: Theme) {
     if footer.is_empty() {
         return;
     }
-    if footer.height >= 2 {
-        frame.render_widget(
-            Paragraph::new(Line::from(shortcut_spans(app, footer.width, theme)))
-                .style(Style::default().bg(theme.panel)),
-            Rect::new(footer.x, footer.y, footer.width, 1),
-        );
-    }
-    if let Some(area) = close_button_area(footer) {
-        let style = if close_focused {
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.focus_surface)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.text).bg(theme.panel_alt)
-        };
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(CLOSE_BUTTON, style)))
-                .alignment(Alignment::Center),
-            area,
-        );
-    }
+    frame.render_widget(
+        Paragraph::new(Line::from(shortcut_spans(app, footer.width, theme)))
+            .style(Style::default().bg(theme.panel)),
+        footer,
+    );
 }
 
 fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
-    let items = if app.process_info_focus == ProcessInfoFocus::Tabs {
+    let items = if app.process_info_focus == ProcessInfoFocus::Tabs
+        && !app.process_info_tab.content_is_focusable()
+    {
+        vec![("←/→", "tabs"), ("↑/↓", "scroll"), ("Esc", "close")]
+    } else if app.process_info_focus == ProcessInfoFocus::Tabs {
         vec![("←/→", "tabs"), ("Tab", "next"), ("Esc", "close")]
-    } else if app.process_info_focus == ProcessInfoFocus::Close {
-        vec![("Enter", "close"), ("Tab", "next"), ("Esc", "close")]
     } else if app.process_info_detail_is_open() {
         let copy_label = match app.process_info_tab {
             ProcessInfoTab::Dlls => "copy path",
@@ -610,19 +578,6 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
     spans
 }
 
-fn close_button_area(footer: Rect) -> Option<Rect> {
-    let width = CLOSE_BUTTON.len() as u16;
-    if footer.width < width || footer.height == 0 {
-        return None;
-    }
-    Some(Rect::new(
-        footer.x + footer.width.saturating_sub(width) / 2,
-        footer.bottom().saturating_sub(1),
-        width,
-        1,
-    ))
-}
-
 fn format_process_identity(info: &ProcessInfo) -> String {
     format!("{} / PID {}", info.name, info.pid)
 }
@@ -699,15 +654,13 @@ mod tests {
     }
 
     #[test]
-    fn small_screen_keeps_tabs_content_and_close_button_separate() {
+    fn small_screen_keeps_tabs_content_and_shortcuts_separate() {
         let screen = Rect::new(0, 0, 60, 12);
         let layout = process_info_dialog_layout_for_screen(screen);
-        let close = process_info_close_button_area_for_screen(screen)
-            .expect("small dialog should keep a close button");
 
         assert!(layout.tabs.bottom() <= layout.content.y);
-        assert!(layout.content.bottom() <= layout.footer.y);
-        assert!(layout.content.bottom() <= close.y);
+        assert_eq!(layout.content.bottom() + 1, layout.footer.y);
+        assert_eq!(layout.footer.height, 1);
     }
 
     #[test]

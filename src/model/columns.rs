@@ -213,18 +213,15 @@ impl MetricColumn {
 
     pub(crate) fn width(self) -> u16 {
         match self {
-            Self::CpuPercent => 7,
-            Self::GpuPercent => 7,
+            Self::CpuPercent | Self::GpuPercent => 6,
             Self::ThreadCount
             | Self::HandleCount
             | Self::UserObjectCount
-            | Self::GdiObjectCount => 8,
+            | Self::GdiObjectCount => 7,
             Self::PrivateBytes => 11,
-            Self::WorksetBytes
-            | Self::WorksetPrivateBytes
-            | Self::WorksetShareableBytes
-            | Self::GpuDedicatedBytes
-            | Self::GpuSharedBytes => 10,
+            Self::WorksetBytes | Self::GpuDedicatedBytes | Self::GpuSharedBytes => 8,
+            Self::WorksetPrivateBytes => 9,
+            Self::WorksetShareableBytes => 10,
             Self::DotNetHeapBytes => 11,
             Self::IoReadBytesPerSec | Self::IoWriteBytesPerSec => 12,
             Self::FullPath => 36,
@@ -736,27 +733,40 @@ mod tests {
     #[test]
     fn compact_byte_columns_use_dense_header_safe_widths() {
         assert_eq!(MetricColumn::PrivateBytes.width(), 11);
-        assert!(
-            MetricColumn::PrivateBytes.label().chars().count() + 2
-                <= MetricColumn::PrivateBytes.width() as usize
-        );
+        assert_eq!(MetricColumn::WorksetBytes.width(), 8);
+        assert_eq!(MetricColumn::WorksetPrivateBytes.width(), 9);
+        assert_eq!(MetricColumn::WorksetShareableBytes.width(), 10);
+        assert_eq!(MetricColumn::GpuDedicatedBytes.width(), 8);
+        assert_eq!(MetricColumn::GpuSharedBytes.width(), 8);
 
         for column in [
+            MetricColumn::PrivateBytes,
             MetricColumn::WorksetBytes,
             MetricColumn::WorksetPrivateBytes,
             MetricColumn::WorksetShareableBytes,
             MetricColumn::GpuDedicatedBytes,
             MetricColumn::GpuSharedBytes,
+            MetricColumn::DotNetHeapBytes,
         ] {
-            assert_eq!(column.width(), 10);
             assert!(column.label().chars().count() + 2 <= column.width() as usize);
         }
 
         assert_eq!(MetricColumn::DotNetHeapBytes.width(), 11);
-        assert_eq!(
-            MetricColumn::DotNetHeapBytes.label().chars().count() + 2,
-            MetricColumn::DotNetHeapBytes.width() as usize
-        );
+    }
+
+    #[test]
+    fn compact_numeric_columns_keep_typical_values_and_sortable_headers_visible() {
+        assert_eq!(MetricColumn::CpuPercent.width(), 6);
+        assert_eq!(MetricColumn::GpuPercent.width(), 6);
+        for column in [
+            MetricColumn::ThreadCount,
+            MetricColumn::HandleCount,
+            MetricColumn::UserObjectCount,
+            MetricColumn::GdiObjectCount,
+        ] {
+            assert_eq!(column.width(), 7);
+            assert!(column.label().chars().count() + 2 <= column.width() as usize);
+        }
     }
 
     #[test]

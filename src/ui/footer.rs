@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{AppActivity, FocusedPanel, TrackedListsButton, TrackedListsView},
+    app::{AppActivity, FocusedPanel},
     ui::Theme,
 };
 
@@ -22,47 +22,8 @@ pub(crate) fn draw_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
 }
 
 fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    if let Some(view) = app.tracked_lists_view() {
-        let items = match view {
-            TrackedListsView::Browse if app.tracked_lists_save_name_focused() => {
-                vec![("Enter", "Save"), ("Tab", "Next"), ("Esc", "Close")]
-            }
-            TrackedListsView::Browse if app.tracked_lists_startup_focused() => {
-                vec![("Left/Right", "Startup"), ("Tab", "Next"), ("Esc", "Close")]
-            }
-            TrackedListsView::Browse => match app.tracked_lists_focused_button() {
-                Some(TrackedListsButton::Save) => {
-                    vec![("Enter", "Save"), ("Tab", "Next"), ("Esc", "Close")]
-                }
-                Some(TrackedListsButton::Close) => {
-                    vec![("Enter", "Close"), ("Tab", "Next"), ("Esc", "Close")]
-                }
-                None if app.tracked_lists_empty_selected() => {
-                    vec![
-                        ("Enter/Click", "Load Empty"),
-                        ("Tab", "Next"),
-                        ("Esc", "Close"),
-                    ]
-                }
-                None => vec![
-                    ("Enter", "Load"),
-                    ("F2", "Rename"),
-                    ("Del", "Delete"),
-                    ("Tab", "Next"),
-                    ("Esc", "Close"),
-                ],
-            },
-            TrackedListsView::NameInput { .. } => {
-                vec![("Enter", "Rename"), ("Esc", "Cancel")]
-            }
-            TrackedListsView::ConfirmDelete { .. } => {
-                vec![("Y/Enter", "Confirm"), ("N/Esc", "Cancel")]
-            }
-            TrackedListsView::ConfirmSwitch { .. } => {
-                vec![("Y/Enter", "Load"), ("N/Esc", "Cancel")]
-            }
-        };
-        return shortcut_spans(&items, theme);
+    if app.has_modal_focus() {
+        return Vec::new();
     }
 
     let mut items = match app.focused_panel {
@@ -142,12 +103,33 @@ pub(crate) fn shortcut_spans(
     items: &[(&'static str, &'static str)],
     theme: Theme,
 ) -> Vec<Span<'static>> {
+    shortcut_spans_with_key_style(items, Style::default().fg(theme.key_hint), theme)
+}
+
+pub(crate) fn warning_shortcut_spans(
+    items: &[(&'static str, &'static str)],
+    theme: Theme,
+) -> Vec<Span<'static>> {
+    shortcut_spans_with_key_style(
+        items,
+        Style::default()
+            .fg(theme.warning)
+            .add_modifier(ratatui::style::Modifier::BOLD),
+        theme,
+    )
+}
+
+fn shortcut_spans_with_key_style(
+    items: &[(&'static str, &'static str)],
+    key_style: Style,
+    theme: Theme,
+) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for (index, (key, label)) in items.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
-        spans.push(Span::styled(*key, Style::default().fg(theme.key_hint)));
+        spans.push(Span::styled(*key, key_style));
         if !label.is_empty() {
             spans.push(Span::styled(
                 format!(" {label}"),

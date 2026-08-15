@@ -231,7 +231,6 @@ pub(crate) enum ProcessInfoTab {
 pub(crate) enum ProcessInfoFocus {
     Tabs,
     Content,
-    Close,
 }
 
 impl ProcessInfoTab {
@@ -251,6 +250,10 @@ impl ProcessInfoTab {
             Self::Dlls => "DLLs",
             Self::Environment => "Environment",
         }
+    }
+
+    pub(crate) const fn content_is_focusable(self) -> bool {
+        matches!(self, Self::Files | Self::Dlls | Self::Environment)
     }
 
     pub(crate) fn next(self) -> Self {
@@ -654,21 +657,6 @@ impl FocusedPanel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum QuitConfirmSelection {
-    Quit,
-    Cancel,
-}
-
-impl QuitConfirmSelection {
-    fn toggled(self) -> Self {
-        match self {
-            Self::Quit => Self::Cancel,
-            Self::Cancel => Self::Quit,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum GraphSlotLayout {
     #[default]
@@ -708,36 +696,6 @@ impl GraphSlotLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RecordingOverwriteSelection {
-    Overwrite,
-    Cancel,
-}
-
-impl RecordingOverwriteSelection {
-    pub(crate) fn toggled(self) -> Self {
-        match self {
-            Self::Overwrite => Self::Cancel,
-            Self::Cancel => Self::Overwrite,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RecordingStopSelection {
-    Stop,
-    Continue,
-}
-
-impl RecordingStopSelection {
-    pub(crate) fn toggled(self) -> Self {
-        match self {
-            Self::Stop => Self::Continue,
-            Self::Continue => Self::Stop,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RecordingErrorKind {
     CouldNotStart,
     Stopped,
@@ -751,128 +709,10 @@ pub(crate) struct RecordingErrorDialog {
     pub(crate) return_to_path_dialog: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RecordingPathSelection {
-    Path,
-    Start,
-    Cancel,
-}
-
-impl RecordingPathSelection {
-    pub(crate) const fn next(self) -> Self {
-        match self {
-            Self::Path => Self::Start,
-            Self::Start => Self::Cancel,
-            Self::Cancel => Self::Path,
-        }
-    }
-
-    pub(crate) const fn previous(self) -> Self {
-        match self {
-            Self::Path => Self::Cancel,
-            Self::Start => Self::Path,
-            Self::Cancel => Self::Start,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LogListClick {
     pub(crate) index: usize,
     pub(crate) at: Instant,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum LogListFocus {
-    #[default]
-    List,
-    Open,
-    Directory,
-    Refresh,
-    Close,
-}
-
-impl LogListFocus {
-    pub(crate) const fn next(self) -> Self {
-        match self {
-            Self::List => Self::Open,
-            Self::Open => Self::Directory,
-            Self::Directory => Self::Refresh,
-            Self::Refresh => Self::Close,
-            Self::Close => Self::List,
-        }
-    }
-
-    pub(crate) const fn previous(self) -> Self {
-        match self {
-            Self::List => Self::Close,
-            Self::Open => Self::List,
-            Self::Directory => Self::Open,
-            Self::Refresh => Self::Directory,
-            Self::Close => Self::Refresh,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LogDirSelection {
-    Path,
-    Apply,
-    Cancel,
-}
-
-impl LogDirSelection {
-    pub(crate) const fn next(self) -> Self {
-        match self {
-            Self::Path => Self::Apply,
-            Self::Apply => Self::Cancel,
-            Self::Cancel => Self::Path,
-        }
-    }
-
-    pub(crate) const fn previous(self) -> Self {
-        match self {
-            Self::Path => Self::Cancel,
-            Self::Apply => Self::Path,
-            Self::Cancel => Self::Apply,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrackedRemoveSelection {
-    Remove,
-    Cancel,
-}
-
-impl TrackedRemoveSelection {
-    pub(crate) fn toggled(self) -> Self {
-        match self {
-            Self::Remove => Self::Cancel,
-            Self::Cancel => Self::Remove,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrackedListsButton {
-    Save,
-    Close,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrackedListConfirmSelection {
-    Apply,
-    Cancel,
-}
-
-impl TrackedListConfirmSelection {
-    pub(crate) fn toggled(self) -> Self {
-        match self {
-            Self::Apply => Self::Cancel,
-            Self::Cancel => Self::Apply,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -894,11 +734,9 @@ pub(crate) enum TrackedListsView {
     },
     ConfirmDelete {
         name: String,
-        selection: TrackedListConfirmSelection,
     },
     ConfirmSwitch {
         pending: PendingTrackedListSwitch,
-        selection: TrackedListConfirmSelection,
     },
 }
 
@@ -907,29 +745,12 @@ pub(crate) struct TrackedListsDialog {
     pub(crate) index: usize,
     pub(crate) scroll: ScrollableModalState,
     pub(crate) view: TrackedListsView,
-    pub(crate) focused_button: Option<TrackedListsButton>,
     pub(crate) save_name_focused: bool,
     pub(crate) startup_focused: bool,
     pub(crate) save_name_draft: String,
     pub(crate) save_name_cursor: usize,
     pub(crate) save_name_error: Option<String>,
     pub(crate) save_name_feedback: Option<String>,
-    pub(crate) hovered_button: Option<TrackedListsButton>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProcessKillSelection {
-    Kill,
-    Cancel,
-}
-
-impl ProcessKillSelection {
-    pub(crate) fn toggled(self) -> Self {
-        match self {
-            Self::Kill => Self::Cancel,
-            Self::Cancel => Self::Kill,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -974,29 +795,20 @@ pub(crate) struct App {
     pub(crate) show_column_picker: bool,
     pub(crate) tracked_lists_dialog: Option<TrackedListsDialog>,
     pub(crate) show_quit_confirmation: bool,
-    pub(crate) quit_confirm_selection: QuitConfirmSelection,
     pub(crate) show_recording_no_tracked_warning: bool,
     pub(crate) show_recording_path_dialog: bool,
     pub(crate) recording_path_draft: String,
     pub(crate) recording_path_cursor: usize,
     pub(crate) recording_path_completion: PathCompletionState,
-    pub(crate) recording_path_selection: RecordingPathSelection,
     pub(crate) show_recording_overwrite_confirmation: bool,
-    pub(crate) recording_overwrite_selection: RecordingOverwriteSelection,
     pub(crate) show_recording_stop_confirmation: bool,
-    pub(crate) recording_stop_selection: RecordingStopSelection,
-    pub(crate) recording_stop_hovered: Option<RecordingStopSelection>,
     pub(crate) show_recording_tracking_fixed: bool,
-    pub(crate) recording_tracking_fixed_ok_hovered: bool,
     pub(crate) recording_error: Option<RecordingErrorDialog>,
-    pub(crate) recording_error_ok_hovered: bool,
     pub(crate) show_tracked_remove_confirmation: bool,
-    pub(crate) tracked_remove_selection: TrackedRemoveSelection,
     pub(crate) tracked_remove_name: String,
     pub(crate) tracked_remove_total_samples: usize,
     pub(crate) tracked_remove_discarded_samples: usize,
     pub(crate) show_process_kill_confirmation: bool,
-    pub(crate) process_kill_selection: ProcessKillSelection,
     pub(crate) process_kill_targets: Vec<ProcessKillTarget>,
     pub(crate) show_display_area_warning: bool,
     pub(crate) show_metric_column_warning: bool,
@@ -1011,12 +823,10 @@ pub(crate) struct App {
     pub(crate) show_log_list: bool,
     pub(crate) log_list_index: usize,
     pub(crate) log_list_scroll: ScrollableModalState,
-    pub(crate) log_list_focus: LogListFocus,
     pub(crate) show_log_dir_dialog: bool,
     pub(crate) log_dir_draft: String,
     pub(crate) log_dir_cursor: usize,
     pub(crate) log_dir_completion: PathCompletionState,
-    pub(crate) log_dir_selection: LogDirSelection,
     pub(crate) log_dir_error: Option<String>,
     pub(crate) open_files_scroll: ScrollableModalState,
     pub(crate) open_files_result: Option<OpenFilesReport>,
@@ -1200,29 +1010,20 @@ impl App {
             show_column_picker: false,
             tracked_lists_dialog: None,
             show_quit_confirmation: false,
-            quit_confirm_selection: QuitConfirmSelection::Cancel,
             show_recording_no_tracked_warning: false,
             show_recording_path_dialog: false,
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: PathCompletionState::default(),
-            recording_path_selection: RecordingPathSelection::Path,
             show_recording_overwrite_confirmation: false,
-            recording_overwrite_selection: RecordingOverwriteSelection::Cancel,
             show_recording_stop_confirmation: false,
-            recording_stop_selection: RecordingStopSelection::Continue,
-            recording_stop_hovered: None,
             show_recording_tracking_fixed: false,
-            recording_tracking_fixed_ok_hovered: false,
             recording_error: None,
-            recording_error_ok_hovered: false,
             show_tracked_remove_confirmation: false,
-            tracked_remove_selection: TrackedRemoveSelection::Cancel,
             tracked_remove_name: String::new(),
             tracked_remove_total_samples: 0,
             tracked_remove_discarded_samples: 0,
             show_process_kill_confirmation: false,
-            process_kill_selection: ProcessKillSelection::Cancel,
             process_kill_targets: Vec::new(),
             show_display_area_warning: false,
             show_metric_column_warning: false,
@@ -1243,12 +1044,10 @@ impl App {
                 page_size: 1,
                 ..ScrollableModalState::default()
             },
-            log_list_focus: LogListFocus::List,
             show_log_dir_dialog: false,
             log_dir_draft: String::new(),
             log_dir_cursor: 0,
             log_dir_completion: PathCompletionState::default(),
-            log_dir_selection: LogDirSelection::Path,
             log_dir_error: None,
             open_files_scroll: ScrollableModalState {
                 page_size: 1,
@@ -3749,7 +3548,6 @@ impl App {
         discarded_samples: usize,
     ) {
         self.show_tracked_remove_confirmation = true;
-        self.tracked_remove_selection = TrackedRemoveSelection::Cancel;
         self.tracked_remove_name = name;
         self.tracked_remove_total_samples = total_samples;
         self.tracked_remove_discarded_samples = discarded_samples;
@@ -3776,20 +3574,8 @@ impl App {
         self.status = "Tracked removal canceled".to_string();
     }
 
-    pub(crate) fn toggle_tracked_remove_selection(&mut self) {
-        self.tracked_remove_selection = self.tracked_remove_selection.toggled();
-    }
-
-    pub(crate) fn activate_tracked_remove_selection(&mut self) {
-        match self.tracked_remove_selection {
-            TrackedRemoveSelection::Remove => self.confirm_tracked_remove(),
-            TrackedRemoveSelection::Cancel => self.cancel_tracked_remove_confirmation(),
-        }
-    }
-
     fn reset_tracked_remove_confirmation(&mut self) {
         self.show_tracked_remove_confirmation = false;
-        self.tracked_remove_selection = TrackedRemoveSelection::Cancel;
         self.tracked_remove_name.clear();
         self.tracked_remove_total_samples = 0;
         self.tracked_remove_discarded_samples = 0;
@@ -3847,7 +3633,6 @@ impl App {
         }
 
         self.show_recording_tracking_fixed = true;
-        self.recording_tracking_fixed_ok_hovered = false;
         self.status = "Tracking List is fixed while recording".to_string();
         true
     }
@@ -3882,14 +3667,12 @@ impl App {
                 ..ScrollableModalState::default()
             },
             view: TrackedListsView::Browse,
-            focused_button: None,
             save_name_focused: false,
             startup_focused: false,
             save_name_draft,
             save_name_cursor,
             save_name_error: None,
             save_name_feedback: None,
-            hovered_button: None,
         });
         self.ensure_tracked_list_selection_visible();
         self.status = "Tracking Lists".to_string();
@@ -3938,18 +3721,6 @@ impl App {
             .filter(|index| *index < self.runtime.saved_tracked_lists.len())
     }
 
-    pub(crate) fn tracked_lists_focused_button(&self) -> Option<TrackedListsButton> {
-        self.tracked_lists_dialog
-            .as_ref()
-            .and_then(|dialog| dialog.focused_button)
-    }
-
-    pub(crate) fn tracked_lists_hovered_button(&self) -> Option<TrackedListsButton> {
-        self.tracked_lists_dialog
-            .as_ref()
-            .and_then(|dialog| dialog.hovered_button)
-    }
-
     pub(crate) fn tracked_lists_save_name_focused(&self) -> bool {
         self.tracked_lists_dialog
             .as_ref()
@@ -3982,25 +3753,14 @@ impl App {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             if dialog.save_name_focused {
                 dialog.save_name_focused = false;
-                dialog.focused_button = Some(TrackedListsButton::Save);
+                dialog.startup_focused = true;
                 return;
             }
             if dialog.startup_focused {
                 dialog.startup_focused = false;
-                dialog.focused_button = Some(TrackedListsButton::Close);
                 return;
             }
-            dialog.focused_button = match dialog.focused_button {
-                None => {
-                    dialog.save_name_focused = true;
-                    None
-                }
-                Some(TrackedListsButton::Save) => {
-                    dialog.startup_focused = true;
-                    None
-                }
-                Some(TrackedListsButton::Close) => None,
-            };
+            dialog.save_name_focused = true;
         }
     }
 
@@ -4008,39 +3768,19 @@ impl App {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
             if dialog.save_name_focused {
                 dialog.save_name_focused = false;
-                dialog.focused_button = None;
                 return;
             }
             if dialog.startup_focused {
                 dialog.startup_focused = false;
-                dialog.focused_button = Some(TrackedListsButton::Save);
+                dialog.save_name_focused = true;
                 return;
             }
-            dialog.focused_button = match dialog.focused_button {
-                None => Some(TrackedListsButton::Close),
-                Some(TrackedListsButton::Save) => {
-                    dialog.save_name_focused = true;
-                    None
-                }
-                Some(TrackedListsButton::Close) => {
-                    dialog.startup_focused = true;
-                    None
-                }
-            };
-        }
-    }
-
-    pub(crate) fn focus_tracked_lists_button(&mut self, button: TrackedListsButton) {
-        if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-            dialog.focused_button = Some(button);
-            dialog.save_name_focused = false;
-            dialog.startup_focused = false;
+            dialog.startup_focused = true;
         }
     }
 
     pub(crate) fn focus_tracked_lists_list(&mut self) {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-            dialog.focused_button = None;
             dialog.save_name_focused = false;
             dialog.startup_focused = false;
         }
@@ -4048,7 +3788,6 @@ impl App {
 
     pub(crate) fn focus_tracked_lists_save_name(&mut self) {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-            dialog.focused_button = None;
             dialog.save_name_focused = true;
             dialog.startup_focused = false;
             dialog.save_name_cursor = dialog.save_name_draft.len();
@@ -4057,7 +3796,6 @@ impl App {
 
     pub(crate) fn focus_tracked_lists_startup(&mut self) {
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-            dialog.focused_button = None;
             dialog.save_name_focused = false;
             dialog.startup_focused = true;
         }
@@ -4071,19 +3809,13 @@ impl App {
         self.set_tracked_list_startup(self.runtime.tracked_list_startup.previous());
     }
 
-    fn set_tracked_list_startup(&mut self, startup: TrackedListStartup) {
+    pub(crate) fn set_tracked_list_startup(&mut self, startup: TrackedListStartup) {
         let previous = self.runtime.tracked_list_startup;
         self.runtime.tracked_list_startup = startup;
         if self.persist_tracked_list_changes() {
             self.status = format!("Tracking List startup: {}", startup.label());
         } else {
             self.runtime.tracked_list_startup = previous;
-        }
-    }
-
-    pub(crate) fn set_tracked_lists_hovered_button(&mut self, button: Option<TrackedListsButton>) {
-        if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-            dialog.hovered_button = button;
         }
     }
 
@@ -4573,60 +4305,20 @@ impl App {
             return;
         };
         if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-            dialog.view = TrackedListsView::ConfirmDelete {
-                name,
-                selection: TrackedListConfirmSelection::Cancel,
-            };
+            dialog.view = TrackedListsView::ConfirmDelete { name };
         }
     }
 
-    pub(crate) fn toggle_tracked_list_confirmation_selection(&mut self) {
-        let Some(dialog) = self.tracked_lists_dialog.as_mut() else {
-            return;
-        };
-        match &mut dialog.view {
-            TrackedListsView::ConfirmDelete { selection, .. }
-            | TrackedListsView::ConfirmSwitch { selection, .. } => {
-                *selection = selection.toggled();
-            }
-            _ => {}
-        }
-    }
-
-    pub(crate) fn set_tracked_list_confirmation_selection(
-        &mut self,
-        selection: TrackedListConfirmSelection,
-    ) {
-        let Some(dialog) = self.tracked_lists_dialog.as_mut() else {
-            return;
-        };
-        match &mut dialog.view {
-            TrackedListsView::ConfirmDelete {
-                selection: current, ..
-            }
-            | TrackedListsView::ConfirmSwitch {
-                selection: current, ..
-            } => *current = selection,
-            _ => {}
-        }
-    }
-
-    pub(crate) fn activate_tracked_list_confirmation(&mut self) {
+    pub(crate) fn confirm_tracked_list_action(&mut self) {
         let view = self
             .tracked_lists_dialog
             .as_ref()
             .map(|dialog| dialog.view.clone());
         match view {
-            Some(TrackedListsView::ConfirmDelete {
-                name,
-                selection: TrackedListConfirmSelection::Apply,
-            }) => self.delete_saved_tracked_list(name),
-            Some(TrackedListsView::ConfirmSwitch {
-                pending,
-                selection: TrackedListConfirmSelection::Apply,
-            }) => self.apply_tracked_list_switch(pending),
-            Some(TrackedListsView::ConfirmDelete { .. })
-            | Some(TrackedListsView::ConfirmSwitch { .. }) => self.cancel_tracked_list_subdialog(),
+            Some(TrackedListsView::ConfirmDelete { name }) => self.delete_saved_tracked_list(name),
+            Some(TrackedListsView::ConfirmSwitch { pending }) => {
+                self.apply_tracked_list_switch(pending)
+            }
             _ => {}
         }
     }
@@ -4696,10 +4388,7 @@ impl App {
         };
         if discarded_sample_count > 0 {
             if let Some(dialog) = self.tracked_lists_dialog.as_mut() {
-                dialog.view = TrackedListsView::ConfirmSwitch {
-                    pending,
-                    selection: TrackedListConfirmSelection::Cancel,
-                };
+                dialog.view = TrackedListsView::ConfirmSwitch { pending };
             }
             self.status = "Loading this Tracking List will discard older samples".to_string();
         } else {
@@ -4800,7 +4489,6 @@ impl App {
         let image_count = distinct_process_kill_image_names(&targets).len();
         let row_count = targets.len();
         self.process_kill_targets = targets;
-        self.process_kill_selection = ProcessKillSelection::Cancel;
         self.show_process_kill_confirmation = true;
         self.status = format!("Confirm kill for {row_count} selected rows / {image_count} images");
         true
@@ -4836,20 +4524,8 @@ impl App {
         self.status = "Process kill canceled".to_string();
     }
 
-    pub(crate) fn toggle_process_kill_selection(&mut self) {
-        self.process_kill_selection = self.process_kill_selection.toggled();
-    }
-
-    pub(crate) fn activate_process_kill_selection(&mut self) {
-        match self.process_kill_selection {
-            ProcessKillSelection::Kill => self.confirm_process_kill(),
-            ProcessKillSelection::Cancel => self.cancel_process_kill_confirmation(),
-        }
-    }
-
     fn reset_process_kill_confirmation(&mut self) {
         self.show_process_kill_confirmation = false;
-        self.process_kill_selection = ProcessKillSelection::Cancel;
         self.process_kill_targets.clear();
     }
 
@@ -5027,14 +4703,24 @@ impl App {
     }
 
     pub(crate) fn next_process_info_tab(&mut self) -> Result<()> {
-        self.activate_process_info_tab(self.process_info_tab.next())?;
-        self.process_info_focus = ProcessInfoFocus::Content;
+        let tab = self.process_info_tab.next();
+        self.activate_process_info_tab(tab)?;
+        self.process_info_focus = if tab.content_is_focusable() {
+            ProcessInfoFocus::Content
+        } else {
+            ProcessInfoFocus::Tabs
+        };
         Ok(())
     }
 
     pub(crate) fn previous_process_info_tab(&mut self) -> Result<()> {
-        self.activate_process_info_tab(self.process_info_tab.previous())?;
-        self.process_info_focus = ProcessInfoFocus::Content;
+        let tab = self.process_info_tab.previous();
+        self.activate_process_info_tab(tab)?;
+        self.process_info_focus = if tab.content_is_focusable() {
+            ProcessInfoFocus::Content
+        } else {
+            ProcessInfoFocus::Tabs
+        };
         Ok(())
     }
 
@@ -5043,12 +4729,18 @@ impl App {
             return Ok(());
         }
         if self.process_info_tab == tab {
+            if !tab.content_is_focusable() {
+                self.process_info_focus = ProcessInfoFocus::Tabs;
+            }
             return Ok(());
         }
         self.active_process_info_scroll_mut().stop_drag();
         self.process_modules_show_detail = false;
         self.process_environment_show_detail = false;
         self.process_info_tab = tab;
+        if !tab.content_is_focusable() {
+            self.process_info_focus = ProcessInfoFocus::Tabs;
+        }
         match tab {
             ProcessInfoTab::Image => self.ensure_selected_process_info(),
             ProcessInfoTab::Files => self.ensure_open_files_for_target()?,
@@ -5060,18 +4752,24 @@ impl App {
     }
 
     pub(crate) fn focus_next_process_info_control(&mut self) {
+        if !self.process_info_tab.content_is_focusable() {
+            self.process_info_focus = ProcessInfoFocus::Tabs;
+            return;
+        }
         self.process_info_focus = match self.process_info_focus {
-            ProcessInfoFocus::Content => ProcessInfoFocus::Close,
-            ProcessInfoFocus::Close => ProcessInfoFocus::Tabs,
+            ProcessInfoFocus::Content => ProcessInfoFocus::Tabs,
             ProcessInfoFocus::Tabs => ProcessInfoFocus::Content,
         };
     }
 
     pub(crate) fn focus_previous_process_info_control(&mut self) {
+        if !self.process_info_tab.content_is_focusable() {
+            self.process_info_focus = ProcessInfoFocus::Tabs;
+            return;
+        }
         self.process_info_focus = match self.process_info_focus {
             ProcessInfoFocus::Content => ProcessInfoFocus::Tabs,
-            ProcessInfoFocus::Tabs => ProcessInfoFocus::Close,
-            ProcessInfoFocus::Close => ProcessInfoFocus::Content,
+            ProcessInfoFocus::Tabs => ProcessInfoFocus::Content,
         };
     }
 
@@ -6268,11 +5966,10 @@ impl App {
 
     pub(crate) fn request_quit_confirmation(&mut self) {
         self.show_quit_confirmation = true;
-        self.quit_confirm_selection = QuitConfirmSelection::Cancel;
         self.status = if self.recording_session.is_some() {
             "Recording is active. Stop recording and quit?".to_string()
         } else {
-            "Quit? Enter activates selected button, Esc cancels".to_string()
+            "Quit? Press Enter or q to quit; Esc cancels".to_string()
         };
     }
 
@@ -6299,24 +5996,6 @@ impl App {
         self.show_quit_confirmation = false;
         self.ensure_visible_panel_focus();
         self.status = "Quit canceled".to_string();
-    }
-
-    pub(crate) fn select_next_quit_action(&mut self) {
-        self.quit_confirm_selection = self.quit_confirm_selection.toggled();
-    }
-
-    pub(crate) fn select_previous_quit_action(&mut self) {
-        self.quit_confirm_selection = self.quit_confirm_selection.toggled();
-    }
-
-    pub(crate) fn activate_quit_selection(&mut self) -> Result<()> {
-        match self.quit_confirm_selection {
-            QuitConfirmSelection::Quit => self.confirm_quit(),
-            QuitConfirmSelection::Cancel => {
-                self.cancel_quit_confirmation();
-                Ok(())
-            }
-        }
     }
 
     pub(crate) fn open_help(&mut self) {
@@ -6473,7 +6152,6 @@ impl App {
             return Ok(());
         }
         self.show_log_list = true;
-        self.log_list_focus = LogListFocus::List;
         self.show_log_dir_dialog = false;
         self.log_list_dir = Some(self.default_log_list_dir()?);
         self.log_list_index = self
@@ -6486,7 +6164,6 @@ impl App {
         self.show_log_list = false;
         self.show_log_dir_dialog = false;
         self.log_list_last_click = None;
-        self.log_list_focus = LogListFocus::List;
         self.log_list_scroll.stop_drag();
         if self.activity() == AppActivity::LogView {
             self.exit_log_view();
@@ -6528,7 +6205,6 @@ impl App {
         self.log_dir_draft = dir.display().to_string();
         self.log_dir_cursor = self.log_dir_draft.len();
         self.log_dir_completion.reset();
-        self.log_dir_selection = LogDirSelection::Path;
         self.log_dir_error = None;
         self.show_log_dir_dialog = true;
         self.status = "Edit log directory".to_string();
@@ -6540,42 +6216,6 @@ impl App {
         self.log_dir_error = None;
         self.log_dir_completion.reset();
         self.status = "Log directory unchanged".to_string();
-    }
-
-    pub(crate) fn activate_log_dir_selection(&mut self) -> Result<()> {
-        match self.log_dir_selection {
-            LogDirSelection::Path | LogDirSelection::Apply => self.confirm_log_dir(),
-            LogDirSelection::Cancel => {
-                self.cancel_log_dir_dialog();
-                Ok(())
-            }
-        }
-    }
-
-    pub(crate) fn focus_next_log_dir_control(&mut self) {
-        self.log_dir_selection = self.log_dir_selection.next();
-    }
-
-    pub(crate) fn focus_previous_log_dir_control(&mut self) {
-        self.log_dir_selection = self.log_dir_selection.previous();
-    }
-
-    pub(crate) fn focus_next_log_list_control(&mut self) {
-        self.log_list_focus = self.log_list_focus.next();
-    }
-
-    pub(crate) fn focus_previous_log_list_control(&mut self) {
-        self.log_list_focus = self.log_list_focus.previous();
-    }
-
-    pub(crate) fn activate_log_list_control(&mut self) -> Result<()> {
-        match self.log_list_focus {
-            LogListFocus::List | LogListFocus::Open => self.load_selected_log(),
-            LogListFocus::Directory => self.open_log_dir_dialog()?,
-            LogListFocus::Refresh => self.refresh_log_list()?,
-            LogListFocus::Close => self.close_log_list(),
-        }
-        Ok(())
     }
 
     pub(crate) fn confirm_log_dir(&mut self) -> Result<()> {

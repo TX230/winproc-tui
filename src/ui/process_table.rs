@@ -12,7 +12,7 @@ use crate::{
     ui::{
         Theme,
         format::{format_compact_bytes, format_integer, format_io_rate},
-        graph_slot::{GRAPH_SLOT_NUMBER_GAP, GRAPH_SLOT_NUMBER_WIDTH, graph_slot_number_span},
+        graph_slot::graph_value_style,
         layout::ProcessTableLayout,
         widgets::block::panel_block_focused,
     },
@@ -473,28 +473,13 @@ fn process_metric_cell(
     text_style: Style,
     theme: Theme,
 ) -> Cell<'static> {
-    if let Some(state) = graph_state {
-        let mut cell = Cell::from(process_metric_line_with_graph_slot_number(
-            process,
-            column,
-            column_width,
-            state,
-            theme,
-            text_style,
-        ));
-        if selected_cell {
-            cell = cell.style(Style::default().bg(theme.table_intersection_surface));
-        } else if selected {
-            cell = cell.style(Style::default().bg(theme.table_column_surface));
-        }
-        return cell;
-    }
+    let value_style = graph_value_style(text_style, graph_state, theme);
     let mut cell = Cell::from(process_metric_line(
         process,
         column,
         column_width,
         app,
-        text_style,
+        value_style,
         theme,
     ));
     if selected_cell {
@@ -520,7 +505,9 @@ fn process_row_style(selected: bool, multi_selected: bool, theme: Theme) -> Styl
     if selected {
         Style::default().fg(fg).bg(theme.table_selection_surface)
     } else if multi_selected {
-        Style::default().fg(fg).bg(theme.selection)
+        Style::default()
+            .fg(fg)
+            .bg(theme.table_multi_selection_surface)
     } else {
         Style::default().fg(fg).bg(theme.panel)
     }
@@ -547,42 +534,6 @@ fn process_metric_line(
         Line::from(Span::styled(value, text_style))
     };
     line.alignment(process_metric_alignment(column))
-}
-
-fn process_metric_line_with_graph_slot_number(
-    process: &ProcessRow,
-    column: MetricColumn,
-    column_width: u16,
-    state: GraphSourceState,
-    theme: Theme,
-    text_style: Style,
-) -> Line<'static> {
-    let column_width = column_width as usize;
-    let marker_width = GRAPH_SLOT_NUMBER_WIDTH.min(column_width);
-    let gap_width = GRAPH_SLOT_NUMBER_GAP.min(column_width.saturating_sub(marker_width));
-    let value_width = column_width.saturating_sub(marker_width + gap_width);
-    let value = compact_graph_cell_value(
-        format_process_column(process, column, value_width as u16),
-        value_width,
-    );
-    let spacing = value_width.saturating_sub(value.chars().count());
-    Line::from(vec![
-        graph_slot_number_span(Some(state), marker_width, theme),
-        Span::raw(" ".repeat(gap_width + spacing)),
-        Span::styled(value, text_style),
-    ])
-}
-
-fn compact_graph_cell_value(value: String, width: usize) -> String {
-    if value.chars().count() <= width {
-        return value;
-    }
-    let compact = value.replace(' ', "");
-    if compact.chars().count() <= width {
-        compact
-    } else {
-        compact.chars().take(width).collect()
-    }
 }
 
 fn tracked_cell(row: &VisibleProcessRow<'_>, theme: Theme) -> Cell<'static> {
@@ -1184,13 +1135,30 @@ mod tests {
     }
 
     #[test]
-    fn compact_byte_column_width_keeps_two_digit_slot_separate_from_max_value() {
-        let column_width = MetricColumn::PrivateBytes.width() as usize;
-        let value_width = column_width - GRAPH_SLOT_NUMBER_WIDTH - GRAPH_SLOT_NUMBER_GAP;
-        let value = compact_graph_cell_value(format_compact_bytes(999_900_000), value_width);
+    fn graphed_process_values_use_green_with_bold_reserved_for_the_active_graph() {
+        for theme in crate::ui::THEMES {
+            let inactive = graph_value_style(
+                Style::default(),
+                Some(GraphSourceState {
+                    ordinal: 0,
+                    active: false,
+                }),
+                theme,
+            );
+            let active = graph_value_style(
+                Style::default(),
+                Some(GraphSourceState {
+                    ordinal: 1,
+                    active: true,
+                }),
+                theme,
+            );
 
-        assert_eq!(value, "999.9 MB");
-        assert_eq!(value.chars().count(), value_width);
+            assert_eq!(inactive.fg, Some(theme.active_series));
+            assert!(!inactive.add_modifier.contains(Modifier::BOLD));
+            assert_eq!(active.fg, Some(theme.active_series));
+            assert!(active.add_modifier.contains(Modifier::BOLD));
+        }
     }
 
     #[test]
@@ -1304,12 +1272,12 @@ mod tests {
     }
 
     #[test]
-    fn multi_selected_rows_use_selection_color() {
+    fn multi_selected_rows_use_the_process_table_selection_surface() {
         let theme = crate::ui::theme::THEMES[0];
 
         assert_eq!(
             process_row_style(false, true, theme).bg,
-            Some(theme.selection)
+            Some(theme.table_multi_selection_surface)
         );
         assert!(
             !process_row_style(false, true, theme)

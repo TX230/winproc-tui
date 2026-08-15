@@ -9,33 +9,22 @@ use ratatui::layout::{Margin, Rect};
 use crate::{
     app::{
         App, AppActivity, DetailsMetric, FocusedPanel, GraphHoverTarget, GraphId, GraphPanDrag,
-        GraphPanDragButton, GraphSlot, ProcessInfoFocus, ProcessKillSelection,
-        QuitConfirmSelection, RecordingOverwriteSelection, RecordingStopSelection,
-        TrackedListConfirmSelection, TrackedListsButton, TrackedListsView, TrackedRemoveSelection,
+        GraphPanDragButton, GraphSlot, ProcessInfoFocus, TrackedListsView,
     },
     platform::send_terminal_zoom_shortcut,
     ui::{
-        TrackedListNameButton, column_picker_close_button_area_for_screen, column_picker_index_at,
-        column_picker_scrollbar_area, cpu_panel_area_for_screen,
+        column_picker_index_at, column_picker_scrollbar_area, cpu_panel_area_for_screen,
         details_panel::graph_y_axis_label_width,
-        display_area_warning_ok_button_area, gpu_panel_area_for_screen, help_area,
-        help_close_button_area, help_scrollbar_area,
+        gpu_panel_area_for_screen, help_scrollbar_area,
         layout::{
             GraphWorkspaceLayout, ProcessTableLayout, details_graph_chart_area,
             graph_shared_control_areas, graph_workspace_layout,
         },
-        log_dir_button_at, log_dir_input_area, log_list_button_at, log_list_index_at,
-        main_panel_areas_for_app, memory_metric_at_position, metric_column_warning_ok_button_area,
-        no_graph_metrics_warning_ok_button_area, process_info_close_button_area_for_screen,
-        process_info_content_area_for_screen, process_info_tab_at, process_kill_button_at,
-        process_metric_column_index_at, process_tracked_only_control_area, quit_confirm_button_at,
-        ram_vram_panel_area_for_screen, recording_error_ok_button_area,
-        recording_no_tracked_ok_button_area, recording_overwrite_button_at,
-        recording_path_button_at, recording_path_input_area, recording_stop_button_at,
-        recording_tracking_fixed_ok_button_area, system_activity_panel_area_for_screen,
-        system_info_ok_button_area_for_screen, tracked_list_confirm_button_at,
-        tracked_list_index_at, tracked_list_name_button_at, tracked_list_save_name_area_for_screen,
-        tracked_list_startup_area_for_screen, tracked_lists_button_at, tracked_remove_button_at,
+        log_list_index_at, main_panel_areas_for_app, memory_metric_at_position,
+        process_info_content_area_for_screen, process_info_tab_at, process_metric_column_index_at,
+        process_tracked_only_control_area, ram_vram_panel_area_for_screen,
+        recording_path_input_area, system_activity_panel_area_for_screen, tracked_list_index_at,
+        tracked_list_save_name_area_for_screen, tracked_list_startup_at_for_screen,
     },
 };
 
@@ -58,16 +47,12 @@ impl App {
 
         if self.show_recording_stop_confirmation {
             match key.code {
-                KeyCode::Enter => self.activate_recording_stop_selection(),
-                KeyCode::Esc => self.cancel_recording_stop(),
+                KeyCode::Enter | KeyCode::Esc => self.cancel_recording_stop(),
                 KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
                     self.cancel_recording_stop();
                 }
                 KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
                     self.confirm_recording_stop();
-                }
-                KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
-                    self.toggle_recording_stop_selection();
                 }
                 _ => {}
             }
@@ -142,36 +127,25 @@ impl App {
                         if self.tracked_lists_save_name_focused() {
                             self.save_current_tracked_list();
                         } else if self.tracked_lists_startup_focused() {
-                            self.select_next_tracked_list_startup();
-                        } else if let Some(button) = self.tracked_lists_focused_button() {
-                            self.activate_tracked_lists_button(button);
+                            self.close_tracked_lists();
                         } else {
                             self.load_selected_tracked_list();
                         }
                     }
-                    KeyCode::Left if self.tracked_lists_focused_button().is_some() => {
-                        self.focus_previous_tracked_lists_control();
-                    }
-                    KeyCode::Right if self.tracked_lists_focused_button().is_some() => {
-                        self.focus_next_tracked_lists_control();
-                    }
                     KeyCode::Up
-                        if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused()
+                        if !self.tracked_lists_save_name_focused()
                             && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_up(1);
                     }
                     KeyCode::Down
-                        if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused()
+                        if !self.tracked_lists_save_name_focused()
                             && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_down(1);
                     }
                     KeyCode::PageUp
-                        if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused()
+                        if !self.tracked_lists_save_name_focused()
                             && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_up(
@@ -182,8 +156,7 @@ impl App {
                         );
                     }
                     KeyCode::PageDown
-                        if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused()
+                        if !self.tracked_lists_save_name_focused()
                             && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_down(
@@ -194,15 +167,13 @@ impl App {
                         );
                     }
                     KeyCode::Home
-                        if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused()
+                        if !self.tracked_lists_save_name_focused()
                             && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_home();
                     }
                     KeyCode::End
-                        if self.tracked_lists_focused_button().is_none()
-                            && !self.tracked_lists_save_name_focused()
+                        if !self.tracked_lists_save_name_focused()
                             && !self.tracked_lists_startup_focused() =>
                     {
                         self.move_tracked_list_selection_end();
@@ -240,19 +211,12 @@ impl App {
                 },
                 TrackedListsView::ConfirmDelete { .. } | TrackedListsView::ConfirmSwitch { .. } => {
                     match key.code {
-                        KeyCode::Esc => self.cancel_tracked_list_subdialog(),
-                        KeyCode::Enter => self.activate_tracked_list_confirmation(),
+                        KeyCode::Esc | KeyCode::Enter => self.cancel_tracked_list_subdialog(),
                         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
-                            self.set_tracked_list_confirmation_selection(
-                                TrackedListConfirmSelection::Apply,
-                            );
-                            self.activate_tracked_list_confirmation();
+                            self.confirm_tracked_list_action();
                         }
                         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
                             self.cancel_tracked_list_subdialog();
-                        }
-                        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
-                            self.toggle_tracked_list_confirmation_selection();
                         }
                         _ => {}
                     }
@@ -263,14 +227,9 @@ impl App {
 
         if self.show_quit_confirmation {
             match key.code {
-                KeyCode::Enter => self.activate_quit_selection()?,
-                KeyCode::Char('q') => self.confirm_quit()?,
+                KeyCode::Enter => self.confirm_quit()?,
+                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'q') => self.confirm_quit()?,
                 KeyCode::Esc => self.cancel_quit_confirmation(),
-                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
-                    self.cancel_quit_confirmation();
-                }
-                KeyCode::Left => self.select_previous_quit_action(),
-                KeyCode::Right | KeyCode::Tab => self.select_next_quit_action(),
                 _ => {}
             }
             return Ok(());
@@ -278,16 +237,12 @@ impl App {
 
         if self.show_recording_overwrite_confirmation {
             match key.code {
-                KeyCode::Enter => self.activate_recording_overwrite_selection()?,
-                KeyCode::Esc => self.cancel_recording_overwrite_confirmation(),
+                KeyCode::Enter | KeyCode::Esc => self.cancel_recording_overwrite_confirmation(),
                 KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
                     self.cancel_recording_overwrite_confirmation();
                 }
                 KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
                     self.confirm_recording_overwrite()?;
-                }
-                KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
-                    self.toggle_recording_overwrite_selection();
                 }
                 _ => {}
             }
@@ -304,17 +259,8 @@ impl App {
 
         if self.show_tracked_remove_confirmation {
             match key.code {
-                KeyCode::Enter => self.activate_tracked_remove_selection(),
+                KeyCode::Enter => self.confirm_tracked_remove(),
                 KeyCode::Esc => self.cancel_tracked_remove_confirmation(),
-                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
-                    self.cancel_tracked_remove_confirmation();
-                }
-                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
-                    self.confirm_tracked_remove();
-                }
-                KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
-                    self.toggle_tracked_remove_selection();
-                }
                 _ => {}
             }
             return Ok(());
@@ -322,17 +268,8 @@ impl App {
 
         if self.show_process_kill_confirmation {
             match key.code {
-                KeyCode::Enter => self.activate_process_kill_selection(),
+                KeyCode::Enter => self.confirm_process_kill(),
                 KeyCode::Esc => self.cancel_process_kill_confirmation(),
-                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => {
-                    self.cancel_process_kill_confirmation();
-                }
-                KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'y') => {
-                    self.confirm_process_kill();
-                }
-                KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
-                    self.toggle_process_kill_selection();
-                }
                 _ => {}
             }
             return Ok(());
@@ -341,62 +278,31 @@ impl App {
         if self.show_recording_path_dialog {
             match key.code {
                 KeyCode::Esc => self.cancel_recording_path_dialog(),
-                KeyCode::Enter => self.activate_recording_path_selection()?,
-                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                    self.focus_previous_recording_path_control()
-                }
-                KeyCode::Tab => self.focus_next_recording_path_control(),
-                KeyCode::BackTab => self.focus_previous_recording_path_control(),
-                KeyCode::Char(' ')
-                    if key.modifiers.contains(KeyModifiers::CONTROL)
-                        && self.recording_path_selection
-                            == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::Enter => self.confirm_recording_path()?,
+                KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.complete_recording_path();
                 }
-                KeyCode::Backspace
-                    if self.recording_path_selection
-                        == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::Backspace => {
                     self.pop_recording_path_char();
                 }
-                KeyCode::Delete
-                    if self.recording_path_selection
-                        == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::Delete => {
                     self.delete_recording_path_char();
                 }
-                KeyCode::Left
-                    if self.recording_path_selection
-                        == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::Left => {
                     self.move_recording_path_cursor_left();
                 }
-                KeyCode::Left => self.focus_previous_recording_path_control(),
-                KeyCode::Right
-                    if self.recording_path_selection
-                        == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::Right => {
                     self.move_recording_path_cursor_right();
                 }
-                KeyCode::Right => self.focus_next_recording_path_control(),
-                KeyCode::Home
-                    if self.recording_path_selection
-                        == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::Home => {
                     self.move_recording_path_cursor_home();
                 }
-                KeyCode::End
-                    if self.recording_path_selection
-                        == crate::app::RecordingPathSelection::Path =>
-                {
+                KeyCode::End => {
                     self.move_recording_path_cursor_end();
                 }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                        && self.recording_path_selection
-                            == crate::app::RecordingPathSelection::Path =>
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
                 {
                     self.push_recording_path_char(ch);
                 }
@@ -408,44 +314,31 @@ impl App {
         if self.show_log_dir_dialog {
             match key.code {
                 KeyCode::Esc => self.cancel_log_dir_dialog(),
-                KeyCode::Enter => self.activate_log_dir_selection()?,
-                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                    self.focus_previous_log_dir_control()
-                }
-                KeyCode::Tab => self.focus_next_log_dir_control(),
-                KeyCode::BackTab => self.focus_previous_log_dir_control(),
-                KeyCode::Char(' ')
-                    if key.modifiers.contains(KeyModifiers::CONTROL)
-                        && self.log_dir_selection == crate::app::LogDirSelection::Path =>
-                {
+                KeyCode::Enter => self.confirm_log_dir()?,
+                KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.complete_log_dir();
                 }
-                KeyCode::Backspace
-                    if self.log_dir_selection == crate::app::LogDirSelection::Path =>
-                {
+                KeyCode::Backspace => {
                     self.pop_log_dir_char();
                 }
-                KeyCode::Delete if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                KeyCode::Delete => {
                     self.delete_log_dir_char();
                 }
-                KeyCode::Left if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                KeyCode::Left => {
                     self.move_log_dir_cursor_left();
                 }
-                KeyCode::Left => self.focus_previous_log_dir_control(),
-                KeyCode::Right if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                KeyCode::Right => {
                     self.move_log_dir_cursor_right();
                 }
-                KeyCode::Right => self.focus_next_log_dir_control(),
-                KeyCode::Home if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                KeyCode::Home => {
                     self.move_log_dir_cursor_home();
                 }
-                KeyCode::End if self.log_dir_selection == crate::app::LogDirSelection::Path => {
+                KeyCode::End => {
                     self.move_log_dir_cursor_end();
                 }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                        && self.log_dir_selection == crate::app::LogDirSelection::Path =>
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
                 {
                     self.push_log_dir_char(ch);
                 }
@@ -473,12 +366,7 @@ impl App {
         if self.is_log_list_open() {
             match key.code {
                 KeyCode::Esc => self.close_log_list(),
-                KeyCode::Enter => self.activate_log_list_control()?,
-                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                    self.focus_previous_log_list_control()
-                }
-                KeyCode::Tab => self.focus_next_log_list_control(),
-                KeyCode::BackTab => self.focus_previous_log_list_control(),
+                KeyCode::Enter => self.load_selected_log(),
                 KeyCode::Up => self.move_log_list_up(1),
                 KeyCode::Down => self.move_log_list_down(1),
                 KeyCode::PageUp => self.move_log_list_up(self.log_list_scroll.page_size),
@@ -508,9 +396,6 @@ impl App {
                         && self.process_info_focus == ProcessInfoFocus::Tabs =>
                 {
                     self.activate_process_info_tab(self.process_info_tab)?;
-                }
-                KeyCode::Enter if self.process_info_focus == ProcessInfoFocus::Close => {
-                    self.close_process_info_dialog()
                 }
                 KeyCode::Enter if self.process_info_detail_is_open() => {
                     self.close_process_info_detail();
@@ -555,6 +440,24 @@ impl App {
                         && !key.modifiers.contains(KeyModifiers::ALT) =>
                 {
                     self.focus_previous_process_info_control()
+                }
+                KeyCode::Up if !self.process_info_tab.content_is_focusable() => {
+                    self.scroll_process_info_up(1)
+                }
+                KeyCode::Down if !self.process_info_tab.content_is_focusable() => {
+                    self.scroll_process_info_down(1)
+                }
+                KeyCode::PageUp if !self.process_info_tab.content_is_focusable() => {
+                    self.scroll_process_info_up(self.process_info_page_size())
+                }
+                KeyCode::PageDown if !self.process_info_tab.content_is_focusable() => {
+                    self.scroll_process_info_down(self.process_info_page_size())
+                }
+                KeyCode::Home if !self.process_info_tab.content_is_focusable() => {
+                    self.scroll_process_info_home()
+                }
+                KeyCode::End if !self.process_info_tab.content_is_focusable() => {
+                    self.scroll_process_info_end()
                 }
                 _ if self.process_info_focus != ProcessInfoFocus::Content => {}
                 KeyCode::Up
@@ -1446,53 +1349,18 @@ impl App {
         }
 
         if self.recording_error.is_some() {
-            let over_ok = recording_error_ok_button_area(screen_area)
-                .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
-            if mouse.kind == MouseEventKind::Moved {
-                self.set_recording_error_ok_hovered(over_ok);
-                return;
-            }
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) && over_ok {
-                self.dismiss_recording_error();
-            }
             return;
         }
 
         if self.show_recording_stop_confirmation {
-            let hovered = recording_stop_button_at(screen_area, mouse.column, mouse.row);
-            if mouse.kind == MouseEventKind::Moved {
-                self.set_recording_stop_hovered(hovered);
-                return;
-            }
-            if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-                match hovered {
-                    Some(RecordingStopSelection::Stop) => self.confirm_recording_stop(),
-                    Some(RecordingStopSelection::Continue) => self.cancel_recording_stop(),
-                    None => {}
-                }
-            }
             return;
         }
 
         if self.show_recording_tracking_fixed {
-            let over_ok = recording_tracking_fixed_ok_button_area(screen_area)
-                .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
-            if mouse.kind == MouseEventKind::Moved {
-                self.set_recording_tracking_fixed_ok_hovered(over_ok);
-                return;
-            }
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) && over_ok {
-                self.dismiss_recording_tracking_fixed();
-            }
             return;
         }
 
         if let Some(view) = self.tracked_lists_view().cloned() {
-            if matches!(&view, TrackedListsView::Browse) && mouse.kind == MouseEventKind::Moved {
-                let hovered = tracked_lists_button_at(screen_area, mouse.column, mouse.row);
-                self.set_tracked_lists_hovered_button(hovered);
-                return;
-            }
             if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
                 return;
             }
@@ -1506,7 +1374,6 @@ impl App {
                         self.tracked_lists_entry_count(),
                     ) {
                         self.focus_tracked_lists_list();
-                        self.set_tracked_lists_hovered_button(None);
                         self.select_tracked_list_index(index);
                         if index == 0 {
                             self.load_selected_tracked_list();
@@ -1517,92 +1384,37 @@ impl App {
                         .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
                     {
                         self.focus_tracked_lists_save_name();
-                        self.set_tracked_lists_hovered_button(None);
                         return;
                     }
-                    if tracked_list_startup_area_for_screen(screen_area)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+                    if let Some(startup) =
+                        tracked_list_startup_at_for_screen(screen_area, mouse.column, mouse.row)
                     {
                         self.focus_tracked_lists_startup();
-                        self.set_tracked_lists_hovered_button(None);
-                        self.select_next_tracked_list_startup();
+                        self.set_tracked_list_startup(startup);
                         return;
                     }
-                    if let Some(button) =
-                        tracked_lists_button_at(screen_area, mouse.column, mouse.row)
-                    {
-                        self.focus_tracked_lists_button(button);
-                        self.set_tracked_lists_hovered_button(Some(button));
-                        self.activate_tracked_lists_button(button);
-                    }
                 }
-                TrackedListsView::NameInput { .. } => {
-                    match tracked_list_name_button_at(screen_area, mouse.column, mouse.row) {
-                        Some(TrackedListNameButton::Apply) => self.commit_tracked_list_name_input(),
-                        Some(TrackedListNameButton::Cancel) => self.cancel_tracked_list_subdialog(),
-                        None => {}
-                    }
-                }
-                confirm_view @ TrackedListsView::ConfirmDelete { .. }
-                | confirm_view @ TrackedListsView::ConfirmSwitch { .. } => {
-                    let apply_label =
-                        if matches!(confirm_view, TrackedListsView::ConfirmDelete { .. }) {
-                            " Delete "
-                        } else {
-                            " Load "
-                        };
-                    if let Some(selection) = tracked_list_confirm_button_at(
-                        screen_area,
-                        mouse.column,
-                        mouse.row,
-                        apply_label,
-                    ) {
-                        self.set_tracked_list_confirmation_selection(selection);
-                        self.activate_tracked_list_confirmation();
-                    }
-                }
+                TrackedListsView::NameInput { .. }
+                | TrackedListsView::ConfirmDelete { .. }
+                | TrackedListsView::ConfirmSwitch { .. } => {}
             }
             return;
         }
 
         if self.show_display_area_warning {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && display_area_warning_ok_button_area(screen_area)
-                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
-            {
-                self.dismiss_display_area_warning();
-            }
             return;
         }
 
         if self.show_metric_column_warning {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && metric_column_warning_ok_button_area(screen_area)
-                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
-            {
-                self.dismiss_metric_column_warning();
-            }
             return;
         }
 
         if self.show_no_graph_metrics_warning {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && no_graph_metrics_warning_ok_button_area(screen_area)
-                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
-            {
-                self.dismiss_no_graph_metrics_warning();
-            }
             return;
         }
 
         if self.show_help {
             match mouse.kind {
-                MouseEventKind::Down(MouseButton::Left)
-                    if help_close_button_area_for_screen(screen_area)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
-                {
-                    self.close_help();
-                }
                 MouseEventKind::Down(MouseButton::Left) => {
                     self.start_help_scrollbar_drag(mouse.column, mouse.row, screen_area);
                 }
@@ -1621,12 +1433,6 @@ impl App {
 
         if self.show_column_picker {
             match mouse.kind {
-                MouseEventKind::Down(MouseButton::Left)
-                    if column_picker_close_button_area_for_screen(screen_area)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
-                {
-                    self.close_column_picker();
-                }
                 MouseEventKind::Down(MouseButton::Left) => {
                     if self.start_column_picker_scrollbar_drag(mouse.column, mouse.row, screen_area)
                     {
@@ -1655,44 +1461,12 @@ impl App {
         }
 
         if self.show_log_dir_dialog {
-            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                if contains_point(log_dir_input_area(screen_area), mouse.column, mouse.row) {
-                    self.log_dir_selection = crate::app::LogDirSelection::Path;
-                    return;
-                }
-                match log_dir_button_at(screen_area, mouse.column, mouse.row) {
-                    Some(crate::app::LogDirSelection::Path) => {}
-                    Some(crate::app::LogDirSelection::Apply) => {
-                        self.log_dir_selection = crate::app::LogDirSelection::Apply;
-                        if let Err(error) = self.confirm_log_dir() {
-                            self.status = format!("Log directory failed: {error}");
-                        }
-                    }
-                    Some(crate::app::LogDirSelection::Cancel) => {
-                        self.log_dir_selection = crate::app::LogDirSelection::Cancel;
-                        self.cancel_log_dir_dialog();
-                    }
-                    None => {}
-                }
-            }
             return;
         }
 
         if self.show_log_list {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left) => {
-                    if let Some(focus) = log_list_button_at(
-                        screen_area,
-                        mouse.column,
-                        mouse.row,
-                        self.log_summaries.len(),
-                    ) {
-                        self.log_list_focus = focus;
-                        if let Err(error) = self.activate_log_list_control() {
-                            self.status = format!("Log action failed: {error}");
-                        }
-                        return;
-                    }
                     if let Some(index) = log_list_index_at(
                         screen_area,
                         mouse.column,
@@ -1700,7 +1474,6 @@ impl App {
                         self.log_list_scroll.offset,
                         self.log_summaries.len(),
                     ) {
-                        self.log_list_focus = crate::app::LogListFocus::List;
                         self.click_log_list_index(index, Instant::now());
                     }
                 }
@@ -1713,19 +1486,6 @@ impl App {
 
         if self.show_process_info_dialog {
             match mouse.kind {
-                MouseEventKind::Moved
-                    if process_info_close_button_area_for_screen(screen_area)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
-                {
-                    self.process_info_focus = ProcessInfoFocus::Close;
-                }
-                MouseEventKind::Down(MouseButton::Left)
-                    if process_info_close_button_area_for_screen(screen_area)
-                        .is_some_and(|area| contains_point(area, mouse.column, mouse.row)) =>
-                {
-                    self.process_info_focus = ProcessInfoFocus::Close;
-                    self.close_process_info_dialog();
-                }
                 MouseEventKind::Down(MouseButton::Left) => {
                     if let Some(tab) = process_info_tab_at(screen_area, mouse.column, mouse.row) {
                         if let Err(error) = self.activate_process_info_tab(tab) {
@@ -1786,7 +1546,11 @@ impl App {
                         mouse.column,
                         mouse.row,
                     ) {
-                        self.process_info_focus = ProcessInfoFocus::Content;
+                        self.process_info_focus = if self.process_info_tab.content_is_focusable() {
+                            ProcessInfoFocus::Content
+                        } else {
+                            ProcessInfoFocus::Tabs
+                        };
                         self.start_process_info_scrollbar_drag(
                             mouse.column,
                             mouse.row,
@@ -1809,7 +1573,9 @@ impl App {
                         mouse.row,
                     ) =>
                 {
-                    self.process_info_focus = ProcessInfoFocus::Content;
+                    if self.process_info_tab.content_is_focusable() {
+                        self.process_info_focus = ProcessInfoFocus::Content;
+                    }
                     self.scroll_process_info_up(1);
                 }
                 MouseEventKind::ScrollDown
@@ -1819,7 +1585,9 @@ impl App {
                         mouse.row,
                     ) =>
                 {
-                    self.process_info_focus = ProcessInfoFocus::Content;
+                    if self.process_info_tab.content_is_focusable() {
+                        self.process_info_focus = ProcessInfoFocus::Content;
+                    }
                     self.scroll_process_info_down(1);
                 }
                 _ => {}
@@ -1828,83 +1596,26 @@ impl App {
         }
 
         if self.show_system_info_dialog {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && system_info_ok_button_area_for_screen(screen_area)
-                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
-            {
-                self.close_system_info_dialog();
-            }
             return;
         }
 
         if self.show_quit_confirmation {
-            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                match quit_confirm_button_at(
-                    screen_area,
-                    mouse.column,
-                    mouse.row,
-                    self.recording_session.is_some(),
-                ) {
-                    Some(QuitConfirmSelection::Quit) => {
-                        if let Err(error) = self.confirm_quit() {
-                            self.status = format!("Quit failed: {error}");
-                        }
-                    }
-                    Some(QuitConfirmSelection::Cancel) => self.cancel_quit_confirmation(),
-                    None => {}
-                }
-            }
             return;
         }
 
         if self.show_recording_overwrite_confirmation {
-            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                match recording_overwrite_button_at(screen_area, mouse.column, mouse.row) {
-                    Some(RecordingOverwriteSelection::Overwrite) => {
-                        if let Err(error) = self.confirm_recording_overwrite() {
-                            self.status = format!("Recording failed: {error}");
-                        }
-                    }
-                    Some(RecordingOverwriteSelection::Cancel) => {
-                        self.cancel_recording_overwrite_confirmation();
-                    }
-                    None => {}
-                }
-            }
             return;
         }
 
         if self.show_recording_no_tracked_warning {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && recording_no_tracked_ok_button_area(screen_area)
-                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
-            {
-                self.dismiss_recording_no_tracked_warning();
-            }
             return;
         }
 
         if self.show_tracked_remove_confirmation {
-            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                match tracked_remove_button_at(screen_area, mouse.column, mouse.row) {
-                    Some(TrackedRemoveSelection::Remove) => self.confirm_tracked_remove(),
-                    Some(TrackedRemoveSelection::Cancel) => {
-                        self.cancel_tracked_remove_confirmation()
-                    }
-                    None => {}
-                }
-            }
             return;
         }
 
         if self.show_process_kill_confirmation {
-            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                match process_kill_button_at(screen_area, mouse.column, mouse.row) {
-                    Some(ProcessKillSelection::Kill) => self.confirm_process_kill(),
-                    Some(ProcessKillSelection::Cancel) => self.cancel_process_kill_confirmation(),
-                    None => {}
-                }
-            }
             return;
         }
 
@@ -1915,22 +1626,7 @@ impl App {
                     mouse.column,
                     mouse.row,
                 ) {
-                    self.recording_path_selection = crate::app::RecordingPathSelection::Path;
                     return;
-                }
-                match recording_path_button_at(screen_area, mouse.column, mouse.row) {
-                    Some(crate::app::RecordingPathSelection::Path) => {}
-                    Some(crate::app::RecordingPathSelection::Start) => {
-                        self.recording_path_selection = crate::app::RecordingPathSelection::Start;
-                        if let Err(error) = self.confirm_recording_path() {
-                            self.status = format!("Recording failed: {error}");
-                        }
-                    }
-                    Some(crate::app::RecordingPathSelection::Cancel) => {
-                        self.recording_path_selection = crate::app::RecordingPathSelection::Cancel;
-                        self.cancel_recording_path_dialog();
-                    }
-                    None => {}
                 }
             }
             return;
@@ -2071,13 +1767,6 @@ impl App {
                 self.drag_graph_time_window(mouse.column, screen_area, GraphPanDragButton::Right);
             }
             _ => {}
-        }
-    }
-
-    fn activate_tracked_lists_button(&mut self, button: TrackedListsButton) {
-        match button {
-            TrackedListsButton::Save => self.save_current_tracked_list(),
-            TrackedListsButton::Close => self.close_tracked_lists(),
         }
     }
 
@@ -2862,10 +2551,6 @@ fn details_sample_page_size_for_samples_area(
         show_ab_summary,
         show_base_summary,
     )
-}
-
-fn help_close_button_area_for_screen(screen_area: Rect) -> Option<Rect> {
-    help_close_button_area(help_area(screen_area))
 }
 
 fn sample_row_index_at(

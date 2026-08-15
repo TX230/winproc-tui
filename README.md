@@ -38,7 +38,7 @@ MEM, GPU, average CPU usage, and NW/DISK System Activity retain history automati
 3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace. Repeat the same operation to remove it.
 4. Repeat the operation on other metrics to compare up to 16 Graphs. The active card stays visible as you move through the ordered list.
 
-`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, and NW/DISK panels and for CPU Usage in CPUS. Registered sources show their Graph slot number.
+`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, and NW/DISK panels and for CPU Usage in CPUS. Across `PROCESSES` and the compact system panels, registered metric values are green and the active Graph value is bold; source panels do not reserve space for Graph slot numbers.
 
 ### 3. Compare Two Points
 
@@ -50,15 +50,15 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 2. For targets you use repeatedly, press `Ctrl+T` and save the Tracking List with a name.
 3. If needed, press `Shift+T` to switch between All processes and Tracked-only. Tracked-only view is not required for recording.
 4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
-5. Press `Ctrl+R` again, then confirm `Stop` to stop recording and close the log. The default `Continue` action leaves recording active.
+5. Press `Ctrl+R` again, then press `y` to stop recording and close the log. `Enter`, `Esc`, or `n` leaves recording active.
 6. Press `Ctrl+L` to select and inspect a saved log.
 
 Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, average CPU usage, and System Activity require no registration and are recorded in every frame; the process list remains empty until a match appears.
 The recording start dialog shows how many names will be captured. That Tracking List is fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
-The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. Loading a list may ask for confirmation before discarding retained history for removed names. Press `?` in the app for the complete dialog controls.
+The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `?` in the app for the complete dialog controls.
 
-When startup behavior is set to `Choose list`, the startup screen uses `Up` / `Down` to select a Tracking List and `Tab` / `Shift+Tab` to move focus through the list, `[ Start ]`, and `[ Quit ]`. `Enter` activates the focused choice or button. `Esc` exits without collecting the initial sample.
+When startup behavior is set to `Choose list`, the startup screen uses `Up` / `Down` to select a Tracking List. `Enter` starts with the selected list, and `Esc` exits without collecting the initial sample.
 
 Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain text into an issue or investigation note. For longer investigations, keep the `.log` file and reopen it with `Ctrl+L`.
 
@@ -77,6 +77,8 @@ Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain 
 | `Ctrl+L`            | Open a saved log.                           |
 | `?`                 | Show all key bindings.                      |
 | `q` / `Esc`         | Go back or open the quit confirmation.      |
+
+In the quit confirmation, `Enter` or `q` quits and `Esc` cancels.
 
 ## Features
 
@@ -266,13 +268,15 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | `w` / `Shift+W`     | Widen or narrow the selected column by one cell.                                      |
 | `t`                 | Add or remove the selected process name from the Tracking List (Live only).           |
 | `Shift+T`           | Toggle Tracked-only display.                                                          |
-| `d` / `Delete`      | Confirm, then kill the selected live process rows with `taskkill /f /im`.             |
+| `d` / `Delete`      | Open the kill confirmation for the selected live process rows.                        |
 | `Enter`             | Open Process Info for the selected process.                                          |
 | `i`                 | Open the System Info dialog.                                                        |
 | `f`                 | Open Process Info directly on the Files tab for the selected live process.            |
 | `g`                 | Open or close all configured Graphs at once.                                          |
 
-Process Info has `Metrics`, `Image`, `Files`, `DLLs`, and `Environment` tabs. The dialog reopens with its last active tab focused. Use `Tab` / `Shift+Tab` to move focus among the tabs, content, and Close button. When the tabs are focused, `Left` / `Right` switches tabs; `Ctrl+Left` / `Ctrl+Right` remains available from any Process Info control. Use `Ctrl+U` to refresh dynamic tabs and `Ctrl+C` to copy the selected value. Dynamic details may be unavailable for protected, unsupported, or exited processes.
+Process Info has `Metrics`, `Image`, `Files`, `DLLs`, and `Environment` tabs. The dialog reopens with its last active tab focused. `Metrics` and `Image` have no interactive content control, so `Tab` / `Shift+Tab` keeps focus on the tabs and `Up` / `Down` scrolls the content. On `Files`, `DLLs`, and `Environment`, `Tab` / `Shift+Tab` moves focus between the tabs and content. When the tabs are focused, `Left` / `Right` switches tabs; `Ctrl+Left` / `Ctrl+Right` remains available from either focus. Use `Ctrl+U` to refresh dynamic tabs, `Ctrl+C` to copy the selected value, and `Esc` to close the dialog. Dynamic details may be unavailable for protected, unsupported, or exited processes.
+
+In the process-kill confirmation, `Enter` runs `taskkill /f /im` for the selected image names and `Esc` cancels. `y` and `n` are not assigned in this dialog.
 
 When A/B points are set, `Metrics` shows Current − A or B − A using exact-time samples. Environment values can contain secrets; they are cleared when the dialog closes and are never added to recordings or Log view.
 
@@ -309,17 +313,17 @@ Multiple Graphs share one absolute visible time range, cursor, selected time, an
 
 ## Recording and Log View
 
-Press `Ctrl+R` to start recording or open its stop confirmation. Recording continues while that confirmation is open; `Continue` is selected by default.
+Press `Ctrl+R` to start recording or open its stop confirmation. Recording continues while that confirmation is open; `Enter`, `Esc`, or `n` continues, while `y` stops.
 Recording requires at least one Tracking List entry and saves logs as JSON Lines (with the `.log` extension).
 Each frame records system metrics such as MEM, per-adapter GPU, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
-When recording starts, a save-path input dialog opens and shows how many Tracking List names will be fixed for the complete session. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Tab` / `Shift+Tab` move focus between the path and buttons, while `Ctrl+Space` completes directory names when the path has focus.
+When recording starts, a save-path input dialog opens and shows how many Tracking List names will be fixed for the complete session. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. The path input remains focused; `Enter` starts, `Esc` cancels, and `Ctrl+Space` completes directory names.
 While recording, `t` and `Ctrl+T` show a notice instead of changing the Tracking List. `Shift+T` remains available because it changes only the Tracked-only display. A log create, write, or flush failure stops recording, keeps any partial log, and opens a visible error dialog. A flush failure during quit cancels the quit.
 Log view cannot open during recording, and recording cannot start while Log view is open.
 
 Press `Ctrl+L` to open the log list.
 The list shows `*.log` files from the previous recording directory if available, otherwise from the current directory.
-The compact list shows file names from one directory; the `Dir` row shows that directory, and `d` or the `Directory` button lets you choose another one. `Open`, `Refresh`, and `Close` are also available as mouse-operable buttons.
+The compact list shows file names from one directory; the `Dir` row shows that directory. Use `Up` / `Down` to select a file, `Enter` to open it, `d` to choose another directory, `r` to refresh, and `Esc` to close the dialog. The complete key guidance is shown on the dialog's bottom row.
 Press `Enter` on a selected log to switch to the `LOG` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
 Log view is not a player: Processes keeps showing the last recorded values, while Graph, Samples, and Process Info expose the recorded metric history. Process Info uses recorded fields for static details and shows `--` for details that were not recorded. Press `Esc` to return to the live display.
 

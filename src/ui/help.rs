@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Alignment, Rect},
+    layout::Rect,
     prelude::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::Paragraph,
@@ -8,13 +8,21 @@ use ratatui::{
 use crate::{
     App,
     model::{GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY},
-    ui::{Theme, format::format_integer, widgets::scrollable_modal::ScrollableModal},
+    ui::{
+        Theme, footer::shortcut_spans, format::format_integer,
+        widgets::scrollable_modal::ScrollableModal,
+    },
 };
 
-const CLOSE_BUTTON: &str = "[ Close ]";
 const COLUMN_SEPARATOR: &str = "  │  ";
 const KEY_LABEL_GAP: usize = 2;
-const CLOSE_AREA_HEIGHT: u16 = 3;
+const FOOTER_HEIGHT: u16 = 1;
+const HELP_SHORTCUT_ITEMS: [(&str, &str); 4] = [
+    ("↑/↓", "Scroll"),
+    ("PageUp/PageDown", "Page"),
+    ("Home/End", "Jump"),
+    ("Esc/Enter/?", "Close"),
+];
 
 #[derive(Clone, Copy)]
 struct HelpItem {
@@ -73,15 +81,15 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Jump by name (next match)",
     },
     HelpItem {
-        key: "Up/Down",
+        key: "↑/↓",
         label: "Move selected row",
     },
     HelpItem {
-        key: "Shift+Up/Down",
+        key: "Shift+↑/↓",
         label: "Select row range",
     },
     HelpItem {
-        key: "Ctrl+Up/Down",
+        key: "Ctrl+↑/↓",
         label: "Move cursor only",
     },
     HelpItem {
@@ -97,11 +105,11 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Move to top / bottom",
     },
     HelpItem {
-        key: "Left/Right",
+        key: "←/→",
         label: "Select column",
     },
     HelpItem {
-        key: "Shift+Left/Right",
+        key: "Shift+←/→",
         label: "Move metric column",
     },
     HelpItem {
@@ -133,15 +141,15 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Open System Info",
     },
     HelpItem {
-        key: "Ctrl+Left/Right",
+        key: "Ctrl+←/→",
         label: "Switch Info tabs",
     },
     HelpItem {
         key: "Tab / Shift+Tab",
-        label: "Focus Info tabs / content / close",
+        label: "Focus interactive Info content",
     },
     HelpItem {
-        key: "Left/Right",
+        key: "←/→",
         label: "Switch focused Info tabs",
     },
     HelpItem {
@@ -160,11 +168,11 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
         label: "Show MEM / GPU",
     },
     HelpItem {
-        key: "Left/Right",
+        key: "←/→",
         label: "Switch MEM column / GPU adapter",
     },
     HelpItem {
-        key: "Up/Down",
+        key: "↑/↓",
         label: "Move selected metric",
     },
     HelpItem {
@@ -179,7 +187,7 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
 
 const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "Up/Down",
+        key: "↑/↓",
         label: "Move selected metric",
     },
     HelpItem {
@@ -238,7 +246,7 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Open Process Info",
     },
     HelpItem {
-        key: "Ctrl+Left/Right",
+        key: "Ctrl+←/→",
         label: "Pan time range",
     },
     HelpItem {
@@ -342,10 +350,6 @@ const MOUSE_ROWS: &[HelpItem] = &[
         key: "Right click",
         label: "Samples auto-scroll",
     },
-    HelpItem {
-        key: "Click [ Close ]",
-        label: "Close dialog",
-    },
 ];
 
 const LEFT_SECTIONS: &[HelpSection] = &[
@@ -413,49 +417,17 @@ pub(crate) fn draw_help(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, t
         false,
         theme,
     );
-    if let Some(area) = help_close_button_area_in_footer(layout.footer) {
+    if !layout.footer.is_empty() {
         frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                CLOSE_BUTTON,
-                Style::default()
-                    .fg(theme.background)
-                    .bg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )))
-            .alignment(Alignment::Center),
-            area,
+            Paragraph::new(Line::from(shortcut_spans(&HELP_SHORTCUT_ITEMS, theme))),
+            layout.footer,
         );
     }
 }
 
+#[cfg(test)]
 pub(crate) fn help_area(area: Rect) -> Rect {
     help_modal().area(area)
-}
-
-pub(crate) fn help_close_button_area(popup: Rect) -> Option<Rect> {
-    if popup.width < 11 || popup.height < 4 {
-        return None;
-    }
-    let width = 11;
-    Some(Rect::new(
-        popup.x + popup.width.saturating_sub(width) / 2,
-        popup.bottom().saturating_sub(3),
-        width,
-        1,
-    ))
-}
-
-fn help_close_button_area_in_footer(footer: Rect) -> Option<Rect> {
-    if footer.width < 11 || footer.height == 0 {
-        return None;
-    }
-    let width = 11;
-    Some(Rect::new(
-        footer.x + footer.width.saturating_sub(width) / 2,
-        footer.y.saturating_add(1),
-        width,
-        1,
-    ))
 }
 
 pub(crate) fn help_page_size_for_screen(area: Rect) -> usize {
@@ -601,9 +573,19 @@ fn help_content_width() -> u16 {
         .chars()
         .count()
         .max(help_hint().chars().count())
-        .max(CLOSE_BUTTON.chars().count());
+        .max(shortcut_width(&HELP_SHORTCUT_ITEMS));
     let body_width = left + COLUMN_SEPARATOR.chars().count() + right;
     body_width.max(title_width) as u16
+}
+
+fn shortcut_width(items: &[(&str, &str)]) -> usize {
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, (key, label))| {
+            usize::from(index > 0) * 2 + key.chars().count() + 1 + label.chars().count()
+        })
+        .sum()
 }
 
 fn render_column_widths(sections: &[HelpSection]) -> usize {
@@ -650,7 +632,7 @@ fn help_modal() -> ScrollableModal {
         "HELP",
         help_content_width(),
         help_content_line_count(),
-        CLOSE_AREA_HEIGHT,
+        FOOTER_HEIGHT,
     )
     .with_bold_title()
 }

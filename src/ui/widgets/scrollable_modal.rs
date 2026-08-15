@@ -8,6 +8,7 @@ use ratatui::{
 use crate::ui::{Theme, widgets::block::panel_block_focused};
 
 const HORIZONTAL_CONTENT_PADDING: u16 = 1;
+const FOOTER_GAP_HEIGHT: u16 = 1;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ScrollableModal {
@@ -61,6 +62,11 @@ impl ScrollableModal {
     }
 
     pub(crate) fn layout(self, area: Rect) -> ScrollableModalLayout {
+        let footer_gap_height = if self.footer_height > 0 {
+            FOOTER_GAP_HEIGHT
+        } else {
+            0
+        };
         let width = self
             .content_width
             .saturating_add(HORIZONTAL_CONTENT_PADDING.saturating_mul(2))
@@ -68,6 +74,7 @@ impl ScrollableModal {
             .min(area.width);
         let height = self
             .content_height
+            .saturating_add(footer_gap_height)
             .saturating_add(self.footer_height)
             .saturating_add(2)
             .min(area.height);
@@ -89,13 +96,16 @@ impl ScrollableModal {
             inner.x.saturating_add(HORIZONTAL_CONTENT_PADDING),
             inner.y,
             content_width,
-            inner.height.saturating_sub(self.footer_height),
+            inner
+                .height
+                .saturating_sub(self.footer_height.saturating_add(footer_gap_height)),
         );
+        let footer_height = self.footer_height.min(inner.height);
         let footer = Rect::new(
             inner.x,
-            content.bottom(),
+            inner.bottom().saturating_sub(footer_height),
             inner.width,
-            inner.height.saturating_sub(content.height),
+            footer_height,
         );
         ScrollableModalLayout {
             area: popup,
@@ -104,6 +114,7 @@ impl ScrollableModal {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn area(self, area: Rect) -> Rect {
         self.layout(area).area
     }
@@ -393,5 +404,16 @@ mod tests {
 
         state.drag_to(area, 16, 100);
         assert_eq!(state.offset, 90);
+    }
+
+    #[test]
+    fn layout_keeps_one_blank_row_between_content_and_footer() {
+        let modal = ScrollableModal::new("TEST", 20, 5, 1);
+        let layout = modal.layout(Rect::new(0, 0, 80, 30));
+
+        assert_eq!(layout.area.height, 9);
+        assert_eq!(layout.content.height, 5);
+        assert_eq!(layout.footer.height, 1);
+        assert_eq!(layout.footer.y, layout.content.bottom() + 1);
     }
 }

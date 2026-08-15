@@ -139,7 +139,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Starting recording must copy the working Tracking List into session-owned recording scope. Session metadata, every frame's `tracked_names`, and process filtering must use that fixed copy.
 - While Recording is active, `t` and `Ctrl+T` must reject Tracking List changes with a visible notice. `Shift+T` remains available because it changes only the independent Tracked-only display.
 - Recording is unavailable in Log view, and Log view is unavailable during Recording.
-- `Ctrl+R` during Recording must open a stop confirmation that defaults to Continue; sampling and recording continue until Stop is confirmed.
+- `Ctrl+R` during Recording must open a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops; sampling and recording continue until Stop is confirmed.
 - Stopping recording must write the end record, flush, and close the recording log.
 - Quitting during recording must flush the recording log before exit. A cleanup failure cancels quit.
 - Recording create, write, and flush failures must open a visible error dialog. Keep partial logs and never rely only on transient status text for these failures.
@@ -158,10 +158,12 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 
 - Keep the TUI compact and low-noise. Do not add unnecessary borders, spacing, explanatory text, or decoration.
 - Keep clipboard output raw and minimal so it can be pasted as-is. Do not add unnecessary headers or explanations.
-- Buttons such as OK / Cancel at the bottom of dialogs must be operable by mouse click as well as keyboard.
-- Dialogs that contain both non-button controls and buttons must include them in one `Tab` / `Shift+Tab` focus cycle. A focused button uses the shared focus-surface style and `Enter` activates it; do not render a non-focusable action as a button.
-- All buttons must change to the shared focus-surface background and bold text while hovered by the mouse; hover must not reuse warning or destructive selection colors.
-- Format shortcut guidance inside confirmation dialogs exactly like the screen footer: show each key first in the muted style, its action label in the normal text style, and separate bindings with two spaces. Do not use prose-like slash-separated copy such as `Enter selects / Esc cancels`.
+- Modal dialogs do not render action buttons such as OK, Cancel, Close, Start, or Refresh. Put footer-style shortcut guidance on the dialog's bottom row, keep at least one blank row between dialog content and that guidance, and do not add a horizontal separator. Preserve the semantic shortcut colors instead of using a brighter color as the only separator.
+- `Tab` / `Shift+Tab` cycles only real controls inside a dialog, such as lists, text fields, tabs, interactive content, and radio groups. Passive Process Info content on Metrics and Image is not a focus stop. Mouse input remains available for direct manipulation of controls, scrollbars, and list rows.
+- Confirmation keys are action-specific and must match the dialog footer. Quit uses `Enter` or `q` to quit and `Esc` to cancel; retained-history removal uses `Enter` to remove and `Esc` to cancel; process kill uses `Enter` to kill and `Esc` to cancel, with no `y` or `n` binding. Recording Stop retains its explicit `y` confirmation while `Enter`, `Esc`, or `n` continues recording.
+- Use arrow glyphs such as `↑/↓` and `←/→` in on-screen shortcut guidance. In `PROCESSES`, MEM, GPU, NW/DISK, and CPUS, indicate a registered Graph by coloring the metric value instead of reserving cells for its slot ordinal; use bold only for the active Graph value.
+- Clickable controls outside modal dialogs must change to the shared focus-surface background and bold text while hovered by the mouse; hover must not reuse warning or destructive selection colors.
+- Format shortcut guidance inside confirmation dialogs exactly like the screen footer: show each key first and its action label in the normal text style, then separate different actions with two spaces. Group keys that perform the same action with `/`, such as `Enter/Esc Close` or `Enter/Esc/n Continue`. In warning-border dialogs, render every key group in the warning color and bold text so the key color matches the border; do not reserve that style only for the affirmative action. Do not use prose-like slash-separated sentences such as `Enter selects / Esc cancels`.
 - Detailed user-facing controls and UI behavior belong in README, Help, Footer, tests, and implementation. Metric definitions belong in `docs/metrics.md`; design-level boundaries and invariants belong in `docs/architecture.md`.
 - When changing controls or UI behavior, update the canonical user-facing documentation and tests together. Help, Footer, README, tests, and actual key handling must stay aligned.
 

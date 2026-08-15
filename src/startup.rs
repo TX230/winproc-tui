@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Alignment, Margin, Rect},
     prelude::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
 use crate::{
@@ -20,44 +20,19 @@ use crate::{
         theme_index_by_name,
         widgets::{
             block::{panel_block_focused, panel_title},
-            confirm_dialog::{button_areas, button_line_with_hover, centered_dialog_rect},
+            confirm_dialog::centered_dialog_rect,
         },
     },
 };
 
 const DIALOG_WIDTH: u16 = 68;
 const MAX_LIST_HEIGHT: u16 = 9;
-const PANEL_CHROME_HEIGHT: u16 = 7;
+const PANEL_CHROME_HEIGHT: u16 = 6;
 const LIST_TOP_OFFSET: u16 = 2;
 const LEAD_TEXT: &str = "Choose a Tracking List.";
-const START_BUTTON_LABEL: &str = " Start ";
-const QUIT_BUTTON_LABEL: &str = " Quit ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StartupOutcome {
-    Start,
-    Quit,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StartupFocus {
-    List,
-    StartButton,
-    QuitButton,
-}
-
-impl StartupFocus {
-    fn button(self) -> Option<StartupButton> {
-        match self {
-            Self::List => None,
-            Self::StartButton => Some(StartupButton::Start),
-            Self::QuitButton => Some(StartupButton::Quit),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StartupButton {
     Start,
     Quit,
 }
@@ -68,9 +43,7 @@ struct StartupLayout {
     popup: Rect,
     lead: Rect,
     list: Rect,
-    start_button: Option<Rect>,
-    quit_button: Option<Rect>,
-    footer: Rect,
+    shortcuts: Rect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,125 +76,70 @@ pub(crate) fn choose_startup_tracked_list(
     let theme = THEMES[theme_index_by_name(&config.general.theme)];
     let mut selected = initial_selection(config, &choices);
     let mut offset = selected.saturating_sub(MAX_LIST_HEIGHT as usize - 1);
-    let mut focus = StartupFocus::List;
-    let mut hovered_button = None;
 
     loop {
-        terminal.draw(|frame| {
-            draw_startup_choice(
-                frame,
-                &choices,
-                selected,
-                offset,
-                focus,
-                hovered_button,
-                theme,
-            )
-        })?;
+        terminal.draw(|frame| draw_startup_choice(frame, &choices, selected, offset, theme))?;
         let area = terminal.size()?;
         let screen = Rect::new(0, 0, area.width, area.height);
         let page_size = usize::from(startup_layout(screen, choices.len()).list.height).max(1);
         match event::read()? {
             Event::Key(key) if key.kind != KeyEventKind::Release => {
-                if let Some(outcome) = startup_outcome_for_key(&key.code, focus) {
+                if let Some(outcome) = startup_outcome_for_key(&key.code) {
                     if outcome == StartupOutcome::Start {
                         apply_startup_choice(config, choices[selected].clone());
                     }
                     return Ok(outcome);
                 }
-                if let Some(next_focus) = startup_focus_for_key(focus, &key.code) {
-                    focus = next_focus;
-                } else if focus == StartupFocus::List {
-                    match key.code {
-                        KeyCode::Up => selected = selected.saturating_sub(1),
-                        KeyCode::Down => {
-                            selected = selected
-                                .saturating_add(1)
-                                .min(choices.len().saturating_sub(1))
-                        }
-                        KeyCode::PageUp => selected = selected.saturating_sub(page_size),
-                        KeyCode::PageDown => {
-                            selected = selected
-                                .saturating_add(page_size)
-                                .min(choices.len().saturating_sub(1))
-                        }
-                        KeyCode::Home => selected = 0,
-                        KeyCode::End => selected = choices.len().saturating_sub(1),
-                        _ => {}
-                    }
-                }
-            }
-            Event::Mouse(mouse) => {
-                hovered_button = startup_button_at(screen, choices.len(), mouse.column, mouse.row);
-                match mouse.kind {
-                    MouseEventKind::Down(MouseButton::Left) => {
-                        if let Some(index) = startup_choice_index_at(
-                            screen,
-                            mouse.column,
-                            mouse.row,
-                            offset,
-                            choices.len(),
-                        ) {
-                            selected = index;
-                            focus = StartupFocus::List;
-                        } else if let Some(button) = hovered_button {
-                            let outcome = startup_outcome_for_button(button);
-                            if outcome == StartupOutcome::Start {
-                                apply_startup_choice(config, choices[selected].clone());
-                            }
-                            return Ok(outcome);
-                        }
-                    }
-                    MouseEventKind::ScrollUp => {
-                        focus = StartupFocus::List;
-                        selected = selected.saturating_sub(1);
-                    }
-                    MouseEventKind::ScrollDown => {
-                        focus = StartupFocus::List;
+                match key.code {
+                    KeyCode::Up => selected = selected.saturating_sub(1),
+                    KeyCode::Down => {
                         selected = selected
                             .saturating_add(1)
                             .min(choices.len().saturating_sub(1))
                     }
+                    KeyCode::PageUp => selected = selected.saturating_sub(page_size),
+                    KeyCode::PageDown => {
+                        selected = selected
+                            .saturating_add(page_size)
+                            .min(choices.len().saturating_sub(1))
+                    }
+                    KeyCode::Home => selected = 0,
+                    KeyCode::End => selected = choices.len().saturating_sub(1),
                     _ => {}
                 }
             }
-            Event::Resize(_, _) => hovered_button = None,
+            Event::Mouse(mouse) => match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(index) = startup_choice_index_at(
+                        screen,
+                        mouse.column,
+                        mouse.row,
+                        offset,
+                        choices.len(),
+                    ) {
+                        selected = index;
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    selected = selected.saturating_sub(1);
+                }
+                MouseEventKind::ScrollDown => {
+                    selected = selected
+                        .saturating_add(1)
+                        .min(choices.len().saturating_sub(1))
+                }
+                _ => {}
+            },
             _ => {}
         }
         offset = ensure_visible_offset(selected, offset, choices.len(), page_size);
     }
 }
 
-fn startup_outcome_for_key(code: &KeyCode, focus: StartupFocus) -> Option<StartupOutcome> {
+fn startup_outcome_for_key(code: &KeyCode) -> Option<StartupOutcome> {
     match code {
-        KeyCode::Enter => Some(match focus {
-            StartupFocus::QuitButton => StartupOutcome::Quit,
-            StartupFocus::List | StartupFocus::StartButton => StartupOutcome::Start,
-        }),
+        KeyCode::Enter => Some(StartupOutcome::Start),
         KeyCode::Esc => Some(StartupOutcome::Quit),
-        _ => None,
-    }
-}
-
-fn startup_outcome_for_button(button: StartupButton) -> StartupOutcome {
-    match button {
-        StartupButton::Start => StartupOutcome::Start,
-        StartupButton::Quit => StartupOutcome::Quit,
-    }
-}
-
-fn startup_focus_for_key(current: StartupFocus, code: &KeyCode) -> Option<StartupFocus> {
-    match code {
-        KeyCode::Tab => Some(match current {
-            StartupFocus::List => StartupFocus::StartButton,
-            StartupFocus::StartButton => StartupFocus::QuitButton,
-            StartupFocus::QuitButton => StartupFocus::List,
-        }),
-        KeyCode::BackTab => Some(match current {
-            StartupFocus::List => StartupFocus::QuitButton,
-            StartupFocus::StartButton => StartupFocus::List,
-            StartupFocus::QuitButton => StartupFocus::StartButton,
-        }),
         _ => None,
     }
 }
@@ -280,8 +198,6 @@ fn draw_startup_choice(
     choices: &[StartupTrackedListChoice],
     selected: usize,
     offset: usize,
-    focus: StartupFocus,
-    hovered_button: Option<StartupButton>,
     theme: crate::ui::Theme,
 ) {
     let area = frame.area();
@@ -308,7 +224,7 @@ fn draw_startup_choice(
         .take(layout.list.height as usize)
         .map(|(index, choice)| {
             let is_selected = index == selected;
-            let style = if is_selected && focus == StartupFocus::List {
+            let style = if is_selected {
                 Style::default()
                     .fg(theme.text)
                     .bg(theme.highlight)
@@ -327,48 +243,12 @@ fn draw_startup_choice(
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(lines), layout.list);
 
-    let highlighted_button = hovered_button.or(focus.button());
-    for (button, label, area) in [
-        (
-            StartupButton::Start,
-            START_BUTTON_LABEL,
-            layout.start_button,
-        ),
-        (StartupButton::Quit, QUIT_BUTTON_LABEL, layout.quit_button),
-    ] {
-        if let Some(area) = area {
-            frame.render_widget(
-                Paragraph::new(button_line_with_hover(
-                    &[(label, false)],
-                    (highlighted_button == Some(button)).then_some(0),
-                    theme,
-                )),
-                area,
-            );
-        }
-    }
-
-    let enter_action = if focus == StartupFocus::QuitButton {
-        "Quit"
-    } else {
-        "Start"
-    };
-    let footer = Paragraph::new(Line::from(shortcut_spans(
-        &[
-            ("Up/Down", "Move"),
-            ("Tab", "Focus"),
-            ("Enter", enter_action),
-            ("Esc", "Quit"),
-        ],
+    let shortcuts = Paragraph::new(Line::from(shortcut_spans(
+        &[("↑/↓", "Move"), ("Enter", "Start"), ("Esc", "Quit")],
         theme,
     )))
-    .block(
-        Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(theme.border))
-            .style(Style::default().bg(theme.background)),
-    );
-    frame.render_widget(footer, layout.footer);
+    .alignment(Alignment::Center);
+    frame.render_widget(shortcuts, layout.shortcuts);
 }
 
 fn draw_startup_header(frame: &mut ratatui::Frame<'_>, area: Rect, theme: crate::ui::Theme) {
@@ -414,7 +294,6 @@ fn startup_layout(area: Rect, choice_count: usize) -> StartupLayout {
     let screen = screen_layout(area);
     let header = screen[0];
     let body = screen[1];
-    let footer = screen[2];
     let desired_list_height = (choice_count.max(1) as u16).min(MAX_LIST_HEIGHT);
     let popup = centered_dialog_rect(
         body,
@@ -426,21 +305,13 @@ fn startup_layout(area: Rect, choice_count: usize) -> StartupLayout {
         horizontal: 1,
     });
     let lead = Rect::new(content.x, content.y, content.width, content.height.min(1));
-    let buttons = (content.height >= 2)
-        .then(|| {
-            button_areas(
-                content,
-                content.height - 2,
-                &[START_BUTTON_LABEL, QUIT_BUTTON_LABEL],
-            )
-        })
-        .unwrap_or_default();
-    let start_button = buttons.first().copied();
-    let quit_button = buttons.get(1).copied();
-    let list_bottom = start_button
-        .or(quit_button)
-        .map(|button| button.y.saturating_sub(1))
-        .unwrap_or(content.bottom());
+    let shortcuts = Rect::new(
+        content.x,
+        content.bottom().saturating_sub(1),
+        content.width,
+        content.height.min(1),
+    );
+    let list_bottom = shortcuts.y.saturating_sub(1);
     let list_y = content
         .y
         .saturating_add(LIST_TOP_OFFSET)
@@ -457,9 +328,7 @@ fn startup_layout(area: Rect, choice_count: usize) -> StartupLayout {
         popup,
         lead,
         list,
-        start_button,
-        quit_button,
-        footer,
+        shortcuts,
     }
 }
 
@@ -476,23 +345,6 @@ fn startup_choice_index_at(
     }
     let index = offset.saturating_add(y.saturating_sub(list.y) as usize);
     (index < count).then_some(index)
-}
-
-fn startup_button_area(area: Rect, choice_count: usize, button: StartupButton) -> Option<Rect> {
-    let layout = startup_layout(area, choice_count);
-    match button {
-        StartupButton::Start => layout.start_button,
-        StartupButton::Quit => layout.quit_button,
-    }
-}
-
-fn startup_button_at(area: Rect, choice_count: usize, x: u16, y: u16) -> Option<StartupButton> {
-    [StartupButton::Start, StartupButton::Quit]
-        .into_iter()
-        .find(|button| {
-            startup_button_area(area, choice_count, *button)
-                .is_some_and(|button_area| contains(button_area, x, y))
-        })
 }
 
 fn ensure_visible_offset(selected: usize, offset: usize, total: usize, page_size: usize) -> usize {
@@ -521,17 +373,7 @@ mod tests {
         let backend = TestBackend::new(80, 30);
         let mut terminal = Terminal::new(backend).expect("test terminal should be created");
         terminal
-            .draw(|frame| {
-                draw_startup_choice(
-                    frame,
-                    &choices,
-                    selected,
-                    0,
-                    StartupFocus::List,
-                    None,
-                    THEMES[0],
-                )
-            })
+            .draw(|frame| draw_startup_choice(frame, &choices, selected, 0, THEMES[0]))
             .expect("startup dialog should render");
         let buffer = terminal.backend().buffer();
 
@@ -567,11 +409,11 @@ mod tests {
         assert!(!rendered.contains("START MENU"));
         assert!(!rendered.contains("Last working Tracking List"));
         assert!(
-            rendered.contains("Up/Down Move  Tab Focus  Enter Start  Esc Quit"),
+            rendered.contains("↑/↓ Move  Enter Start  Esc Quit"),
             "{rendered}"
         );
-        assert!(rendered.contains("[ Start ]"), "{rendered}");
-        assert!(rendered.contains("[ Quit ]"), "{rendered}");
+        assert!(!rendered.contains("[ Start ]"), "{rendered}");
+        assert!(!rendered.contains("[ Quit ]"), "{rendered}");
         assert!(!rendered.contains("Keep the last working Tracking List."));
         assert!(!rendered.contains("Choose the Tracking List to apply"));
     }
@@ -581,223 +423,49 @@ mod tests {
         let screen = Rect::new(0, 0, 80, 30);
         let layout = startup_layout(screen, 4);
 
-        assert_eq!(layout.popup.height, 11);
+        assert_eq!(layout.popup.height, 10);
         assert_eq!(layout.lead.height, 1);
         assert_eq!(layout.list.y, layout.lead.y + LIST_TOP_OFFSET);
         assert_eq!(layout.list.height, 4);
+        assert_eq!(layout.shortcuts.y, layout.popup.bottom() - 2);
+        assert_eq!(layout.shortcuts.y, layout.list.bottom() + 1);
+        assert!(layout.shortcuts.bottom() <= layout.popup.bottom() - 1);
         assert_eq!(
             startup_choice_index_at(screen, layout.list.x + 1, layout.list.y + 2, 0, 4),
             Some(2)
         );
-        assert_eq!(
-            startup_button_area(screen, 4, StartupButton::Start),
-            layout.start_button
-        );
-        assert_eq!(
-            startup_button_area(screen, 4, StartupButton::Quit),
-            layout.quit_button
-        );
-        assert!(
-            layout.start_button.expect("Start should fit").x
-                < layout.quit_button.expect("Quit should fit").x
-        );
     }
 
     #[test]
-    fn startup_buttons_use_common_focus_and_hover_style_and_mouse_hit_areas() {
+    fn startup_selection_uses_highlight_and_list_hit_testing() {
         let config = AppConfig::default();
         let choices = startup_choices(&config);
         let screen = Rect::new(0, 0, 80, 30);
         let backend = TestBackend::new(screen.width, screen.height);
         let mut terminal = Terminal::new(backend).expect("test terminal should be created");
         terminal
-            .draw(|frame| {
-                draw_startup_choice(frame, &choices, 0, 0, StartupFocus::List, None, THEMES[0])
-            })
+            .draw(|frame| draw_startup_choice(frame, &choices, 0, 0, THEMES[0]))
             .expect("startup screen should render");
 
-        let start_button = startup_button_area(screen, choices.len(), StartupButton::Start)
-            .expect("start button should have a hit-test area");
-        let quit_button = startup_button_area(screen, choices.len(), StartupButton::Quit)
-            .expect("quit button should have a hit-test area");
-        assert_eq!(
-            startup_button_at(screen, choices.len(), start_button.x, start_button.y),
-            Some(StartupButton::Start)
-        );
-        assert_eq!(
-            startup_button_at(screen, choices.len(), quit_button.x, quit_button.y),
-            Some(StartupButton::Quit)
-        );
-        assert_eq!(
-            startup_button_at(
-                screen,
-                choices.len(),
-                start_button.x.saturating_sub(1),
-                start_button.y
-            ),
-            None
-        );
-        {
-            let buffer = terminal.backend().buffer();
-            for button in [start_button, quit_button] {
-                let cell = &buffer[(button.x, button.y)];
-                assert_eq!(cell.symbol(), "[");
-                assert_eq!(cell.fg, THEMES[0].text);
-                assert_eq!(cell.bg, THEMES[0].panel_alt);
-                assert_ne!(cell.bg, THEMES[0].warning);
-            }
-
-            let list = startup_layout(screen, choices.len()).list;
-            assert_eq!(buffer[(list.right() - 1, list.y)].bg, THEMES[0].highlight);
-            assert_ne!(
-                buffer[(list.right() - 1, list.y + 1)].bg,
-                THEMES[0].highlight
-            );
-        }
-
-        terminal
-            .draw(|frame| {
-                draw_startup_choice(
-                    frame,
-                    &choices,
-                    0,
-                    0,
-                    StartupFocus::StartButton,
-                    None,
-                    THEMES[0],
-                )
-            })
-            .expect("Start-focused startup screen should render");
         let buffer = terminal.backend().buffer();
-        assert_eq!(
-            buffer[(start_button.x, start_button.y)].bg,
-            THEMES[0].focus_surface
-        );
-        assert!(
-            buffer[(start_button.x, start_button.y)]
-                .modifier
-                .contains(Modifier::BOLD)
-        );
-        assert_eq!(
-            buffer[(quit_button.x, quit_button.y)].bg,
-            THEMES[0].panel_alt
-        );
         let list = startup_layout(screen, choices.len()).list;
-        assert_ne!(buffer[(list.right() - 1, list.y)].bg, THEMES[0].highlight);
-
-        terminal
-            .draw(|frame| {
-                draw_startup_choice(
-                    frame,
-                    &choices,
-                    0,
-                    0,
-                    StartupFocus::QuitButton,
-                    None,
-                    THEMES[0],
-                )
-            })
-            .expect("Quit-focused startup screen should render");
-        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(list.right() - 1, list.y)].bg, THEMES[0].highlight);
+        assert!(buffer[(list.x, list.y)].modifier.contains(Modifier::BOLD));
         assert_eq!(
-            buffer[(start_button.x, start_button.y)].bg,
-            THEMES[0].panel_alt
-        );
-        assert_eq!(
-            buffer[(quit_button.x, quit_button.y)].bg,
-            THEMES[0].focus_surface
-        );
-        assert!(
-            buffer[(quit_button.x, quit_button.y)]
-                .modifier
-                .contains(Modifier::BOLD)
-        );
-        let rendered = (0..buffer.area.height)
-            .map(|y| {
-                (0..buffer.area.width)
-                    .map(|x| buffer[(x, y)].symbol())
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(rendered.contains("Enter Quit"), "{rendered}");
-
-        terminal
-            .draw(|frame| {
-                draw_startup_choice(
-                    frame,
-                    &choices,
-                    0,
-                    0,
-                    StartupFocus::List,
-                    Some(StartupButton::Quit),
-                    THEMES[0],
-                )
-            })
-            .expect("Quit-hovered startup screen should render");
-        let hovered = &terminal.backend().buffer()[(quit_button.x, quit_button.y)];
-        assert_eq!(hovered.bg, THEMES[0].focus_surface);
-        assert!(hovered.modifier.contains(Modifier::BOLD));
-        assert_ne!(hovered.bg, THEMES[0].warning);
-    }
-
-    #[test]
-    fn startup_escape_and_quit_button_exit_without_starting_a_choice() {
-        assert_eq!(
-            startup_outcome_for_key(&KeyCode::Esc, StartupFocus::List),
-            Some(StartupOutcome::Quit)
-        );
-        assert_eq!(
-            startup_outcome_for_key(&KeyCode::Enter, StartupFocus::List),
-            Some(StartupOutcome::Start)
-        );
-        assert_eq!(
-            startup_outcome_for_key(&KeyCode::Enter, StartupFocus::StartButton),
-            Some(StartupOutcome::Start)
-        );
-        assert_eq!(
-            startup_outcome_for_key(&KeyCode::Enter, StartupFocus::QuitButton),
-            Some(StartupOutcome::Quit)
-        );
-        assert_eq!(
-            startup_outcome_for_button(StartupButton::Start),
-            StartupOutcome::Start
-        );
-        assert_eq!(
-            startup_outcome_for_button(StartupButton::Quit),
-            StartupOutcome::Quit
+            startup_choice_index_at(screen, list.x, list.y + 1, 0, choices.len()),
+            Some(1)
         );
     }
 
     #[test]
-    fn startup_tab_and_backtab_cycle_list_start_and_quit_focus() {
+    fn startup_enter_starts_and_escape_quits() {
         assert_eq!(
-            startup_focus_for_key(StartupFocus::List, &KeyCode::Tab),
-            Some(StartupFocus::StartButton)
+            startup_outcome_for_key(&KeyCode::Esc),
+            Some(StartupOutcome::Quit)
         );
         assert_eq!(
-            startup_focus_for_key(StartupFocus::StartButton, &KeyCode::Tab),
-            Some(StartupFocus::QuitButton)
-        );
-        assert_eq!(
-            startup_focus_for_key(StartupFocus::QuitButton, &KeyCode::Tab),
-            Some(StartupFocus::List)
-        );
-        assert_eq!(
-            startup_focus_for_key(StartupFocus::List, &KeyCode::BackTab),
-            Some(StartupFocus::QuitButton)
-        );
-        assert_eq!(
-            startup_focus_for_key(StartupFocus::QuitButton, &KeyCode::BackTab),
-            Some(StartupFocus::StartButton)
-        );
-        assert_eq!(
-            startup_focus_for_key(StartupFocus::StartButton, &KeyCode::BackTab),
-            Some(StartupFocus::List)
-        );
-        assert_eq!(
-            startup_focus_for_key(StartupFocus::List, &KeyCode::Down),
-            None
+            startup_outcome_for_key(&KeyCode::Enter),
+            Some(StartupOutcome::Start)
         );
     }
 
