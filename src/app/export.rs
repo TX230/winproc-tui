@@ -1,21 +1,37 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env,
     fs::{self, File, OpenOptions},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
-use serde_json::{Map, Value, json};
 
 use crate::app::{
     App, AppActivity,
+    log_format::{
+        CURRENT_LOG_SCHEMA_VERSION, V3EndRecord, V3FrameRecord, V3GpuDefinition, V3GpuSample,
+        V3ProcessDefinition, V3ProcessSample, V3Record, V3SessionRecord, V3SessionSystem,
+        V3SystemMetrics,
+    },
     path_completion::PathCompletion,
     state::{RecordingErrorDialog, RecordingErrorKind},
 };
-use crate::model::{ProcessRow, Snapshot};
+use crate::model::{GpuAdapterId, ProcessIdentity, ProcessRow, Snapshot};
+
+#[derive(Debug)]
+struct RegisteredProcess {
+    id: u32,
+    path: Option<String>,
+}
+
+#[derive(Debug)]
+struct RegisteredGpu {
+    id: u32,
+    name: Option<String>,
+}
 
 pub(crate) struct RecordingSession {
     pub(crate) path: PathBuf,
@@ -24,7 +40,102 @@ pub(crate) struct RecordingSession {
     host: String,
     tracked_names: Vec<String>,
     normalized_tracked_names: HashSet<String>,
+    registered_processes: HashMap<ProcessIdentity, RegisteredProcess>,
+    next_process_id: u32,
+    registered_gpus: HashMap<GpuAdapterId, RegisteredGpu>,
+    next_gpu_id: u32,
     writer: BufWriter<Box<dyn Write>>,
+}
+
+impl RecordingSession {
+    fn process_id_for(
+        &mut self,
+        process: &ProcessRow,
+    ) -> Result<(u32, Option<V3ProcessDefinition>)> {
+        let identity = ProcessIdentity::from_row(process);
+        if let Some(registered) = self.registered_processes.get_mut(&identity) {
+            if registered.path != process.executable_path {
+                registered.path = process.executable_path.clone();
+                return Ok((
+                    registered.id,
+                    Some(V3ProcessDefinition(
+                        registered.id,
+                        process.pid,
+                        process.name.clone(),
+                        process.start_time,
+                        process.executable_path.clone(),
+                    )),
+                ));
+            }
+            return Ok((registered.id, None));
+        }
+
+        let id = self.next_process_id;
+        self.next_process_id = self
+            .next_process_id
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("recording process ID space is exhausted"))?;
+        self.registered_processes.insert(
+            identity,
+            RegisteredProcess {
+                id,
+                path: process.executable_path.clone(),
+            },
+        );
+        Ok((
+            id,
+            Some(V3ProcessDefinition(
+                id,
+                process.pid,
+                process.name.clone(),
+                process.start_time,
+                process.executable_path.clone(),
+            )),
+        ))
+    }
+
+    fn gpu_id_for(
+        &mut self,
+        adapter: &crate::model::GpuAdapterSample,
+    ) -> Result<(u32, Option<V3GpuDefinition>)> {
+        if let Some(registered) = self.registered_gpus.get_mut(&adapter.id) {
+            if registered.name != adapter.name {
+                registered.name = adapter.name.clone();
+                return Ok((
+                    registered.id,
+                    Some(V3GpuDefinition(
+                        registered.id,
+                        adapter.id.high,
+                        adapter.id.low,
+                        adapter.name.clone(),
+                    )),
+                ));
+            }
+            return Ok((registered.id, None));
+        }
+
+        let id = self.next_gpu_id;
+        self.next_gpu_id = self
+            .next_gpu_id
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("recording GPU ID space is exhausted"))?;
+        self.registered_gpus.insert(
+            adapter.id,
+            RegisteredGpu {
+                id,
+                name: adapter.name.clone(),
+            },
+        );
+        Ok((
+            id,
+            Some(V3GpuDefinition(
+                id,
+                adapter.id.high,
+                adapter.id.low,
+                adapter.name.clone(),
+            )),
+        ))
+    }
 }
 
 impl App {
@@ -298,15 +409,8 @@ impl App {
             self.status = "Recording is not active".to_string();
             return Ok(());
         };
-        let line = recording_end_line(&session, "stopped")?;
-        session
-            .writer
-            .write_all(line.as_bytes())
-            .with_context(|| format!("failed to write {}", session.path.display()))?;
-        session
-            .writer
-            .write_all(b"\n")
-            .with_context(|| format!("failed to write {}", session.path.display()))?;
+        let record = recording_end_record("stopped");
+        write_recording_record(&mut session, &record)?;
         session
             .writer
             .flush()
@@ -316,22 +420,11 @@ impl App {
     }
 
     pub(crate) fn write_current_recording_frame(&mut self) -> Result<()> {
-        let Some(session) = &self.recording_session else {
+        let Some(session) = self.recording_session.as_mut() else {
             return Ok(());
         };
-        let line = recording_frame_line(session, &self.snapshot)?;
-        let session = self
-            .recording_session
-            .as_mut()
-            .expect("recording session exists");
-        session
-            .writer
-            .write_all(line.as_bytes())
-            .with_context(|| format!("failed to write {}", session.path.display()))?;
-        session
-            .writer
-            .write_all(b"\n")
-            .with_context(|| format!("failed to write {}", session.path.display()))
+        let records = recording_frame_records(session, &self.snapshot)?;
+        write_recording_records(session, &records)
     }
 
     #[cfg(test)]
@@ -361,6 +454,10 @@ impl App {
                     host,
                     tracked_names: self.watch_list.clone(),
                     normalized_tracked_names: self.normalized_watch_names.clone(),
+                    registered_processes: HashMap::new(),
+                    next_process_id: 0,
+                    registered_gpus: HashMap::new(),
+                    next_gpu_id: 0,
                     writer: BufWriter::new(Box::new(file)),
                 });
                 self.recording_spinner_index = 0;
@@ -413,19 +510,12 @@ impl App {
         let Some(session) = &self.recording_session else {
             return Ok(());
         };
-        let line = recording_session_line(session, self)?;
+        let record = recording_session_record(session, self);
         let session = self
             .recording_session
             .as_mut()
             .expect("recording session exists");
-        session
-            .writer
-            .write_all(line.as_bytes())
-            .with_context(|| format!("failed to write {}", session.path.display()))?;
-        session
-            .writer
-            .write_all(b"\n")
-            .with_context(|| format!("failed to write {}", session.path.display()))
+        write_recording_record(session, &record)
     }
 
     fn flush_recording_writer(&mut self) -> Result<()> {
@@ -490,8 +580,21 @@ fn recording_parent_dir(path: &Path) -> Result<Option<PathBuf>> {
     }
 }
 
-fn recording_frame_line(session: &RecordingSession, snapshot: &Snapshot) -> Result<String> {
-    let processes = snapshot
+fn recording_frame_records(
+    session: &mut RecordingSession,
+    snapshot: &Snapshot,
+) -> Result<Vec<V3Record>> {
+    let mut records = Vec::new();
+    let mut gpu_samples = Vec::with_capacity(snapshot.gpu_adapters.len());
+    for adapter in &snapshot.gpu_adapters {
+        let (adapter_id, definition) = session.gpu_id_for(adapter)?;
+        if let Some(definition) = definition {
+            records.push(V3Record::Gpu(definition));
+        }
+        gpu_samples.push(V3GpuSample::from_adapter(adapter_id, adapter));
+    }
+
+    let tracked_processes = snapshot
         .processes
         .iter()
         .filter(|process| {
@@ -499,286 +602,79 @@ fn recording_frame_line(session: &RecordingSession, snapshot: &Snapshot) -> Resu
                 .normalized_tracked_names
                 .contains(&process.name.to_ascii_lowercase())
         })
-        .map(process_json)
         .collect::<Vec<_>>();
+    let mut process_samples = Vec::with_capacity(tracked_processes.len());
+    for process in tracked_processes {
+        let (process_id, definition) = session.process_id_for(process)?;
+        if let Some(definition) = definition {
+            records.push(V3Record::Process(definition));
+        }
+        process_samples.push(V3ProcessSample::from_row(process_id, process));
+    }
 
-    let frame = json!({
-        "schema_version": 2,
-        "record_type": "frame",
-        "session_id": session.session_id,
-        "captured_at": snapshot.captured_at.to_rfc3339(),
-        "tracked_names": &session.tracked_names,
-        "system_metrics": system_metrics_json(snapshot),
-        "processes": processes,
-    });
-    serde_json::to_string(&frame).context("failed to serialize recording frame")
+    records.push(V3Record::Frame(V3FrameRecord(
+        snapshot.captured_at.timestamp_millis(),
+        V3SystemMetrics::from_snapshot(snapshot, gpu_samples),
+        process_samples,
+    )));
+    Ok(records)
 }
 
-fn recording_session_line(session: &RecordingSession, app: &App) -> Result<String> {
+fn recording_session_record(session: &RecordingSession, app: &App) -> V3Record {
     let snapshot = app.display_snapshot();
     let columns = app
         .process_columns
         .iter()
-        .map(|column| column.label())
+        .map(|column| column.label().to_string())
         .collect::<Vec<_>>();
-    let frame = json!({
-        "schema_version": 2,
-        "record_type": "session",
-        "session_id": session.session_id,
-        "winproc_tui_version": env!("CARGO_PKG_VERSION"),
-        "host": session.host,
-        "started_at": session.started_at.to_rfc3339(),
-        "interval_seconds": super::SAMPLING_INTERVAL_SECONDS,
-        "tracked_names": &session.tracked_names,
-        "columns": columns,
-        "sort": {
-            "column": app.sort.column.label(),
-            "direction": match app.sort.direction {
+    V3Record::Session(V3SessionRecord {
+        schema_version: CURRENT_LOG_SCHEMA_VERSION,
+        session_id: session.session_id.clone(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        host: session.host.clone(),
+        started_at_ms: session.started_at.timestamp_millis(),
+        interval_seconds: super::SAMPLING_INTERVAL_SECONDS,
+        tracked_names: session.tracked_names.clone(),
+        columns,
+        sort: [
+            app.sort.column.label().to_string(),
+            match app.sort.direction {
                 crate::model::SortDirection::Asc => "asc",
                 crate::model::SortDirection::Desc => "desc",
-            },
+            }
+            .to_string(),
+        ],
+        system: V3SessionSystem {
+            cpu_name: snapshot.cpu_name.clone(),
+            cpu_frequency_mhz: snapshot.cpu_frequency_mhz,
+            cpu_topology: snapshot.cpu_topology.clone(),
+            cpu_cache: snapshot.cpu_cache.clone(),
         },
-        "system": {
-            "cpu_name": snapshot.cpu_name.as_deref(),
-            "cpu_frequency_mhz": snapshot.cpu_frequency_mhz,
-            "cpu_topology": snapshot.cpu_topology.as_deref(),
-            "cpu_cache": snapshot.cpu_cache.as_deref(),
-            "gpu_adapters": snapshot
-                .gpu_adapters
-                .iter()
-                .map(gpu_adapter_metadata_json)
-                .collect::<Vec<_>>(),
-        },
-    });
-    serde_json::to_string(&frame).context("failed to serialize recording session")
+    })
 }
 
-fn recording_end_line(session: &RecordingSession, reason: &str) -> Result<String> {
-    let frame = json!({
-        "schema_version": 2,
-        "record_type": "end",
-        "session_id": session.session_id,
-        "ended_at": Local::now().to_rfc3339(),
-        "reason": reason,
-    });
-    serde_json::to_string(&frame).context("failed to serialize recording end")
+fn recording_end_record(reason: &str) -> V3Record {
+    V3Record::End(V3EndRecord(
+        Local::now().timestamp_millis(),
+        reason.to_string(),
+    ))
 }
 
-fn system_metrics_json(snapshot: &Snapshot) -> Value {
-    let mut metrics = Map::new();
-    metrics.insert(
-        "physical_memory_bytes".to_string(),
-        json!(snapshot.used_memory),
-    );
-    metrics.insert(
-        "total_memory_bytes".to_string(),
-        json!(snapshot.total_memory),
-    );
-    insert_u64(
-        &mut metrics,
-        "available_memory_bytes",
-        snapshot.available_memory,
-    );
-    insert_u64(
-        &mut metrics,
-        "modified_memory_bytes",
-        snapshot.modified_memory,
-    );
-    insert_u64(
-        &mut metrics,
-        "standby_memory_bytes",
-        snapshot.standby_memory,
-    );
-    insert_u64(
-        &mut metrics,
-        "free_zeroed_memory_bytes",
-        snapshot.free_zeroed_memory,
-    );
-    insert_u64(&mut metrics, "committed_bytes", snapshot.committed_memory);
-    insert_u64(&mut metrics, "commit_limit_bytes", snapshot.commit_limit);
-    insert_u64(&mut metrics, "paged_pool_bytes", snapshot.paged_pool_memory);
-    insert_u64(
-        &mut metrics,
-        "nonpaged_pool_bytes",
-        snapshot.nonpaged_pool_memory,
-    );
-    insert_u64(
-        &mut metrics,
-        "pages_input_per_sec",
-        snapshot.pages_input_per_sec,
-    );
-    insert_u64(
-        &mut metrics,
-        "pages_output_per_sec",
-        snapshot.pages_output_per_sec,
-    );
-    metrics.insert("process_count".to_string(), json!(snapshot.process_count));
-    insert_u64(&mut metrics, "thread_count", snapshot.thread_count);
-    if !snapshot.gpu_adapters.is_empty() {
-        metrics.insert(
-            "gpu_adapters".to_string(),
-            Value::Array(snapshot.gpu_adapters.iter().map(gpu_adapter_json).collect()),
-        );
+fn write_recording_records(session: &mut RecordingSession, records: &[V3Record]) -> Result<()> {
+    for record in records {
+        write_recording_record(session, record)?;
     }
-    insert_u64(
-        &mut metrics,
-        "cpu_percent",
-        snapshot.cpu_total_usage_percent.map(u64::from),
-    );
-    insert_u64(
-        &mut metrics,
-        "cpu_user_percent",
-        snapshot.cpu_user_usage_percent.map(u64::from),
-    );
-    insert_u64(
-        &mut metrics,
-        "cpu_kernel_percent",
-        snapshot.cpu_kernel_usage_percent.map(u64::from),
-    );
-    insert_u64(
-        &mut metrics,
-        "disk_read_bytes_per_sec",
-        snapshot.disk_read_bytes_per_sec,
-    );
-    insert_u64(
-        &mut metrics,
-        "disk_write_bytes_per_sec",
-        snapshot.disk_write_bytes_per_sec,
-    );
-    insert_f64(
-        &mut metrics,
-        "disk_queue_length",
-        snapshot.disk_queue_length,
-    );
-    insert_u64(
-        &mut metrics,
-        "network_received_bytes_per_sec",
-        snapshot.network_received_bytes_per_sec,
-    );
-    insert_u64(
-        &mut metrics,
-        "network_sent_bytes_per_sec",
-        snapshot.network_sent_bytes_per_sec,
-    );
-    Value::Object(metrics)
+    Ok(())
 }
 
-fn gpu_adapter_json(adapter: &crate::model::GpuAdapterSample) -> Value {
-    let mut value = gpu_adapter_metadata_map(adapter);
-    insert_f64(
-        &mut value,
-        "utilization_percent",
-        adapter.utilization_percent,
-    );
-    insert_f64(
-        &mut value,
-        "encode_average_percent",
-        adapter.encode.average_percent,
-    );
-    insert_f64(&mut value, "encode_max_percent", adapter.encode.max_percent);
-    if adapter.encode.engine_count > 0 {
-        value.insert(
-            "encode_engine_count".to_string(),
-            json!(adapter.encode.engine_count),
-        );
-    }
-    insert_f64(
-        &mut value,
-        "decode_average_percent",
-        adapter.decode.average_percent,
-    );
-    insert_f64(&mut value, "decode_max_percent", adapter.decode.max_percent);
-    if adapter.decode.engine_count > 0 {
-        value.insert(
-            "decode_engine_count".to_string(),
-            json!(adapter.decode.engine_count),
-        );
-    }
-    insert_u64(&mut value, "dedicated_bytes", adapter.dedicated_used);
-    insert_u64(&mut value, "shared_bytes", adapter.shared_used);
-    Value::Object(value)
-}
-
-fn gpu_adapter_metadata_json(adapter: &crate::model::GpuAdapterSample) -> Value {
-    Value::Object(gpu_adapter_metadata_map(adapter))
-}
-
-fn gpu_adapter_metadata_map(adapter: &crate::model::GpuAdapterSample) -> Map<String, Value> {
-    let mut value = Map::new();
-    value.insert("luid_high".to_string(), json!(adapter.id.high));
-    value.insert("luid_low".to_string(), json!(adapter.id.low));
-    if let Some(name) = &adapter.name {
-        value.insert("name".to_string(), json!(name));
-    }
-    insert_u64(&mut value, "dedicated_total_bytes", adapter.dedicated_total);
-    insert_u64(&mut value, "shared_total_bytes", adapter.shared_total);
-    value
-}
-
-fn process_json(process: &ProcessRow) -> Value {
-    let mut object = Map::new();
-    object.insert("pid".to_string(), json!(process.pid));
-    object.insert("name".to_string(), json!(process.name));
-    if let Some(path) = &process.executable_path {
-        object.insert("path".to_string(), json!(path));
-    }
-    if let Some(start_time) = process.start_time {
-        object.insert("start_time".to_string(), json!(start_time));
-    }
-    object.insert("metrics".to_string(), Value::Object(metrics_json(process)));
-    Value::Object(object)
-}
-
-fn metrics_json(process: &ProcessRow) -> Map<String, Value> {
-    let mut metrics = Map::new();
-    insert_f64(&mut metrics, "cpu_percent", process.cpu_percent);
-    insert_u64(&mut metrics, "private_bytes", process.private_bytes);
-    insert_u64(&mut metrics, "workset_bytes", process.workset_bytes);
-    insert_u64(
-        &mut metrics,
-        "workset_private_bytes",
-        process.workset_private_bytes,
-    );
-    insert_u64(
-        &mut metrics,
-        "workset_shareable_bytes",
-        process.workset_shareable_bytes,
-    );
-    insert_u64(&mut metrics, "thread_count", process.thread_count);
-    insert_u64(&mut metrics, "handle_count", process.handle_count);
-    insert_u64(&mut metrics, "user_object_count", process.user_object_count);
-    insert_u64(&mut metrics, "gdi_object_count", process.gdi_object_count);
-    insert_f64(&mut metrics, "gpu_percent", process.gpu_percent);
-    insert_u64(&mut metrics, "dotnet_heap_bytes", process.dotnet_heap_bytes);
-    insert_u64(
-        &mut metrics,
-        "gpu_dedicated_bytes",
-        process.gpu_dedicated_bytes,
-    );
-    insert_u64(&mut metrics, "gpu_shared_bytes", process.gpu_shared_bytes);
-    insert_u64(
-        &mut metrics,
-        "io_read_bytes_per_sec",
-        process.io_read_bytes_per_sec,
-    );
-    insert_u64(
-        &mut metrics,
-        "io_write_bytes_per_sec",
-        process.io_write_bytes_per_sec,
-    );
-    metrics
-}
-
-fn insert_u64(metrics: &mut Map<String, Value>, name: &str, value: Option<u64>) {
-    if let Some(value) = value {
-        metrics.insert(name.to_string(), json!(value));
-    }
-}
-
-fn insert_f64(metrics: &mut Map<String, Value>, name: &str, value: Option<f64>) {
-    if let Some(value) = value.filter(|value| value.is_finite()) {
-        metrics.insert(name.to_string(), json!(value));
-    }
+fn write_recording_record(session: &mut RecordingSession, record: &V3Record) -> Result<()> {
+    let path = session.path.display().to_string();
+    serde_json::to_writer(&mut session.writer, record)
+        .with_context(|| format!("failed to write {path}"))?;
+    session
+        .writer
+        .write_all(b"\n")
+        .with_context(|| format!("failed to write {path}"))
 }
 
 fn host_name() -> String {
@@ -791,7 +687,6 @@ fn host_name() -> String {
 mod tests {
     use super::*;
     use chrono::TimeZone;
-    use std::collections::HashSet;
     use std::fs::OpenOptions;
 
     #[test]
@@ -807,20 +702,7 @@ mod tests {
     #[test]
     fn recording_frame_contains_tracked_processes_only() {
         let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
-        let session = RecordingSession {
-            path: PathBuf::from("test.log"),
-            session_id: "20260504143012".to_string(),
-            started_at: now,
-            host: "PC01".to_string(),
-            tracked_names: vec!["app.exe".to_string()],
-            normalized_tracked_names: HashSet::from(["app.exe".to_string()]),
-            writer: BufWriter::new(Box::new(
-                OpenOptions::new()
-                    .write(true)
-                    .open(if cfg!(windows) { "NUL" } else { "/dev/null" })
-                    .unwrap(),
-            )),
-        };
+        let mut session = test_session(now, &["app.exe"]);
         let snapshot = Snapshot {
             captured_at: now,
             total_memory: 0,
@@ -860,54 +742,204 @@ mod tests {
                 row(2, "other.exe", Some(999), None),
             ],
         };
-        let line = recording_frame_line(&session, &snapshot).unwrap();
-        let value: Value = serde_json::from_str(&line).unwrap();
+        let records = recording_frame_records(&mut session, &snapshot).unwrap();
 
-        assert_eq!(value["schema_version"], 2);
-        assert_eq!(value["record_type"], "frame");
-        assert_eq!(value["session_id"], "20260504143012");
-        assert_eq!(value["tracked_names"][0], "app.exe");
-        assert_eq!(value["processes"].as_array().unwrap().len(), 1);
-        assert_eq!(value["processes"][0]["name"], "app.exe");
-        assert_eq!(value["processes"][0]["path"], r"C:\work\app.exe");
-        assert_eq!(value["processes"][0]["metrics"]["private_bytes"], 120);
-        assert!(value["processes"][0]["metrics"]["handle_count"].is_null());
-        assert_eq!(value["system_metrics"]["physical_memory_bytes"], 0);
+        assert_eq!(records.len(), 2);
+        let V3Record::Process(definition) = &records[0] else {
+            panic!("first tracked-process frame must define the process");
+        };
+        assert_eq!(definition.0, 0);
+        assert_eq!(definition.1, 1);
+        assert_eq!(definition.2, "app.exe");
+        assert_eq!(definition.3, Some(1001));
+        assert_eq!(definition.4.as_deref(), Some(r"C:\work\app.exe"));
+
+        let V3Record::Frame(V3FrameRecord(_, system, processes)) = &records[1] else {
+            panic!("last record must be a frame");
+        };
+        assert_eq!(processes.len(), 1);
+        assert_eq!(processes[0].0, 0);
         assert_eq!(
-            value["system_metrics"]["modified_memory_bytes"],
-            123_000_000
-        );
-        assert_eq!(value["system_metrics"]["pages_input_per_sec"], 11);
-        assert_eq!(value["system_metrics"]["pages_output_per_sec"], 7);
-        assert_eq!(value["system_metrics"]["process_count"], 2);
-        assert_eq!(value["system_metrics"]["cpu_percent"], 37);
-        assert_eq!(value["system_metrics"]["cpu_user_percent"], 29);
-        assert_eq!(value["system_metrics"]["cpu_kernel_percent"], 8);
-        assert_eq!(
-            value["system_metrics"]["disk_read_bytes_per_sec"],
-            10_000_000
+            processes[0].2[crate::app::log_format::process_u64::PRIVATE_BYTES],
+            Some(120)
         );
         assert_eq!(
-            value["system_metrics"]["disk_write_bytes_per_sec"],
-            20_000_000
-        );
-        assert_eq!(value["system_metrics"]["disk_queue_length"], 1.5);
-        assert_eq!(
-            value["system_metrics"]["network_received_bytes_per_sec"],
-            30_000_000
+            processes[0].2[crate::app::log_format::process_u64::HANDLE_COUNT],
+            None
         );
         assert_eq!(
-            value["system_metrics"]["network_sent_bytes_per_sec"],
-            40_000_000
+            system.0[crate::app::log_format::system_u64::PHYSICAL_MEMORY],
+            Some(0)
+        );
+        assert_eq!(
+            system.0[crate::app::log_format::system_u64::MODIFIED_MEMORY],
+            Some(123_000_000)
+        );
+        assert_eq!(
+            system.0[crate::app::log_format::system_u64::PAGES_INPUT],
+            Some(11)
+        );
+        assert_eq!(
+            system.0[crate::app::log_format::system_u64::PAGES_OUTPUT],
+            Some(7)
+        );
+        assert_eq!(
+            system.0[crate::app::log_format::system_u64::PROCESS_COUNT],
+            Some(2)
+        );
+        assert_eq!(
+            system.0[crate::app::log_format::system_u64::CPU_TOTAL],
+            Some(37)
+        );
+        assert_eq!(system.1, Some(1.5));
+    }
+
+    #[test]
+    fn process_samples_preserve_missing_values() {
+        let sample = V3ProcessSample::from_row(7, &row(1, "app.exe", Some(120), None));
+
+        assert_eq!(
+            sample.2[crate::app::log_format::process_u64::PRIVATE_BYTES],
+            Some(120)
+        );
+        assert_eq!(
+            sample.2[crate::app::log_format::process_u64::HANDLE_COUNT],
+            None
         );
     }
 
     #[test]
-    fn metrics_omit_missing_values() {
-        let metrics = metrics_json(&row(1, "app.exe", Some(120), None));
+    fn recording_defines_a_tracked_process_when_it_starts_later() {
+        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let mut session = test_session(now, &["app.exe"]);
+        let initial = test_snapshot(now, Vec::new());
 
-        assert!(metrics.contains_key("private_bytes"));
-        assert!(!metrics.contains_key("handle_count"));
+        let initial_records = recording_frame_records(&mut session, &initial).unwrap();
+        assert!(matches!(initial_records.as_slice(), [V3Record::Frame(_)]));
+
+        let later = test_snapshot(
+            now + chrono::Duration::seconds(1),
+            vec![row(42, "app.exe", Some(120), None)],
+        );
+        let later_records = recording_frame_records(&mut session, &later).unwrap();
+
+        assert_eq!(later_records.len(), 2);
+        let V3Record::Process(definition) = &later_records[0] else {
+            panic!("the first observed process must be defined before its frame");
+        };
+        assert_eq!((definition.0, definition.1), (0, 42));
+        let V3Record::Frame(V3FrameRecord(_, _, samples)) = &later_records[1] else {
+            panic!("last record must be a frame");
+        };
+        assert_eq!(samples[0].0, definition.0);
+    }
+
+    #[test]
+    fn recording_assigns_distinct_ids_to_concurrent_same_name_processes() {
+        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let mut session = test_session(now, &["app.exe"]);
+        let snapshot = test_snapshot(
+            now,
+            vec![
+                row(42, "app.exe", Some(120), None),
+                row(84, "app.exe", Some(240), None),
+            ],
+        );
+
+        let first_records = recording_frame_records(&mut session, &snapshot).unwrap();
+
+        assert_eq!(first_records.len(), 3);
+        let V3Record::Process(first) = &first_records[0] else {
+            panic!("first process definition is missing");
+        };
+        let V3Record::Process(second) = &first_records[1] else {
+            panic!("second process definition is missing");
+        };
+        assert_eq!((first.0, first.1), (0, 42));
+        assert_eq!((second.0, second.1), (1, 84));
+        assert_eq!(first.2, second.2);
+        let V3Record::Frame(V3FrameRecord(_, _, samples)) = &first_records[2] else {
+            panic!("last record must be a frame");
+        };
+        assert_eq!(
+            samples.iter().map(|sample| sample.0).collect::<Vec<_>>(),
+            [0, 1]
+        );
+
+        let next_records = recording_frame_records(&mut session, &snapshot).unwrap();
+        let [V3Record::Frame(V3FrameRecord(_, _, samples))] = next_records.as_slice() else {
+            panic!("known processes must reuse their definitions");
+        };
+        assert_eq!(
+            samples.iter().map(|sample| sample.0).collect::<Vec<_>>(),
+            [0, 1]
+        );
+    }
+
+    fn test_session(now: DateTime<Local>, tracked_names: &[&str]) -> RecordingSession {
+        RecordingSession {
+            path: PathBuf::from("test.log"),
+            session_id: "20260504143012".to_string(),
+            started_at: now,
+            host: "PC01".to_string(),
+            tracked_names: tracked_names
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+            normalized_tracked_names: tracked_names
+                .iter()
+                .map(|name| name.to_ascii_lowercase())
+                .collect(),
+            registered_processes: HashMap::new(),
+            next_process_id: 0,
+            registered_gpus: HashMap::new(),
+            next_gpu_id: 0,
+            writer: BufWriter::new(Box::new(
+                OpenOptions::new()
+                    .write(true)
+                    .open(if cfg!(windows) { "NUL" } else { "/dev/null" })
+                    .unwrap(),
+            )),
+        }
+    }
+
+    fn test_snapshot(captured_at: DateTime<Local>, processes: Vec<ProcessRow>) -> Snapshot {
+        Snapshot {
+            captured_at,
+            total_memory: 0,
+            used_memory: 0,
+            available_memory: None,
+            modified_memory: None,
+            standby_memory: None,
+            free_zeroed_memory: None,
+            committed_memory: None,
+            commit_limit: None,
+            paged_pool_memory: None,
+            nonpaged_pool_memory: None,
+            pages_input_per_sec: None,
+            pages_output_per_sec: None,
+            cpu_name: None,
+            cpu_frequency_mhz: None,
+            cpu_current_frequency_mhz: None,
+            cpu_p_core_frequency_mhz: None,
+            cpu_e_core_frequency_mhz: None,
+            cpu_total_usage_percent: None,
+            cpu_user_usage_percent: None,
+            cpu_kernel_usage_percent: None,
+            cpu_logical_processors: Vec::new(),
+            cpu_topology: None,
+            cpu_cache: None,
+            gpu_adapters: Vec::new(),
+            disks: Vec::new(),
+            disk_read_bytes_per_sec: None,
+            disk_write_bytes_per_sec: None,
+            disk_queue_length: None,
+            network_received_bytes_per_sec: None,
+            network_sent_bytes_per_sec: None,
+            process_count: processes.len(),
+            thread_count: None,
+            processes,
+        }
     }
 
     fn row(

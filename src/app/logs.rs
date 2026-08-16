@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -12,11 +12,15 @@ use chrono::{DateTime, Local};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::model::{
-    ProcessHistory, ProcessRow, Snapshot, SortSpec, SystemHistory, sort_process_rows,
+use crate::{
+    app::log_format::{
+        CURRENT_LOG_SCHEMA_VERSION, LEGACY_LOG_SCHEMA_VERSION, V3EndRecord, V3FrameRecord,
+        V3GpuDefinition, V3GpuSample, V3ProcessDefinition, V3ProcessSample, V3Record,
+        V3SessionRecord, V3SystemMetrics, gpu_f64, gpu_u64, process_f64, process_u64, system_u64,
+    },
+    model::{ProcessHistory, ProcessRow, Snapshot, SortSpec, SystemHistory, sort_process_rows},
 };
 
-const SUPPORTED_LOG_SCHEMA_VERSION: u64 = 2;
 const LOG_TAIL_READ_CHUNK_SIZE: usize = 8 * 1024;
 const LOG_LOAD_READ_BUFFER_SIZE: usize = 1024 * 1024;
 
@@ -111,7 +115,7 @@ pub(crate) fn scan_log_dir(dir: &Path) -> LogListResult {
                     continue;
                 }
                 let summary = summarize_log(&path);
-                if summary.schema_version == Some(SUPPORTED_LOG_SCHEMA_VERSION) {
+                if summary.schema_version.is_some_and(is_supported_schema) {
                     summaries.push(summary);
                 }
             }
@@ -138,7 +142,7 @@ pub(crate) fn summarize_log(path: &Path) -> LogSummary {
 
     let result = read_first_json_line(path).and_then(|record| {
         update_summary_from_record(&mut summary, &record);
-        if summary.schema_version == Some(SUPPORTED_LOG_SCHEMA_VERSION) {
+        if summary.schema_version.is_some_and(is_supported_schema) {
             let tail = read_last_json_line(path)?;
             if tail != record {
                 update_summary_from_record(&mut summary, &tail);
@@ -153,6 +157,16 @@ pub(crate) fn summarize_log(path: &Path) -> LogSummary {
 }
 
 pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
+    let first_record = read_first_json_line(path)?;
+    match schema_version_from_record(&first_record) {
+        Some(LEGACY_LOG_SCHEMA_VERSION) => load_v2_log(path, sort),
+        Some(CURRENT_LOG_SCHEMA_VERSION) => load_v3_log(path, sort),
+        Some(version) => Err(anyhow!("unsupported log schema_version {version}")),
+        None => Err(anyhow!("log record is missing schema_version")),
+    }
+}
+
+fn load_v2_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     let mut summary = empty_summary(path);
     let mut session = SessionMeta::default();
     let mut process_history = ProcessHistory::default();
@@ -161,7 +175,7 @@ pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     let mut tracked_names = Vec::new();
     let mut tracked_name_set = HashSet::new();
 
-    read_load_records(path, |record| {
+    read_v2_records(path, |record| {
         match record {
             LoadRecord::Session {
                 schema_version,
@@ -239,7 +253,238 @@ pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     })
 }
 
-fn read_load_records<F>(path: &Path, mut handle: F) -> Result<()>
+fn load_v3_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
+    let mut summary = empty_summary(path);
+    let mut session = SessionMeta::default();
+    let mut process_definitions = HashMap::<u32, V3ProcessDefinition>::new();
+    let mut gpu_definitions = HashMap::<u32, V3GpuDefinition>::new();
+    let mut process_history = ProcessHistory::default();
+    let mut system_history = SystemHistory::default();
+    let mut last_snapshot = None;
+    let mut tracked_names = Vec::new();
+    let mut tracked_name_set = HashSet::new();
+
+    read_v3_records(path, |record| {
+        match record {
+            V3Record::Session(record) => {
+                require_v3_schema(record.schema_version)?;
+                summary.schema_version = Some(record.schema_version);
+                summary.session_id = Some(record.session_id.clone());
+                summary.host = Some(record.host.clone());
+                summary.started_at = datetime_from_millis(record.started_at_ms);
+                session = SessionMeta::from_v3_record(record);
+            }
+            V3Record::Process(definition) => {
+                process_definitions.insert(definition.0, definition);
+            }
+            V3Record::Gpu(definition) => {
+                gpu_definitions.insert(definition.0, definition);
+            }
+            V3Record::Frame(record) => {
+                let frame =
+                    parse_v3_frame(record, &session, &process_definitions, &gpu_definitions)?;
+                summary.frame_count = summary.frame_count.saturating_add(1);
+                if summary.started_at.is_none() {
+                    summary.started_at = Some(frame.snapshot.captured_at);
+                }
+                summary.ended_at = Some(frame.snapshot.captured_at);
+                add_process_names(&mut tracked_names, &mut tracked_name_set, &frame.snapshot);
+                process_history.record_snapshot_unbounded(
+                    frame.snapshot.captured_at,
+                    &frame.snapshot.processes,
+                );
+                system_history.record_snapshot_unbounded(&frame.snapshot);
+                last_snapshot = Some(frame.snapshot);
+            }
+            V3Record::End(V3EndRecord(ended_at_ms, _)) => {
+                if let Some(ended_at) = datetime_from_millis(ended_at_ms) {
+                    summary.ended_at = Some(ended_at);
+                }
+            }
+        }
+        Ok(())
+    })?;
+
+    let mut snapshot = last_snapshot.context("log contains no frames")?;
+    sort_process_rows(&mut snapshot.processes, sort);
+    summary.tracked_names = tracked_names.clone();
+    summary.error = None;
+    Ok(LoadedLog {
+        path: path.to_path_buf(),
+        summary,
+        snapshot,
+        process_history,
+        system_history,
+        tracked_names,
+    })
+}
+
+fn read_v3_records<F>(path: &Path, mut handle: F) -> Result<()>
+where
+    F: FnMut(V3Record) -> Result<()>,
+{
+    let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let mut reader = BufReader::with_capacity(LOG_LOAD_READ_BUFFER_SIZE, file);
+    let mut line = Vec::new();
+    let mut line_index = 0_usize;
+    loop {
+        line.clear();
+        if reader
+            .read_until(b'\n', &mut line)
+            .with_context(|| format!("failed to read {} line {}", path.display(), line_index + 1))?
+            == 0
+        {
+            break;
+        }
+        line_index += 1;
+        let line = trim_ascii_whitespace(&line);
+        if line.is_empty() {
+            continue;
+        }
+        let record = serde_json::from_slice(line)
+            .with_context(|| format!("invalid schema v3 log record at line {line_index}"))?;
+        handle(record).with_context(|| format!("invalid log record at line {line_index}"))?;
+    }
+    Ok(())
+}
+
+fn parse_v3_frame(
+    record: V3FrameRecord,
+    session: &SessionMeta,
+    process_definitions: &HashMap<u32, V3ProcessDefinition>,
+    gpu_definitions: &HashMap<u32, V3GpuDefinition>,
+) -> Result<ParsedFrame> {
+    let V3FrameRecord(captured_at_ms, system, process_samples) = record;
+    let captured_at = datetime_from_millis(captured_at_ms)
+        .ok_or_else(|| anyhow!("frame timestamp is out of range"))?;
+    let processes = process_samples
+        .into_iter()
+        .map(|sample| parse_v3_process(sample, process_definitions))
+        .collect::<Result<Vec<_>>>()?;
+    let V3SystemMetrics(values, disk_queue_length, gpu_samples) = system;
+    let gpu_adapters = gpu_samples
+        .into_iter()
+        .map(|sample| parse_v3_gpu(sample, gpu_definitions))
+        .collect::<Result<Vec<_>>>()?;
+
+    let snapshot = Snapshot {
+        captured_at,
+        total_memory: values[system_u64::TOTAL_MEMORY].unwrap_or_default(),
+        used_memory: values[system_u64::PHYSICAL_MEMORY].unwrap_or_default(),
+        available_memory: values[system_u64::AVAILABLE_MEMORY],
+        modified_memory: values[system_u64::MODIFIED_MEMORY],
+        standby_memory: values[system_u64::STANDBY_MEMORY],
+        free_zeroed_memory: values[system_u64::FREE_ZEROED_MEMORY],
+        committed_memory: values[system_u64::COMMITTED_MEMORY],
+        commit_limit: values[system_u64::COMMIT_LIMIT],
+        paged_pool_memory: values[system_u64::PAGED_POOL],
+        nonpaged_pool_memory: values[system_u64::NONPAGED_POOL],
+        pages_input_per_sec: values[system_u64::PAGES_INPUT],
+        pages_output_per_sec: values[system_u64::PAGES_OUTPUT],
+        cpu_name: session.cpu_name.clone(),
+        cpu_frequency_mhz: session.cpu_frequency_mhz,
+        cpu_current_frequency_mhz: None,
+        cpu_p_core_frequency_mhz: None,
+        cpu_e_core_frequency_mhz: None,
+        cpu_total_usage_percent: v3_percent(values[system_u64::CPU_TOTAL]),
+        cpu_user_usage_percent: v3_percent(values[system_u64::CPU_USER]),
+        cpu_kernel_usage_percent: v3_percent(values[system_u64::CPU_KERNEL]),
+        cpu_logical_processors: Vec::new(),
+        cpu_topology: session.cpu_topology.clone(),
+        cpu_cache: session.cpu_cache.clone(),
+        gpu_adapters,
+        disks: Vec::new(),
+        disk_read_bytes_per_sec: values[system_u64::DISK_READ],
+        disk_write_bytes_per_sec: values[system_u64::DISK_WRITE],
+        disk_queue_length: disk_queue_length.filter(|value| value.is_finite()),
+        network_received_bytes_per_sec: values[system_u64::NETWORK_RECEIVED],
+        network_sent_bytes_per_sec: values[system_u64::NETWORK_SENT],
+        process_count: values[system_u64::PROCESS_COUNT]
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(processes.len()),
+        thread_count: values[system_u64::THREAD_COUNT],
+        processes,
+    };
+    Ok(ParsedFrame {
+        snapshot,
+        has_system_metrics: true,
+    })
+}
+
+fn parse_v3_process(
+    sample: V3ProcessSample,
+    definitions: &HashMap<u32, V3ProcessDefinition>,
+) -> Result<ProcessRow> {
+    let V3ProcessSample(process_id, floats, integers) = sample;
+    let definition = definitions
+        .get(&process_id)
+        .ok_or_else(|| anyhow!("frame references undefined process ID {process_id}"))?;
+    Ok(ProcessRow {
+        pid: definition.1,
+        name: definition.2.clone(),
+        executable_path: definition.4.clone(),
+        start_time: definition.3,
+        cpu_percent: floats[process_f64::CPU_PERCENT].filter(|value| value.is_finite()),
+        private_bytes: integers[process_u64::PRIVATE_BYTES],
+        workset_bytes: integers[process_u64::WORKSET_BYTES],
+        workset_private_bytes: integers[process_u64::WORKSET_PRIVATE_BYTES],
+        workset_shareable_bytes: integers[process_u64::WORKSET_SHAREABLE_BYTES],
+        thread_count: integers[process_u64::THREAD_COUNT],
+        handle_count: integers[process_u64::HANDLE_COUNT],
+        user_object_count: integers[process_u64::USER_OBJECT_COUNT],
+        gdi_object_count: integers[process_u64::GDI_OBJECT_COUNT],
+        gpu_percent: floats[process_f64::GPU_PERCENT].filter(|value| value.is_finite()),
+        gpu_dedicated_bytes: integers[process_u64::GPU_DEDICATED_BYTES],
+        gpu_shared_bytes: integers[process_u64::GPU_SHARED_BYTES],
+        dotnet_heap_bytes: integers[process_u64::DOTNET_HEAP_BYTES],
+        io_read_bytes_per_sec: integers[process_u64::IO_READ_BYTES_PER_SEC],
+        io_write_bytes_per_sec: integers[process_u64::IO_WRITE_BYTES_PER_SEC],
+    })
+}
+
+fn parse_v3_gpu(
+    sample: V3GpuSample,
+    definitions: &HashMap<u32, V3GpuDefinition>,
+) -> Result<crate::model::GpuAdapterSample> {
+    let V3GpuSample(adapter_id, floats, integers) = sample;
+    let definition = definitions
+        .get(&adapter_id)
+        .ok_or_else(|| anyhow!("frame references undefined GPU ID {adapter_id}"))?;
+    Ok(crate::model::GpuAdapterSample {
+        id: crate::model::GpuAdapterId {
+            high: definition.1,
+            low: definition.2,
+        },
+        name: definition.3.clone(),
+        utilization_percent: floats[gpu_f64::UTILIZATION_PERCENT].filter(|value| value.is_finite()),
+        encode: crate::model::GpuEngineSummary {
+            average_percent: floats[gpu_f64::ENCODE_AVERAGE_PERCENT]
+                .filter(|value| value.is_finite()),
+            max_percent: floats[gpu_f64::ENCODE_MAX_PERCENT].filter(|value| value.is_finite()),
+            engine_count: integers[gpu_u64::ENCODE_ENGINE_COUNT]
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or_default(),
+        },
+        decode: crate::model::GpuEngineSummary {
+            average_percent: floats[gpu_f64::DECODE_AVERAGE_PERCENT]
+                .filter(|value| value.is_finite()),
+            max_percent: floats[gpu_f64::DECODE_MAX_PERCENT].filter(|value| value.is_finite()),
+            engine_count: integers[gpu_u64::DECODE_ENGINE_COUNT]
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or_default(),
+        },
+        dedicated_used: integers[gpu_u64::DEDICATED_BYTES],
+        dedicated_total: integers[gpu_u64::DEDICATED_TOTAL_BYTES],
+        shared_used: integers[gpu_u64::SHARED_BYTES],
+        shared_total: integers[gpu_u64::SHARED_TOTAL_BYTES],
+    })
+}
+
+fn v3_percent(value: Option<u64>) -> Option<u8> {
+    value.and_then(|value| u8::try_from(value.min(100)).ok())
+}
+
+fn read_v2_records<F>(path: &Path, mut handle: F) -> Result<()>
 where
     F: FnMut(LoadRecord) -> Result<()>,
 {
@@ -364,7 +609,71 @@ fn trim_ascii_whitespace(value: &[u8]) -> &[u8] {
     &value[start..end]
 }
 
+fn schema_version_from_record(record: &Value) -> Option<u64> {
+    record
+        .get("schema_version")
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            record
+                .get("s")
+                .and_then(|session| session.get("v"))
+                .and_then(Value::as_u64)
+        })
+}
+
 fn update_summary_from_record(summary: &mut LogSummary, record: &Value) {
+    if let Some(session) = record.get("s").and_then(Value::as_object) {
+        summary.schema_version = session.get("v").and_then(Value::as_u64);
+        summary.session_id = session
+            .get("id")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        summary.host = session
+            .get("host")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        summary.started_at = session
+            .get("start")
+            .and_then(Value::as_i64)
+            .and_then(datetime_from_millis);
+        summary.tracked_names = session
+            .get("tracked")
+            .and_then(Value::as_array)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        return;
+    }
+    if let Some(frame) = record.get("f").and_then(Value::as_array) {
+        summary.frame_count = summary.frame_count.saturating_add(1);
+        let captured_at = frame
+            .first()
+            .and_then(Value::as_i64)
+            .and_then(datetime_from_millis);
+        if summary.started_at.is_none() {
+            summary.started_at = captured_at;
+        }
+        if let Some(captured_at) = captured_at {
+            summary.ended_at = Some(captured_at);
+        }
+        return;
+    }
+    if let Some(end) = record.get("e").and_then(Value::as_array) {
+        if let Some(ended_at) = end
+            .first()
+            .and_then(Value::as_i64)
+            .and_then(datetime_from_millis)
+        {
+            summary.ended_at = Some(ended_at);
+        }
+        return;
+    }
+
     if summary.schema_version.is_none() {
         summary.schema_version = record.get("schema_version").and_then(Value::as_u64);
     }
@@ -624,10 +933,30 @@ fn update_loaded_summary_common(
 
 fn require_supported_schema_version(schema_version: Option<u64>) -> Result<()> {
     match schema_version {
-        Some(SUPPORTED_LOG_SCHEMA_VERSION) => Ok(()),
+        Some(LEGACY_LOG_SCHEMA_VERSION) => Ok(()),
         Some(version) => Err(anyhow!("unsupported log schema_version {version}")),
         None => Err(anyhow!("log record is missing schema_version")),
     }
+}
+
+fn require_v3_schema(schema_version: u64) -> Result<()> {
+    if schema_version == CURRENT_LOG_SCHEMA_VERSION {
+        Ok(())
+    } else {
+        Err(anyhow!("unsupported log schema_version {schema_version}"))
+    }
+}
+
+fn is_supported_schema(schema_version: u64) -> bool {
+    matches!(
+        schema_version,
+        LEGACY_LOG_SCHEMA_VERSION | CURRENT_LOG_SCHEMA_VERSION
+    )
+}
+
+fn datetime_from_millis(value: i64) -> Option<DateTime<Local>> {
+    DateTime::<chrono::Utc>::from_timestamp_millis(value)
+        .map(|timestamp| timestamp.with_timezone(&Local))
 }
 
 fn parse_datetime(value: &str) -> Option<DateTime<Local>> {
@@ -761,6 +1090,17 @@ struct SessionMeta {
 }
 
 impl SessionMeta {
+    fn from_v3_record(record: V3SessionRecord) -> Self {
+        Self {
+            cpu_name: record.system.cpu_name,
+            cpu_frequency_mhz: record.system.cpu_frequency_mhz,
+            cpu_topology: record.system.cpu_topology,
+            cpu_cache: record.system.cpu_cache,
+            gpu_name: None,
+            gpu_adapters: Vec::new(),
+        }
+    }
+
     fn from_loaded_record(system: Option<SessionSystemRecord>) -> Self {
         let system = system.unwrap_or_default();
         Self {
@@ -818,7 +1158,7 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn scan_log_dir_hides_non_v2_logs() {
+    fn scan_log_dir_lists_v2_and_v3_but_hides_unsupported_logs() {
         let dir = std::env::temp_dir().join(format!(
             "winproc-tui-log-scan-{}-{}",
             std::process::id(),
@@ -827,6 +1167,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let v1_path = dir.join("old.log");
         let v2_path = dir.join("current.log");
+        let v3_path = dir.join("compact.log");
         write_lines(
             &v1_path,
             &[
@@ -840,16 +1181,33 @@ mod tests {
                 r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"],"processes":[{"pid":1,"name":"app.exe","start_time":100,"metrics":{"private_bytes":120}}]}"#,
             ],
         );
+        write_lines(
+            &v3_path,
+            &[
+                r#"{"s":{"v":3,"id":"s3","app":"1.0.0","host":"PC","start":1777883412000,"interval":1,"tracked":["app.exe"],"columns":[],"sort":["Process","asc"],"system":{}}}"#,
+            ],
+        );
 
         let result = scan_log_dir(&dir);
 
-        assert_eq!(result.summaries.len(), 1);
-        assert_eq!(result.summaries[0].path, v2_path);
+        assert_eq!(result.summaries.len(), 2);
+        assert!(
+            result
+                .summaries
+                .iter()
+                .any(|summary| summary.path == v2_path)
+        );
+        assert!(
+            result
+                .summaries
+                .iter()
+                .any(|summary| summary.path == v3_path)
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
-    fn load_log_rejects_non_v2_logs() {
+    fn load_log_rejects_unsupported_schemas() {
         let path = unique_log_path("v1");
         write_lines(
             &path,
@@ -987,6 +1345,199 @@ mod tests {
     }
 
     #[test]
+    fn v3_log_loads_processes_that_start_later_and_separates_same_name_instances() {
+        let path = unique_log_path("v3-process-identities");
+        let started_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
+            .unwrap()
+            .timestamp_millis();
+        let records = vec![
+            V3Record::Session(V3SessionRecord {
+                schema_version: CURRENT_LOG_SCHEMA_VERSION,
+                session_id: "s3".to_string(),
+                app_version: "1.0.0".to_string(),
+                host: "PC".to_string(),
+                started_at_ms: started_at,
+                interval_seconds: 1,
+                tracked_names: vec!["app.exe".to_string()],
+                columns: Vec::new(),
+                sort: ["Process".to_string(), "asc".to_string()],
+                system: crate::app::log_format::V3SessionSystem::default(),
+            }),
+            V3Record::Frame(V3FrameRecord(started_at, v3_test_system(0), Vec::new())),
+            V3Record::Process(V3ProcessDefinition(
+                7,
+                42,
+                "app.exe".to_string(),
+                Some(100),
+                Some(r"C:\first\app.exe".to_string()),
+            )),
+            V3Record::Frame(V3FrameRecord(
+                started_at + 1_000,
+                v3_test_system(1),
+                vec![v3_test_process_sample(7, 120)],
+            )),
+            V3Record::Process(V3ProcessDefinition(
+                8,
+                84,
+                "app.exe".to_string(),
+                Some(200),
+                Some(r"C:\second\app.exe".to_string()),
+            )),
+            V3Record::Frame(V3FrameRecord(
+                started_at + 2_000,
+                v3_test_system(2),
+                vec![
+                    v3_test_process_sample(7, 121),
+                    v3_test_process_sample(8, 240),
+                ],
+            )),
+            V3Record::End(V3EndRecord(started_at + 3_000, "stopped".to_string())),
+        ];
+        write_v3_records(&path, &records);
+
+        let summary = summarize_log(&path);
+        assert_eq!(summary.schema_version, Some(3));
+        assert_eq!(summary.session_id.as_deref(), Some("s3"));
+        assert_eq!(summary.tracked_names, ["app.exe"]);
+        assert!(summary.error.is_none());
+
+        let loaded = load_log(&path, SortSpec::default()).unwrap();
+        assert_eq!(loaded.summary.frame_count, 3);
+        assert_eq!(loaded.snapshot.processes.len(), 2);
+        assert_eq!(loaded.snapshot.processes[0].name, "app.exe");
+        assert_eq!(loaded.snapshot.processes[1].name, "app.exe");
+        assert_ne!(
+            loaded.snapshot.processes[0].pid,
+            loaded.snapshot.processes[1].pid
+        );
+
+        let first_identity = crate::model::ProcessIdentity {
+            pid: 42,
+            name: "app.exe".to_string(),
+            start_time: Some(100),
+        };
+        let second_identity = crate::model::ProcessIdentity {
+            pid: 84,
+            name: "app.exe".to_string(),
+            start_time: Some(200),
+        };
+        assert_eq!(loaded.process_history.sample_count_for(&first_identity), 2);
+        assert_eq!(loaded.process_history.sample_count_for(&second_identity), 1);
+        assert_eq!(loaded.tracked_names, ["app.exe"]);
+    }
+
+    #[test]
+    fn v3_log_preserves_all_compact_metric_positions() {
+        let path = unique_log_path("v3-all-metrics");
+        let captured_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
+            .unwrap()
+            .timestamp_millis();
+        let mut system_values = [None; crate::app::log_format::SYSTEM_U64_FIELD_COUNT];
+        for (index, value) in system_values.iter_mut().enumerate() {
+            *value = Some(1_000 + index as u64);
+        }
+        let records = vec![
+            V3Record::Session(V3SessionRecord {
+                schema_version: 3,
+                session_id: "s3".to_string(),
+                app_version: "1.0.0".to_string(),
+                host: "PC".to_string(),
+                started_at_ms: captured_at,
+                interval_seconds: 1,
+                tracked_names: vec!["app.exe".to_string()],
+                columns: Vec::new(),
+                sort: ["Process".to_string(), "asc".to_string()],
+                system: crate::app::log_format::V3SessionSystem {
+                    cpu_name: Some("CPU".to_string()),
+                    cpu_frequency_mhz: Some(3_200),
+                    cpu_topology: Some("8C/16T".to_string()),
+                    cpu_cache: Some("L3 16 MiB".to_string()),
+                },
+            }),
+            V3Record::Gpu(V3GpuDefinition(4, 1, 2, Some("GPU".to_string()))),
+            V3Record::Process(V3ProcessDefinition(
+                7,
+                42,
+                "app.exe".to_string(),
+                Some(100),
+                Some(r"C:\app.exe".to_string()),
+            )),
+            V3Record::Frame(V3FrameRecord(
+                captured_at,
+                V3SystemMetrics(
+                    system_values,
+                    Some(1.5),
+                    vec![V3GpuSample(
+                        4,
+                        [Some(74.0), Some(60.0), Some(100.0), Some(18.0), Some(31.0)],
+                        [
+                            Some(2),
+                            Some(3),
+                            Some(2_000),
+                            Some(8_000),
+                            Some(500),
+                            Some(16_000),
+                        ],
+                    )],
+                ),
+                vec![V3ProcessSample(
+                    7,
+                    [Some(12.5), Some(5.5)],
+                    [
+                        Some(1_000),
+                        Some(900),
+                        Some(700),
+                        Some(200),
+                        Some(10),
+                        Some(20),
+                        Some(30),
+                        Some(40),
+                        Some(50),
+                        Some(60),
+                        Some(70),
+                        Some(80),
+                        Some(90),
+                    ],
+                )],
+            )),
+        ];
+        write_v3_records(&path, &records);
+
+        let loaded = load_log(&path, SortSpec::default()).unwrap();
+        let process = &loaded.snapshot.processes[0];
+        assert_eq!(process.cpu_percent, Some(12.5));
+        assert_eq!(process.private_bytes, Some(1_000));
+        assert_eq!(process.workset_bytes, Some(900));
+        assert_eq!(process.workset_private_bytes, Some(700));
+        assert_eq!(process.workset_shareable_bytes, Some(200));
+        assert_eq!(process.thread_count, Some(10));
+        assert_eq!(process.handle_count, Some(20));
+        assert_eq!(process.user_object_count, Some(30));
+        assert_eq!(process.gdi_object_count, Some(40));
+        assert_eq!(process.gpu_percent, Some(5.5));
+        assert_eq!(process.gpu_dedicated_bytes, Some(50));
+        assert_eq!(process.gpu_shared_bytes, Some(60));
+        assert_eq!(process.dotnet_heap_bytes, Some(70));
+        assert_eq!(process.io_read_bytes_per_sec, Some(80));
+        assert_eq!(process.io_write_bytes_per_sec, Some(90));
+
+        assert_eq!(loaded.snapshot.used_memory, 1_000);
+        assert_eq!(loaded.snapshot.total_memory, 1_001);
+        assert_eq!(loaded.snapshot.disk_queue_length, Some(1.5));
+        assert_eq!(loaded.snapshot.gpu_adapters[0].id.high, 1);
+        assert_eq!(loaded.snapshot.gpu_adapters[0].id.low, 2);
+        assert_eq!(loaded.snapshot.gpu_adapters[0].name.as_deref(), Some("GPU"));
+        assert_eq!(
+            loaded.snapshot.gpu_adapters[0].utilization_percent,
+            Some(74.0)
+        );
+        assert_eq!(loaded.snapshot.gpu_adapters[0].encode.engine_count, 2);
+        assert_eq!(loaded.snapshot.gpu_adapters[0].decode.engine_count, 3);
+        assert_eq!(loaded.snapshot.gpu_adapters[0].dedicated_used, Some(2_000));
+        assert_eq!(loaded.snapshot.gpu_adapters[0].shared_total, Some(16_000));
+    }
+
+    #[test]
     fn v2_log_without_cpu_components_keeps_them_unavailable() {
         let path = unique_log_path("v2-cpu-compat");
         write_lines(
@@ -1109,5 +1660,28 @@ mod tests {
         for line in lines {
             writeln!(file, "{line}").unwrap();
         }
+    }
+
+    fn write_v3_records(path: &Path, records: &[V3Record]) {
+        let mut file = File::create(path).unwrap();
+        for record in records {
+            serde_json::to_writer(&mut file, record).unwrap();
+            writeln!(file).unwrap();
+        }
+    }
+
+    fn v3_test_system(process_count: u64) -> V3SystemMetrics {
+        let mut values = [None; crate::app::log_format::SYSTEM_U64_FIELD_COUNT];
+        values[system_u64::PHYSICAL_MEMORY] = Some(1_000);
+        values[system_u64::TOTAL_MEMORY] = Some(8_000);
+        values[system_u64::PROCESS_COUNT] = Some(process_count);
+        V3SystemMetrics(values, None, Vec::new())
+    }
+
+    fn v3_test_process_sample(process_id: u32, private_bytes: u64) -> V3ProcessSample {
+        let floats = [None; crate::app::log_format::PROCESS_F64_FIELD_COUNT];
+        let mut integers = [None; crate::app::log_format::PROCESS_U64_FIELD_COUNT];
+        integers[process_u64::PRIVATE_BYTES] = Some(private_bytes);
+        V3ProcessSample(process_id, floats, integers)
     }
 }

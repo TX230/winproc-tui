@@ -63,7 +63,7 @@ This preserves useful investigation history for explicit targets without allowin
 
 ### 2.6 Use JSON Lines for recording
 
-Recording uses JSON Lines so frames can be appended incrementally, flushed on stop or quit, partially inspected after interruption, and processed without constructing one in-memory document. The reader builds a lightweight log-list summary from only the first and last non-empty records; it parses all frames only after a log is selected.
+Recording uses JSON Lines so frames can be appended incrementally, flushed on stop or quit, partially inspected after interruption, and processed without constructing one in-memory document. Schema version 3 keeps the session record self-describing but stores recurring metrics in fixed-order arrays. Each process and GPU adapter receives a session-local numeric ID and a definition record before its first sample, avoiding repeated identity strings without conflating concurrent same-name processes. The reader builds a lightweight log-list summary from only the first and last non-empty records; it parses all frames only after a log is selected.
 
 The record types, fields, units, and missing-value rules are specified in [metrics.md](metrics.md).
 
@@ -198,7 +198,7 @@ stateDiagram-v2
     Exiting --> [*]
 ```
 
-Starting recording requires at least one configured Tracking List name. It does not require a current live match: each frame still records system metrics and writes an empty `processes` array until a matching process appears. `RecordingSession` owns a copy of the working Tracking List and its normalized lookup set, and both session metadata and every frame use that fixed scope. Plain `t` and `Ctrl+T` reject Tracking List changes during Recording; `Shift+T` remains available because `tracked_only` is independent display state.
+Starting recording requires at least one configured Tracking List name. It does not require a current live match: each frame still records system metrics and writes an empty process-sample array until a matching process appears. `RecordingSession` owns a copy of the working Tracking List and its normalized lookup set; the session metadata records that list once and every frame is filtered through the same fixed scope. Plain `t` and `Ctrl+T` reject Tracking List changes during Recording; `Shift+T` remains available because `tracked_only` is independent display state.
 
 `Ctrl+R` opens a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops. Sampling and frame writes continue while it is open, and the log is ended, flushed, and closed only after Stop is confirmed. Quit retains its existing single confirmation and performs the same writer cleanup directly rather than nesting the stop confirmation.
 
@@ -206,7 +206,7 @@ Recording lifecycle failures are application state, not status-only feedback. A 
 
 Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
 
-The Log list scans supported `*.log` files on a background worker. Only schema version 2 is listed; malformed version 2 logs are reported without crashing the UI. Selecting a log triggers full background parsing. The full loader reuses one input buffer and deserializes directly into typed session, frame, and end records instead of building a generic JSON value tree for every line. Unknown fields remain tolerated for forward compatibility. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
+The Log list scans supported `*.log` files on a background worker. Schema versions 2 and 3 are listed and loadable; malformed supported logs are reported without crashing the UI. Selecting a log triggers full background parsing. Both loaders reuse one input buffer and deserialize directly into typed records instead of building a generic JSON value tree for every line. The schema-v3 loader resolves process and GPU IDs through the preceding definition records while reconstructing snapshots and histories. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
 
 ## 8. Invariants, Tests, and Constraints
 

@@ -8579,19 +8579,22 @@ processes = ["api.exe", "worker.exe"]
         assert!(!app.show_recording_stop_confirmation);
 
         let contents = std::fs::read_to_string(&path).unwrap();
+        let records = contents
+            .lines()
+            .map(|line| serde_json::from_str::<app::log_format::V3Record>(line).unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(
-            contents
-                .lines()
-                .filter(|line| line.contains("\"record_type\":\"frame\""))
+            records
+                .iter()
+                .filter(|record| matches!(record, app::log_format::V3Record::Frame(_)))
                 .count(),
             2
         );
         assert!(
-            contents
-                .lines()
+            records
+                .iter()
                 .last()
-                .unwrap()
-                .contains("\"record_type\":\"end\"")
+                .is_some_and(|record| matches!(record, app::log_format::V3Record::End(_)))
         );
         let _ = std::fs::remove_file(path);
     }
@@ -13567,8 +13570,8 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_writes_v2_session_frame_and_end_records() {
-        let path = unique_recording_path("v2-session");
+    fn recording_writes_v3_session_definitions_frames_and_end_records() {
+        let path = unique_recording_path("v3-session");
         let mut app = make_test_app(1, 10);
         app.watch_list = vec!["proc-0".to_string()];
         app.normalized_watch_names = std::collections::HashSet::from(["proc-0".to_string()]);
@@ -13585,18 +13588,41 @@ processes = ["api.exe", "worker.exe"]
         let lines = std::fs::read_to_string(&path).unwrap();
         let records = lines
             .lines()
-            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .map(|line| serde_json::from_str::<app::log_format::V3Record>(line).unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(records[0]["schema_version"], 2);
-        assert_eq!(records[0]["record_type"], "session");
-        assert_eq!(records[0]["tracked_names"], serde_json::json!(["proc-0"]));
-        assert_eq!(records[1]["record_type"], "frame");
-        assert_eq!(records[1]["system_metrics"]["physical_memory_bytes"], 0);
-        assert_eq!(records[1]["tracked_names"], serde_json::json!(["proc-0"]));
-        assert_eq!(records[2]["record_type"], "frame");
-        assert_eq!(records[2]["tracked_names"], serde_json::json!(["proc-0"]));
-        assert_eq!(records[2]["processes"][0]["name"], "proc-0");
-        assert_eq!(records[3]["record_type"], "end");
+        let app::log_format::V3Record::Session(session) = &records[0] else {
+            panic!("first record must be a schema v3 session");
+        };
+        assert_eq!(session.schema_version, 3);
+        assert_eq!(session.tracked_names, ["proc-0"]);
+
+        let definitions = records
+            .iter()
+            .filter_map(|record| match record {
+                app::log_format::V3Record::Process(definition) => Some(definition),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].2, "proc-0");
+
+        let frames = records
+            .iter()
+            .filter_map(|record| match record {
+                app::log_format::V3Record::Frame(frame) => Some(frame),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(
+            frames[0].1.0[app::log_format::system_u64::PHYSICAL_MEMORY],
+            Some(0)
+        );
+        assert_eq!(frames[1].2[0].0, definitions[0].0);
+        assert!(matches!(
+            records.last(),
+            Some(app::log_format::V3Record::End(_))
+        ));
         let _ = std::fs::remove_file(path);
     }
 

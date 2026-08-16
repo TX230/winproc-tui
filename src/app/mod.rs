@@ -1,6 +1,7 @@
 pub(crate) mod actions;
 pub(crate) mod clipboard;
 pub(crate) mod export;
+pub(crate) mod log_format;
 pub(crate) mod logs;
 pub(crate) mod navigation;
 pub(crate) mod path_completion;

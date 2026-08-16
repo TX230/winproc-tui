@@ -1,7 +1,7 @@
 # winproc-tui Metrics Specification
 
 This document describes the metrics handled by `winproc-tui`, including display names, data sources, and display formats.
-In the current implementation, unavailable values are displayed as `--` in the UI and are omitted from recording logs rather than written as `null`.
+In the current implementation, unavailable values are displayed as `--` in the UI. Schema-v3 fixed-order arrays encode unavailable positions as `null`; schema-v2 object fields were normally omitted when unavailable.
 
 ## Sampling Freshness
 
@@ -294,12 +294,105 @@ The `B-A` value in each Graph card title uses the same metric-specific format as
 
 ## Metrics in Recording Logs
 
-Recording logs are JSON Lines. The current writer outputs `schema_version: 2`.
-`record_type: "session"` stores session information, `record_type: "frame"` stores one sample, and `record_type: "end"` stores end information.
-The reader currently loads only `schema_version: 2`.
-Compatibility with older schemas is deferred until v1.0.0 or later.
+Recording logs are JSON Lines. The current writer outputs schema version 3 and the reader loads schema versions 2 and 3.
 
-At recording start, the writer copies the working Tracking List into the recording session. That fixed session copy supplies `tracked_names` and process matching for every frame until recording stops. The working list cannot be edited through the UI during recording. The version 2 reader remains tolerant of older version 2 logs whose frame-level `tracked_names` changed during a session; this writer-side clarification does not require a schema-version change.
+At recording start, the writer copies the working Tracking List into the recording session. That fixed session copy supplies process matching until recording stops and is written once in the schema-v3 session record. The working list cannot be edited through the UI during recording.
+
+### Schema version 3
+
+Version 3 uses an externally tagged record with one short key per line. The mandatory first record is `s`; subsequent `p`, `g`, `f`, and `e` records inherit its schema and session identity.
+
+| Key | Payload | Description |
+|---|---|---|
+| `s` | object | Session metadata and `v: 3`. |
+| `p` | array | Process definition written before the first frame that references it. |
+| `g` | array | GPU adapter definition written before the first frame that references it. |
+| `f` | array | One captured frame. |
+| `e` | array | Optional clean end marker. |
+
+The session payload uses these fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `v` | number | `3`. |
+| `id` | string | Start time formatted as `YYYYMMDDhhmmss`. |
+| `app` | string | winproc-tui package version. |
+| `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
+| `start` | integer | Session start as Unix milliseconds. |
+| `interval` | number | Fixed sampling interval metadata. Currently `1`. |
+| `tracked` | string array | Fixed Tracking List copied at recording start. |
+| `columns` | string array | Process metric columns displayed at recording start. |
+| `sort` | two-element string array | Sort column and `asc` or `desc`. |
+| `system` | object | Optional `cpu`, `cpu_mhz`, `topology`, and `cache` metadata. |
+
+A process definition is `[process_id, pid, name, start_time, path]`. `process_id` is a monotonically assigned session-local integer. `start_time` and `path` may be `null`. A definition with the same ID may be emitted again before a later frame if its path becomes available or changes.
+
+Process identity is not based on the tracked name alone. The writer registers the sampled `(PID, name, start_time)` identity and assigns each identity a separate `process_id`. Therefore:
+
+- a matching process that starts after recording begins receives a definition immediately before its first frame;
+- concurrent processes with the same name but different PIDs receive different IDs and histories;
+- PID reuse is separated when `start_time` is available.
+
+A GPU definition is `[adapter_id, luid_high, luid_low, name]`. `adapter_id` is also session-local and `name` may be `null`.
+
+A frame payload is `[captured_at_ms, system_metrics, process_samples]`. `captured_at_ms` is Unix milliseconds. `system_metrics` is `[u64_values, disk_queue_length, gpu_samples]`; `process_samples` may be empty while system metrics continue to be recorded.
+
+`system_metrics.u64_values` uses this fixed order:
+
+| Index | Metric |
+|---:|---|
+| 0 | `physical_memory_bytes` |
+| 1 | `total_memory_bytes` |
+| 2 | `available_memory_bytes` |
+| 3 | `modified_memory_bytes` |
+| 4 | `standby_memory_bytes` |
+| 5 | `free_zeroed_memory_bytes` |
+| 6 | `committed_bytes` |
+| 7 | `commit_limit_bytes` |
+| 8 | `paged_pool_bytes` |
+| 9 | `nonpaged_pool_bytes` |
+| 10 | `pages_input_per_sec` |
+| 11 | `pages_output_per_sec` |
+| 12 | `process_count` |
+| 13 | `thread_count` |
+| 14 | `cpu_percent` |
+| 15 | `cpu_user_percent` |
+| 16 | `cpu_kernel_percent` |
+| 17 | `disk_read_bytes_per_sec` |
+| 18 | `disk_write_bytes_per_sec` |
+| 19 | `network_received_bytes_per_sec` |
+| 20 | `network_sent_bytes_per_sec` |
+
+A GPU sample is `[adapter_id, f64_values, u64_values]`.
+
+| Array | Index order |
+|---|---|
+| `f64_values` | utilization, encode average, encode maximum, decode average, decode maximum |
+| `u64_values` | encode engine count, decode engine count, dedicated used, dedicated total, shared used, shared total |
+
+A process sample is `[process_id, f64_values, u64_values]`.
+
+| Array | Index order |
+|---|---|
+| `f64_values` | CPU%, GPU% |
+| `u64_values` | private bytes, working set, working-set private, working-set shareable, threads, handles, USER objects, GDI objects, GPU dedicated, GPU shared, .NET heap, I/O read bytes/s, I/O write bytes/s |
+
+Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers.
+
+An end payload is `[ended_at_ms, reason]`. A missing end record is valid after interruption; the last complete frame remains loadable.
+
+Example with one process definition and one compact frame:
+
+```json
+{"s":{"v":3,"id":"20260504143012","app":"1.0.0","host":"PC","start":1777872612000,"interval":1,"tracked":["app.exe"],"columns":["PrivBytes"],"sort":["Process","asc"],"system":{"cpu":"Example CPU"}}}
+{"p":[0,1234,"app.exe",1700000000,"C:\\work\\app.exe"]}
+{"f":[1777872612000,[[1234567890,34359738368,12000000000,null,null,null,2345678901,68719476736,null,null,12,4,214,3812,37,29,8,10000000,20000000,30000000,40000000],1.5,[]],[[0,[12.5,null],[123456789,98765432,90000000,8589932,42,512,21,35,null,null,null,1048576,524288]]]]}
+{"e":[1777872613000,"stopped"]}
+```
+
+### Schema version 2 compatibility
+
+Version 2 remains readable. Its object-based layout is retained here for interpreting existing recordings; the current writer no longer emits it. The version 2 reader remains tolerant of logs whose frame-level `tracked_names` changed during a session.
 
 Record types:
 
@@ -335,7 +428,7 @@ Frame record fields:
 | `record_type` | string | `frame`. |
 | `session_id` | string | Same ID as the session record. |
 | `captured_at` | string | RFC 3339 timestamp. |
-| `tracked_names` | string array | Fixed session Tracking List; identical to the session record for logs written by the current version. |
+| `tracked_names` | string array | Session Tracking List; fixed-scope schema-v2 writers repeated the same list in every frame. |
 | `system_metrics` | object | System metrics recorded with the frame, including MEM, per-adapter GPU, CPU average, and System Activity values. |
 | `processes` | object array | Live processes matching the fixed session Tracking List. This can be empty when the configured tracked names have no live match. |
 
@@ -352,7 +445,7 @@ Process object fields:
 A `frame` record outputs system metrics and the live processes matching the fixed session Tracking List.
 System metrics are recorded even when no live process currently matches that list.
 System Activity fields are optional for compatibility with older logs and with systems where a PDH counter is unavailable.
-Every optional MEM, GPU, and process field is omitted when unavailable. New recordings store GPU values in `system_metrics.gpu_adapters`; the reader still accepts the older aggregate GPU fields but never combines adapters when reading the new form.
+Every optional MEM, GPU, and process field is omitted when unavailable. Later schema-v2 recordings store GPU values in `system_metrics.gpu_adapters`; the reader also accepts the older aggregate GPU fields but never combines adapters when reading the per-adapter form.
 
 ```json
 {
@@ -419,6 +512,5 @@ Every optional MEM, GPU, and process field is omitted when unavailable. New reco
 }
 ```
 
-`metrics` contains only values that were collected. Values that could not be collected are omitted rather than written as `null`.
-For compatibility, the reader also accepts `null` as a missing value.
+In schema version 2, `metrics` contains only values that were collected. Values that could not be collected were normally omitted; the reader also accepts `null` as a missing value.
 Missing values are displayed as `--` in the UI and are not treated as 0 in Graph.
