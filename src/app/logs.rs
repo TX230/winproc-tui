@@ -59,6 +59,7 @@ pub(crate) struct LogListWorker {
 }
 
 pub(crate) struct LogLoadWorker {
+    path: PathBuf,
     receiver: Receiver<Result<LoadedLog, String>>,
 }
 
@@ -84,11 +85,19 @@ impl LogListWorker {
 impl LogLoadWorker {
     pub(crate) fn spawn(path: PathBuf, sort: SortSpec) -> Self {
         let (sender, receiver) = mpsc::channel();
+        let worker_path = path.clone();
         thread::spawn(move || {
             let result = load_log(&path, sort).map_err(|error| error.to_string());
             let _ = sender.send(result);
         });
-        Self { receiver }
+        Self {
+            path: worker_path,
+            receiver,
+        }
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
     }
 
     pub(crate) fn try_recv(&self) -> Result<Option<Result<LoadedLog, String>>, TryRecvError> {

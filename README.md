@@ -329,7 +329,7 @@ Log view cannot open during recording, and recording cannot start while Log view
 
 Press `Ctrl+L` to open the log list.
 The list shows `*.log` files from the previous recording directory if available, otherwise from the current directory.
-The compact list shows file names from one directory; the `Dir` row shows that directory. Use `Up` / `Down` to select a file, `Enter` to open it, `d` to choose another directory, `r` to refresh, and `Esc` to close the dialog. The complete key guidance is shown on the dialog's bottom row.
+The compact list shows file names from one directory; the `Dir` row shows that directory. Use `Up` / `Down` to select a file, `Enter` to open it, `d` to choose another directory, `r` to refresh, and `Esc` to close the dialog. While a log is loading, the list shows `Opening <filename>...` and ignores additional open requests until that load finishes. The complete key guidance is shown on the dialog's bottom row.
 Press `Enter` on a selected log to switch to the `LOG` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
 Log view is not a player: Processes keeps showing the last recorded values, while Graph, Samples, and Process Info expose the recorded metric history. Process Info uses recorded fields for static details and shows `--` for details that were not recorded. Press `Esc` to return to the live display.
 

@@ -13043,6 +13043,69 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn log_list_shows_the_log_being_opened() {
+        let mut app = make_test_app(1, 10);
+        app.show_log_list = true;
+        app.log_list_dir = Some(std::path::PathBuf::from("C:/logs"));
+        app.log_summaries = vec![app::logs::LogSummary {
+            path: std::path::PathBuf::from("C:/logs/large-session.log"),
+            schema_version: Some(2),
+            session_id: Some("large".to_string()),
+            started_at: Some(Local::now()),
+            ended_at: None,
+            host: Some("PC".to_string()),
+            tracked_names: vec!["app.exe".to_string()],
+            frame_count: 0,
+            error: None,
+        }];
+
+        app.load_selected_log();
+        let rendered = render_app_to_text(&app, 120, 45);
+
+        assert!(
+            rendered.contains("Opening large-session.log..."),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("Select a log file and press Enter."),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn log_list_ignores_another_open_while_loading() {
+        let first_path = std::path::PathBuf::from("C:/logs/first.log");
+        let second_path = std::path::PathBuf::from("C:/logs/second.log");
+        let mut app = make_test_app(1, 10);
+        app.show_log_list = true;
+        app.log_summaries = [first_path.clone(), second_path]
+            .into_iter()
+            .map(|path| app::logs::LogSummary {
+                path,
+                schema_version: Some(2),
+                session_id: None,
+                started_at: Some(Local::now()),
+                ended_at: None,
+                host: None,
+                tracked_names: Vec::new(),
+                frame_count: 0,
+                error: None,
+            })
+            .collect();
+
+        app.load_selected_log();
+        app.log_list_index = 1;
+        app.load_selected_log();
+
+        let worker = app
+            .log_load_worker
+            .as_ref()
+            .expect("first load stays active");
+        assert_eq!(worker.path(), first_path.as_path());
+        assert_eq!(app.status, format!("Opening log: {}", first_path.display()));
+    }
+
+    #[test]
     fn empty_log_list_explains_how_to_record_or_change_directory() {
         let mut app = make_test_app(1, 10);
         app.show_log_list = true;

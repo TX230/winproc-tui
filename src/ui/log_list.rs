@@ -34,10 +34,7 @@ pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &Ap
     let modal = log_list_modal(app);
     let content_width = modal.layout(area).content.width as usize;
     let mut lines = vec![
-        Line::from(Span::styled(
-            "Select a log file and press Enter.",
-            Style::default().fg(theme.text),
-        )),
+        log_list_state_line(app, content_width, theme),
         log_dir_line(app, content_width, theme),
     ];
 
@@ -236,6 +233,38 @@ fn log_dir_line(app: &App, width: usize, theme: Theme) -> Line<'static> {
             compact_path(&dir, width.saturating_sub(4)),
             Style::default().fg(theme.text),
         ),
+    ])
+}
+
+fn log_list_state_line(app: &App, width: usize, theme: Theme) -> Line<'static> {
+    let Some(worker) = &app.log_load_worker else {
+        return Line::from(Span::styled(
+            "Select a log file and press Enter.",
+            Style::default().fg(theme.text),
+        ));
+    };
+    let name = worker
+        .path()
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| worker.path().display().to_string());
+    let prefix = "Opening ";
+    let suffix = "...";
+    let name_width = width
+        .saturating_sub(prefix.chars().count())
+        .saturating_sub(suffix.chars().count());
+    Line::from(vec![
+        Span::styled(
+            prefix,
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            compact_path(&name, name_width),
+            Style::default().fg(theme.text),
+        ),
+        Span::styled(suffix, Style::default().fg(theme.muted)),
     ])
 }
 

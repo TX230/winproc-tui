@@ -6494,6 +6494,9 @@ impl App {
     }
 
     pub(crate) fn load_selected_log(&mut self) {
+        if self.log_load_worker.is_some() {
+            return;
+        }
         if self.recording_session.is_some() {
             self.status = "Log view is unavailable during recording".to_string();
             return;

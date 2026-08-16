@@ -172,7 +172,7 @@ The UI module renders state and exposes geometry helpers; it does not collect me
 
 ## 7. Recording and Log View
 
-`Live`, `Recording`, and `LogView` are mutually constrained application activities. The Log list is a modal selection step, not a fourth activity.
+`Live`, `Recording`, and `LogView` are mutually constrained application activities. The Log list is a modal selection step, not a fourth activity. Full log loading permits only one in-flight request; the worker-owned path drives visible loading feedback, and additional open requests are ignored until the result is applied.
 
 ```mermaid
 stateDiagram-v2
