@@ -206,7 +206,7 @@ Recording lifecycle failures are application state, not status-only feedback. A 
 
 Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
 
-The Log list scans supported `*.log` files on a background worker. Only schema version 2 is listed; malformed version 2 logs are reported without crashing the UI. Selecting a log triggers full background parsing. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
+The Log list scans supported `*.log` files on a background worker. Only schema version 2 is listed; malformed version 2 logs are reported without crashing the UI. Selecting a log triggers full background parsing. The full loader reuses one input buffer and deserializes directly into typed session, frame, and end records instead of building a generic JSON value tree for every line. Unknown fields remain tolerated for forward compatibility. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
 
 ## 8. Invariants, Tests, and Constraints
 

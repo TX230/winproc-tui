@@ -9,7 +9,8 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
-use serde_json::{Map, Value};
+use serde::Deserialize;
+use serde_json::Value;
 
 use crate::model::{
     ProcessHistory, ProcessRow, Snapshot, SortSpec, SystemHistory, sort_process_rows,
@@ -17,6 +18,7 @@ use crate::model::{
 
 const SUPPORTED_LOG_SCHEMA_VERSION: u64 = 2;
 const LOG_TAIL_READ_CHUNK_SIZE: usize = 8 * 1024;
+const LOG_LOAD_READ_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub(crate) struct LogSummary {
@@ -159,16 +161,56 @@ pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     let mut tracked_names = Vec::new();
     let mut tracked_name_set = HashSet::new();
 
-    read_json_lines(path, |record| {
-        require_supported_schema(record)?;
-        update_summary_from_record(&mut summary, record);
-        match record_type(record) {
-            Some("session") => {
-                session = SessionMeta::from_record(record);
+    read_load_records(path, |record| {
+        match record {
+            LoadRecord::Session {
+                schema_version,
+                session_id,
+                host,
+                started_at,
+                system,
+            } => {
+                require_supported_schema_version(schema_version)?;
+                update_loaded_summary_common(&mut summary, schema_version, session_id);
+                if summary.host.is_none() {
+                    summary.host = host;
+                }
+                if summary.started_at.is_none() {
+                    summary.started_at = started_at.as_deref().and_then(parse_datetime);
+                }
+                session = SessionMeta::from_loaded_record(system);
             }
-            Some("end") => {}
-            Some("frame") => {
-                let frame = parse_frame(record, &session)?;
+            LoadRecord::End {
+                schema_version,
+                session_id,
+                ended_at,
+            } => {
+                require_supported_schema_version(schema_version)?;
+                update_loaded_summary_common(&mut summary, schema_version, session_id);
+                if let Some(ended_at) = ended_at.as_deref().and_then(parse_datetime) {
+                    summary.ended_at = Some(ended_at);
+                }
+            }
+            LoadRecord::Frame {
+                schema_version,
+                session_id,
+                captured_at,
+                system_metrics,
+                processes,
+            } => {
+                require_supported_schema_version(schema_version)?;
+                update_loaded_summary_common(&mut summary, schema_version, session_id);
+                let frame = parse_loaded_frame(
+                    captured_at,
+                    system_metrics,
+                    processes.unwrap_or_default(),
+                    &session,
+                )?;
+                summary.frame_count = summary.frame_count.saturating_add(1);
+                if summary.started_at.is_none() {
+                    summary.started_at = Some(frame.snapshot.captured_at);
+                }
+                summary.ended_at = Some(frame.snapshot.captured_at);
                 add_process_names(&mut tracked_names, &mut tracked_name_set, &frame.snapshot);
                 process_history.record_snapshot_unbounded(
                     frame.snapshot.captured_at,
@@ -178,12 +220,6 @@ pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
                     system_history.record_snapshot_unbounded(&frame.snapshot);
                 }
                 last_snapshot = Some(frame.snapshot);
-            }
-            Some(other) => {
-                return Err(anyhow!("unsupported record_type {other:?}"));
-            }
-            None => {
-                return Err(anyhow!("log record is missing record_type"));
             }
         }
         Ok(())
@@ -203,6 +239,48 @@ pub(crate) fn load_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     })
 }
 
+fn read_load_records<F>(path: &Path, mut handle: F) -> Result<()>
+where
+    F: FnMut(LoadRecord) -> Result<()>,
+{
+    let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let mut reader = BufReader::with_capacity(LOG_LOAD_READ_BUFFER_SIZE, file);
+    let mut line = Vec::new();
+    let mut line_index = 0_usize;
+    loop {
+        line.clear();
+        if reader
+            .read_until(b'\n', &mut line)
+            .with_context(|| format!("failed to read {} line {}", path.display(), line_index + 1))?
+            == 0
+        {
+            break;
+        }
+        line_index += 1;
+        let line = trim_ascii_whitespace(&line);
+        if line.is_empty() {
+            continue;
+        }
+        let record = match serde_json::from_slice(line) {
+            Ok(record) => record,
+            Err(error) => {
+                if let Ok(probe) = serde_json::from_slice::<SchemaVersionProbe>(line) {
+                    require_supported_schema_version(probe.schema_version)
+                        .with_context(|| format!("invalid log record at line {line_index}"))?;
+                }
+                let label = if error.is_syntax() || error.is_eof() {
+                    "invalid JSON"
+                } else {
+                    "invalid log record"
+                };
+                return Err(error).with_context(|| format!("{label} at line {line_index}"));
+            }
+        };
+        handle(record).with_context(|| format!("invalid log record at line {line_index}"))?;
+    }
+    Ok(())
+}
+
 fn empty_summary(path: &Path) -> LogSummary {
     LogSummary {
         path: path.to_path_buf(),
@@ -215,26 +293,6 @@ fn empty_summary(path: &Path) -> LogSummary {
         frame_count: 0,
         error: None,
     }
-}
-
-fn read_json_lines<F>(path: &Path, mut handle: F) -> Result<()>
-where
-    F: FnMut(&Value) -> Result<()>,
-{
-    let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-    let reader = BufReader::new(file);
-    for (line_index, line) in reader.lines().enumerate() {
-        let line = line.with_context(|| {
-            format!("failed to read {} line {}", path.display(), line_index + 1)
-        })?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let value: Value = serde_json::from_str(&line)
-            .with_context(|| format!("invalid JSON at line {}", line_index + 1))?;
-        handle(&value).with_context(|| format!("invalid log record at line {}", line_index + 1))?;
-    }
-    Ok(())
 }
 
 fn read_first_json_line(path: &Path) -> Result<Value> {
@@ -372,132 +430,291 @@ fn add_process_names(names: &mut Vec<String>, seen: &mut HashSet<String>, snapsh
     }
 }
 
-fn require_supported_schema(record: &Value) -> Result<()> {
-    match record.get("schema_version").and_then(Value::as_u64) {
+#[derive(Debug, Deserialize)]
+#[serde(tag = "record_type")]
+enum LoadRecord {
+    #[serde(rename = "session")]
+    Session {
+        schema_version: Option<u64>,
+        session_id: Option<String>,
+        host: Option<String>,
+        started_at: Option<String>,
+        system: Option<SessionSystemRecord>,
+    },
+    #[serde(rename = "frame")]
+    Frame {
+        schema_version: Option<u64>,
+        session_id: Option<String>,
+        captured_at: Option<String>,
+        system_metrics: Option<SystemMetricsRecord>,
+        processes: Option<Vec<ProcessRecord>>,
+    },
+    #[serde(rename = "end")]
+    End {
+        schema_version: Option<u64>,
+        session_id: Option<String>,
+        ended_at: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct SchemaVersionProbe {
+    schema_version: Option<u64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SessionSystemRecord {
+    cpu_name: Option<String>,
+    cpu_frequency_mhz: Option<u64>,
+    cpu_topology: Option<String>,
+    cpu_cache: Option<String>,
+    gpu_name: Option<String>,
+    gpu_adapters: Option<Vec<GpuAdapterRecord>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SystemMetricsRecord {
+    physical_memory_bytes: Option<u64>,
+    total_memory_bytes: Option<u64>,
+    available_memory_bytes: Option<u64>,
+    modified_memory_bytes: Option<u64>,
+    standby_memory_bytes: Option<u64>,
+    free_zeroed_memory_bytes: Option<u64>,
+    committed_bytes: Option<u64>,
+    commit_limit_bytes: Option<u64>,
+    paged_pool_bytes: Option<u64>,
+    nonpaged_pool_bytes: Option<u64>,
+    pages_input_per_sec: Option<u64>,
+    pages_output_per_sec: Option<u64>,
+    cpu_percent: Option<u64>,
+    cpu_user_percent: Option<u64>,
+    cpu_kernel_percent: Option<u64>,
+    gpu_adapters: Option<Vec<GpuAdapterRecord>>,
+    gpu_dedicated_bytes: Option<u64>,
+    gpu_dedicated_total_bytes: Option<u64>,
+    gpu_shared_bytes: Option<u64>,
+    gpu_shared_total_bytes: Option<u64>,
+    disk_read_bytes_per_sec: Option<u64>,
+    disk_write_bytes_per_sec: Option<u64>,
+    disk_queue_length: Option<f64>,
+    network_received_bytes_per_sec: Option<u64>,
+    network_sent_bytes_per_sec: Option<u64>,
+    process_count: Option<u64>,
+    thread_count: Option<u64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct GpuAdapterRecord {
+    luid_high: Option<u32>,
+    luid_low: Option<u32>,
+    name: Option<String>,
+    utilization_percent: Option<f64>,
+    encode_average_percent: Option<f64>,
+    encode_max_percent: Option<f64>,
+    encode_engine_count: Option<u32>,
+    decode_average_percent: Option<f64>,
+    decode_max_percent: Option<f64>,
+    decode_engine_count: Option<u32>,
+    dedicated_bytes: Option<u64>,
+    dedicated_total_bytes: Option<u64>,
+    shared_bytes: Option<u64>,
+    shared_total_bytes: Option<u64>,
+}
+
+impl GpuAdapterRecord {
+    fn into_sample(self) -> crate::model::GpuAdapterSample {
+        crate::model::GpuAdapterSample {
+            id: crate::model::GpuAdapterId {
+                high: self.luid_high.unwrap_or_default(),
+                low: self.luid_low.unwrap_or_default(),
+            },
+            name: self.name,
+            utilization_percent: self.utilization_percent.filter(|value| value.is_finite()),
+            encode: crate::model::GpuEngineSummary {
+                average_percent: self
+                    .encode_average_percent
+                    .filter(|value| value.is_finite()),
+                max_percent: self.encode_max_percent.filter(|value| value.is_finite()),
+                engine_count: self.encode_engine_count.unwrap_or_default(),
+            },
+            decode: crate::model::GpuEngineSummary {
+                average_percent: self
+                    .decode_average_percent
+                    .filter(|value| value.is_finite()),
+                max_percent: self.decode_max_percent.filter(|value| value.is_finite()),
+                engine_count: self.decode_engine_count.unwrap_or_default(),
+            },
+            dedicated_used: self.dedicated_bytes,
+            dedicated_total: self.dedicated_total_bytes,
+            shared_used: self.shared_bytes,
+            shared_total: self.shared_total_bytes,
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ProcessRecord {
+    pid: Option<u32>,
+    name: Option<String>,
+    path: Option<String>,
+    start_time: Option<u64>,
+    metrics: Option<ProcessMetricsRecord>,
+}
+
+impl ProcessRecord {
+    fn into_row(self) -> Result<ProcessRow> {
+        let metrics = self.metrics.unwrap_or_default();
+        Ok(ProcessRow {
+            pid: self.pid.ok_or_else(|| anyhow!("process is missing pid"))?,
+            name: self
+                .name
+                .ok_or_else(|| anyhow!("process is missing name"))?,
+            executable_path: self.path,
+            start_time: self.start_time,
+            cpu_percent: metrics.cpu_percent.filter(|value| value.is_finite()),
+            private_bytes: metrics.private_bytes,
+            workset_bytes: metrics.workset_bytes,
+            workset_private_bytes: metrics.workset_private_bytes,
+            workset_shareable_bytes: metrics.workset_shareable_bytes,
+            thread_count: metrics.thread_count,
+            handle_count: metrics.handle_count,
+            user_object_count: metrics.user_object_count,
+            gdi_object_count: metrics.gdi_object_count,
+            gpu_percent: metrics.gpu_percent.filter(|value| value.is_finite()),
+            gpu_dedicated_bytes: metrics.gpu_dedicated_bytes,
+            gpu_shared_bytes: metrics.gpu_shared_bytes,
+            dotnet_heap_bytes: metrics.dotnet_heap_bytes,
+            io_read_bytes_per_sec: metrics.io_read_bytes_per_sec,
+            io_write_bytes_per_sec: metrics.io_write_bytes_per_sec,
+        })
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ProcessMetricsRecord {
+    cpu_percent: Option<f64>,
+    private_bytes: Option<u64>,
+    workset_bytes: Option<u64>,
+    workset_private_bytes: Option<u64>,
+    workset_shareable_bytes: Option<u64>,
+    thread_count: Option<u64>,
+    handle_count: Option<u64>,
+    user_object_count: Option<u64>,
+    gdi_object_count: Option<u64>,
+    gpu_percent: Option<f64>,
+    gpu_dedicated_bytes: Option<u64>,
+    gpu_shared_bytes: Option<u64>,
+    dotnet_heap_bytes: Option<u64>,
+    io_read_bytes_per_sec: Option<u64>,
+    io_write_bytes_per_sec: Option<u64>,
+}
+
+fn update_loaded_summary_common(
+    summary: &mut LogSummary,
+    schema_version: Option<u64>,
+    session_id: Option<String>,
+) {
+    if summary.schema_version.is_none() {
+        summary.schema_version = schema_version;
+    }
+    if summary.session_id.is_none() {
+        summary.session_id = session_id;
+    }
+}
+
+fn require_supported_schema_version(schema_version: Option<u64>) -> Result<()> {
+    match schema_version {
         Some(SUPPORTED_LOG_SCHEMA_VERSION) => Ok(()),
         Some(version) => Err(anyhow!("unsupported log schema_version {version}")),
         None => Err(anyhow!("log record is missing schema_version")),
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct SessionMeta {
-    cpu_name: Option<String>,
-    cpu_frequency_mhz: Option<u64>,
-    cpu_topology: Option<String>,
-    cpu_cache: Option<String>,
-    gpu_name: Option<String>,
-    gpu_adapters: Vec<crate::model::GpuAdapterSample>,
+fn parse_datetime(value: &str) -> Option<DateTime<Local>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|value| value.with_timezone(&Local))
 }
 
-impl SessionMeta {
-    fn from_record(record: &Value) -> Self {
-        let system = record.get("system").and_then(Value::as_object);
-        Self {
-            cpu_name: system.and_then(|value| string_from_map(value, "cpu_name")),
-            cpu_frequency_mhz: system.and_then(|value| u64_from_map(value, "cpu_frequency_mhz")),
-            cpu_topology: system.and_then(|value| string_from_map(value, "cpu_topology")),
-            cpu_cache: system.and_then(|value| string_from_map(value, "cpu_cache")),
-            gpu_name: system.and_then(|value| string_from_map(value, "gpu_name")),
-            gpu_adapters: system
-                .and_then(|value| value.get("gpu_adapters"))
-                .and_then(Value::as_array)
-                .map(|items| parse_gpu_adapter_items(items))
-                .unwrap_or_default(),
-        }
-    }
-}
-
-struct ParsedFrame {
-    snapshot: Snapshot,
-    has_system_metrics: bool,
-}
-
-fn parse_frame(record: &Value, session: &SessionMeta) -> Result<ParsedFrame> {
-    let captured_at = datetime_field(record, "captured_at")
+fn parse_loaded_frame(
+    captured_at: Option<String>,
+    system_metrics: Option<SystemMetricsRecord>,
+    processes: Vec<ProcessRecord>,
+    session: &SessionMeta,
+) -> Result<ParsedFrame> {
+    let captured_at = captured_at
+        .as_deref()
+        .and_then(parse_datetime)
         .ok_or_else(|| anyhow!("frame is missing captured_at"))?;
-    let system = record.get("system_metrics").and_then(Value::as_object);
-    let processes = record
-        .get("processes")
-        .and_then(Value::as_array)
-        .map(|items| items.iter().map(parse_process).collect::<Result<Vec<_>>>())
-        .transpose()?
-        .unwrap_or_default();
-
+    let processes = processes
+        .into_iter()
+        .map(ProcessRecord::into_row)
+        .collect::<Result<Vec<_>>>()?;
+    let has_system_metrics = system_metrics.is_some();
+    let mut system = system_metrics.unwrap_or_default();
+    let gpu_adapters = parse_loaded_gpu_adapters(&mut system, session);
     let snapshot = Snapshot {
         captured_at,
-        total_memory: system
-            .and_then(|metrics| u64_from_map(metrics, "total_memory_bytes"))
-            .unwrap_or_default(),
-        used_memory: system
-            .and_then(|metrics| u64_from_map(metrics, "physical_memory_bytes"))
-            .unwrap_or_default(),
-        committed_memory: system.and_then(|metrics| u64_from_map(metrics, "committed_bytes")),
-        commit_limit: system.and_then(|metrics| u64_from_map(metrics, "commit_limit_bytes")),
-        available_memory: system
-            .and_then(|metrics| u64_from_map(metrics, "available_memory_bytes")),
-        modified_memory: system.and_then(|metrics| u64_from_map(metrics, "modified_memory_bytes")),
-        standby_memory: system.and_then(|metrics| u64_from_map(metrics, "standby_memory_bytes")),
-        free_zeroed_memory: system
-            .and_then(|metrics| u64_from_map(metrics, "free_zeroed_memory_bytes")),
-        paged_pool_memory: system.and_then(|metrics| u64_from_map(metrics, "paged_pool_bytes")),
-        nonpaged_pool_memory: system
-            .and_then(|metrics| u64_from_map(metrics, "nonpaged_pool_bytes")),
-        pages_input_per_sec: system
-            .and_then(|metrics| u64_from_map(metrics, "pages_input_per_sec")),
-        pages_output_per_sec: system
-            .and_then(|metrics| u64_from_map(metrics, "pages_output_per_sec")),
+        total_memory: system.total_memory_bytes.unwrap_or_default(),
+        used_memory: system.physical_memory_bytes.unwrap_or_default(),
+        available_memory: system.available_memory_bytes,
+        modified_memory: system.modified_memory_bytes,
+        standby_memory: system.standby_memory_bytes,
+        free_zeroed_memory: system.free_zeroed_memory_bytes,
+        committed_memory: system.committed_bytes,
+        commit_limit: system.commit_limit_bytes,
+        paged_pool_memory: system.paged_pool_bytes,
+        nonpaged_pool_memory: system.nonpaged_pool_bytes,
+        pages_input_per_sec: system.pages_input_per_sec,
+        pages_output_per_sec: system.pages_output_per_sec,
         cpu_name: session.cpu_name.clone(),
         cpu_frequency_mhz: session.cpu_frequency_mhz,
         cpu_current_frequency_mhz: None,
         cpu_p_core_frequency_mhz: None,
         cpu_e_core_frequency_mhz: None,
         cpu_total_usage_percent: system
-            .and_then(|metrics| u64_from_map(metrics, "cpu_percent"))
+            .cpu_percent
             .and_then(|value| u8::try_from(value.min(100)).ok()),
         cpu_user_usage_percent: system
-            .and_then(|metrics| u64_from_map(metrics, "cpu_user_percent"))
+            .cpu_user_percent
             .and_then(|value| u8::try_from(value.min(100)).ok()),
         cpu_kernel_usage_percent: system
-            .and_then(|metrics| u64_from_map(metrics, "cpu_kernel_percent"))
+            .cpu_kernel_percent
             .and_then(|value| u8::try_from(value.min(100)).ok()),
         cpu_logical_processors: Vec::new(),
         cpu_topology: session.cpu_topology.clone(),
         cpu_cache: session.cpu_cache.clone(),
-        gpu_adapters: parse_gpu_adapters(system, session),
+        gpu_adapters,
         disks: Vec::new(),
-        disk_read_bytes_per_sec: system
-            .and_then(|metrics| u64_from_map(metrics, "disk_read_bytes_per_sec")),
-        disk_write_bytes_per_sec: system
-            .and_then(|metrics| u64_from_map(metrics, "disk_write_bytes_per_sec")),
-        disk_queue_length: system.and_then(|metrics| f64_from_map(metrics, "disk_queue_length")),
-        network_received_bytes_per_sec: system
-            .and_then(|metrics| u64_from_map(metrics, "network_received_bytes_per_sec")),
-        network_sent_bytes_per_sec: system
-            .and_then(|metrics| u64_from_map(metrics, "network_sent_bytes_per_sec")),
+        disk_read_bytes_per_sec: system.disk_read_bytes_per_sec,
+        disk_write_bytes_per_sec: system.disk_write_bytes_per_sec,
+        disk_queue_length: system.disk_queue_length.filter(|value| value.is_finite()),
+        network_received_bytes_per_sec: system.network_received_bytes_per_sec,
+        network_sent_bytes_per_sec: system.network_sent_bytes_per_sec,
         process_count: system
-            .and_then(|metrics| u64_from_map(metrics, "process_count"))
+            .process_count
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(processes.len()),
-        thread_count: system.and_then(|metrics| u64_from_map(metrics, "thread_count")),
+        thread_count: system.thread_count,
         processes,
     };
-
     Ok(ParsedFrame {
         snapshot,
-        has_system_metrics: system.is_some(),
+        has_system_metrics,
     })
 }
 
-fn parse_gpu_adapters(
-    system: Option<&serde_json::Map<String, Value>>,
+fn parse_loaded_gpu_adapters(
+    system: &mut SystemMetricsRecord,
     session: &SessionMeta,
 ) -> Vec<crate::model::GpuAdapterSample> {
     let mut adapters = system
-        .and_then(|metrics| metrics.get("gpu_adapters"))
-        .and_then(Value::as_array)
-        .map(|items| parse_gpu_adapter_items(items))
-        .unwrap_or_default();
+        .gpu_adapters
+        .take()
+        .unwrap_or_default()
+        .into_iter()
+        .map(GpuAdapterRecord::into_sample)
+        .collect::<Vec<_>>();
     if !adapters.is_empty() {
         for adapter in &mut adapters {
             if let Some(metadata) = session
@@ -513,15 +730,12 @@ fn parse_gpu_adapters(
         return adapters;
     }
 
-    let Some(metrics) = system else {
-        return session.gpu_adapters.clone();
-    };
     let adapter = crate::model::GpuAdapterSample {
         name: session.gpu_name.clone(),
-        dedicated_used: u64_from_map(metrics, "gpu_dedicated_bytes"),
-        dedicated_total: u64_from_map(metrics, "gpu_dedicated_total_bytes"),
-        shared_used: u64_from_map(metrics, "gpu_shared_bytes"),
-        shared_total: u64_from_map(metrics, "gpu_shared_total_bytes"),
+        dedicated_used: system.gpu_dedicated_bytes,
+        dedicated_total: system.gpu_dedicated_total_bytes,
+        shared_used: system.gpu_shared_bytes,
+        shared_total: system.gpu_shared_total_bytes,
         ..crate::model::GpuAdapterSample::default()
     };
     if adapter.name.is_some()
@@ -536,65 +750,38 @@ fn parse_gpu_adapters(
     }
 }
 
-fn parse_gpu_adapter_items(items: &[Value]) -> Vec<crate::model::GpuAdapterSample> {
-    items
-        .iter()
-        .filter_map(Value::as_object)
-        .map(|adapter| crate::model::GpuAdapterSample {
-            id: crate::model::GpuAdapterId {
-                high: u32_from_map(adapter, "luid_high").unwrap_or_default(),
-                low: u32_from_map(adapter, "luid_low").unwrap_or_default(),
-            },
-            name: string_from_map(adapter, "name"),
-            utilization_percent: f64_from_map(adapter, "utilization_percent"),
-            encode: crate::model::GpuEngineSummary {
-                average_percent: f64_from_map(adapter, "encode_average_percent"),
-                max_percent: f64_from_map(adapter, "encode_max_percent"),
-                engine_count: u32_from_map(adapter, "encode_engine_count").unwrap_or_default(),
-            },
-            decode: crate::model::GpuEngineSummary {
-                average_percent: f64_from_map(adapter, "decode_average_percent"),
-                max_percent: f64_from_map(adapter, "decode_max_percent"),
-                engine_count: u32_from_map(adapter, "decode_engine_count").unwrap_or_default(),
-            },
-            dedicated_used: u64_from_map(adapter, "dedicated_bytes"),
-            dedicated_total: u64_from_map(adapter, "dedicated_total_bytes"),
-            shared_used: u64_from_map(adapter, "shared_bytes"),
-            shared_total: u64_from_map(adapter, "shared_total_bytes"),
-        })
-        .collect()
+#[derive(Debug, Clone, Default)]
+struct SessionMeta {
+    cpu_name: Option<String>,
+    cpu_frequency_mhz: Option<u64>,
+    cpu_topology: Option<String>,
+    cpu_cache: Option<String>,
+    gpu_name: Option<String>,
+    gpu_adapters: Vec<crate::model::GpuAdapterSample>,
 }
 
-fn parse_process(value: &Value) -> Result<ProcessRow> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| anyhow!("process entry is not an object"))?;
-    let metrics = object
-        .get("metrics")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    Ok(ProcessRow {
-        pid: u32_from_map(object, "pid").ok_or_else(|| anyhow!("process is missing pid"))?,
-        name: string_from_map(object, "name").ok_or_else(|| anyhow!("process is missing name"))?,
-        executable_path: string_from_map(object, "path"),
-        start_time: u64_from_map(object, "start_time"),
-        cpu_percent: f64_from_map(&metrics, "cpu_percent"),
-        private_bytes: u64_from_map(&metrics, "private_bytes"),
-        workset_bytes: u64_from_map(&metrics, "workset_bytes"),
-        workset_private_bytes: u64_from_map(&metrics, "workset_private_bytes"),
-        workset_shareable_bytes: u64_from_map(&metrics, "workset_shareable_bytes"),
-        thread_count: u64_from_map(&metrics, "thread_count"),
-        handle_count: u64_from_map(&metrics, "handle_count"),
-        user_object_count: u64_from_map(&metrics, "user_object_count"),
-        gdi_object_count: u64_from_map(&metrics, "gdi_object_count"),
-        gpu_percent: f64_from_map(&metrics, "gpu_percent"),
-        gpu_dedicated_bytes: u64_from_map(&metrics, "gpu_dedicated_bytes"),
-        gpu_shared_bytes: u64_from_map(&metrics, "gpu_shared_bytes"),
-        dotnet_heap_bytes: u64_from_map(&metrics, "dotnet_heap_bytes"),
-        io_read_bytes_per_sec: u64_from_map(&metrics, "io_read_bytes_per_sec"),
-        io_write_bytes_per_sec: u64_from_map(&metrics, "io_write_bytes_per_sec"),
-    })
+impl SessionMeta {
+    fn from_loaded_record(system: Option<SessionSystemRecord>) -> Self {
+        let system = system.unwrap_or_default();
+        Self {
+            cpu_name: system.cpu_name,
+            cpu_frequency_mhz: system.cpu_frequency_mhz,
+            cpu_topology: system.cpu_topology,
+            cpu_cache: system.cpu_cache,
+            gpu_name: system.gpu_name,
+            gpu_adapters: system
+                .gpu_adapters
+                .unwrap_or_default()
+                .into_iter()
+                .map(GpuAdapterRecord::into_sample)
+                .collect(),
+        }
+    }
+}
+
+struct ParsedFrame {
+    snapshot: Snapshot,
+    has_system_metrics: bool,
 }
 
 fn record_type(record: &Value) -> Option<&str> {
@@ -622,26 +809,6 @@ fn normalized_names(names: &[String]) -> HashSet<String> {
         .map(|name| name.trim().to_ascii_lowercase())
         .filter(|name| !name.is_empty())
         .collect()
-}
-
-fn string_from_map(map: &Map<String, Value>, name: &str) -> Option<String> {
-    map.get(name).and_then(Value::as_str).map(ToOwned::to_owned)
-}
-
-fn u32_from_map(map: &Map<String, Value>, name: &str) -> Option<u32> {
-    map.get(name)
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-}
-
-fn u64_from_map(map: &Map<String, Value>, name: &str) -> Option<u64> {
-    map.get(name).and_then(Value::as_u64)
-}
-
-fn f64_from_map(map: &Map<String, Value>, name: &str) -> Option<f64> {
-    map.get(name)
-        .and_then(Value::as_f64)
-        .filter(|value| value.is_finite())
 }
 
 #[cfg(test)]
@@ -764,6 +931,59 @@ mod tests {
             loaded.snapshot.processes[0].workset_shareable_bytes,
             Some(512)
         );
+    }
+
+    #[test]
+    fn v2_log_loads_all_process_fields() {
+        let path = unique_log_path("v2-process-fields");
+        write_lines(
+            &path,
+            &[
+                r#"{"schema_version":2,"record_type":"session","session_id":"s2","started_at":"2026-05-04T14:30:12+09:00"}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","processes":[{"pid":42,"name":"app.exe","path":"C:\\app.exe","start_time":100,"metrics":{"cpu_percent":12.5,"private_bytes":1000,"workset_bytes":900,"workset_private_bytes":700,"workset_shareable_bytes":200,"thread_count":10,"handle_count":20,"user_object_count":30,"gdi_object_count":40,"gpu_percent":5.5,"gpu_dedicated_bytes":50,"gpu_shared_bytes":60,"dotnet_heap_bytes":70,"io_read_bytes_per_sec":80,"io_write_bytes_per_sec":90}}]}"#,
+            ],
+        );
+
+        let loaded = load_log(&path, SortSpec::default()).unwrap();
+        let process = &loaded.snapshot.processes[0];
+
+        assert_eq!(process.pid, 42);
+        assert_eq!(process.name, "app.exe");
+        assert_eq!(process.executable_path.as_deref(), Some(r"C:\app.exe"));
+        assert_eq!(process.start_time, Some(100));
+        assert_eq!(process.cpu_percent, Some(12.5));
+        assert_eq!(process.private_bytes, Some(1000));
+        assert_eq!(process.workset_bytes, Some(900));
+        assert_eq!(process.workset_private_bytes, Some(700));
+        assert_eq!(process.workset_shareable_bytes, Some(200));
+        assert_eq!(process.thread_count, Some(10));
+        assert_eq!(process.handle_count, Some(20));
+        assert_eq!(process.user_object_count, Some(30));
+        assert_eq!(process.gdi_object_count, Some(40));
+        assert_eq!(process.gpu_percent, Some(5.5));
+        assert_eq!(process.gpu_dedicated_bytes, Some(50));
+        assert_eq!(process.gpu_shared_bytes, Some(60));
+        assert_eq!(process.dotnet_heap_bytes, Some(70));
+        assert_eq!(process.io_read_bytes_per_sec, Some(80));
+        assert_eq!(process.io_write_bytes_per_sec, Some(90));
+    }
+
+    #[test]
+    fn v2_log_loader_ignores_unknown_fields() {
+        let path = unique_log_path("v2-unknown-fields");
+        write_lines(
+            &path,
+            &[
+                r#"{"schema_version":2,"record_type":"session","session_id":"s2","started_at":"2026-05-04T14:30:12+09:00","future_session_field":{"enabled":true}}"#,
+                r#"{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"2026-05-04T14:30:12+09:00","future_frame_field":1,"system_metrics":{"physical_memory_bytes":1000,"future_system_metric":2},"processes":[{"pid":1,"name":"app.exe","future_process_field":3,"metrics":{"private_bytes":120,"future_process_metric":4}}]}"#,
+            ],
+        );
+
+        let loaded = load_log(&path, SortSpec::default()).unwrap();
+
+        assert_eq!(loaded.summary.frame_count, 1);
+        assert_eq!(loaded.snapshot.used_memory, 1000);
+        assert_eq!(loaded.snapshot.processes[0].private_bytes, Some(120));
     }
 
     #[test]
