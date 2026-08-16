@@ -321,6 +321,7 @@ Multiple Graphs share one absolute visible time range, cursor, selected time, an
 
 Press `Ctrl+R` to start recording or open its stop confirmation. Recording continues while that confirmation is open; `Enter`, `Esc`, or `n` continues, while `y` stops.
 Recording requires at least one Tracking List entry and saves logs as JSON Lines (with the `.log` extension).
+Each recording runs for at most 24 hours. At the limit, winproc-tui writes the clean end record, flushes and closes the log, and automatically returns to `LIVE`.
 Each frame records system metrics such as MEM, per-adapter GPU, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
 When recording starts, a save-path input dialog opens and shows how many Tracking List names will be fixed for the complete session. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. The path input remains focused; `Enter` starts, `Esc` cancels, and `Ctrl+Space` completes directory names.

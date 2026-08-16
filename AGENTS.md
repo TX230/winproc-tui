@@ -141,6 +141,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Recording is unavailable in Log view, and Log view is unavailable during Recording.
 - `Ctrl+R` during Recording must open a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops; sampling and recording continue until Stop is confirmed.
 - Stopping recording must write the end record, flush, and close the recording log.
+- A recording session lasts for at most 24 hours. At the limit, write the clean end record, flush and close the log, dismiss recording-only dialogs, and automatically return to Live.
 - Quitting during recording must flush the recording log before exit. A cleanup failure cancels quit.
 - Recording create, write, and flush failures must open a visible error dialog. Keep partial logs and never rely only on transient status text for these failures.
 - In Log view, returning to Live must not be confused with quitting the app.

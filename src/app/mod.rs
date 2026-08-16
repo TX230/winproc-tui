@@ -81,6 +81,7 @@ pub(crate) fn run_tui(
             break;
         }
 
+        dirty |= app.enforce_recording_duration_limit();
         let trace_selected = app.process_table_state.selected();
         let trace_start = Instant::now();
         let sample_dirty = app.poll_sample_results()?;

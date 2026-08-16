@@ -298,6 +298,8 @@ Recording logs are JSON Lines. The current writer outputs schema version 3 and t
 
 At recording start, the writer copies the working Tracking List into the recording session. That fixed session copy supplies process matching until recording stops and is written once in the schema-v3 session record. The working list cannot be edited through the UI during recording.
 
+A recording lasts for at most 24 hours. Reaching the limit writes the clean end record, flushes and closes the log, and returns the application to Live. The elapsed-time check uses a monotonic clock, while timestamps stored in the log remain local wall-clock values.
+
 ### Schema version 3
 
 Version 3 uses an externally tagged record with one short key per line. The mandatory first record is `s`; subsequent `p`, `g`, `f`, and `e` records inherit its schema and session identity.
@@ -379,7 +381,7 @@ A process sample is `[process_id, f64_values, u64_values]`.
 
 Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers.
 
-An end payload is `[ended_at_ms, reason]`. A missing end record is valid after interruption; the last complete frame remains loadable.
+An end payload is `[ended_at_ms, reason]`. The current writer uses `stopped` for an explicit stop or quit and `duration_limit` for the automatic 24-hour stop. A missing end record is valid after interruption; the last complete frame remains loadable.
 
 Example with one process definition and one compact frame:
 

@@ -35,6 +35,8 @@ mod startup;
 mod ui;
 
 pub(crate) use app::App;
+#[cfg(test)]
+use app::export::MAX_RECORDING_DURATION;
 use app::run_tui;
 #[cfg(test)]
 use app::{
@@ -8472,7 +8474,74 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Tracking List  1 name · fixed until recording stops."),
             "{rendered}"
         );
+        assert!(rendered.contains("Up to 24 hours"), "{rendered}");
         assert!(!rendered.contains("WARNING"), "{rendered}");
+    }
+
+    #[test]
+    fn recording_automatically_stops_at_24_hour_limit() {
+        let path = unique_recording_path("duration-limit");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.show_recording_path_dialog = true;
+        app.confirm_recording_path().unwrap();
+        app.request_recording_stop();
+
+        assert!(app.enforce_recording_duration_limit_for_test(MAX_RECORDING_DURATION));
+        assert_eq!(app.activity(), AppActivity::Live);
+        assert!(!app.show_recording_stop_confirmation);
+        assert_eq!(
+            app.status,
+            format!(
+                "24-hour recording limit reached; saved log to: {}",
+                path.display()
+            )
+        );
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let last_record = serde_json::from_str::<app::log_format::V3Record>(
+            contents
+                .lines()
+                .last()
+                .expect("recording must have an end record"),
+        )
+        .unwrap();
+        let app::log_format::V3Record::End(app::log_format::V3EndRecord(_, reason)) = last_record
+        else {
+            panic!("recording must end with an end record");
+        };
+        assert_eq!(reason, "duration_limit");
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn recording_duration_limit_write_failure_shows_error() {
+        let path = unique_recording_path("duration-limit-error");
+        let _ = std::fs::remove_file(&path);
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.show_recording_path_dialog = true;
+        app.confirm_recording_path().unwrap();
+        app.replace_recording_writer_for_test(Box::new(AlwaysFailWriter));
+
+        assert!(app.enforce_recording_duration_limit_for_test(MAX_RECORDING_DURATION));
+        assert_eq!(app.activity(), AppActivity::Live);
+        assert!(app.recording_session.is_none());
+        assert_eq!(
+            app.recording_error
+                .as_ref()
+                .expect("duration-limit write error should be visible")
+                .kind,
+            app::state::RecordingErrorKind::Stopped
+        );
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -8874,9 +8943,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("C:/logs/example.log"), "{rendered}");
         assert!(rendered.contains("Log file"), "{rendered}");
         assert!(
-            rendered.contains(
-                "Records JSON Lines (.log). Open later with Ctrl+L; creates parent dirs."
-            ),
+            rendered.contains("Up to 24 hours · JSON Lines (.log) · open later with Ctrl+L."),
             "{rendered}"
         );
         assert!(

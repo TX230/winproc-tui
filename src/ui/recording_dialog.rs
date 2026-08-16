@@ -84,7 +84,7 @@ pub(crate) fn draw_recording_path_dialog(
         Rect::new(content.x, content.y.saturating_add(3), content.width, 1),
     );
     frame.render_widget(
-        Paragraph::new("Records JSON Lines (.log). Open later with Ctrl+L; creates parent dirs.")
+        Paragraph::new("Up to 24 hours · JSON Lines (.log) · open later with Ctrl+L.")
             .style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y.saturating_add(4), content.width, 1),
     );

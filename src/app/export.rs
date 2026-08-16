@@ -4,6 +4,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -21,6 +22,9 @@ use crate::app::{
 };
 use crate::model::{GpuAdapterId, ProcessIdentity, ProcessRow, Snapshot};
 
+pub(crate) const MAX_RECORDING_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
+const RECORDING_DURATION_LIMIT_REASON: &str = "duration_limit";
+
 #[derive(Debug)]
 struct RegisteredProcess {
     id: u32,
@@ -37,6 +41,7 @@ pub(crate) struct RecordingSession {
     pub(crate) path: PathBuf,
     session_id: String,
     started_at: DateTime<Local>,
+    started_at_instant: Instant,
     host: String,
     tracked_names: Vec<String>,
     normalized_tracked_names: HashSet<String>,
@@ -48,6 +53,11 @@ pub(crate) struct RecordingSession {
 }
 
 impl RecordingSession {
+    fn duration_limit_reached_at(&self, now: Instant) -> bool {
+        now.checked_duration_since(self.started_at_instant)
+            .is_some_and(|elapsed| elapsed >= MAX_RECORDING_DURATION)
+    }
+
     fn process_id_for(
         &mut self,
         process: &ProcessRow,
@@ -405,18 +415,55 @@ impl App {
     }
 
     pub(crate) fn stop_recording(&mut self) -> Result<()> {
-        let Some(mut session) = self.recording_session.take() else {
+        let Some(path) = self.finish_recording("stopped")? else {
             self.status = "Recording is not active".to_string();
             return Ok(());
         };
-        let record = recording_end_record("stopped");
+        self.status = format!("Saved log to: {}", path.display());
+        Ok(())
+    }
+
+    pub(crate) fn enforce_recording_duration_limit(&mut self) -> bool {
+        self.enforce_recording_duration_limit_at(Instant::now())
+    }
+
+    fn enforce_recording_duration_limit_at(&mut self, now: Instant) -> bool {
+        let Some(path) = self.recording_session.as_ref().and_then(|session| {
+            session
+                .duration_limit_reached_at(now)
+                .then(|| session.path.clone())
+        }) else {
+            return false;
+        };
+
+        self.show_recording_stop_confirmation = false;
+        self.show_recording_tracking_fixed = false;
+        match self.finish_recording(RECORDING_DURATION_LIMIT_REASON) {
+            Ok(Some(saved_path)) => {
+                self.ensure_visible_panel_focus();
+                self.status = format!(
+                    "24-hour recording limit reached; saved log to: {}",
+                    saved_path.display()
+                );
+            }
+            Ok(None) => return false,
+            Err(error) => self.present_active_recording_error(path, error),
+        }
+        true
+    }
+
+    fn finish_recording(&mut self, reason: &str) -> Result<Option<PathBuf>> {
+        let Some(mut session) = self.recording_session.take() else {
+            return Ok(None);
+        };
+        let path = session.path.clone();
+        let record = recording_end_record(reason);
         write_recording_record(&mut session, &record)?;
         session
             .writer
             .flush()
-            .with_context(|| format!("failed to flush {}", session.path.display()))?;
-        self.status = format!("Saved log to: {}", session.path.display());
-        Ok(())
+            .with_context(|| format!("failed to flush {}", path.display()))?;
+        Ok(Some(path))
     }
 
     pub(crate) fn write_current_recording_frame(&mut self) -> Result<()> {
@@ -434,6 +481,18 @@ impl App {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn enforce_recording_duration_limit_for_test(&mut self, elapsed: Duration) -> bool {
+        let Some(now) = self
+            .recording_session
+            .as_ref()
+            .and_then(|session| session.started_at_instant.checked_add(elapsed))
+        else {
+            return false;
+        };
+        self.enforce_recording_duration_limit_at(now)
+    }
+
     fn start_recording(&mut self, path: PathBuf, overwrite: bool) -> Result<()> {
         let recording_last_dir = match recording_parent_dir(&path) {
             Ok(parent) => parent,
@@ -445,12 +504,14 @@ impl App {
         match open_recording_file(&path, overwrite) {
             Ok(file) => {
                 let started_at = Local::now();
+                let started_at_instant = Instant::now();
                 let session_id = started_at.format("%Y%m%d%H%M%S").to_string();
                 let host = host_name();
                 self.recording_session = Some(RecordingSession {
                     path: path.clone(),
                     session_id,
                     started_at,
+                    started_at_instant,
                     host,
                     tracked_names: self.watch_list.clone(),
                     normalized_tracked_names: self.normalized_watch_names.clone(),
@@ -881,6 +942,7 @@ mod tests {
             path: PathBuf::from("test.log"),
             session_id: "20260504143012".to_string(),
             started_at: now,
+            started_at_instant: Instant::now(),
             host: "PC01".to_string(),
             tracked_names: tracked_names
                 .iter()
@@ -901,6 +963,24 @@ mod tests {
                     .unwrap(),
             )),
         }
+    }
+
+    #[test]
+    fn recording_duration_limit_is_reached_at_exactly_24_hours() {
+        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let session = test_session(now, &["app.exe"]);
+        let limit = session
+            .started_at_instant
+            .checked_add(MAX_RECORDING_DURATION)
+            .expect("24 hours must fit in Instant");
+
+        assert!(session.duration_limit_reached_at(limit));
+
+        let just_before_limit = session
+            .started_at_instant
+            .checked_add(MAX_RECORDING_DURATION - Duration::from_millis(1))
+            .expect("24 hours must fit in Instant");
+        assert!(!session.duration_limit_reached_at(just_before_limit));
     }
 
     fn test_snapshot(captured_at: DateTime<Local>, processes: Vec<ProcessRow>) -> Snapshot {

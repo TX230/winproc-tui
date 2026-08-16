@@ -181,6 +181,7 @@ stateDiagram-v2
     Live --> Recording: Ctrl+R / choose path
     Recording --> Recording: Ctrl+R / confirm stop
     Recording --> Live: confirm Stop / end, flush, close
+    Recording --> Live: 24-hour limit / end, flush, close
 
     Live --> LogList: Ctrl+L
     LogView --> LogList: Ctrl+L
@@ -202,6 +203,8 @@ Starting recording requires at least one configured Tracking List name. It does 
 
 `Ctrl+R` opens a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops. Sampling and frame writes continue while it is open, and the log is ended, flushed, and closed only after Stop is confirmed. Quit retains its existing single confirmation and performs the same writer cleanup directly rather than nesting the stop confirmation.
 
+Each Recording session is limited to 24 hours. `RecordingSession` stores a monotonic start instant in addition to the wall-clock timestamp written to the log. The main loop checks that elapsed time on every poll cycle; at the limit it dismisses any recording-only notice or stop confirmation, writes an end record with reason `duration_limit`, flushes and closes the writer, and transitions to Live. This keeps the limit independent of wall-clock corrections and does not wait for another sample to complete.
+
 Recording lifecycle failures are application state, not status-only feedback. A create/open failure keeps the path dialog available behind the error; a header, frame, end, newline, or flush failure drops the active session, preserves any partial file, and shows a recording error. A failure while quitting cancels the quit so the error remains visible. Error state renders above other recording and quit modals.
 
 Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
@@ -217,6 +220,7 @@ The most important implementation invariants are:
 - display pause must not pause sampling, history updates, freshness, or recording;
 - Recording and Log view must never be active together;
 - one Recording session must use one fixed Tracking List copy for its session record, frame metadata, and process filtering;
+- one Recording session must end and return to Live after at most 24 hours of monotonic elapsed time;
 - stopping or quitting Recording must flush and close the log, and cleanup failure must remain visible instead of exiting silently;
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
 - the working Tracking List must not overwrite a saved named definition without an explicit save action;
