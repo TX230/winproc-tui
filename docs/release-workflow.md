@@ -495,14 +495,18 @@ winget validate --manifest <manifest-directory>
 
 `SandboxTest.ps1` is provided by the `microsoft/winget-pkgs` repository. The host `winget.exe` may fail to start in a non-interactive or stale logon session; that host-session error is not evidence that the manifest failed. Use the official Sandbox path for the authoritative local test. Close any existing Windows Sandbox instance before starting another configuration.
 
+The host `SandboxTest.ps1` process returns after Windows Sandbox accepts the generated configuration. An exit code of zero therefore confirms the host-side manifest validation, dependency preparation, and Sandbox launch, but it does not prove that the install or lifecycle commands inside the Sandbox succeeded. For an unattended test, pass a helper through the script's `Script` parameter, have that helper write a structured success or failure result into the writable `MapFolder`, and wait for and inspect that result on the host before marking the Sandbox test as passed. Remove or reject a stale result file before each run.
+
 For Sandbox automation:
 
 - Add `--accept-source-agreements` to commands that access a catalog source.
 - Add `--source winget` when an exact catalog install would otherwise match more than one source.
 - Keep install, upgrade, and uninstall in machine scope when the official Sandbox test is running in an administrator context. Pass `--scope machine` to those test commands; do not add `Scope` to the portable manifest.
+- Treat `--dependency-source winget` as an install option, not as a general source-selection option. The official Sandbox script adds it to its manifest install command. Do not pass it to `winget upgrade`; current WinGet versions reject that option for the upgrade command.
 - Use Windows PowerShell 5.1-compatible `Set-Content -Encoding utf8` in helper scripts. `utf8NoBOM` is not supported there.
 - Use the same package source identity on both sides of an upgrade test. Install the previous and current versions from two local manifests, or install both from the public catalog. Do not install the previous version from the catalog and upgrade it from a local manifest when testing config preservation, because that changes the package directory identity.
 - Place the config sentinel next to the actual installed package executable, not next to the command alias under `WinGet\Links`. Resolve the alias target or locate `winproc-tui.exe` under the winget package directory before creating `winproc-tui.toml`.
+- Treat only non-empty instance IDs from `wsb list` as listed Sandbox instances. Running `wsb list` may itself start the `WindowsSandboxServer` management process, so that process alone is not evidence of an active Sandbox. Before retrying, wait for `WindowsSandboxClient` and `WindowsSandboxRemoteSession` to exit; if a confirmed process remains after the test helper shuts down the Sandbox, stop that exact lingering process before launching another configuration.
 
 Confirm at least:
 
