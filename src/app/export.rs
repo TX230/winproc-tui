@@ -13,17 +13,230 @@ use chrono::{DateTime, Local};
 use crate::app::{
     App, AppActivity,
     log_format::{
-        CURRENT_LOG_SCHEMA_VERSION, V3EndRecord, V3FrameRecord, V3GpuDefinition, V3GpuSample,
-        V3ProcessDefinition, V3ProcessSample, V3Record, V3SessionRecord, V3SessionSystem,
-        V3SystemMetrics,
+        CURRENT_LOG_SCHEMA_VERSION, GPU_F64_FIELD_COUNT, GPU_U64_FIELD_COUNT,
+        PROCESS_F64_FIELD_COUNT, PROCESS_U64_FIELD_COUNT, SYSTEM_U64_FIELD_COUNT, V3EndRecord,
+        V3FrameRecord, V3GpuDefinition, V3GpuSample, V3ProcessDefinition, V3ProcessSample,
+        V3Record, V3SessionRecord, V3SessionSystem, V3SystemMetrics,
     },
     path_completion::PathCompletion,
-    state::{RecordingErrorDialog, RecordingErrorKind},
+    state::{RecordingDialogFocus, RecordingErrorDialog, RecordingErrorKind},
 };
-use crate::model::{GpuAdapterId, ProcessIdentity, ProcessRow, Snapshot};
+use crate::model::{GpuAdapterId, GpuAdapterSample, ProcessIdentity, ProcessRow, Snapshot};
 
 pub(crate) const MAX_RECORDING_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
+pub(crate) const RECORDING_INTERVAL_OPTIONS_SECONDS: [u64; 4] = [1, 2, 5, 10];
 const RECORDING_DURATION_LIMIT_REASON: &str = "duration_limit";
+
+#[derive(Debug, Default)]
+struct U64Mean {
+    sum: u128,
+    count: u64,
+}
+
+impl U64Mean {
+    fn add(&mut self, value: Option<u64>) {
+        let Some(value) = value else {
+            return;
+        };
+        self.sum = self.sum.saturating_add(u128::from(value));
+        self.count = self.count.saturating_add(1);
+    }
+
+    fn finish(self) -> Option<u64> {
+        if self.count == 0 {
+            return None;
+        }
+        let count = u128::from(self.count);
+        let rounded = self.sum.saturating_add(count / 2) / count;
+        u64::try_from(rounded).ok()
+    }
+}
+
+#[derive(Debug, Default)]
+struct F64Mean {
+    mean: f64,
+    count: u64,
+}
+
+impl F64Mean {
+    fn add(&mut self, value: Option<f64>) {
+        let Some(value) = value.filter(|value| value.is_finite()) else {
+            return;
+        };
+        self.count = self.count.saturating_add(1);
+        self.mean += (value - self.mean) / self.count as f64;
+    }
+
+    fn finish(self) -> Option<f64> {
+        (self.count > 0 && self.mean.is_finite()).then_some(self.mean)
+    }
+}
+
+#[derive(Debug)]
+struct ProcessAggregate {
+    latest: ProcessRow,
+    floats: [F64Mean; PROCESS_F64_FIELD_COUNT],
+    integers: [U64Mean; PROCESS_U64_FIELD_COUNT],
+}
+
+impl ProcessAggregate {
+    fn new(process: &ProcessRow) -> Self {
+        let mut aggregate = Self {
+            latest: process.clone(),
+            floats: Default::default(),
+            integers: Default::default(),
+        };
+        aggregate.add(process);
+        aggregate
+    }
+
+    fn add(&mut self, process: &ProcessRow) {
+        self.latest = process.clone();
+        let V3ProcessSample(_, floats, integers) = V3ProcessSample::from_row(0, process);
+        for (aggregate, value) in self.floats.iter_mut().zip(floats) {
+            aggregate.add(value);
+        }
+        for (aggregate, value) in self.integers.iter_mut().zip(integers) {
+            aggregate.add(value);
+        }
+    }
+
+    fn finish(self, process_id: u32) -> V3ProcessSample {
+        V3ProcessSample(
+            process_id,
+            self.floats.map(F64Mean::finish),
+            self.integers.map(U64Mean::finish),
+        )
+    }
+}
+
+#[derive(Debug)]
+struct GpuAggregate {
+    latest: GpuAdapterSample,
+    floats: [F64Mean; GPU_F64_FIELD_COUNT],
+    integers: [U64Mean; GPU_U64_FIELD_COUNT],
+}
+
+impl GpuAggregate {
+    fn new(adapter: &GpuAdapterSample) -> Self {
+        let mut aggregate = Self {
+            latest: adapter.clone(),
+            floats: Default::default(),
+            integers: Default::default(),
+        };
+        aggregate.add(adapter);
+        aggregate
+    }
+
+    fn add(&mut self, adapter: &GpuAdapterSample) {
+        self.latest = adapter.clone();
+        let V3GpuSample(_, floats, integers) = V3GpuSample::from_adapter(0, adapter);
+        for (aggregate, value) in self.floats.iter_mut().zip(floats) {
+            aggregate.add(value);
+        }
+        for (aggregate, value) in self.integers.iter_mut().zip(integers) {
+            aggregate.add(value);
+        }
+    }
+
+    fn finish(self, adapter_id: u32) -> V3GpuSample {
+        V3GpuSample(
+            adapter_id,
+            self.floats.map(F64Mean::finish),
+            self.integers.map(U64Mean::finish),
+        )
+    }
+}
+
+#[derive(Debug, Default)]
+struct RecordingFrameAggregate {
+    sample_count: u64,
+    captured_at_ms: Option<i64>,
+    system_integers: [U64Mean; SYSTEM_U64_FIELD_COUNT],
+    disk_queue_length: F64Mean,
+    gpu_indices: HashMap<GpuAdapterId, usize>,
+    gpus: Vec<GpuAggregate>,
+    process_indices: HashMap<ProcessIdentity, usize>,
+    processes: Vec<ProcessAggregate>,
+}
+
+impl RecordingFrameAggregate {
+    fn add_snapshot(&mut self, snapshot: &Snapshot, tracked_names: &HashSet<String>) {
+        self.sample_count = self.sample_count.saturating_add(1);
+        self.captured_at_ms = Some(snapshot.captured_at.timestamp_millis());
+
+        let V3SystemMetrics(integers, disk_queue_length, _) =
+            V3SystemMetrics::from_snapshot(snapshot, Vec::new());
+        for (aggregate, value) in self.system_integers.iter_mut().zip(integers) {
+            aggregate.add(value);
+        }
+        self.disk_queue_length.add(disk_queue_length);
+
+        for adapter in &snapshot.gpu_adapters {
+            if let Some(index) = self.gpu_indices.get(&adapter.id).copied() {
+                self.gpus[index].add(adapter);
+            } else {
+                let index = self.gpus.len();
+                self.gpu_indices.insert(adapter.id, index);
+                self.gpus.push(GpuAggregate::new(adapter));
+            }
+        }
+
+        for process in snapshot
+            .processes
+            .iter()
+            .filter(|process| tracked_names.contains(&process.name.to_ascii_lowercase()))
+        {
+            let identity = ProcessIdentity::from_row(process);
+            if let Some(index) = self.process_indices.get(&identity).copied() {
+                self.processes[index].add(process);
+            } else {
+                let index = self.processes.len();
+                self.process_indices.insert(identity, index);
+                self.processes.push(ProcessAggregate::new(process));
+            }
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.sample_count == 0
+    }
+
+    fn into_records(self, session: &mut RecordingSession) -> Result<Vec<V3Record>> {
+        let captured_at_ms = self
+            .captured_at_ms
+            .ok_or_else(|| anyhow!("recording aggregate contains no samples"))?;
+        let mut records = Vec::new();
+        let mut gpu_samples = Vec::with_capacity(self.gpus.len());
+        for aggregate in self.gpus {
+            let (adapter_id, definition) = session.gpu_id_for(&aggregate.latest)?;
+            if let Some(definition) = definition {
+                records.push(V3Record::Gpu(definition));
+            }
+            gpu_samples.push(aggregate.finish(adapter_id));
+        }
+
+        let mut process_samples = Vec::with_capacity(self.processes.len());
+        for aggregate in self.processes {
+            let (process_id, definition) = session.process_id_for(&aggregate.latest)?;
+            if let Some(definition) = definition {
+                records.push(V3Record::Process(definition));
+            }
+            process_samples.push(aggregate.finish(process_id));
+        }
+
+        records.push(V3Record::Frame(V3FrameRecord(
+            captured_at_ms,
+            V3SystemMetrics(
+                self.system_integers.map(U64Mean::finish),
+                self.disk_queue_length.finish(),
+                gpu_samples,
+            ),
+            process_samples,
+        )));
+        Ok(records)
+    }
+}
 
 #[derive(Debug)]
 struct RegisteredProcess {
@@ -45,6 +258,8 @@ pub(crate) struct RecordingSession {
     host: String,
     tracked_names: Vec<String>,
     normalized_tracked_names: HashSet<String>,
+    interval_seconds: u64,
+    pending_frame: RecordingFrameAggregate,
     registered_processes: HashMap<ProcessIdentity, RegisteredProcess>,
     next_process_id: u32,
     registered_gpus: HashMap<GpuAdapterId, RegisteredGpu>,
@@ -270,6 +485,8 @@ impl App {
         self.recording_path_draft = path.display().to_string();
         self.recording_path_cursor = self.recording_path_draft.len();
         self.recording_path_completion.reset();
+        self.recording_dialog_focus = RecordingDialogFocus::Path;
+        self.recording_interval_index = 0;
         self.show_recording_path_dialog = true;
         self.show_recording_overwrite_confirmation = false;
         self.status = "Choose recording log path".to_string();
@@ -370,6 +587,58 @@ impl App {
         }
     }
 
+    pub(crate) fn recording_path_focused(&self) -> bool {
+        self.recording_dialog_focus == RecordingDialogFocus::Path
+    }
+
+    pub(crate) fn recording_interval_focused(&self) -> bool {
+        self.recording_dialog_focus == RecordingDialogFocus::Interval
+    }
+
+    pub(crate) fn focus_next_recording_control(&mut self) {
+        self.recording_dialog_focus = match self.recording_dialog_focus {
+            RecordingDialogFocus::Path => RecordingDialogFocus::Interval,
+            RecordingDialogFocus::Interval => RecordingDialogFocus::Path,
+        };
+    }
+
+    pub(crate) fn focus_recording_path(&mut self) {
+        self.recording_dialog_focus = RecordingDialogFocus::Path;
+    }
+
+    pub(crate) fn focus_recording_interval(&mut self) {
+        self.recording_dialog_focus = RecordingDialogFocus::Interval;
+    }
+
+    pub(crate) fn selected_recording_interval_seconds(&self) -> u64 {
+        RECORDING_INTERVAL_OPTIONS_SECONDS
+            .get(self.recording_interval_index)
+            .copied()
+            .unwrap_or(super::SAMPLING_INTERVAL_SECONDS)
+    }
+
+    pub(crate) fn select_recording_interval(&mut self, index: usize) {
+        self.recording_interval_index =
+            index.min(RECORDING_INTERVAL_OPTIONS_SECONDS.len().saturating_sub(1));
+    }
+
+    pub(crate) fn select_previous_recording_interval(&mut self) {
+        self.recording_interval_index = self.recording_interval_index.saturating_sub(1);
+    }
+
+    pub(crate) fn select_next_recording_interval(&mut self) {
+        self.recording_interval_index = self
+            .recording_interval_index
+            .saturating_add(1)
+            .min(RECORDING_INTERVAL_OPTIONS_SECONDS.len().saturating_sub(1));
+    }
+
+    pub(crate) fn active_recording_interval_seconds(&self) -> Option<u64> {
+        self.recording_session
+            .as_ref()
+            .map(|session| session.interval_seconds)
+    }
+
     pub(crate) fn confirm_recording_path(&mut self) -> Result<()> {
         let draft = self.recording_path_draft.trim();
         if draft.is_empty() {
@@ -457,6 +726,7 @@ impl App {
             return Ok(None);
         };
         let path = session.path.clone();
+        flush_pending_recording_frame(&mut session)?;
         let record = recording_end_record(reason);
         write_recording_record(&mut session, &record)?;
         session
@@ -470,8 +740,7 @@ impl App {
         let Some(session) = self.recording_session.as_mut() else {
             return Ok(());
         };
-        let records = recording_frame_records(session, &self.snapshot)?;
-        write_recording_records(session, &records)
+        write_recording_snapshot(session, &self.snapshot).map(|_| ())
     }
 
     #[cfg(test)]
@@ -507,6 +776,7 @@ impl App {
                 let started_at_instant = Instant::now();
                 let session_id = started_at.format("%Y%m%d%H%M%S").to_string();
                 let host = host_name();
+                let interval_seconds = self.selected_recording_interval_seconds();
                 self.recording_session = Some(RecordingSession {
                     path: path.clone(),
                     session_id,
@@ -515,6 +785,8 @@ impl App {
                     host,
                     tracked_names: self.watch_list.clone(),
                     normalized_tracked_names: self.normalized_watch_names.clone(),
+                    interval_seconds,
+                    pending_frame: RecordingFrameAggregate::default(),
                     registered_processes: HashMap::new(),
                     next_process_id: 0,
                     registered_gpus: HashMap::new(),
@@ -641,44 +913,34 @@ fn recording_parent_dir(path: &Path) -> Result<Option<PathBuf>> {
     }
 }
 
+#[cfg(test)]
 fn recording_frame_records(
     session: &mut RecordingSession,
     snapshot: &Snapshot,
 ) -> Result<Vec<V3Record>> {
-    let mut records = Vec::new();
-    let mut gpu_samples = Vec::with_capacity(snapshot.gpu_adapters.len());
-    for adapter in &snapshot.gpu_adapters {
-        let (adapter_id, definition) = session.gpu_id_for(adapter)?;
-        if let Some(definition) = definition {
-            records.push(V3Record::Gpu(definition));
-        }
-        gpu_samples.push(V3GpuSample::from_adapter(adapter_id, adapter));
-    }
+    let mut aggregate = RecordingFrameAggregate::default();
+    aggregate.add_snapshot(snapshot, &session.normalized_tracked_names);
+    aggregate.into_records(session)
+}
 
-    let tracked_processes = snapshot
-        .processes
-        .iter()
-        .filter(|process| {
-            session
-                .normalized_tracked_names
-                .contains(&process.name.to_ascii_lowercase())
-        })
-        .collect::<Vec<_>>();
-    let mut process_samples = Vec::with_capacity(tracked_processes.len());
-    for process in tracked_processes {
-        let (process_id, definition) = session.process_id_for(process)?;
-        if let Some(definition) = definition {
-            records.push(V3Record::Process(definition));
-        }
-        process_samples.push(V3ProcessSample::from_row(process_id, process));
+fn flush_pending_recording_frame(session: &mut RecordingSession) -> Result<()> {
+    if session.pending_frame.is_empty() {
+        return Ok(());
     }
+    let aggregate = std::mem::take(&mut session.pending_frame);
+    let records = aggregate.into_records(session)?;
+    write_recording_records(session, &records)
+}
 
-    records.push(V3Record::Frame(V3FrameRecord(
-        snapshot.captured_at.timestamp_millis(),
-        V3SystemMetrics::from_snapshot(snapshot, gpu_samples),
-        process_samples,
-    )));
-    Ok(records)
+fn write_recording_snapshot(session: &mut RecordingSession, snapshot: &Snapshot) -> Result<bool> {
+    session
+        .pending_frame
+        .add_snapshot(snapshot, &session.normalized_tracked_names);
+    if session.pending_frame.sample_count < session.interval_seconds {
+        return Ok(false);
+    }
+    flush_pending_recording_frame(session)?;
+    Ok(true)
 }
 
 fn recording_session_record(session: &RecordingSession, app: &App) -> V3Record {
@@ -694,7 +956,7 @@ fn recording_session_record(session: &RecordingSession, app: &App) -> V3Record {
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         host: session.host.clone(),
         started_at_ms: session.started_at.timestamp_millis(),
-        interval_seconds: super::SAMPLING_INTERVAL_SECONDS,
+        interval_seconds: session.interval_seconds,
         tracked_names: session.tracked_names.clone(),
         columns,
         sort: [
@@ -870,6 +1132,97 @@ mod tests {
     }
 
     #[test]
+    fn recording_aggregate_averages_available_values_and_uses_final_timestamp() {
+        let first_at = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let second_at = first_at + chrono::Duration::seconds(1);
+        let mut session = test_session(first_at, &["app.exe"]);
+        let mut first_row = row(1, "app.exe", Some(100), None);
+        first_row.cpu_percent = Some(10.0);
+        let mut second_row = row(1, "app.exe", Some(101), Some(7));
+        second_row.cpu_percent = Some(20.0);
+        let mut first = test_snapshot(first_at, vec![first_row]);
+        first.used_memory = 100;
+        first.disk_queue_length = Some(1.0);
+        let mut second = test_snapshot(second_at, vec![second_row]);
+        second.used_memory = 101;
+        second.disk_queue_length = Some(2.0);
+
+        let mut aggregate = RecordingFrameAggregate::default();
+        aggregate.add_snapshot(&first, &session.normalized_tracked_names);
+        aggregate.add_snapshot(&second, &session.normalized_tracked_names);
+        let records = aggregate.into_records(&mut session).unwrap();
+
+        let V3Record::Frame(V3FrameRecord(captured_at_ms, system, processes)) =
+            records.last().expect("aggregate must produce a frame")
+        else {
+            panic!("aggregate must end with a frame");
+        };
+        assert_eq!(*captured_at_ms, second_at.timestamp_millis());
+        assert_eq!(
+            system.0[crate::app::log_format::system_u64::PHYSICAL_MEMORY],
+            Some(101)
+        );
+        assert_eq!(system.1, Some(1.5));
+        assert_eq!(processes.len(), 1);
+        assert_eq!(
+            processes[0].1[crate::app::log_format::process_f64::CPU_PERCENT],
+            Some(15.0)
+        );
+        assert_eq!(
+            processes[0].2[crate::app::log_format::process_u64::PRIVATE_BYTES],
+            Some(101)
+        );
+        assert_eq!(
+            processes[0].2[crate::app::log_format::process_u64::HANDLE_COUNT],
+            Some(7)
+        );
+    }
+
+    #[test]
+    fn recording_aggregate_does_not_treat_an_absent_process_as_zero() {
+        let first_at = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let mut session = test_session(first_at, &["app.exe"]);
+        let first = test_snapshot(first_at, vec![row(1, "app.exe", Some(120), Some(9))]);
+        let second = test_snapshot(first_at + chrono::Duration::seconds(1), Vec::new());
+        let mut aggregate = RecordingFrameAggregate::default();
+        aggregate.add_snapshot(&first, &session.normalized_tracked_names);
+        aggregate.add_snapshot(&second, &session.normalized_tracked_names);
+
+        let records = aggregate.into_records(&mut session).unwrap();
+        let V3Record::Frame(V3FrameRecord(_, _, processes)) =
+            records.last().expect("aggregate must produce a frame")
+        else {
+            panic!("aggregate must end with a frame");
+        };
+        assert_eq!(processes.len(), 1);
+        assert_eq!(
+            processes[0].2[crate::app::log_format::process_u64::PRIVATE_BYTES],
+            Some(120)
+        );
+        assert_eq!(
+            processes[0].2[crate::app::log_format::process_u64::HANDLE_COUNT],
+            Some(9)
+        );
+    }
+
+    #[test]
+    fn recording_writes_only_when_the_selected_sample_window_is_complete() {
+        let first_at = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let mut session = test_session(first_at, &["app.exe"]);
+        session.interval_seconds = 2;
+        let first = test_snapshot(first_at, vec![row(1, "app.exe", Some(100), None)]);
+        let second = test_snapshot(
+            first_at + chrono::Duration::seconds(1),
+            vec![row(1, "app.exe", Some(200), None)],
+        );
+
+        assert!(!write_recording_snapshot(&mut session, &first).unwrap());
+        assert_eq!(session.pending_frame.sample_count, 1);
+        assert!(write_recording_snapshot(&mut session, &second).unwrap());
+        assert!(session.pending_frame.is_empty());
+    }
+
+    #[test]
     fn recording_defines_a_tracked_process_when_it_starts_later() {
         let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
         let mut session = test_session(now, &["app.exe"]);
@@ -952,6 +1305,8 @@ mod tests {
                 .iter()
                 .map(|name| name.to_ascii_lowercase())
                 .collect(),
+            interval_seconds: 1,
+            pending_frame: RecordingFrameAggregate::default(),
             registered_processes: HashMap::new(),
             next_process_id: 0,
             registered_gpus: HashMap::new(),

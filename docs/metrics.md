@@ -249,7 +249,7 @@ Examples:
 
 ## Sampling Frequency
 
-The base screen update interval is fixed at 1 second and is not configurable.
+The base screen update interval is fixed at 1 second and is not configurable. A Recording session may aggregate those one-second samples into `1s`, `2s`, `5s`, or `10s` output frames; this does not change Live collection or Live history.
 
 | Kind | Frequency | Target |
 |---|---:|---|
@@ -298,6 +298,10 @@ Recording logs are JSON Lines. The current writer outputs schema version 3 and t
 
 At recording start, the writer copies the working Tracking List into the recording session. That fixed session copy supplies process matching until recording stops and is written once in the schema-v3 session record. The working list cannot be edited through the UI during recording.
 
+The Recording start dialog selects an aggregation interval of `1s`, `2s`, `5s`, or `10s`; `1s` is the default. The writer collects that many one-second snapshots and writes one representative frame. Numeric values are arithmetic means of the values available in the window. Missing values and an absent process do not contribute zero. Process values are aggregated independently by `(PID, name, start_time)`, and GPU values are aggregated independently by adapter LUID. Floating-point metrics remain floating point; averaged byte and count metrics are rounded to the nearest integer. The representative frame uses the final snapshot timestamp in the window.
+
+Aggregation deliberately smooths short spikes. `1s` preserves the finest recorded detail, while longer intervals reduce file size, selected-log loading work, and Log-view memory for long-term trends. Stopping, quitting, or reaching the 24-hour limit flushes a partial final window before the end record so short or non-aligned recordings remain loadable.
+
 A recording lasts for at most 24 hours. Reaching the limit writes the clean end record, flushes and closes the log, and returns the application to Live. The elapsed-time check uses a monotonic clock, while timestamps stored in the log remain local wall-clock values.
 
 ### Schema version 3
@@ -321,7 +325,7 @@ The session payload uses these fields:
 | `app` | string | winproc-tui package version. |
 | `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
 | `start` | integer | Session start as Unix milliseconds. |
-| `interval` | number | Fixed sampling interval metadata. Currently `1`. |
+| `interval` | number | Recording aggregation interval in seconds: `1`, `2`, `5`, or `10`. |
 | `tracked` | string array | Fixed Tracking List copied at recording start. |
 | `columns` | string array | Process metric columns displayed at recording start. |
 | `sort` | two-element string array | Sort column and `asc` or `desc`. |
@@ -379,7 +383,7 @@ A process sample is `[process_id, f64_values, u64_values]`.
 | `f64_values` | CPU%, GPU% |
 | `u64_values` | private bytes, working set, working-set private, working-set shareable, threads, handles, USER objects, GDI objects, GPU dedicated, GPU shared, .NET heap, I/O read bytes/s, I/O write bytes/s |
 
-Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers.
+Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers. For aggregated frames, those integers are the rounded arithmetic means described above.
 
 An end payload is `[ended_at_ms, reason]`. The current writer uses `stopped` for an explicit stop or quit and `duration_limit` for the automatic 24-hour stop. A missing end record is valid after interruption; the last complete frame remains loadable.
 
@@ -414,7 +418,7 @@ Session record fields:
 | `winproc_tui_version` | string | Package version. |
 | `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
 | `started_at` | string | RFC 3339 timestamp. |
-| `interval_seconds` | number | Fixed sampling interval metadata. Currently `1`. This is a recording-log field, not a user setting. |
+| `interval_seconds` | number | Legacy interval metadata. Version 2 logs written by winproc-tui contain `1`. |
 | `tracked_names` | string array | Fixed Tracking List copied into the recording session at start. |
 | `columns` | string array | Process metric columns currently displayed. |
 | `sort` | object | Sort column / direction. |

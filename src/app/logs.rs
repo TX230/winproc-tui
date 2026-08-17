@@ -52,6 +52,8 @@ pub(crate) struct LoadedLog {
     pub(crate) process_history: ProcessHistory,
     pub(crate) system_history: SystemHistory,
     pub(crate) tracked_names: Vec<String>,
+    pub(crate) interval_seconds: u64,
+    pub(crate) frame_times: Vec<DateTime<Local>>,
 }
 
 pub(crate) struct LogListWorker {
@@ -183,6 +185,7 @@ fn load_v2_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     let mut last_snapshot = None;
     let mut tracked_names = Vec::new();
     let mut tracked_name_set = HashSet::new();
+    let mut frame_times = Vec::new();
 
     read_v2_records(path, |record| {
         match record {
@@ -191,6 +194,7 @@ fn load_v2_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
                 session_id,
                 host,
                 started_at,
+                interval_seconds,
                 system,
             } => {
                 require_supported_schema_version(schema_version)?;
@@ -201,7 +205,7 @@ fn load_v2_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
                 if summary.started_at.is_none() {
                     summary.started_at = started_at.as_deref().and_then(parse_datetime);
                 }
-                session = SessionMeta::from_loaded_record(system);
+                session = SessionMeta::from_loaded_record(system, interval_seconds);
             }
             LoadRecord::End {
                 schema_version,
@@ -234,6 +238,7 @@ fn load_v2_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
                     summary.started_at = Some(frame.snapshot.captured_at);
                 }
                 summary.ended_at = Some(frame.snapshot.captured_at);
+                frame_times.push(frame.snapshot.captured_at);
                 add_process_names(&mut tracked_names, &mut tracked_name_set, &frame.snapshot);
                 process_history.record_snapshot_unbounded(
                     frame.snapshot.captured_at,
@@ -259,6 +264,8 @@ fn load_v2_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
         process_history,
         system_history,
         tracked_names,
+        interval_seconds: session.interval_seconds.unwrap_or(1).max(1),
+        frame_times,
     })
 }
 
@@ -272,6 +279,7 @@ fn load_v3_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
     let mut last_snapshot = None;
     let mut tracked_names = Vec::new();
     let mut tracked_name_set = HashSet::new();
+    let mut frame_times = Vec::new();
 
     read_v3_records(path, |record| {
         match record {
@@ -297,6 +305,7 @@ fn load_v3_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
                     summary.started_at = Some(frame.snapshot.captured_at);
                 }
                 summary.ended_at = Some(frame.snapshot.captured_at);
+                frame_times.push(frame.snapshot.captured_at);
                 add_process_names(&mut tracked_names, &mut tracked_name_set, &frame.snapshot);
                 process_history.record_snapshot_unbounded(
                     frame.snapshot.captured_at,
@@ -325,6 +334,8 @@ fn load_v3_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
         process_history,
         system_history,
         tracked_names,
+        interval_seconds: session.interval_seconds.unwrap_or(1).max(1),
+        frame_times,
     })
 }
 
@@ -757,6 +768,7 @@ enum LoadRecord {
         session_id: Option<String>,
         host: Option<String>,
         started_at: Option<String>,
+        interval_seconds: Option<u64>,
         system: Option<SessionSystemRecord>,
     },
     #[serde(rename = "frame")]
@@ -1090,6 +1102,7 @@ fn parse_loaded_gpu_adapters(
 
 #[derive(Debug, Clone, Default)]
 struct SessionMeta {
+    interval_seconds: Option<u64>,
     cpu_name: Option<String>,
     cpu_frequency_mhz: Option<u64>,
     cpu_topology: Option<String>,
@@ -1101,6 +1114,7 @@ struct SessionMeta {
 impl SessionMeta {
     fn from_v3_record(record: V3SessionRecord) -> Self {
         Self {
+            interval_seconds: Some(record.interval_seconds.max(1)),
             cpu_name: record.system.cpu_name,
             cpu_frequency_mhz: record.system.cpu_frequency_mhz,
             cpu_topology: record.system.cpu_topology,
@@ -1110,9 +1124,13 @@ impl SessionMeta {
         }
     }
 
-    fn from_loaded_record(system: Option<SessionSystemRecord>) -> Self {
+    fn from_loaded_record(
+        system: Option<SessionSystemRecord>,
+        interval_seconds: Option<u64>,
+    ) -> Self {
         let system = system.unwrap_or_default();
         Self {
+            interval_seconds: interval_seconds.map(|value| value.max(1)),
             cpu_name: system.cpu_name,
             cpu_frequency_mhz: system.cpu_frequency_mhz,
             cpu_topology: system.cpu_topology,
@@ -1433,6 +1451,48 @@ mod tests {
         assert_eq!(loaded.process_history.sample_count_for(&first_identity), 2);
         assert_eq!(loaded.process_history.sample_count_for(&second_identity), 1);
         assert_eq!(loaded.tracked_names, ["app.exe"]);
+        assert_eq!(loaded.interval_seconds, 1);
+        assert_eq!(loaded.frame_times.len(), 3);
+    }
+
+    #[test]
+    fn v3_log_preserves_supported_recording_intervals_and_frame_times() {
+        let started_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
+            .unwrap()
+            .timestamp_millis();
+        for interval_seconds in [1_u64, 2, 5, 10] {
+            let path = unique_log_path(&format!("v3-{interval_seconds}s-interval"));
+            let second_at = started_at + i64::try_from(interval_seconds).unwrap() * 1_000;
+            let records = vec![
+                V3Record::Session(V3SessionRecord {
+                    schema_version: CURRENT_LOG_SCHEMA_VERSION,
+                    session_id: format!("s3-{interval_seconds}"),
+                    app_version: "1.0.0".to_string(),
+                    host: "PC".to_string(),
+                    started_at_ms: started_at,
+                    interval_seconds,
+                    tracked_names: Vec::new(),
+                    columns: Vec::new(),
+                    sort: ["Process".to_string(), "asc".to_string()],
+                    system: crate::app::log_format::V3SessionSystem::default(),
+                }),
+                V3Record::Frame(V3FrameRecord(started_at, v3_test_system(0), Vec::new())),
+                V3Record::Frame(V3FrameRecord(second_at, v3_test_system(0), Vec::new())),
+            ];
+            write_v3_records(&path, &records);
+
+            let loaded = load_log(&path, SortSpec::default()).unwrap();
+
+            assert_eq!(loaded.interval_seconds, interval_seconds);
+            assert_eq!(
+                loaded
+                    .frame_times
+                    .iter()
+                    .map(DateTime::timestamp_millis)
+                    .collect::<Vec<_>>(),
+                [started_at, second_at]
+            );
+        }
     }
 
     #[test]

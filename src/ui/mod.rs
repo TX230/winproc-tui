@@ -82,10 +82,12 @@ pub(crate) use process_table::{
     process_tracked_only_control_area,
 };
 use quit_confirm::draw_quit_confirm;
-pub(crate) use recording_dialog::recording_path_input_area;
 use recording_dialog::{
     draw_recording_error, draw_recording_no_tracked_warning, draw_recording_overwrite_confirm,
     draw_recording_path_dialog, draw_recording_stop_confirm, draw_recording_tracking_fixed,
+};
+pub(crate) use recording_dialog::{
+    recording_interval_option_at, recording_interval_selector_area, recording_path_input_area,
 };
 #[cfg(test)]
 pub(crate) use system_panel::{

@@ -137,6 +137,8 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Starting recording requires at least one configured Tracking List entry.
 - Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array until a matching process appears.
 - Starting recording must copy the working Tracking List into session-owned recording scope. Session metadata, every frame's `tracked_names`, and process filtering must use that fixed copy.
+- Recording aggregation is session-owned and selectable as `1s`, `2s`, `5s`, or `10s`; Live collection and Live history remain fixed at one second.
+- Aggregated Recording frames average only available values, keep process identities independent, use the final sample timestamp, and flush a partial final window before an explicit stop, quit, or the 24-hour limit.
 - While Recording is active, `t` and `Ctrl+T` must reject Tracking List changes with a visible notice. `Shift+T` remains available because it changes only the independent Tracked-only display.
 - Recording is unavailable in Log view, and Log view is unavailable during Recording.
 - `Ctrl+R` during Recording must open a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops; sampling and recording continue until Stop is confirmed.

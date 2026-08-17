@@ -55,12 +55,12 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `t` to add the name to the Tracking List. `t` toggles the registration.
 2. For targets you use repeatedly, press `Ctrl+T` and save the Tracking List with a name.
 3. If needed, press `Shift+T` to switch between All processes and Tracked-only. Tracked-only view is not required for recording.
-4. Press `Ctrl+R`, choose a save path, and confirm to start recording.
+4. Press `Ctrl+R`, choose a save path and a `1s` / `2s` / `5s` / `10s` Recording interval, and confirm to start recording.
 5. Press `Ctrl+R` again, then press `y` to stop recording and close the log. `Enter`, `Esc`, or `n` leaves recording active.
 6. Press `Ctrl+L` to select and inspect a saved log.
 
 Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, aggregate CPU values, and System Activity require no registration and are recorded in every frame; per-core usage is not recorded, and the process list remains empty until a match appears.
-The recording start dialog shows how many names will be captured. That Tracking List is fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
+The recording start dialog shows how many names will be captured and selects the Recording aggregation interval. That Tracking List and interval are fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `?` in the app for the complete dialog controls.
 
@@ -322,17 +322,19 @@ Multiple Graphs share one absolute visible time range, cursor, selected time, an
 Press `Ctrl+R` to start recording or open its stop confirmation. Recording continues while that confirmation is open; `Enter`, `Esc`, or `n` continues, while `y` stops.
 Recording requires at least one Tracking List entry and saves logs as JSON Lines (with the `.log` extension).
 Each recording runs for at most 24 hours. At the limit, winproc-tui writes the clean end record, flushes and closes the log, and automatically returns to `LIVE`.
-Each frame records system metrics such as MEM, per-adapter GPU, CPU average, and System Activity, plus any live processes that match the Tracking List.
+The start dialog selects a Recording aggregation interval of `1s`, `2s`, `5s`, or `10s`; the default is `1s`. Live collection and Live history remain at one second. A longer interval writes one frame containing the arithmetic mean of that many one-second samples. Missing values and absent processes are not treated as zero, and each process identity is averaged independently. Longer intervals reduce log size and Log-view loading work but smooth short CPU/GPU spikes and memory or handle peaks.
+Each output frame records system metrics such as MEM, per-adapter GPU, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
-When recording starts, a save-path input dialog opens and shows how many Tracking List names will be fixed for the complete session. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. The path input remains focused; `Enter` starts, `Esc` cancels, and `Ctrl+Space` completes directory names.
+When recording starts, a compact dialog opens with save-path and interval controls and shows how many Tracking List names will be fixed for the complete session. `Tab` / `Shift+Tab` moves between the controls, and `Left` / `Right` changes the interval when it is focused. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Enter` starts, `Esc` cancels, and `Ctrl+Space` completes directory names while the path is focused.
 While recording, `t` and `Ctrl+T` show a notice instead of changing the Tracking List. `Shift+T` remains available because it changes only the Tracked-only display. A log create, write, or flush failure stops recording, keeps any partial log, and opens a visible error dialog. A flush failure during quit cancels the quit.
+Stopping, quitting, or reaching the 24-hour limit writes any partial final aggregation window before the clean end record.
 Log view cannot open during recording, and recording cannot start while Log view is open.
 
 Press `Ctrl+L` to open the log list.
 The list shows `*.log` files from the previous recording directory if available, otherwise from the current directory.
 The compact list shows file names from one directory; the `Dir` row shows that directory. Use `Up` / `Down` to select a file, `Enter` to open it, `d` to choose another directory, `r` to refresh, and `Esc` to close the dialog. While a log is loading, the list shows `Opening <filename>...` and ignores additional open requests until that load finishes. The complete key guidance is shown on the dialog's bottom row.
 Press `Enter` on a selected log to switch to the `LOG` display and inspect the saved session through Processes / Graph / Samples / A/B comparison.
-Log view is not a player: Processes keeps showing the last recorded values, while Graph, Samples, and Process Info expose the recorded metric history. Process Info uses recorded fields for static details and shows `--` for details that were not recorded. Press `Esc` to return to the live display.
+Log view is not a player: Processes keeps showing the last recorded values, while Graph, Samples, and Process Info expose the recorded metric history. The header identifies the interval, for example `10s AVG`. Graph uses the recorded timestamps and leaves missing process or metric windows disconnected. For aggregated logs, Samples labels `Max` as the maximum aggregate and shows `MA5` as five recorded frames, such as `MA5 (5×10s)`. Process Info uses recorded fields for static details and shows `--` for details that were not recorded. Press `Esc` to return to the live display.
 
 The recording log format and the meaning of each field are described in [docs/metrics.md](docs/metrics.md).
 

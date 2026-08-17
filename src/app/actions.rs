@@ -25,7 +25,8 @@ use crate::{
         log_list_index_at, main_panel_areas_for_app, memory_metric_at_position,
         process_info_content_area_for_screen, process_info_tab_at, process_metric_column_index_at,
         process_tracked_only_control_area, ram_vram_panel_area_for_screen,
-        recording_path_input_area, system_activity_panel_area_for_screen, tracked_list_index_at,
+        recording_interval_option_at, recording_interval_selector_area, recording_path_input_area,
+        system_activity_panel_area_for_screen, tracked_list_index_at,
         tracked_list_save_name_area_for_screen, tracked_list_startup_at_for_screen,
     },
 };
@@ -281,30 +282,50 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.cancel_recording_path_dialog(),
                 KeyCode::Enter => self.confirm_recording_path()?,
+                KeyCode::Tab | KeyCode::BackTab => self.focus_next_recording_control(),
                 KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.complete_recording_path();
+                    if self.recording_path_focused() {
+                        self.complete_recording_path();
+                    }
                 }
                 KeyCode::Backspace => {
-                    self.pop_recording_path_char();
+                    if self.recording_path_focused() {
+                        self.pop_recording_path_char();
+                    }
                 }
                 KeyCode::Delete => {
-                    self.delete_recording_path_char();
+                    if self.recording_path_focused() {
+                        self.delete_recording_path_char();
+                    }
                 }
                 KeyCode::Left => {
-                    self.move_recording_path_cursor_left();
+                    if self.recording_path_focused() {
+                        self.move_recording_path_cursor_left();
+                    } else {
+                        self.select_previous_recording_interval();
+                    }
                 }
                 KeyCode::Right => {
-                    self.move_recording_path_cursor_right();
+                    if self.recording_path_focused() {
+                        self.move_recording_path_cursor_right();
+                    } else {
+                        self.select_next_recording_interval();
+                    }
                 }
                 KeyCode::Home => {
-                    self.move_recording_path_cursor_home();
+                    if self.recording_path_focused() {
+                        self.move_recording_path_cursor_home();
+                    }
                 }
                 KeyCode::End => {
-                    self.move_recording_path_cursor_end();
+                    if self.recording_path_focused() {
+                        self.move_recording_path_cursor_end();
+                    }
                 }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self.recording_path_focused() =>
                 {
                     self.push_recording_path_char(ch);
                 }
@@ -1714,6 +1735,20 @@ impl App {
                     mouse.column,
                     mouse.row,
                 ) {
+                    self.focus_recording_path();
+                    return;
+                }
+                if contains_point(
+                    recording_interval_selector_area(screen_area),
+                    mouse.column,
+                    mouse.row,
+                ) {
+                    self.focus_recording_interval();
+                    if let Some(index) =
+                        recording_interval_option_at(screen_area, mouse.column, mouse.row)
+                    {
+                        self.select_recording_interval(index);
+                    }
                     return;
                 }
             }

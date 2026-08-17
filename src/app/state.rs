@@ -704,6 +704,13 @@ pub(crate) enum RecordingErrorKind {
     Stopped,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum RecordingDialogFocus {
+    #[default]
+    Path,
+    Interval,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RecordingErrorDialog {
     pub(crate) path: PathBuf,
@@ -803,6 +810,8 @@ pub(crate) struct App {
     pub(crate) recording_path_draft: String,
     pub(crate) recording_path_cursor: usize,
     pub(crate) recording_path_completion: PathCompletionState,
+    pub(crate) recording_dialog_focus: RecordingDialogFocus,
+    pub(crate) recording_interval_index: usize,
     pub(crate) show_recording_overwrite_confirmation: bool,
     pub(crate) show_recording_stop_confirmation: bool,
     pub(crate) show_recording_tracking_fixed: bool,
@@ -820,6 +829,8 @@ pub(crate) struct App {
     pub(crate) recording_last_dir: Option<PathBuf>,
     pub(crate) recording_spinner_index: usize,
     pub(crate) log_view_path: Option<PathBuf>,
+    pub(crate) log_view_interval_seconds: Option<u64>,
+    pub(crate) log_view_frame_times: Vec<DateTime<Local>>,
     pub(crate) should_quit: bool,
     pub(crate) column_picker_index: usize,
     pub(crate) column_picker_scroll: ScrollableModalState,
@@ -1022,6 +1033,8 @@ impl App {
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: PathCompletionState::default(),
+            recording_dialog_focus: RecordingDialogFocus::default(),
+            recording_interval_index: 0,
             show_recording_overwrite_confirmation: false,
             show_recording_stop_confirmation: false,
             show_recording_tracking_fixed: false,
@@ -1039,6 +1052,8 @@ impl App {
             recording_last_dir,
             recording_spinner_index: 0,
             log_view_path: None,
+            log_view_interval_seconds: None,
+            log_view_frame_times: Vec::new(),
             should_quit: false,
             column_picker_index: 0,
             column_picker_scroll: ScrollableModalState {
@@ -6590,6 +6605,8 @@ impl App {
             return;
         }
         self.log_view_path = Some(loaded.path.clone());
+        self.log_view_interval_seconds = Some(loaded.interval_seconds);
+        self.log_view_frame_times = loaded.frame_times;
         self.log_view_watch_list = loaded.tracked_names.clone();
         self.log_view_normalized_watch_names = normalized_process_names(&self.log_view_watch_list);
         self.log_view_display = Some(PausedDisplay {
@@ -6612,14 +6629,21 @@ impl App {
             .selected()
             .and_then(|index| self.visible_process_identity_at(index));
         self.status = format!(
-            "Opened log: {} ({} frames)",
+            "Opened log: {} ({} frames, {})",
             loaded.path.display(),
-            loaded.summary.frame_count
+            loaded.summary.frame_count,
+            if loaded.interval_seconds > 1 {
+                format!("{}s average", loaded.interval_seconds)
+            } else {
+                "1s interval".to_string()
+            }
         );
     }
 
     pub(crate) fn exit_log_view(&mut self) {
         self.log_view_path = None;
+        self.log_view_interval_seconds = None;
+        self.log_view_frame_times.clear();
         self.log_view_display = None;
         self.log_view_watch_list.clear();
         self.log_view_normalized_watch_names.clear();

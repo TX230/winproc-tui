@@ -4437,7 +4437,7 @@ processes = ["api.exe", "worker.exe"]
         cases.push((
             "recording",
             render_app_to_buffer(&recording, screen.width, screen.height),
-            "Enter start  Esc cancel  Ctrl+Space complete",
+            "Enter start  Esc cancel  Tab focus  ←/→ value  Ctrl+Space complete",
         ));
 
         let mut log_directory = make_test_app(3, 10);
@@ -8474,7 +8474,7 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("Tracking List  1 name · fixed until recording stops."),
             "{rendered}"
         );
-        assert!(rendered.contains("Up to 24 hours"), "{rendered}");
+        assert!(rendered.contains("24h max"), "{rendered}");
         assert!(!rendered.contains("WARNING"), "{rendered}");
     }
 
@@ -8717,7 +8717,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_path_dialog_keeps_input_focused_without_buttons() {
+    fn recording_path_dialog_cycles_path_and_interval_controls_without_buttons() {
         let mut app = make_test_app(1, 10);
         app.show_recording_path_dialog = true;
         app.recording_path_draft = std::env::current_dir()
@@ -8733,15 +8733,20 @@ processes = ["api.exe", "worker.exe"]
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.recording_path_draft, before);
-        assert!(app.status.is_empty());
+        assert!(app.recording_interval_focused());
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.selected_recording_interval_seconds(), 2);
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert!(app.recording_path_focused());
 
         let rendered = render_app_to_text(&app, 100, 45);
         assert!(!rendered.contains("[ Start ]"), "{rendered}");
         assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
-        assert!(
-            rendered.contains("Enter start  Esc cancel  Ctrl+Space complete"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("(*) 2s"), "{rendered}");
+        assert!(rendered.contains("Tab focus"), "{rendered}");
+        assert!(rendered.contains("←/→ value"), "{rendered}");
     }
 
     #[test]
@@ -8755,6 +8760,30 @@ processes = ["api.exe", "worker.exe"]
             .unwrap();
 
         assert!(app.recording_path_cursor < app.recording_path_draft.len());
+    }
+
+    #[test]
+    fn recording_interval_control_supports_direct_mouse_selection() {
+        let mut app = make_test_app(1, 10);
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = "C:/logs/example.log".to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        let buffer = render_app_to_buffer(&app, 100, 45);
+        let (x, y) = find_text_position(&buffer, "( ) 10s")
+            .expect("10-second interval option should be rendered");
+
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            Rect::new(0, 0, 100, 45),
+        );
+
+        assert!(app.recording_interval_focused());
+        assert_eq!(app.selected_recording_interval_seconds(), 10);
     }
 
     #[test]
@@ -8926,9 +8955,11 @@ processes = ["api.exe", "worker.exe"]
         app.recording_path_draft = "C:/logs/example.log".to_string();
         app.recording_path_cursor = "C:/logs/".len();
         let screen = Rect::new(0, 0, 100, 45);
-        let popup = Rect::new(11, 18, 78, 8);
-        let expected_cursor =
-            Position::new(popup.x + 1 + app.recording_path_cursor as u16, popup.y + 2);
+        let input_area = ui::recording_path_input_area(screen);
+        let expected_cursor = Position::new(
+            input_area.x + app.recording_path_cursor as u16,
+            input_area.y,
+        );
 
         let backend = TestBackend::new(screen.width, screen.height);
         let mut terminal = Terminal::new(backend).expect("test terminal should be created");
@@ -8943,11 +8974,11 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("C:/logs/example.log"), "{rendered}");
         assert!(rendered.contains("Log file"), "{rendered}");
         assert!(
-            rendered.contains("Up to 24 hours · JSON Lines (.log) · open later with Ctrl+L."),
+            rendered.contains("24h max · JSON Lines (.log) · open later with Ctrl+L."),
             "{rendered}"
         );
         assert!(
-            rendered.contains("Enter start  Esc cancel  Ctrl+Space complete"),
+            rendered.contains("Enter start  Esc cancel  Tab focus  ←/→ value  Ctrl+Space complete"),
             "{rendered}"
         );
         assert!(
@@ -13756,6 +13787,51 @@ processes = ["api.exe", "worker.exe"]
         let _ = std::fs::remove_file(path);
     }
 
+    #[test]
+    fn recording_interval_is_written_and_partial_window_is_flushed() {
+        let path = unique_recording_path("10s-partial-window");
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        app.recording_interval_index = 3;
+        app.show_recording_path_dialog = true;
+
+        app.confirm_recording_path().unwrap();
+
+        assert_eq!(app.active_recording_interval_seconds(), Some(10));
+        let recording_header = render_app_to_text(&app, 120, 45);
+        assert!(recording_header.contains("REC"), "{recording_header}");
+        assert!(recording_header.contains("10s AVG"), "{recording_header}");
+        app.stop_recording().unwrap();
+
+        let records = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<app::log_format::V3Record>(line).unwrap())
+            .collect::<Vec<_>>();
+        let app::log_format::V3Record::Session(session) = &records[0] else {
+            panic!("first record must be a schema v3 session");
+        };
+        assert_eq!(session.interval_seconds, 10);
+        assert_eq!(
+            records
+                .iter()
+                .filter(|record| matches!(record, app::log_format::V3Record::Frame(_)))
+                .count(),
+            1
+        );
+
+        let loaded = app::logs::load_log(&path, SortSpec::default()).unwrap();
+        assert_eq!(loaded.interval_seconds, 10);
+        assert_eq!(loaded.frame_times.len(), 1);
+        app.apply_loaded_log(loaded);
+        let log_header = render_app_to_text(&app, 120, 45);
+        assert!(log_header.contains("LOG"), "{log_header}");
+        assert!(log_header.contains("10s AVG"), "{log_header}");
+        let _ = std::fs::remove_file(path);
+    }
+
     fn buffer_to_text(buffer: &ratatui::buffer::Buffer) -> String {
         buffer
             .content()
@@ -13965,6 +14041,8 @@ processes = ["api.exe", "worker.exe"]
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: app::path_completion::PathCompletionState::default(),
+            recording_dialog_focus: app::state::RecordingDialogFocus::default(),
+            recording_interval_index: 0,
             show_recording_overwrite_confirmation: false,
             show_recording_stop_confirmation: false,
             show_recording_tracking_fixed: false,
@@ -13982,6 +14060,8 @@ processes = ["api.exe", "worker.exe"]
             recording_last_dir: None,
             recording_spinner_index: 0,
             log_view_path: None,
+            log_view_interval_seconds: None,
+            log_view_frame_times: Vec::new(),
             should_quit: false,
             column_picker_index: 0,
             column_picker_scroll: ui::widgets::scrollable_modal::ScrollableModalState {

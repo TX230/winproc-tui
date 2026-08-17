@@ -6,8 +6,8 @@ use ratatui::{
 };
 
 use crate::{
-    app::App,
     app::state::RecordingErrorKind,
+    app::{App, export::RECORDING_INTERVAL_OPTIONS_SECONDS},
     ui::{
         Theme,
         footer::{shortcut_spans, warning_shortcut_spans},
@@ -19,8 +19,10 @@ use crate::{
 };
 
 const RECORDING_PATH_WIDTH: u16 = 78;
-const RECORDING_PATH_HEIGHT: u16 = 9;
+const RECORDING_PATH_HEIGHT: u16 = 10;
 const RECORDING_PATH_INPUT_ROW: u16 = 1;
+const RECORDING_INTERVAL_ROW: u16 = 3;
+const RECORDING_INTERVAL_LABEL_WIDTH: u16 = 10;
 const RECORDING_OVERWRITE_WIDTH: u16 = 48;
 const RECORDING_OVERWRITE_HEIGHT: u16 = 7;
 const RECORDING_NO_TRACKED_WIDTH: u16 = 52;
@@ -61,9 +63,27 @@ pub(crate) fn draw_recording_path_dialog(
         Paragraph::new("Log file").style(Style::default().fg(theme.muted)),
         Rect::new(content.x, content.y, content.width, 1),
     );
+    let input_style = if app.recording_path_focused() {
+        Style::default()
+            .fg(theme.text)
+            .bg(theme.focus_surface)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.text).bg(theme.panel_alt)
+    };
+    frame.render_widget(Paragraph::new(input).style(input_style), input_area);
     frame.render_widget(
-        Paragraph::new(input).style(Style::default().fg(theme.text).bg(theme.panel_alt)),
-        input_area,
+        Paragraph::new("Interval").style(Style::default().fg(theme.muted)),
+        Rect::new(
+            content.x,
+            content.y.saturating_add(RECORDING_INTERVAL_ROW),
+            RECORDING_INTERVAL_LABEL_WIDTH,
+            1,
+        ),
+    );
+    frame.render_widget(
+        Paragraph::new(recording_interval_line(app, theme)),
+        recording_interval_selector_area(area),
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -81,18 +101,20 @@ pub(crate) fn draw_recording_path_dialog(
                 Style::default().fg(theme.text),
             ),
         ])),
-        Rect::new(content.x, content.y.saturating_add(3), content.width, 1),
+        Rect::new(content.x, content.y.saturating_add(4), content.width, 1),
     );
     frame.render_widget(
-        Paragraph::new("Up to 24 hours · JSON Lines (.log) · open later with Ctrl+L.")
+        Paragraph::new("24h max · JSON Lines (.log) · open later with Ctrl+L.")
             .style(Style::default().fg(theme.muted)),
-        Rect::new(content.x, content.y.saturating_add(4), content.width, 1),
+        Rect::new(content.x, content.y.saturating_add(5), content.width, 1),
     );
     frame.render_widget(
         Paragraph::new(shortcut_line(
             &[
                 ("Enter", "start"),
                 ("Esc", "cancel"),
+                ("Tab", "focus"),
+                ("←/→", "value"),
                 ("Ctrl+Space", "complete"),
             ],
             theme,
@@ -104,10 +126,37 @@ pub(crate) fn draw_recording_path_dialog(
             1,
         ),
     );
-    frame.set_cursor_position(Position::new(
-        input_area.x.saturating_add(cursor_x as u16),
-        input_area.y,
-    ));
+    if app.recording_path_focused() {
+        frame.set_cursor_position(Position::new(
+            input_area.x.saturating_add(cursor_x as u16),
+            input_area.y,
+        ));
+    }
+}
+
+fn recording_interval_line(app: &App, theme: Theme) -> Line<'static> {
+    let mut spans = Vec::new();
+    for (index, seconds) in RECORDING_INTERVAL_OPTIONS_SECONDS.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::raw("  "));
+        }
+        let selected = index == app.recording_interval_index;
+        let marker = if selected { "(*)" } else { "( )" };
+        let style = if selected && app.recording_interval_focused() {
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.focus_surface)
+                .add_modifier(Modifier::BOLD)
+        } else if selected {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.text)
+        };
+        spans.push(Span::styled(format!("{marker} {seconds}s"), style));
+    }
+    Line::from(spans)
 }
 
 pub(crate) fn draw_recording_tracking_fixed(
@@ -228,6 +277,38 @@ pub(crate) fn recording_path_input_area(area: Rect) -> Rect {
         content.width,
         1,
     )
+}
+
+pub(crate) fn recording_interval_selector_area(area: Rect) -> Rect {
+    let popup =
+        confirm_dialog::centered_dialog_rect(area, RECORDING_PATH_WIDTH, RECORDING_PATH_HEIGHT);
+    let content = popup.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    Rect::new(
+        content.x.saturating_add(RECORDING_INTERVAL_LABEL_WIDTH),
+        content.y.saturating_add(RECORDING_INTERVAL_ROW),
+        content.width.saturating_sub(RECORDING_INTERVAL_LABEL_WIDTH),
+        1,
+    )
+}
+
+pub(crate) fn recording_interval_option_at(area: Rect, column: u16, row: u16) -> Option<usize> {
+    let selector = recording_interval_selector_area(area);
+    if row != selector.y || column < selector.x || column >= selector.right() {
+        return None;
+    }
+    let relative = column.saturating_sub(selector.x);
+    let mut start = 0_u16;
+    for (index, seconds) in RECORDING_INTERVAL_OPTIONS_SECONDS.into_iter().enumerate() {
+        let width = format!("( ) {seconds}s").chars().count() as u16;
+        if relative >= start && relative < start.saturating_add(width) {
+            return Some(index);
+        }
+        start = start.saturating_add(width).saturating_add(2);
+    }
+    None
 }
 
 pub(crate) fn draw_recording_overwrite_confirm(

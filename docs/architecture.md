@@ -63,7 +63,7 @@ This preserves useful investigation history for explicit targets without allowin
 
 ### 2.6 Use JSON Lines for recording
 
-Recording uses JSON Lines so frames can be appended incrementally, flushed on stop or quit, partially inspected after interruption, and processed without constructing one in-memory document. Schema version 3 keeps the session record self-describing but stores recurring metrics in fixed-order arrays. Each process and GPU adapter receives a session-local numeric ID and a definition record before its first sample, avoiding repeated identity strings without conflating concurrent same-name processes. The reader builds a lightweight log-list summary from only the first and last non-empty records; it parses all frames only after a log is selected.
+Recording uses JSON Lines so frames can be appended incrementally, flushed on stop or quit, partially inspected after interruption, and processed without constructing one in-memory document. Schema version 3 keeps the session record self-describing but stores recurring metrics in fixed-order arrays. A session-owned accumulator can emit every one, two, five, or ten base samples without changing the one-second Live collection path. It averages available values independently per process identity and GPU adapter, and it flushes a partial window before a clean end record. Each process and GPU adapter receives a session-local numeric ID and a definition record before its first output frame, avoiding repeated identity strings without conflating concurrent same-name processes. The reader builds a lightweight log-list summary from only the first and last non-empty records; it parses all frames only after a log is selected.
 
 The record types, fields, units, and missing-value rules are specified in [metrics.md](metrics.md).
 
@@ -101,7 +101,7 @@ Each `run_tui` iteration:
 4. Dispatches key and mouse input to `App`; resize events invalidate the layout.
 5. Requests the next sample when the one-second tick is due, unless a sample is already in flight or Log view is active.
 
-Applying a live sample updates the current `Snapshot`, process and system histories, exited-tracked state, visible-row caches when appropriate, and the active recording. A warning can accompany an otherwise usable snapshot.
+Applying a live sample updates the current `Snapshot`, process and system histories, exited-tracked state, visible-row caches when appropriate, and the active recording accumulator. The accumulator writes only when the session's selected sample count is complete. A warning can accompany an otherwise usable snapshot.
 
 ### 4.3 Sampling cycle
 
@@ -199,9 +199,9 @@ stateDiagram-v2
     Exiting --> [*]
 ```
 
-Starting recording requires at least one configured Tracking List name. It does not require a current live match: each frame still records system metrics and writes an empty process-sample array until a matching process appears. `RecordingSession` owns a copy of the working Tracking List and its normalized lookup set; the session metadata records that list once and every frame is filtered through the same fixed scope. Plain `t` and `Ctrl+T` reject Tracking List changes during Recording; `Shift+T` remains available because `tracked_only` is independent display state.
+Starting recording requires at least one configured Tracking List name. It does not require a current live match: each output frame still records system metrics and writes an empty process-sample array until a matching process appears. `RecordingSession` owns a copy of the working Tracking List, its normalized lookup set, the selected `1s`/`2s`/`5s`/`10s` aggregation interval, and the pending frame accumulator. Session metadata records the fixed list and interval once. Every base snapshot is filtered through the same fixed scope, and missing values or absent processes are excluded from each metric's mean rather than converted to zero. Plain `t` and `Ctrl+T` reject Tracking List changes during Recording; `Shift+T` remains available because `tracked_only` is independent display state.
 
-`Ctrl+R` opens a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops. Sampling and frame writes continue while it is open, and the log is ended, flushed, and closed only after Stop is confirmed. Quit retains its existing single confirmation and performs the same writer cleanup directly rather than nesting the stop confirmation.
+`Ctrl+R` opens a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops. Sampling and aggregation continue while it is open. Confirmed Stop and quit flush a partial aggregate before writing the end record and closing the log. Quit retains its existing single confirmation rather than nesting the stop confirmation.
 
 Each Recording session is limited to 24 hours. `RecordingSession` stores a monotonic start instant in addition to the wall-clock timestamp written to the log. The main loop checks that elapsed time on every poll cycle; at the limit it dismisses any recording-only notice or stop confirmation, writes an end record with reason `duration_limit`, flushes and closes the writer, and transitions to Live. This keeps the limit independent of wall-clock corrections and does not wait for another sample to complete.
 
@@ -209,7 +209,7 @@ Recording lifecycle failures are application state, not status-only feedback. A 
 
 Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
 
-The Log list scans supported `*.log` files on a background worker. Schema versions 2 and 3 are listed and loadable; malformed supported logs are reported without crashing the UI. Selecting a log triggers full background parsing. Both loaders reuse one input buffer and deserialize directly into typed records instead of building a generic JSON value tree for every line. The schema-v3 loader resolves process and GPU IDs through the preceding definition records while reconstructing snapshots and histories. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
+The Log list scans supported `*.log` files on a background worker. Schema versions 2 and 3 are listed and loadable; malformed supported logs are reported without crashing the UI. Selecting a log triggers full background parsing. Both loaders reuse one input buffer and deserialize directly into typed records instead of building a generic JSON value tree for every line. The schema-v3 loader resolves process and GPU IDs through the preceding definition records while reconstructing snapshots and histories. It also retains the session interval and complete frame-time sequence so Log view can identify aggregate values and split Graph lines at missing process or metric windows. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
 
 ## 8. Invariants, Tests, and Constraints
 
@@ -220,6 +220,7 @@ The most important implementation invariants are:
 - display pause must not pause sampling, history updates, freshness, or recording;
 - Recording and Log view must never be active together;
 - one Recording session must use one fixed Tracking List copy for its session record, frame metadata, and process filtering;
+- one Recording session must use one fixed aggregation interval, must not treat unavailable values or absent processes as zero, and must flush a partial final window before a clean end record;
 - one Recording session must end and return to Live after at most 24 hours of monotonic elapsed time;
 - stopping or quitting Recording must flush and close the log, and cleanup failure must remain visible instead of exiting silently;
 - tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
@@ -240,7 +241,7 @@ Unit tests live both beside modules and in `src/main.rs`. `SamplingWorker::test_
 Current constraints:
 
 - Windows 11 x64 is the supported platform; Windows APIs are used directly.
-- The base interval is fixed at one second, with selected slow metrics refreshed every five samples.
+- The base interval is fixed at one second, with selected slow metrics refreshed every five samples. Recording aggregation is independent and does not reduce Live sampling.
 - Protected processes and unavailable counters may yield missing values.
 - Live history is bounded and is not intended to be a long-term time-series database; recording provides the durable session format.
 

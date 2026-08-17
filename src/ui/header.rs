@@ -22,6 +22,12 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         AppActivity::Live => spans.push(mode_span("LIVE", theme.success, theme)),
         AppActivity::Recording => {
             spans.push(mode_span("REC", theme.danger, theme));
+            if let Some(interval_seconds) = app
+                .active_recording_interval_seconds()
+                .filter(|interval| *interval > 1)
+            {
+                append_recording_interval(&mut spans, interval_seconds, theme);
+            }
             if !app.is_display_paused() {
                 spans.push(Span::raw(" "));
                 spans.push(Span::styled(
@@ -34,6 +40,9 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         }
         AppActivity::LogView => {
             spans.push(mode_span("LOG", theme.warning, theme));
+            if let Some(interval_seconds) = app.log_view_interval_seconds {
+                append_recording_interval(&mut spans, interval_seconds, theme);
+            }
         }
     }
 
@@ -103,6 +112,20 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
             .alignment(Alignment::Right);
         frame.render_widget(product_widget, product_area);
     }
+}
+
+fn append_recording_interval(spans: &mut Vec<Span<'static>>, seconds: u64, theme: Theme) {
+    spans.push(Span::raw(" · "));
+    spans.push(Span::styled(
+        if seconds > 1 {
+            format!("{seconds}s AVG")
+        } else {
+            "1s".to_string()
+        },
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::BOLD),
+    ));
 }
 
 fn stale_span(age_seconds: u64, theme: Theme) -> Span<'static> {
