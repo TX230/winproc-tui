@@ -118,6 +118,8 @@ Windows 専用です。Linux / macOS など他のプラットフォームには�
 
 ## ビルド済みバイナリを使う
 
+公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。WinGet と [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) は、どちらもこの Release のバイナリを参照します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
+
 ### WinGet でインストールする
 
 ```powershell
@@ -130,8 +132,6 @@ winget install --id TX230.winproc-tui -e
 winget upgrade --id TX230.winproc-tui -e
 winget uninstall --id TX230.winproc-tui -e
 ```
-
-GitHub Release の公開後、対応する最新版が WinGet カタログへ反映されるまで時間がかかる場合があります。その間に `winget install` を実行すると、古いバージョンがインストールされることがあります。`winget show --id TX230.winproc-tui -e` でカタログ上のバージョンを確認し、最新の Release より古い場合は、反映を待つか GitHub Releases の zip を使用してください。TX230 Scoop Bucket は WinGet カタログの審査・反映を経由しません。Bucket マニフェストの更新後は、以下の `scoop update` でローカルの Bucket を更新すれば、WinGet の反映を待たずに最新版を利用できます。
 
 ### Scoop（TX230 Bucket）でインストールする
 
@@ -149,25 +149,6 @@ scoop uninstall winproc-tui
 ```
 
 通常のアンインストールでは設定が保持されます。設定も削除する場合は `scoop uninstall --purge winproc-tui` を使用します。
-
-TX230 Bucket は公式 GitHub Release の zip をダウンロードし、SHA256 を検証して `winproc-tui` コマンドを登録します。追加のランタイムは不要です。
-
-### zip を展開して使う
-
-[GitHub Releases](https://github.com/TX230/winproc-tui/releases) から入手します。
-ダウンロードした zip を任意のフォルダに展開し、`winproc-tui.exe` を実行してください。追加のランタイムやインストーラは不要です。
-Release zip には `winproc-tui.exe` と `LICENSE` だけを含めます。ドキュメントは GitHub で公開します。
-
-公式のビルド済みバイナリは [TX230/winproc-tui Releases](https://github.com/TX230/winproc-tui/releases) からのみ公開します。WinGet パッケージと [TX230 Scoop Bucket](https://github.com/TX230/scoop-bucket) は、この Release のバイナリを使用します。第三者によるコピー、ミラー、改変リポジトリで配布されるバイナリは公式ビルドではありません。
-
-Release から zip と対応する `.zip.sha256` ファイルをダウンロードします。zip の SHA256 ハッシュ値を計算するコマンドは以下のとおりです。
-
-```powershell
-Get-FileHash .\winproc-tui-X.Y.Z-windows-x64.zip -Algorithm SHA256
-Get-Content .\winproc-tui-X.Y.Z-windows-x64.zip.sha256
-```
-
-`Get-FileHash` の `Hash` と `.zip.sha256` の先頭に記載されたハッシュ値が一致することを確認してください。
 
 ## ソースからビルドする
 
