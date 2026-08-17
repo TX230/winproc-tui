@@ -8471,10 +8471,19 @@ processes = ["api.exe", "worker.exe"]
         let rendered = render_app_to_text(&app, 100, 45);
 
         assert!(
-            rendered.contains("Tracking List  1 name · fixed until recording stops."),
+            rendered.contains("Confirm the log file and interval, then press Enter to start."),
             "{rendered}"
         );
-        assert!(rendered.contains("24h max"), "{rendered}");
+        assert!(
+            rendered.contains("Tracking List  1 entry (fixed while recording)"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Format         JSON Lines (.log)"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Max duration   24 hours"), "{rendered}");
+        assert!(!rendered.contains("Ctrl+L"), "{rendered}");
         assert!(!rendered.contains("WARNING"), "{rendered}");
     }
 
@@ -8974,7 +8983,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("C:/logs/example.log"), "{rendered}");
         assert!(rendered.contains("Log file"), "{rendered}");
         assert!(
-            rendered.contains("24h max · JSON Lines (.log) · open later with Ctrl+L."),
+            rendered.contains("Confirm the log file and interval, then press Enter to start."),
             "{rendered}"
         );
         assert!(
@@ -8982,9 +8991,15 @@ processes = ["api.exe", "worker.exe"]
             "{rendered}"
         );
         assert!(
-            rendered.contains("Tracking List  0 names · fixed until recording stops."),
+            rendered.contains("Tracking List  0 entries (fixed while recording)"),
             "{rendered}"
         );
+        assert!(
+            rendered.contains("Format         JSON Lines (.log)"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Max duration   24 hours"), "{rendered}");
+        assert!(!rendered.contains("Ctrl+L"), "{rendered}");
         assert!(!rendered.contains("[ Start ]"), "{rendered}");
         assert!(!rendered.contains("[ Cancel ]"), "{rendered}");
         assert!(!rendered.contains("Log file path"), "{rendered}");
@@ -9015,8 +9030,7 @@ processes = ["api.exe", "worker.exe"]
             let hint_buffer = render_app_to_buffer(&app, 100, 45);
             let (enter_x, hint_y) = find_text_position(&hint_buffer, "Enter start")
                 .expect("recording shortcut should render");
-            let (start_x, _) =
-                find_text_position(&hint_buffer, "start").expect("shortcut label should render");
+            let start_x = enter_x + "Enter ".chars().count() as u16;
             assert_eq!(hint_buffer[(enter_x, hint_y)].fg, theme.key_hint);
             assert_eq!(hint_buffer[(start_x, hint_y)].fg, theme.text);
 

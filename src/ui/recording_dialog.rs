@@ -19,10 +19,10 @@ use crate::{
 };
 
 const RECORDING_PATH_WIDTH: u16 = 78;
-const RECORDING_PATH_HEIGHT: u16 = 10;
-const RECORDING_PATH_INPUT_ROW: u16 = 1;
-const RECORDING_INTERVAL_ROW: u16 = 3;
-const RECORDING_INTERVAL_LABEL_WIDTH: u16 = 10;
+const RECORDING_PATH_HEIGHT: u16 = 13;
+const RECORDING_PATH_INPUT_ROW: u16 = 3;
+const RECORDING_INTERVAL_ROW: u16 = 5;
+const RECORDING_INFO_LABEL_WIDTH: u16 = 15;
 const RECORDING_OVERWRITE_WIDTH: u16 = 48;
 const RECORDING_OVERWRITE_HEIGHT: u16 = 7;
 const RECORDING_NO_TRACKED_WIDTH: u16 = 52;
@@ -60,8 +60,13 @@ pub(crate) fn draw_recording_path_dialog(
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
-        Paragraph::new("Log file").style(Style::default().fg(theme.muted)),
+        Paragraph::new("Confirm the log file and interval, then press Enter to start.")
+            .style(Style::default().fg(theme.text)),
         Rect::new(content.x, content.y, content.width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new("Log file").style(Style::default().fg(theme.muted)),
+        Rect::new(content.x, content.y.saturating_add(2), content.width, 1),
     );
     let input_style = if app.recording_path_focused() {
         Style::default()
@@ -77,7 +82,7 @@ pub(crate) fn draw_recording_path_dialog(
         Rect::new(
             content.x,
             content.y.saturating_add(RECORDING_INTERVAL_ROW),
-            RECORDING_INTERVAL_LABEL_WIDTH,
+            RECORDING_INFO_LABEL_WIDTH,
             1,
         ),
     );
@@ -87,26 +92,56 @@ pub(crate) fn draw_recording_path_dialog(
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("Tracking List  ", Style::default().fg(theme.muted)),
             Span::styled(
                 format!(
-                    "{} {} · fixed until recording stops.",
+                    "{:<width$}",
+                    "Tracking List",
+                    width = RECORDING_INFO_LABEL_WIDTH as usize
+                ),
+                Style::default().fg(theme.muted),
+            ),
+            Span::styled(
+                format!(
+                    "{} {} (fixed while recording)",
                     app.watch_list.len(),
                     if app.watch_list.len() == 1 {
-                        "name"
+                        "entry"
                     } else {
-                        "names"
+                        "entries"
                     }
                 ),
                 Style::default().fg(theme.text),
             ),
         ])),
-        Rect::new(content.x, content.y.saturating_add(4), content.width, 1),
+        Rect::new(content.x, content.y.saturating_add(6), content.width, 1),
     );
     frame.render_widget(
-        Paragraph::new("24h max · JSON Lines (.log) · open later with Ctrl+L.")
-            .style(Style::default().fg(theme.muted)),
-        Rect::new(content.x, content.y.saturating_add(5), content.width, 1),
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(
+                    "{:<width$}",
+                    "Format",
+                    width = RECORDING_INFO_LABEL_WIDTH as usize
+                ),
+                Style::default().fg(theme.muted),
+            ),
+            Span::styled("JSON Lines (.log)", Style::default().fg(theme.text)),
+        ])),
+        Rect::new(content.x, content.y.saturating_add(7), content.width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(
+                    "{:<width$}",
+                    "Max duration",
+                    width = RECORDING_INFO_LABEL_WIDTH as usize
+                ),
+                Style::default().fg(theme.muted),
+            ),
+            Span::styled("24 hours", Style::default().fg(theme.text)),
+        ])),
+        Rect::new(content.x, content.y.saturating_add(8), content.width, 1),
     );
     frame.render_widget(
         Paragraph::new(shortcut_line(
@@ -287,9 +322,9 @@ pub(crate) fn recording_interval_selector_area(area: Rect) -> Rect {
         horizontal: 1,
     });
     Rect::new(
-        content.x.saturating_add(RECORDING_INTERVAL_LABEL_WIDTH),
+        content.x.saturating_add(RECORDING_INFO_LABEL_WIDTH),
         content.y.saturating_add(RECORDING_INTERVAL_ROW),
-        content.width.saturating_sub(RECORDING_INTERVAL_LABEL_WIDTH),
+        content.width.saturating_sub(RECORDING_INFO_LABEL_WIDTH),
         1,
     )
 }
