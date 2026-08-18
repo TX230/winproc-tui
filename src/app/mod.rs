@@ -20,7 +20,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use crate::ui::{
     column_picker_page_size_for_screen, cpu_core_dialog_page_size_for_screen, draw,
-    help_page_size_for_screen,
+    graph_reorder_page_size_for_screen, help_page_size_for_screen,
     layout::{MainPanelAreas, details_samples_row_capacity, graph_workspace_layout},
     main_panel_areas_for_app, process_info_page_size_for_screen,
     tracked_lists_page_size_for_screen,
@@ -267,6 +267,8 @@ pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     app.set_details_sample_page_size(details_samples_page_size_for_app(&panels, app));
     app.set_help_page_size(help_page_size_for_screen(screen_area));
     app.set_column_picker_page_size(column_picker_page_size_for_screen(screen_area));
+    let graph_reorder_page_size = graph_reorder_page_size_for_screen(screen_area, app);
+    app.set_graph_reorder_page_size(graph_reorder_page_size);
     app.set_log_list_page_size(crate::ui::log_list_page_size_for_screen(screen_area));
     app.set_process_info_page_size(process_info_page_size_for_screen(screen_area));
     let cpu_core_page_size = cpu_core_dialog_page_size_for_screen(screen_area, app);

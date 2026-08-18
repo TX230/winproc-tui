@@ -66,6 +66,8 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             vec![
                 ("↑", "Prev Slot"),
                 ("↓", "Next Slot"),
+                ("Shift+↑/↓", "Move"),
+                ("s", "Reorder"),
                 ("←", "Older"),
                 ("→", "Newer"),
                 ("Del", "Remove Graph"),
@@ -81,6 +83,8 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
             vec![
                 ("↑/←", "Older"),
                 ("↓/→", "Newer"),
+                ("Shift+↑/↓", "Move"),
+                ("s", "Reorder"),
                 ("Del", "Remove Graph"),
                 ("a/b", "Set A/B"),
                 ("PgUp/PgDn", "Scroll"),

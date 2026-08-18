@@ -37,7 +37,8 @@ use crate::{
             format_compact_bytes, format_integer, format_io_rate, format_signed_compact_bytes,
             format_signed_integer, format_signed_io_rate,
         },
-        help_scroll_max_for_page_size, log_list_total_rows_for_count, theme_index_by_name,
+        graph_reorder_row_for_index, help_scroll_max_for_page_size, log_list_total_rows_for_count,
+        theme_index_by_name,
         widgets::scrollable_modal::ScrollableModalState,
     },
 };
@@ -418,6 +419,13 @@ pub(crate) enum GraphHoverTarget {
 pub(crate) struct GraphEntry {
     pub(crate) id: GraphId,
     pub(crate) source: GraphSlot,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GraphReorderDialog {
+    pub(crate) order: Vec<GraphId>,
+    pub(crate) selected: usize,
+    pub(crate) scroll: ScrollableModalState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -893,6 +901,7 @@ pub(crate) struct App {
     pub(crate) focused_panel: FocusedPanel,
     pub(crate) show_details: bool,
     pub(crate) graph_entries: Vec<GraphEntry>,
+    pub(crate) graph_reorder_dialog: Option<GraphReorderDialog>,
     pub(crate) active_graph_id: Option<GraphId>,
     pub(crate) next_graph_id: u64,
     pub(crate) graph_scroll_row: usize,
@@ -1140,6 +1149,7 @@ impl App {
             focused_panel: FocusedPanel::Processes,
             show_details: false,
             graph_entries: Vec::new(),
+            graph_reorder_dialog: None,
             active_graph_id: None,
             next_graph_id: 1,
             graph_scroll_row: 0,
@@ -1301,6 +1311,7 @@ impl App {
             || self.show_process_info_dialog
             || self.show_cpu_core_dialog
             || self.show_system_info_dialog
+            || self.graph_reorder_dialog.is_some()
             || self.show_quit_confirmation
             || self.show_recording_no_tracked_warning
             || self.show_recording_path_dialog
@@ -2279,6 +2290,188 @@ impl App {
             .saturating_add(1)
             .min(self.graph_entries.len().saturating_sub(1));
         self.select_graph_index(next);
+    }
+
+    pub(crate) fn move_active_graph_earlier(&mut self) -> bool {
+        self.move_active_graph_in_order(true)
+    }
+
+    pub(crate) fn move_active_graph_later(&mut self) -> bool {
+        self.move_active_graph_in_order(false)
+    }
+
+    fn move_active_graph_in_order(&mut self, earlier: bool) -> bool {
+        let Some(active) = self.active_graph_index() else {
+            return false;
+        };
+        let next = if earlier {
+            active.saturating_sub(1)
+        } else {
+            active
+                .saturating_add(1)
+                .min(self.graph_entries.len().saturating_sub(1))
+        };
+        if next == active {
+            self.status = if earlier {
+                "Graph is already first".to_string()
+            } else {
+                "Graph is already last".to_string()
+            };
+            return false;
+        }
+
+        self.graph_entries.swap(active, next);
+        self.sync_graph_layout_visibility();
+        self.reveal_active_graph();
+        self.status = format!(
+            "Graph moved to slot {}/{}",
+            next + 1,
+            self.graph_entries.len()
+        );
+        true
+    }
+
+    pub(crate) fn open_graph_reorder_dialog(&mut self) {
+        if self.graph_entries.is_empty() {
+            self.status = "No Graphs to reorder".to_string();
+            return;
+        }
+        let selected = self.active_graph_index().unwrap_or(0);
+        self.graph_reorder_dialog = Some(GraphReorderDialog {
+            order: self.graph_entries.iter().map(|entry| entry.id).collect(),
+            selected,
+            scroll: ScrollableModalState {
+                page_size: 1,
+                ..ScrollableModalState::default()
+            },
+        });
+        self.ensure_graph_reorder_selection_visible();
+        self.status = "Reorder Graphs opened".to_string();
+    }
+
+    pub(crate) fn apply_graph_reorder_dialog(&mut self) {
+        let Some(mut dialog) = self.graph_reorder_dialog.take() else {
+            return;
+        };
+        dialog.scroll.stop_drag();
+        let ids = dialog.order.iter().copied().collect::<HashSet<_>>();
+        let valid = dialog.order.len() == self.graph_entries.len()
+            && ids.len() == self.graph_entries.len()
+            && self
+                .graph_entries
+                .iter()
+                .all(|entry| ids.contains(&entry.id));
+        if !valid {
+            self.status = "Graph order changed while the dialog was open".to_string();
+            return;
+        }
+
+        let positions = dialog
+            .order
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| (id, index))
+            .collect::<HashMap<_, _>>();
+        self.graph_entries
+            .sort_by_key(|entry| positions.get(&entry.id).copied().unwrap_or(usize::MAX));
+        self.sync_graph_layout_visibility();
+        self.reveal_active_graph();
+        self.status = "Graph order applied".to_string();
+    }
+
+    pub(crate) fn cancel_graph_reorder_dialog(&mut self) {
+        if let Some(mut dialog) = self.graph_reorder_dialog.take() {
+            dialog.scroll.stop_drag();
+        }
+        self.status = "Graph reorder canceled".to_string();
+    }
+
+    pub(crate) fn set_graph_reorder_page_size(&mut self, page_size: usize) {
+        let total = self.graph_reorder_total_rows();
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.scroll.set_page_size(page_size, total);
+        }
+        self.ensure_graph_reorder_selection_visible();
+    }
+
+    pub(crate) fn select_previous_graph_reorder_row(&mut self) {
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.selected = dialog.selected.saturating_sub(1);
+        }
+        self.ensure_graph_reorder_selection_visible();
+    }
+
+    pub(crate) fn select_next_graph_reorder_row(&mut self) {
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.selected = dialog
+                .selected
+                .saturating_add(1)
+                .min(dialog.order.len().saturating_sub(1));
+        }
+        self.ensure_graph_reorder_selection_visible();
+    }
+
+    pub(crate) fn select_graph_reorder_row(&mut self, index: usize) {
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.selected = index.min(dialog.order.len().saturating_sub(1));
+        }
+        self.ensure_graph_reorder_selection_visible();
+    }
+
+    pub(crate) fn move_selected_graph_reorder_row_earlier(&mut self) {
+        self.move_selected_graph_reorder_row(true);
+    }
+
+    pub(crate) fn move_selected_graph_reorder_row_later(&mut self) {
+        self.move_selected_graph_reorder_row(false);
+    }
+
+    fn move_selected_graph_reorder_row(&mut self, earlier: bool) {
+        let Some(dialog) = self.graph_reorder_dialog.as_mut() else {
+            return;
+        };
+        let selected = dialog.selected;
+        let next = if earlier {
+            selected.saturating_sub(1)
+        } else {
+            selected
+                .saturating_add(1)
+                .min(dialog.order.len().saturating_sub(1))
+        };
+        if next == selected {
+            return;
+        }
+        dialog.order.swap(selected, next);
+        dialog.selected = next;
+        self.ensure_graph_reorder_selection_visible();
+    }
+
+    pub(crate) fn scroll_graph_reorder_up(&mut self, amount: usize) {
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.scroll.scroll_up(amount);
+        }
+    }
+
+    pub(crate) fn scroll_graph_reorder_down(&mut self, amount: usize) {
+        let total = self.graph_reorder_total_rows();
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.scroll.scroll_down(amount, total);
+        }
+    }
+
+    pub(crate) fn graph_reorder_total_rows(&self) -> usize {
+        self.graph_reorder_dialog
+            .as_ref()
+            .map(|dialog| dialog.order.len().saturating_add(1))
+            .unwrap_or(0)
+    }
+
+    fn ensure_graph_reorder_selection_visible(&mut self) {
+        let total = self.graph_reorder_total_rows();
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            let row = graph_reorder_row_for_index(dialog.selected);
+            dialog.scroll.ensure_visible(row, total);
+        }
     }
 
     fn add_graph_source(&mut self, source: GraphSlot, return_focus: FocusedPanel) -> bool {

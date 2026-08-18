@@ -2761,6 +2761,124 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn shift_up_down_reorders_active_graph_without_changing_shared_state() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..4)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.set_active_graph(ids[1]));
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.details_sample_selected = 7;
+        app.details_sample_offset = 3;
+        app.graph_time_span_seconds = 300;
+        app.graph_time_offset_seconds = 42;
+        app.graph_time_window_right_at = Some(Local::now());
+        app.ab_comparison = Some(app::AbComparison { a: None, b: None });
+        let window_right = app.graph_time_window_right_at;
+        let comparison = app.ab_comparison.clone();
+
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+            .unwrap();
+
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            [ids[0], ids[2], ids[1], ids[3]]
+        );
+        assert_eq!(app.active_graph_id, Some(ids[1]));
+        assert_eq!(app.details_sample_selected, 7);
+        assert_eq!(app.details_sample_offset, 3);
+        assert_eq!(app.graph_time_span_seconds, 300);
+        assert_eq!(app.graph_time_offset_seconds, 42);
+        assert_eq!(app.graph_time_window_right_at, window_right);
+        assert_eq!(app.ab_comparison, comparison);
+
+        app.focused_panel = FocusedPanel::DetailsSamples;
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert_eq!(app.active_graph_id, Some(ids[1]));
+    }
+
+    #[test]
+    fn graph_reorder_dialog_applies_draft_and_escape_discards_it() {
+        let mut app = make_test_app(1, 10);
+        let ids = (0..4)
+            .map(|index| add_test_graph(&mut app, index))
+            .collect::<Vec<_>>();
+        assert!(app.set_active_graph(ids[2]));
+        app.focused_panel = FocusedPanel::DetailsSamples;
+        let sort = app.sort;
+
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.graph_reorder_dialog.is_some());
+        assert_eq!(app.sort, sort);
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(
+            app.graph_reorder_dialog.as_ref().unwrap().order,
+            [ids[0], ids[2], ids[1], ids[3]]
+        );
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.graph_reorder_dialog.is_none());
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.graph_reorder_dialog.is_none());
+        assert_eq!(
+            app.graph_entries
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            [ids[0], ids[2], ids[1], ids[3]]
+        );
+        assert_eq!(app.active_graph_id, Some(ids[2]));
+        assert_eq!(app.focused_panel, FocusedPanel::DetailsSamples);
+    }
+
+    #[test]
+    fn graph_reorder_dialog_scrolls_to_selected_row_on_short_screens() {
+        let mut app = make_test_app(1, 10);
+        for index in 0..app::GRAPH_LIMIT {
+            add_test_graph(&mut app, index);
+        }
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.open_graph_reorder_dialog();
+        let screen = Rect::new(0, 0, 90, 10);
+
+        app::sync_layout_state(&mut app, screen);
+        let rendered = render_app_to_text(&app, screen.width, screen.height);
+
+        assert!(app.graph_reorder_dialog.as_ref().unwrap().scroll.offset > 0);
+        assert!(rendered.contains("REORDER GRAPHS"), "{rendered}");
+        assert!(rendered.contains("graph-15.exe"), "{rendered}");
+        assert!(rendered.contains("Shift+↑/↓ Move"), "{rendered}");
+        assert!(rendered.contains('█'), "{rendered}");
+    }
+
+    #[test]
     fn samples_page_keys_scroll_the_list_without_changing_graph_span() {
         let mut app = make_test_app(1, 10);
         assign_private_graph(&mut app);
@@ -14162,6 +14280,7 @@ processes = ["api.exe", "worker.exe"]
             focused_panel: FocusedPanel::Processes,
             show_details: false,
             graph_entries: Vec::new(),
+            graph_reorder_dialog: None,
             active_graph_id: None,
             next_graph_id: 0,
             graph_scroll_row: 0,

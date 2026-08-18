@@ -277,6 +277,8 @@ When A/B points are set, `Metrics` shows Current − A or B − A using exact-ti
 | `Enter`                    | Open Process Info for the active process Graph.                                     |
 | `Up`                       | Select the previous Graph slot.                                                     |
 | `Down`                     | Select the next Graph slot.                                                         |
+| `Shift+Up` / `Shift+Down` | Move the active Graph one position earlier or later.                                |
+| `s`                        | Open the compact Graph reorder dialog from Graph or Samples focus.                  |
 | `Delete`                   | Remove the active Graph.                                                            |
 | `Left`                     | Select the older sample.                                                            |
 | `Right`                    | Select the newer sample.                                                            |
@@ -295,7 +297,7 @@ When A/B points are set, `Metrics` shows Current − A or B − A using exact-ti
 | Mouse wheel                | Scroll Graph rows; over Samples, scroll sample rows.                                |
 
 
-The Graph Workspace keeps up to 16 ordered cards. `Up` / `Down`, card clicks, the mouse wheel, and the scrollbar select a Graph; `Delete` or a card's `[x]` removes it. The title `[-]` / `[+]` controls and each card's `[x]` highlight on mouse hover. The single Samples inspector follows the active Graph, and the shared shortcuts work from either Graph or Samples focus.
+The Graph Workspace keeps up to 16 ordered cards. `Up` / `Down`, card clicks, the mouse wheel, and the scrollbar select a Graph; `Shift+Up` / `Shift+Down` moves the active card immediately. Press `s` from Graph or Samples to open `REORDER GRAPHS`, use `Up` / `Down` to select and `Shift+Up` / `Shift+Down` to move a row, then press `Enter` to apply or `Esc` to cancel. `Delete` or a card's `[x]` removes it. The title `[-]` / `[+]` controls and each card's `[x]` highlight on mouse hover. The single Samples inspector follows the active Graph, and the shared shortcuts work from either Graph or Samples focus.
 
 Multiple Graphs share one absolute visible time range, cursor, selected time, and A/B points. `Fit all` covers the earliest through latest samples across the registered Graphs, including Graphs whose histories start or end at different times. Each Graph keeps its own Y-axis scale and sample availability. A/B values, clipboard output, and recordings retain exact values; if a Graph has no sample at the exact selected time, it shows `--` instead of substituting a nearby value.
 

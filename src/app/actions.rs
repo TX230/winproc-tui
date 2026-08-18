@@ -17,7 +17,8 @@ use crate::{
         cpu_core_dialog_scrollbar_area, cpu_metric_at_position, cpu_panel_area_for_screen,
         cpu_per_core_button_area,
         details_panel::graph_y_axis_label_width,
-        gpu_panel_area_for_screen, help_scrollbar_area,
+        gpu_panel_area_for_screen, graph_reorder_index_at, graph_reorder_scrollbar_area,
+        help_scrollbar_area,
         layout::{
             GraphWorkspaceLayout, ProcessTableLayout, details_graph_chart_area,
             graph_shared_control_areas, graph_workspace_layout,
@@ -710,6 +711,23 @@ impl App {
             return Ok(());
         }
 
+        if self.graph_reorder_dialog.is_some() {
+            match key.code {
+                KeyCode::Esc => self.cancel_graph_reorder_dialog(),
+                KeyCode::Enter => self.apply_graph_reorder_dialog(),
+                KeyCode::Up if key.modifiers == KeyModifiers::SHIFT => {
+                    self.move_selected_graph_reorder_row_earlier()
+                }
+                KeyCode::Down if key.modifiers == KeyModifiers::SHIFT => {
+                    self.move_selected_graph_reorder_row_later()
+                }
+                KeyCode::Up => self.select_previous_graph_reorder_row(),
+                KeyCode::Down => self.select_next_graph_reorder_row(),
+                _ => {}
+            }
+            return Ok(());
+        }
+
         if self.is_process_jump_editing() {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_process_jump_edit(),
@@ -806,8 +824,20 @@ impl App {
         ) && self.show_details
         {
             match key.code {
+                KeyCode::Up if key.modifiers == KeyModifiers::SHIFT => {
+                    self.move_active_graph_earlier();
+                    return Ok(());
+                }
+                KeyCode::Down if key.modifiers == KeyModifiers::SHIFT => {
+                    self.move_active_graph_later();
+                    return Ok(());
+                }
                 KeyCode::Delete => {
                     self.remove_active_graph();
+                    return Ok(());
+                }
+                KeyCode::Char('s') if key.modifiers.is_empty() => {
+                    self.open_graph_reorder_dialog();
                     return Ok(());
                 }
                 KeyCode::Char(ch)
@@ -1231,7 +1261,10 @@ impl App {
                     self.widen_selected_process_column();
                 }
             }
-            KeyCode::Char('s') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('s')
+                if self.focused_panel == FocusedPanel::Processes
+                    && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
                 self.cycle_sort_column();
             }
             KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'g') => {
@@ -1420,6 +1453,39 @@ impl App {
         }
 
         if self.show_recording_tracking_fixed {
+            return;
+        }
+
+        if self.graph_reorder_dialog.is_some() {
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if self.start_graph_reorder_scrollbar_drag(mouse.column, mouse.row, screen_area)
+                    {
+                        return;
+                    }
+                    if let Some(index) =
+                        graph_reorder_index_at(screen_area, self, mouse.column, mouse.row)
+                    {
+                        self.select_graph_reorder_row(index);
+                    }
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+                        dialog.scroll.stop_drag();
+                    }
+                }
+                MouseEventKind::Drag(MouseButton::Left)
+                    if self
+                        .graph_reorder_dialog
+                        .as_ref()
+                        .is_some_and(|dialog| dialog.scroll.dragging) =>
+                {
+                    self.drag_graph_reorder_scrollbar(mouse.row, screen_area);
+                }
+                MouseEventKind::ScrollUp => self.scroll_graph_reorder_up(1),
+                MouseEventKind::ScrollDown => self.scroll_graph_reorder_down(1),
+                _ => {}
+            }
             return;
         }
 
@@ -1955,6 +2021,55 @@ impl App {
         };
         let total = self.column_picker_scroll_total();
         self.column_picker_scroll.drag_to(scrollbar, y, total);
+    }
+
+    fn start_graph_reorder_scrollbar_drag(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {
+        let Some(page_size) = self
+            .graph_reorder_dialog
+            .as_ref()
+            .map(|dialog| dialog.scroll.page_size)
+        else {
+            return false;
+        };
+        let Some(scrollbar) = graph_reorder_scrollbar_area(screen_area, self, page_size) else {
+            if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+                dialog.scroll.stop_drag();
+            }
+            return false;
+        };
+        if !contains_point(scrollbar, x, y) {
+            if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+                dialog.scroll.stop_drag();
+            }
+            return false;
+        }
+
+        let total = self.graph_reorder_total_rows();
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.scroll.start_drag(scrollbar, y, total);
+            dialog.scroll.drag_to(scrollbar, y, total);
+        }
+        true
+    }
+
+    fn drag_graph_reorder_scrollbar(&mut self, y: u16, screen_area: Rect) {
+        let Some(page_size) = self
+            .graph_reorder_dialog
+            .as_ref()
+            .map(|dialog| dialog.scroll.page_size)
+        else {
+            return;
+        };
+        let Some(scrollbar) = graph_reorder_scrollbar_area(screen_area, self, page_size) else {
+            if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+                dialog.scroll.stop_drag();
+            }
+            return;
+        };
+        let total = self.graph_reorder_total_rows();
+        if let Some(dialog) = self.graph_reorder_dialog.as_mut() {
+            dialog.scroll.drag_to(scrollbar, y, total);
+        }
     }
 
     fn start_samples_scrollbar_drag(&mut self, x: u16, y: u16, screen_area: Rect) -> bool {

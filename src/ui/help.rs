@@ -244,6 +244,14 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Select next Graph slot",
     },
     HelpItem {
+        key: "Shift+↑/↓",
+        label: "Move active Graph",
+    },
+    HelpItem {
+        key: "s",
+        label: "Open Graph reorder dialog",
+    },
+    HelpItem {
         key: "Delete",
         label: "Remove active Graph",
     },
@@ -282,6 +290,14 @@ const GRAPH_ROWS: &[HelpItem] = &[
 ];
 
 const SAMPLES_ROWS: &[HelpItem] = &[
+    HelpItem {
+        key: "Shift+↑/↓",
+        label: "Move active Graph",
+    },
+    HelpItem {
+        key: "s",
+        label: "Open Graph reorder dialog",
+    },
     HelpItem {
         key: "Up/Left",
         label: "Select older sample",

@@ -4,6 +4,7 @@ mod cpu_panel;
 pub(crate) mod details_panel;
 pub(crate) mod footer;
 pub(crate) mod format;
+pub(crate) mod graph_reorder;
 pub(crate) mod graph_slot;
 pub(crate) mod header;
 pub(crate) mod help;
@@ -46,6 +47,11 @@ pub(crate) use cpu_panel::{cpu_metric_at_position, cpu_per_core_button_area};
 use details_panel::draw_details_panel;
 use footer::draw_footer;
 pub(crate) use format::fmt_bytes;
+use graph_reorder::draw_graph_reorder_dialog;
+pub(crate) use graph_reorder::{
+    graph_reorder_index_at, graph_reorder_page_size_for_screen, graph_reorder_row_for_index,
+    graph_reorder_scrollbar_area,
+};
 use header::draw_header;
 use help::draw_help;
 #[cfg(test)]
@@ -145,6 +151,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     if app.show_system_info_dialog {
         draw_system_info_dialog(frame, area, app, theme);
+    }
+    if app.graph_reorder_dialog.is_some() {
+        draw_graph_reorder_dialog(frame, area, app, theme);
     }
     if app.show_recording_no_tracked_warning {
         draw_recording_no_tracked_warning(frame, area, theme);
