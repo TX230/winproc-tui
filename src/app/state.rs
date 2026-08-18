@@ -51,7 +51,7 @@ const FIXED_PROCESS_COLUMN_COUNT: usize = 2;
 pub(crate) const GRAPH_LIMIT: usize = 16;
 pub(crate) const GRAPH_SLOT_MIN_HEIGHT: u16 = 13;
 pub(crate) const GRAPH_SLOT_MIN_WIDTH: u16 = 50;
-pub(crate) const GRAPH_SOURCE_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
+pub(crate) const SOURCE_CELL_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 pub(crate) const PROCESS_INFO_DEBOUNCE: Duration = Duration::from_millis(200);
 const PROCESS_INFO_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const OPEN_FILES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -435,9 +435,18 @@ pub(crate) struct GraphSourceState {
     pub(crate) active: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SourceCell {
+    Graph(GraphSlot),
+    ProcessTracking {
+        identity: ProcessIdentity,
+        column: SortColumn,
+    },
+}
+
 #[derive(Debug, Clone)]
-pub(crate) struct GraphSourceClick {
-    pub(crate) source: GraphSlot,
+pub(crate) struct SourceCellClick {
+    pub(crate) source: SourceCell,
     pub(crate) clicked_at: Instant,
 }
 
@@ -912,7 +921,7 @@ pub(crate) struct App {
     pub(crate) graph_hovered_target: Option<GraphHoverTarget>,
     pub(crate) cpu_per_core_hovered: bool,
     pub(crate) graph_return_focus: FocusedPanel,
-    pub(crate) graph_source_last_click: Option<GraphSourceClick>,
+    pub(crate) source_cell_last_click: Option<SourceCellClick>,
     pub(crate) details_target: DetailsTarget,
     pub(crate) details_metric: DetailsMetric,
     pub(crate) details_sample_selected: usize,
@@ -1161,7 +1170,7 @@ impl App {
             graph_hovered_target: None,
             cpu_per_core_hovered: false,
             graph_return_focus: FocusedPanel::Processes,
-            graph_source_last_click: None,
+            source_cell_last_click: None,
             details_target: DetailsTarget::Process,
             details_metric: DetailsMetric::Private,
             details_sample_selected: 0,
@@ -2219,6 +2228,21 @@ impl App {
         self.toggle_graph_source(source, FocusedPanel::Processes);
     }
 
+    pub(crate) fn selected_process_column_toggles_tracking(&self) -> bool {
+        matches!(
+            self.selected_process_column(),
+            SortColumn::Pid | SortColumn::ProcessName
+        )
+    }
+
+    pub(crate) fn toggle_selected_process_cell_action(&mut self) {
+        if self.selected_process_column_toggles_tracking() {
+            self.toggle_selected_process_tracking();
+        } else {
+            self.toggle_selected_process_graph();
+        }
+    }
+
     pub(crate) fn graph_id_for_source(&self, source: &GraphSlot) -> Option<GraphId> {
         self.graph_entries
             .iter()
@@ -2533,21 +2557,45 @@ impl App {
         clicked_at: Instant,
         return_focus: FocusedPanel,
     ) {
-        let is_double_click = self.graph_source_last_click.as_ref().is_some_and(|last| {
-            last.source == source
-                && clicked_at.saturating_duration_since(last.clicked_at)
-                    <= GRAPH_SOURCE_DOUBLE_CLICK_WINDOW
-        });
-        if is_double_click {
-            self.graph_source_last_click = None;
+        if self.register_source_cell_click(SourceCell::Graph(source.clone()), clicked_at) {
             self.toggle_graph_source(source, return_focus);
-        } else {
-            self.graph_source_last_click = Some(GraphSourceClick { source, clicked_at });
         }
     }
 
-    pub(crate) fn clear_graph_source_click(&mut self) {
-        self.graph_source_last_click = None;
+    pub(crate) fn register_process_tracking_cell_click(
+        &mut self,
+        identity: ProcessIdentity,
+        column: SortColumn,
+        clicked_at: Instant,
+    ) {
+        debug_assert!(matches!(column, SortColumn::Pid | SortColumn::ProcessName));
+        if self.register_source_cell_click(
+            SourceCell::ProcessTracking {
+                identity: identity.clone(),
+                column,
+            },
+            clicked_at,
+        ) {
+            self.toggle_process_name_tracking(identity.name);
+        }
+    }
+
+    fn register_source_cell_click(&mut self, source: SourceCell, clicked_at: Instant) -> bool {
+        let is_double_click = self.source_cell_last_click.as_ref().is_some_and(|last| {
+            last.source == source
+                && clicked_at.saturating_duration_since(last.clicked_at)
+                    <= SOURCE_CELL_DOUBLE_CLICK_WINDOW
+        });
+        if is_double_click {
+            self.source_cell_last_click = None;
+        } else {
+            self.source_cell_last_click = Some(SourceCellClick { source, clicked_at });
+        }
+        is_double_click
+    }
+
+    pub(crate) fn clear_source_cell_click(&mut self) {
+        self.source_cell_last_click = None;
     }
 
     #[cfg(test)]
@@ -3800,13 +3848,18 @@ impl App {
     }
 
     pub(crate) fn toggle_selected_process_tracking(&mut self) {
-        if self.reject_tracking_list_change_while_recording() {
-            return;
-        }
         let Some(name) = self.selected_visible_process_name() else {
             self.status = "No process selected".to_string();
             return;
         };
+
+        self.toggle_process_name_tracking(name);
+    }
+
+    fn toggle_process_name_tracking(&mut self, name: String) {
+        if self.reject_tracking_list_change_while_recording() {
+            return;
+        }
 
         if self.is_tracked_process_name(&name) {
             let (total_samples, discarded_samples) = self

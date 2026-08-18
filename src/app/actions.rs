@@ -39,7 +39,7 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return Ok(());
         }
-        self.clear_graph_source_click();
+        self.clear_source_cell_click();
 
         if self.recording_error.is_some() {
             match key.code {
@@ -1342,7 +1342,7 @@ impl App {
                     && !key.modifiers.contains(KeyModifiers::CONTROL)
                     && !key.modifiers.contains(KeyModifiers::ALT)
                 {
-                    self.toggle_selected_process_graph();
+                    self.toggle_selected_process_cell_action();
                 }
             }
             KeyCode::Char(ch)
@@ -1416,7 +1416,7 @@ impl App {
     pub(crate) fn on_mouse(&mut self, mouse: MouseEvent, screen_area: Rect) {
         let has_modal_focus = self.has_modal_focus();
         if has_modal_focus {
-            self.clear_graph_source_click();
+            self.clear_source_cell_click();
             self.graph_hovered_target = None;
             self.cpu_per_core_hovered = false;
         } else {
@@ -1437,7 +1437,7 @@ impl App {
                 | MouseEventKind::ScrollRight
                 | MouseEventKind::Drag(_)
         ) {
-            self.clear_graph_source_click();
+            self.clear_source_cell_click();
         }
         if self.recording_error.is_none()
             && !self.show_recording_stop_confirmation
@@ -1834,7 +1834,7 @@ impl App {
                 {
                     self.focused_panel = FocusedPanel::Cpu;
                     self.select_last_cpu_item();
-                    self.clear_graph_source_click();
+                    self.clear_source_cell_click();
                     self.open_cpu_core_dialog();
                     return;
                 }
@@ -1890,6 +1890,8 @@ impl App {
                 self.select_process_row_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_at(mouse.column, mouse.row, screen_area);
                 self.select_details_sample_from_graph_at(mouse.column, mouse.row, screen_area);
+                let tracking_cell =
+                    process_tracking_cell_at(self, screen_area, mouse.column, mouse.row);
                 let source = process_graph_source_at(self, screen_area, mouse.column, mouse.row)
                     .map(|source| (source, FocusedPanel::Processes))
                     .or_else(|| {
@@ -1904,10 +1906,12 @@ impl App {
                         cpu_graph_source_at(self, screen_area, mouse.column, mouse.row)
                             .map(|source| (source, FocusedPanel::Cpu))
                     });
-                if let Some((source, return_focus)) = source {
+                if let Some((identity, column)) = tracking_cell {
+                    self.register_process_tracking_cell_click(identity, column, Instant::now());
+                } else if let Some((source, return_focus)) = source {
                     self.register_graph_source_click(source, Instant::now(), return_focus);
                 } else {
-                    self.clear_graph_source_click();
+                    self.clear_source_cell_click();
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
@@ -2584,6 +2588,32 @@ fn process_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Opti
     let metric_column = *app.process_columns.get(selected_column.checked_sub(2)?)?;
     let metric = DetailsMetric::from_graphable_column(metric_column)?;
     Some(GraphSlot::process(identity, metric))
+}
+
+fn process_tracking_cell_at(
+    app: &App,
+    screen_area: Rect,
+    x: u16,
+    y: u16,
+) -> Option<(crate::model::ProcessIdentity, crate::model::SortColumn)> {
+    let layout = main_panel_areas_for_app(screen_area, app).processes;
+    let row = process_row_index_at(layout, y, app.process_table_state.offset())?;
+    if row >= app.visible_process_count() {
+        return None;
+    }
+    let identity = app.visible_process_identity_at(row)?;
+    let column = match process_metric_column_index_at(
+        layout.area,
+        x,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    )? {
+        0 => crate::model::SortColumn::Pid,
+        1 => crate::model::SortColumn::ProcessName,
+        _ => return None,
+    };
+    Some((identity, column))
 }
 
 fn ram_vram_graph_source_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphSlot> {

@@ -2065,17 +2065,27 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn space_on_non_graphable_process_column_only_shows_status() {
+    fn space_on_pid_and_process_columns_toggles_tracking() {
         let mut app = make_test_app(3, 10);
-        app.selected_process_column_index = 1;
+        let selected_name = app.snapshot.processes[0].name.clone();
 
+        app.selected_process_column_index = 0;
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
+        assert_eq!(app.watch_list, vec![selected_name]);
+        assert!(app.graph_entries.is_empty());
+        assert!(!app.show_details);
+
+        app.selected_process_column_index = 1;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(app.watch_list.is_empty());
         assert!(app.graph_entries.is_empty());
         assert!(!app.show_details);
         assert!(!app.show_metric_column_warning);
-        assert_eq!(app.status, "Select a graphable metric cell");
+        assert!(app.status.starts_with("Removed from Tracking List:"));
     }
 
     #[test]
@@ -5033,18 +5043,31 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn process_non_metric_double_click_does_not_add_a_graph() {
+    fn process_identity_cell_double_click_toggles_tracking_without_adding_a_graph() {
         let mut app = make_test_app(2, 10);
         app.process_columns = vec![MetricColumn::HandleCount];
         let screen = Rect::new(0, 0, 140, 60);
         app::sync_layout_state(&mut app, screen);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let (x, _) = find_text_position(&buffer, "PID").expect("PID column should render");
-        let y = main_panel_areas_for_app(screen, &app).processes.area.y + 2;
+        let process_area = main_panel_areas_for_app(screen, &app).processes.area;
+        let (pid_x, _) = find_text_position_in_area(&buffer, process_area, "PID")
+            .expect("PID column should render");
+        let (process_x, _) = find_text_position_in_area(&buffer, process_area, "Process")
+            .expect("Process column should render");
+        let y = process_area.y + 2;
+        let selected_name = app.snapshot.processes[0].name.clone();
 
-        app.on_mouse(left_click(x, y), screen);
-        app.on_mouse(left_click(x, y), screen);
+        app.on_mouse(left_click(pid_x, y), screen);
+        app.on_mouse(left_click(process_x, y), screen);
+        assert!(app.watch_list.is_empty());
 
+        app.on_mouse(left_click(process_x, y), screen);
+        assert_eq!(app.watch_list, vec![selected_name]);
+
+        app.on_mouse(left_click(pid_x, y), screen);
+        app.on_mouse(left_click(pid_x, y), screen);
+
+        assert!(app.watch_list.is_empty());
         assert!(app.graph_entries.is_empty());
     }
 
@@ -7994,6 +8017,24 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn process_footer_labels_space_for_the_selected_cell_action() {
+        let mut app = make_test_app(3, 10);
+        app.selected_process_column_index = 0;
+
+        let identity_column = render_app_to_text(&app, 170, 30);
+        assert!(identity_column.contains("Space Track"), "{identity_column}");
+        assert!(
+            !identity_column.contains("Space Graph"),
+            "{identity_column}"
+        );
+
+        app.selected_process_column_index = 2;
+        let metric_column = render_app_to_text(&app, 170, 30);
+        assert!(metric_column.contains("Space Graph"), "{metric_column}");
+        assert!(!metric_column.contains("Space Track"), "{metric_column}");
+    }
+
+    #[test]
     fn footer_shortcuts_follow_the_focused_panel() {
         let mut app = make_test_app(3, 10);
         app.focused_panel = FocusedPanel::System;
@@ -8717,6 +8758,16 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
         assert!(!rendered.contains("Ctrl+R Stop"), "{rendered}");
+
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        app.selected_process_column_index = 0;
+        let footer = render_app_to_text(&app, 260, 45);
+        assert!(!footer.contains("Space Track"), "{footer}");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.show_recording_tracking_fixed);
+        assert_eq!(app.watch_list, vec!["proc-0"]);
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
@@ -12603,8 +12654,9 @@ processes = ["api.exe", "worker.exe"]
         app.snapshot.processes[0].name = "target.exe".to_string();
         track_process_name(&mut app, "target.exe");
         record_tracked_process_history_samples(&mut app, "target.exe", 121);
+        app.selected_process_column_index = 1;
 
-        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
 
         assert!(app.show_tracked_remove_confirmation);
@@ -14658,7 +14710,7 @@ processes = ["api.exe", "worker.exe"]
             graph_hovered_target: None,
             cpu_per_core_hovered: false,
             graph_return_focus: FocusedPanel::Processes,
-            graph_source_last_click: None,
+            source_cell_last_click: None,
             details_target: DetailsTarget::Process,
             details_metric: DetailsMetric::Private,
             details_sample_selected: 0,

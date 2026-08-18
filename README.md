@@ -40,7 +40,7 @@ The compact `CPU` panel shows total usage with user/kernel components, P/E-core 
 3. Press `Space`, or double-click the metric cell, to add it to the Graph Workspace. Repeat the same operation to remove it.
 4. Repeat the operation on other metrics to compare up to 16 Graphs. The active card stays visible as you move through the ordered list.
 
-`Space` and double-click both add or remove only the selected Graph. The same controls work for selectable metrics in the MEM, GPU, NW/DISK, and CPU panels. Across `PROCESSES` and the compact system panels, registered metric values are green and the active Graph value is bold; source panels do not reserve space for Graph slot numbers.
+On a graphable metric cell, `Space` and double-click both add or remove only the selected Graph. On a Process or PID cell, the same controls instead add or remove that process name from the Tracking List. Selectable metrics in the MEM, GPU, NW/DISK, and CPU panels keep the Graph behavior. Across `PROCESSES` and the compact system panels, registered metric values are green and the active Graph value is bold; source panels do not reserve space for Graph slot numbers.
 
 ![Graph Workspace showing 12 metrics in a three-column layout](assets/screenshots/main-screen-12slots.png)
 
@@ -52,7 +52,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 
 ### 4. Track and Record a Process
 
-1. In `PROCESSES`, select a process. If there is no reverse-video `T` beside its name, press `t` to add the name to the Tracking List. `t` toggles the registration.
+1. In `PROCESSES`, select a process and its Process or PID cell, then press `Space` or double-click the cell to add its name to the Tracking List. Repeat the action to remove it. Plain `t` remains a direct toggle regardless of the selected column.
 2. For targets you use repeatedly, press `Ctrl+T` and save the Tracking List with a name.
 3. If needed, press `Shift+T` to switch between All processes and Tracked-only. Tracked-only view is not required for recording.
 4. Press `Ctrl+R`, choose a save path and a `1s` / `2s` / `5s` / `10s` Recording interval, and confirm to start recording.
@@ -60,7 +60,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 6. Press `Ctrl+L` to select and inspect a saved log.
 
 Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, aggregate CPU values, and System Activity require no registration and are recorded in every frame; per-core usage is not recorded, and the process list remains empty until a match appears.
-The recording start dialog shows how many names will be captured and selects the Recording aggregation interval. That Tracking List and interval are fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
+The recording start dialog shows how many names will be captured and selects the Recording aggregation interval. That Tracking List and interval are fixed for the session: `t`, `Ctrl+T`, and Process/PID-cell Tracking List actions are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `F1` or `?` in the app for the complete dialog controls.
 
@@ -74,7 +74,7 @@ Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain 
 | ------------------- | ------------------------------------------- |
 | `Tab` / `Shift+Tab` | Move between panels.                        |
 | Arrow keys          | Select a row, column, or sample.            |
-| `Space`             | Add/remove the selected metric Graph.       |
+| `Space`             | Track/untrack the selected Process/PID, or add/remove the selected metric Graph. |
 | `t`                 | Add/remove a process name in Tracking List (Live only). |
 | `Shift+T`           | Switch between All processes / Tracked-only. |
 | `Ctrl+T`            | Open named Tracking Lists (Live only).      |
@@ -246,7 +246,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `Ctrl+F`            | Filter the process list by name, or by executable path when the `Full Path` column is selected. |
 | `Ctrl+I` / `Ctrl+J` | Process-name incremental search.                                                      |
-| `Space`             | Add or remove the selected graphable process, MEM, GPU, NW/DISK, or CPU Usage metric in the Graph Workspace. |
+| `Space`             | Add/remove the selected Process/PID name in the Tracking List, or add/remove the selected graphable metric in the Graph Workspace. |
 | `s`                 | Sort by the selected column (press again to switch ascending / descending).           |
 | `c`                 | Open the column picker.                                                               |
 | `Shift+Up/Down`     | Select a continuous range of live process rows.                                       |
@@ -312,7 +312,7 @@ The start dialog selects a Recording aggregation interval of `1s`, `2s`, `5s`, o
 Each output frame records system metrics such as MEM, per-adapter GPU, CPU average, and System Activity, plus any live processes that match the Tracking List.
 If no matching process is currently running, the frame still records system metrics and writes an empty process list until a matching process appears.
 When recording starts, a compact dialog asks you to confirm the save path and interval, then summarizes the fixed Tracking List count, JSON Lines format, and 24-hour maximum duration. `Tab` / `Shift+Tab` moves between the controls, and `Left` / `Right` changes the interval when it is focused. The path must include a log file name; a directory path cannot start recording. Missing parent directories are created automatically. `Enter` starts, `Esc` cancels, and `Ctrl+Space` completes directory names while the path is focused.
-While recording, `t` and `Ctrl+T` show a notice instead of changing the Tracking List. `Shift+T` remains available because it changes only the Tracked-only display. A log create, write, or flush failure stops recording, keeps any partial log, and opens a visible error dialog. A flush failure during quit cancels the quit.
+While recording, `t`, `Ctrl+T`, and `Space` or double-click on a Process/PID cell show a notice instead of changing the Tracking List. `Shift+T` remains available because it changes only the Tracked-only display. A log create, write, or flush failure stops recording, keeps any partial log, and opens a visible error dialog. A flush failure during quit cancels the quit.
 Stopping, quitting, or reaching the 24-hour limit writes any partial final aggregation window before the clean end record.
 Log view cannot open during recording, and recording cannot start while Log view is open.
 

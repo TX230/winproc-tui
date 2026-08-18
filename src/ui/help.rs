@@ -118,7 +118,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Space",
-        label: "Toggle selected metric Graph",
+        label: "Track Process/PID or toggle metric Graph",
     },
     HelpItem {
         key: "s",
@@ -351,6 +351,10 @@ const MOUSE_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Double-click metric",
         label: "Add or remove Graph",
+    },
+    HelpItem {
+        key: "Double-click Process/PID",
+        label: "Track / Untrack process",
     },
     HelpItem {
         key: "Click Graph nav/card",

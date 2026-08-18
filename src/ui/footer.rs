@@ -48,7 +48,14 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
         ],
         FocusedPanel::Processes => {
             vec![
-                ("Space", "Graph"),
+                (
+                    "Space",
+                    if app.selected_process_column_toggles_tracking() {
+                        "Track"
+                    } else {
+                        "Graph"
+                    },
+                ),
                 ("t", "Track"),
                 ("Shift+T", "Tracked-only"),
                 ("Ctrl+T", "Lists"),
@@ -95,7 +102,10 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
     };
     if app.activity() == AppActivity::Recording {
         if app.focused_panel == FocusedPanel::Processes {
-            items.retain(|(key, _)| *key != "t" && *key != "Ctrl+T");
+            let identity_column_selected = app.selected_process_column_toggles_tracking();
+            items.retain(|(key, _)| {
+                *key != "t" && *key != "Ctrl+T" && !(identity_column_selected && *key == "Space")
+            });
         }
         items.insert(0, ("Ctrl+R", "Stop"));
     }
