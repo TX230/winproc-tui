@@ -21,7 +21,7 @@ const HELP_SHORTCUT_ITEMS: [(&str, &str); 4] = [
     ("↑/↓", "Scroll"),
     ("PageUp/PageDown", "Page"),
     ("Home/End", "Jump"),
-    ("Esc/Enter/?", "Close"),
+    ("Esc/Enter/F1/?", "Close"),
 ];
 
 #[derive(Clone, Copy)]
@@ -46,7 +46,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Quit / Live in LOG",
     },
     HelpItem {
-        key: "?",
+        key: "F1/?",
         label: "Toggle Help",
     },
     HelpItem {

@@ -62,7 +62,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, aggregate CPU values, and System Activity require no registration and are recorded in every frame; per-core usage is not recorded, and the process list remains empty until a match appears.
 The recording start dialog shows how many names will be captured and selects the Recording aggregation interval. That Tracking List and interval are fixed for the session: `t` and `Ctrl+T` are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
-The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `?` in the app for the complete dialog controls.
+The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `F1` or `?` in the app for the complete dialog controls.
 
 When startup behavior is set to `Choose list`, the startup screen uses `Up` / `Down` to select a Tracking List. `Enter` starts with the selected list, and `Esc` exits without collecting the initial sample.
 
@@ -81,7 +81,7 @@ Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain 
 | `Ctrl+F`            | Filter the process list.                    |
 | `Ctrl+R`            | Start recording / confirm stopping.         |
 | `Ctrl+L`            | Open a saved log.                           |
-| `?`                 | Show all key bindings.                      |
+| `F1` / `?`          | Show all key bindings.                      |
 | `q` / `Esc`         | Go back or open the quit confirmation.      |
 
 In the quit confirmation, `Enter` or `q` quits and `Esc` cancels.
@@ -219,7 +219,7 @@ There are currently only two startup options.
 ## Controls Reference
 
 Only the main controls are listed in this README.
-**Press** `?` **while running to view the full key bindings in the Help dialog.**
+**Press** `F1` **or** `?` **while running to view the full key bindings in the Help dialog.**
 
 Some single-letter keys such as `f` depend on the focused panel. The Footer shows the main actions available in the current context; the tables below summarize them by panel.
 
@@ -228,7 +228,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 
 | Key                 | Action                                                              |
 | ------------------- | ------------------------------------------------------------------- |
-| `?`                 | Show / hide Help.                                                   |
+| `F1` / `?`          | Show / hide Help.                                                   |
 | `q` / `Esc`         | Open the quit confirmation (returns to live display from Log view). |
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
 | `Ctrl+C`            | Copy the selected row text from the focused panel.                  |

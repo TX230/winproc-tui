@@ -373,7 +373,7 @@ impl App {
 
         if self.show_help {
             match key.code {
-                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::F(1) | KeyCode::Char('?') => {
                     self.close_help();
                 }
                 KeyCode::Up => self.scroll_help_up(1),
@@ -1398,7 +1398,7 @@ impl App {
             KeyCode::Char('-') => {
                 self.status = "Sampling interval is fixed at 1s".to_string();
             }
-            KeyCode::Char('?') => {
+            KeyCode::F(1) | KeyCode::Char('?') => {
                 self.toggle_help();
             }
             _ => {}

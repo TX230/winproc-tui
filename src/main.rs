@@ -7646,10 +7646,25 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn help_closes_with_escape_enter_or_question_mark() {
+    fn help_opens_with_f1_or_question_mark() {
+        for key in [
+            KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE),
+        ] {
+            let mut app = make_test_app(1, 10);
+
+            app.on_key(key).unwrap();
+
+            assert!(app.show_help);
+        }
+    }
+
+    #[test]
+    fn help_closes_with_escape_enter_f1_or_question_mark() {
         for key in [
             KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
             KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
             KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE),
         ] {
             let mut app = make_test_app(1, 10);
@@ -7769,7 +7784,11 @@ processes = ["api.exe", "worker.exe"]
         );
         assert!(!rendered.contains("F6"), "{rendered}");
         assert!(!rendered.contains("[ Close ]"), "{rendered}");
-        assert!(rendered.contains("Esc/Enter/? Close"), "{rendered}");
+        assert!(
+            rendered.contains("F1/?") && rendered.contains("Toggle Help"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Esc/Enter/F1/? Close"), "{rendered}");
         assert!(rendered.contains("Footer: focused actions."), "{rendered}");
         assert!(
             rendered.contains("Green selects; amber marks."),
@@ -7856,7 +7875,7 @@ processes = ["api.exe", "worker.exe"]
         let bottom_rendered = render_app_to_text(&app, screen.width, screen.height);
 
         assert!(
-            bottom_rendered.contains("Esc/Enter/? Close"),
+            bottom_rendered.contains("Esc/Enter/F1/? Close"),
             "{bottom_rendered}"
         );
         assert!(
@@ -7951,7 +7970,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
         assert!(rendered.contains("Esc Quit"), "{rendered}");
         assert!(!rendered.contains("Tab Focus"), "{rendered}");
-        assert!(rendered.contains("? Help"), "{rendered}");
+        assert!(rendered.contains("F1/? Help"), "{rendered}");
         assert!(!rendered.contains("Status  "), "{rendered}");
         assert!(!rendered.contains("Copied row: proc-0"), "{rendered}");
         assert!(!rendered.contains("Up/Down Row"), "{rendered}");

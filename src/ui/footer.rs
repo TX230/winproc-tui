@@ -105,7 +105,7 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
         items.push(("Ctrl+P", "Pause"));
         items.push(("Esc", "Quit"));
     }
-    items.push(("?", "Help"));
+    items.push(("F1/?", "Help"));
 
     shortcut_spans(&items, theme)
 }
