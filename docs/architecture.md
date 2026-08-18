@@ -59,7 +59,7 @@ Exited tracked processes remain available as Ghost Rows with their retained hist
 
 Tracked processes retain 7,200 samples, approximately two hours at the one-second interval. Non-tracked processes retain 120 samples, approximately two minutes. System history also retains 7,200 samples.
 
-This preserves useful investigation history for explicit targets without allowing every process on the system to consume two hours of memory. Loaded logs are reconstructed from their recorded frames and are not pruned to the live-history capacities.
+The per-identity sample limits are combined with identity-level pruning after every Live snapshot. Live history retains identities sampled within the general 120-second window, current processes, live and Ghost Row identities visible in a paused display, the newest exited identity for each tracked name, identities referenced by registered process Graphs, and the fixed target of an open Process Info dialog. Older exited or restarted identities are removed from both samples and peak state; exited-row metadata follows the durable investigation set rather than retaining every recent restart. This preserves recent history, the visible Ghost Row, and active investigations without allowing process churn to grow the identity maps indefinitely. Loaded logs are reconstructed from their recorded frames and are not pruned to the live-history capacities.
 
 ### 2.6 Use JSON Lines for recording
 
@@ -115,7 +115,7 @@ The collection boundary deliberately produces one aggregate `Snapshot`. Individu
 
 `Snapshot` is the aggregate value for one capture time. It contains system memory, a LUID-keyed `Vec<GpuAdapterSample>`, CPU, disk and activity values plus `Vec<ProcessRow>`. Unavailable values are optional so access failure or process exit can be represented without fabricating a measurement. Per-process `WS Shrbl` is derived from the two same-sample PDH Working Set counters; normal sampling never enumerates pages with `QueryWorkingSet`.
 
-`ProcessHistory` is keyed by `ProcessIdentity` and stores graphable samples and selected peaks. `SystemHistory` stores the metrics used by MEM, LUID-keyed GPU, System Activity, and CPU graphs. A GPU Graph source carries the adapter LUID so switching the visible adapter does not retarget an existing Graph. Live histories apply the capacities described above; the log loader uses unbounded reconstruction for the selected recording.
+`ProcessHistory` is keyed by `ProcessIdentity` and stores graphable samples and selected peaks. Live cleanup always prunes both maps with one retained-identity set so a removed sample series cannot leave an orphaned peak. `SystemHistory` stores the metrics used by MEM, LUID-keyed GPU, System Activity, and CPU graphs. A GPU Graph source carries the adapter LUID so switching the visible adapter does not retarget an existing Graph. Live histories apply the capacities and identity pruning described above; the log loader uses unbounded reconstruction for the selected recording.
 
 Column selection and sorting are modeled separately through `MetricColumn`, `SortColumn`, `ColumnPreset`, and `SortSpec`. Metric semantics and display units remain centralized in [metrics.md](metrics.md).
 

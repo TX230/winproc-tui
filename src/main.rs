@@ -12761,9 +12761,255 @@ processes = ["api.exe", "worker.exe"]
             .iter()
             .filter(|entry| matches!(entry, VisibleProcessEntry::Ghost(_)))
             .count();
-        assert_eq!(app.exited_tracked_rows.len(), 2);
+        assert_eq!(app.exited_tracked_rows.len(), 1);
+        assert_eq!(app.process_history.identity_count(), 1);
+        assert_eq!(app.process_history.peak_count(), 1);
         assert_eq!(ghost_count, 1);
         assert_eq!(app.visible_process_at(0).unwrap().pid, 42);
+    }
+
+    #[test]
+    fn registered_graph_retains_older_tracked_identity_after_restart() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        app.snapshot.processes[0].name = "target.exe".to_string();
+        app.add_selected_process_to_watch_list();
+        let graph_identity = ProcessIdentity::from_row(&app.snapshot.processes[0]);
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::process(graph_identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        ));
+
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: test_snapshot(0),
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        app.sampling_in_progress = true;
+        let mut restarted = test_snapshot(1);
+        restarted.processes[0].name = "target.exe".to_string();
+        restarted.processes[0].pid = 42;
+        restarted.processes[0].start_time = Some(1_800_000_000);
+        let restarted_identity = ProcessIdentity::from_row(&restarted.processes[0]);
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: restarted,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: test_snapshot(0),
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.exited_tracked_rows.len(), 2);
+        assert_eq!(app.process_history.identity_count(), 2);
+        assert_eq!(app.process_history.peak_count(), 2);
+        assert_eq!(app.process_history.sample_count_for(&graph_identity), 1);
+        assert_eq!(app.process_history.sample_count_for(&restarted_identity), 1);
+        assert!(app.process_history.peak_for(&graph_identity).is_some());
+        assert!(app.process_history.peak_for(&restarted_identity).is_some());
+    }
+
+    #[test]
+    fn paused_process_identity_remains_available_for_a_later_graph() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        let identity = ProcessIdentity::from_row(&app.snapshot.processes[0]);
+        let captured_at = app.snapshot.captured_at;
+        app.process_history.record_snapshot(
+            captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.toggle_display_pause();
+
+        let mut exited = test_snapshot(0);
+        exited.captured_at = captured_at
+            + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 + 1);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: exited,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.process_history.sample_count_for(&identity), 1);
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::process(identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        ));
+        app.toggle_display_pause();
+
+        let mut later = test_snapshot(0);
+        later.captured_at = captured_at
+            + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 2);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: later,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.process_history.sample_count_for(&identity), 1);
+        assert!(app.process_history.peak_for(&identity).is_some());
+    }
+
+    #[test]
+    fn paused_ghost_identity_remains_available_for_a_later_graph() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        app.snapshot.processes[0].name = "target.exe".to_string();
+        app.add_selected_process_to_watch_list();
+        let old_identity = ProcessIdentity::from_row(&app.snapshot.processes[0]);
+        let captured_at = app.snapshot.captured_at;
+        app.process_history.record_snapshot(
+            captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+
+        let mut first_exit = test_snapshot(0);
+        first_exit.captured_at = captured_at + chrono::Duration::seconds(1);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: first_exit,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+        assert!(app.exited_tracked_rows.contains_key(&old_identity));
+        app.toggle_display_pause();
+
+        let mut restarted = test_snapshot(1);
+        restarted.captured_at = captured_at + chrono::Duration::seconds(2);
+        restarted.processes[0].name = "target.exe".to_string();
+        restarted.processes[0].pid = 42;
+        restarted.processes[0].start_time = Some(1_800_000_000);
+        let restarted_identity = ProcessIdentity::from_row(&restarted.processes[0]);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: restarted,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        let mut second_exit = test_snapshot(0);
+        second_exit.captured_at = captured_at + chrono::Duration::seconds(3);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: second_exit,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        let mut expired = test_snapshot(0);
+        expired.captured_at = captured_at
+            + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 2);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: expired,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert!(app.exited_tracked_rows.contains_key(&old_identity));
+        assert!(app.exited_tracked_rows.contains_key(&restarted_identity));
+        assert_eq!(app.process_history.sample_count_for(&old_identity), 1);
+        assert!(app.add_or_reveal_graph_source(
+            GraphSlot::process(old_identity.clone(), DetailsMetric::Private),
+            FocusedPanel::Processes,
+        ));
+        app.toggle_display_pause();
+
+        let mut later = test_snapshot(0);
+        later.captured_at = captured_at
+            + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 3);
+        app.sampling_in_progress = true;
+        result_tx
+            .send(CollectSnapshotResult {
+                snapshot: later,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+
+        assert_eq!(app.process_history.sample_count_for(&old_identity), 1);
+        assert!(app.process_history.peak_for(&old_identity).is_some());
+    }
+
+    #[test]
+    fn live_process_churn_prunes_stale_histories_and_peaks() {
+        let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, sampling_worker);
+        let captured_at = app.snapshot.captured_at;
+        let mut first_identity = None;
+        let mut latest_identity = None;
+
+        for identity_index in 0..256_u32 {
+            let mut next = test_snapshot(1);
+            next.captured_at =
+                captured_at + chrono::Duration::seconds(i64::from(identity_index) + 1);
+            next.processes[0].pid = 10_000 + identity_index;
+            next.processes[0].start_time = Some(1_800_000_000 + u64::from(identity_index));
+            next.processes[0].private_bytes = Some(u64::from(identity_index));
+            let identity = ProcessIdentity::from_row(&next.processes[0]);
+            first_identity.get_or_insert_with(|| identity.clone());
+            latest_identity = Some(identity);
+            app.sampling_in_progress = true;
+            result_tx
+                .send(CollectSnapshotResult {
+                    snapshot: next,
+                    warning: None,
+                })
+                .unwrap();
+            app.poll_sample_results().unwrap();
+        }
+
+        let first_identity = first_identity.unwrap();
+        let latest_identity = latest_identity.unwrap();
+        assert_eq!(
+            app.process_history.identity_count(),
+            model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY
+        );
+        assert_eq!(
+            app.process_history.peak_count(),
+            model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY
+        );
+        assert_eq!(
+            app.process_history.len(),
+            model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY
+        );
+        assert_eq!(app.process_history.sample_count_for(&first_identity), 0);
+        assert!(app.process_history.peak_for(&first_identity).is_none());
+        assert_eq!(app.process_history.sample_count_for(&latest_identity), 1);
+        assert!(app.process_history.peak_for(&latest_identity).is_some());
     }
 
     #[test]

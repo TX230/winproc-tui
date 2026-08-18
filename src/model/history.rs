@@ -325,6 +325,21 @@ impl ProcessHistory {
         discarded
     }
 
+    pub(crate) fn retain_identities_or_recent(
+        &mut self,
+        retained: &HashSet<ProcessIdentity>,
+        recent_after: DateTime<Local>,
+    ) {
+        self.samples.retain(|identity, samples| {
+            retained.contains(identity)
+                || samples
+                    .back()
+                    .is_some_and(|sample| sample.captured_at > recent_after)
+        });
+        self.peaks
+            .retain(|identity, _| self.samples.contains_key(identity));
+    }
+
     pub(crate) fn peak_for(&self, identity: &ProcessIdentity) -> Option<&ProcessPeak> {
         self.peaks.get(identity)
     }
@@ -332,6 +347,16 @@ impl ProcessHistory {
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.samples.values().map(VecDeque::len).sum()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn identity_count(&self) -> usize {
+        self.samples.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn peak_count(&self) -> usize {
+        self.peaks.len()
     }
 }
 
@@ -663,6 +688,57 @@ mod tests {
                 .sample_at(&first_identity, now + chrono::Duration::milliseconds(1))
                 .is_none()
         );
+    }
+
+    #[test]
+    fn process_history_retain_keeps_explicit_and_recent_identities() {
+        let now = Local::now();
+        let retained = ProcessIdentity {
+            pid: 1,
+            name: "keep.exe".to_string(),
+            start_time: Some(100),
+        };
+        let recent = ProcessIdentity {
+            pid: 2,
+            name: "recent.exe".to_string(),
+            start_time: Some(200),
+        };
+        let stale = ProcessIdentity {
+            pid: 3,
+            name: "stale.exe".to_string(),
+            start_time: Some(300),
+        };
+        let mut retained_row = row(1, "keep.exe", 10);
+        retained_row.start_time = retained.start_time;
+        let mut recent_row = row(2, "recent.exe", 20);
+        recent_row.start_time = recent.start_time;
+        let mut stale_row = row(3, "stale.exe", 30);
+        stale_row.start_time = stale.start_time;
+        let mut history = ProcessHistory::default();
+        history.record_snapshot(
+            now - chrono::Duration::seconds(121),
+            &[retained_row, stale_row],
+            &empty_tracked_names(),
+        );
+        history.record_snapshot(
+            now - chrono::Duration::seconds(119),
+            &[recent_row],
+            &empty_tracked_names(),
+        );
+
+        history.retain_identities_or_recent(
+            &HashSet::from([retained.clone()]),
+            now - chrono::Duration::seconds(120),
+        );
+
+        assert_eq!(history.identity_count(), 2);
+        assert_eq!(history.peak_count(), 2);
+        assert_eq!(history.sample_count_for(&retained), 1);
+        assert!(history.peak_for(&retained).is_some());
+        assert_eq!(history.sample_count_for(&recent), 1);
+        assert!(history.peak_for(&recent).is_some());
+        assert_eq!(history.sample_count_for(&stale), 0);
+        assert!(history.peak_for(&stale).is_none());
     }
 
     #[test]
