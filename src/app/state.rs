@@ -14,6 +14,7 @@ use crate::{
     app::export::RecordingSession,
     app::logs::{LoadedLog, LogListResult, LogListWorker, LogLoadWorker, LogSummary},
     app::path_completion::{PathCompletion, PathCompletionState},
+    app::system_info::SystemInfoHost,
     config::{
         EMPTY_TRACKED_LIST_NAME, RuntimeConfig, TrackedListStartup, is_empty_tracked_list_name,
     },
@@ -800,6 +801,7 @@ pub(crate) struct App {
     pub(crate) process_environment_worker: ProcessEnvironmentWorker,
     pub(crate) sampling_in_progress: bool,
     pub(crate) snapshot: Snapshot,
+    pub(crate) system_info_host: SystemInfoHost,
     pub(crate) process_table_state: TableState,
     pub(crate) process_page_size: usize,
     pub(crate) selected_process_identity: Option<ProcessIdentity>,
@@ -1021,6 +1023,7 @@ impl App {
             process_environment_worker,
             sampling_in_progress: false,
             snapshot: initial.snapshot,
+            system_info_host: SystemInfoHost::collect(),
             process_table_state,
             process_page_size: 1,
             selected_process_identity,

@@ -66,7 +66,7 @@ The Tracking Lists dialog loads, saves, renames, and deletes named process lists
 
 When startup behavior is set to `Choose list`, the startup screen uses `Up` / `Down` to select a Tracking List. `Enter` starts with the selected list, and `Esc` exits without collecting the initial sample.
 
-Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain text into an issue or investigation note. For longer investigations, keep the `.log` file and reopen it with `Ctrl+L`.
+Use `Ctrl+C` on a selected process, system metric, or Samples row to copy plain text into an issue or investigation note. In System Info, it copies the complete environment summary even when the terminal is too small to show every field. For longer investigations, keep the `.log` file and reopen it with `Ctrl+L`.
 
 ### Essential Keys
 
@@ -231,7 +231,7 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | `F1` / `?`          | Show / hide Help.                                                   |
 | `q` / `Esc`         | Open the quit confirmation (returns to live display from Log view). |
 | `Tab` / `Shift+Tab` | Move focus.                                                         |
-| `Ctrl+C`            | Copy the selected row text from the focused panel.                  |
+| `Ctrl+C`            | Copy the selected row, or all fields from System Info.              |
 | `Ctrl+L`            | Open the log list.                                                  |
 | `Ctrl+T`            | Open Tracking Lists to load the built-in empty list, manage named lists, and set startup behavior (Live only). |
 | `Ctrl+R`            | Start recording or open the stop confirmation.                     |
@@ -263,6 +263,8 @@ Some single-letter keys such as `f` depend on the focused panel. The Footer show
 | `g`                 | Open or close all configured Graphs at once.                                          |
 
 Process Info has `Metrics`, `Image`, `Files`, `DLLs`, and `Environment` tabs. The dialog reopens with its last active tab focused. `Metrics` and `Image` have no interactive content control, so `Tab` / `Shift+Tab` keeps focus on the tabs and `Up` / `Down` scrolls the content. On `Files`, `DLLs`, and `Environment`, `Tab` / `Shift+Tab` moves focus between the tabs and content. When the tabs are focused, `Left` / `Right` switches tabs; `Ctrl+Left` / `Ctrl+Right` remains available from either focus. Use `Ctrl+U` to refresh dynamic tabs, `Ctrl+C` to copy the selected value, and `Esc` to close the dialog. Dynamic details may be unavailable for protected, unsupported, or exited processes.
+
+System Info summarizes the winproc-tui version, Windows version/build/architecture, CPU, physical-memory and commit capacities, GPU adapter capacities, and free/total space for each disk. It describes the current host in Live, display pause, and Log view. `Ctrl+C` copies every labeled field as plain text; `Enter` or `Esc` closes the dialog.
 
 In the process-kill confirmation, `Enter` runs `taskkill /f /pid` separately for each selected live process PID and `Esc` cancels. Other processes with the same image name are not targeted. `y` and `n` are not assigned in this dialog.
 

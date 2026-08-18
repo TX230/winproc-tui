@@ -9742,13 +9742,116 @@ processes = ["api.exe", "worker.exe"]
         assert!(!rendered.contains("[Per-core Usage (P/E)]"), "{rendered}");
         assert!(!rendered.contains("Net Rx"), "{rendered}");
         assert!(!rendered.contains("Disk Q"), "{rendered}");
-        assert!(rendered.contains("Enter/Esc Close"), "{rendered}");
+        assert!(
+            rendered.contains("Ctrl+C Copy  Enter/Esc Close"),
+            "{rendered}"
+        );
 
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
 
         assert!(!app.show_system_info_dialog);
         assert!(app.pending_process_info.is_none());
+    }
+
+    #[test]
+    fn system_info_displays_expanded_host_and_capacity_fields() {
+        let mut app = make_test_app(1, 10);
+        populate_system_info(&mut app);
+        app.show_system_info_dialog = true;
+
+        let rendered = render_app_to_text(&app, 100, 30);
+
+        for expected in [
+            "winproc-tui",
+            env!("CARGO_PKG_VERSION"),
+            "Windows",
+            "Windows 11 Pro",
+            "Build",
+            "26100",
+            "Architecture",
+            "x64",
+            "Test CPU / 2.10 GHz",
+            "8 P-cores / 4 E-cores",
+            "L3 25.0 MB",
+            "Physical memory",
+            "34.0 GB",
+            "Commit limit",
+            "51.0 GB",
+            "GPU 1",
+            "Dedicated 8.4 GB / Shared 17.0 GB",
+            "Disk C",
+            "123.0 GB free / 500.0 GB total",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?}: {rendered}"
+            );
+        }
+        assert!(
+            rendered.contains("Ctrl+C Copy  Enter/Esc Close"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn system_info_ctrl_c_copies_all_fields_even_when_dialog_is_clipped() {
+        let mut app = make_test_app(1, 10);
+        populate_system_info(&mut app);
+        for letter in 'D'..='Z' {
+            app.snapshot.disks.push(model::DiskUsageSample {
+                name: format!("{letter}:"),
+                free_bytes: 1_000_000_000,
+                total_bytes: 2_000_000_000,
+            });
+        }
+        app.show_system_info_dialog = true;
+        let rendered = render_app_to_text(&app, 60, 12);
+        assert!(!rendered.contains("Disk Z"), "{rendered}");
+
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            .unwrap();
+
+        let copied = app::clipboard::last_copied_text().unwrap();
+        assert!(copied.starts_with(&format!(
+            "winproc-tui: {}\nWindows: Windows 11 Pro",
+            env!("CARGO_PKG_VERSION")
+        )));
+        assert!(copied.contains("Physical memory: 34.0 GB"), "{copied}");
+        assert!(copied.contains("GPU 1: Test GPU"), "{copied}");
+        assert!(
+            copied.contains("Disk Z: 1.0 GB free / 2.0 GB total"),
+            "{copied}"
+        );
+        assert!(!copied.contains("SYSTEM INFO"), "{copied}");
+        assert!(app.show_system_info_dialog);
+        assert_eq!(app.status, "Copied System Info (34 fields)");
+    }
+
+    #[test]
+    fn system_info_uses_latest_host_snapshot_while_paused_and_in_log_view() {
+        let mut app = make_test_app(1, 10);
+        populate_system_info(&mut app);
+        app.snapshot.total_memory = 1_000_000_000;
+        app.toggle_display_pause();
+        app.snapshot.total_memory = 34_000_000_000;
+
+        app.copy_system_info_to_clipboard().unwrap();
+        let paused_copy = app::clipboard::last_copied_text().unwrap();
+        assert!(
+            paused_copy.contains("Physical memory: 34.0 GB"),
+            "{paused_copy}"
+        );
+        assert!(
+            !paused_copy.contains("Physical memory: 1.0 GB"),
+            "{paused_copy}"
+        );
+
+        app.log_view_display = app.paused_display.take();
+        app.log_view_path = Some(std::path::PathBuf::from("recording.log"));
+        app.copy_system_info_to_clipboard().unwrap();
+        let log_copy = app::clipboard::last_copied_text().unwrap();
+        assert!(log_copy.contains("Physical memory: 34.0 GB"), "{log_copy}");
     }
 
     #[test]
@@ -14417,6 +14520,7 @@ processes = ["api.exe", "worker.exe"]
             process_environment_worker,
             sampling_in_progress: false,
             snapshot,
+            system_info_host: app::system_info::SystemInfoHost::default(),
             process_table_state: table_state,
             process_page_size: page_size,
             selected_process_identity,
@@ -14674,5 +14778,30 @@ processes = ["api.exe", "worker.exe"]
             thread_count: None,
             processes,
         }
+    }
+
+    fn populate_system_info(app: &mut App) {
+        app.system_info_host = app::system_info::SystemInfoHost {
+            windows_version: Some("Windows 11 Pro".to_string()),
+            windows_build: Some("26100".to_string()),
+            architecture: Some("x64".to_string()),
+        };
+        app.snapshot.total_memory = 34_000_000_000;
+        app.snapshot.commit_limit = Some(51_000_000_000);
+        app.snapshot.cpu_name = Some("Test CPU".to_string());
+        app.snapshot.cpu_frequency_mhz = Some(2_100);
+        app.snapshot.cpu_topology = Some("8 P-cores / 4 E-cores".to_string());
+        app.snapshot.cpu_cache = Some("L3 25.0 MB".to_string());
+        app.snapshot.gpu_adapters = vec![model::GpuAdapterSample {
+            name: Some("Test GPU".to_string()),
+            dedicated_total: Some(8_406_000_000),
+            shared_total: Some(17_000_000_000),
+            ..model::GpuAdapterSample::default()
+        }];
+        app.snapshot.disks = vec![model::DiskUsageSample {
+            name: "C:".to_string(),
+            free_bytes: 123_000_000_000,
+            total_bytes: 500_000_000_000,
+        }];
     }
 }

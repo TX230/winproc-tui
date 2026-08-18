@@ -6,6 +6,7 @@ pub(crate) mod logs;
 pub(crate) mod navigation;
 pub(crate) mod path_completion;
 pub(crate) mod state;
+pub(crate) mod system_info;
 
 use std::{
     fs::File,

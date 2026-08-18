@@ -129,15 +129,23 @@ Unavailable values are displayed as `--` and omitted from recording frames.
 
 ## System Info
 
-The `System Info` dialog is not part of metric history. It displays static supporting information about the current environment; live System Activity and CPU summaries stay in the top panels.
+The `System Info` dialog is not part of metric history. It describes the current host, including while the display is paused or a recording is open in Log view; live System Activity and CPU summaries stay in the top panels. Opening the dialog performs no collection. It uses host metadata captured once during startup and capacity data from the latest live `Snapshot` produced by the sampling worker.
 
 | Display name | Description | Primary source |
 |---|---|---|
+| `winproc-tui` | Running package version. | Cargo package metadata compiled into the executable |
+| `Windows` | Windows product/version name. | Windows CurrentVersion registry data through `sysinfo` |
+| `Build` | Windows build number. | Windows CurrentVersion registry data through `sysinfo` |
+| `Architecture` | Native system architecture such as `x64`. | `GetSystemInfo` through `sysinfo` |
 | `CPU` | CPU name and basic clock. | `sysinfo` / registry |
 | `Cores` | Topology summary such as P-cores and E-cores. | `GetLogicalProcessorInformationEx` |
 | `Cache` | CPU cache summary. | `GetLogicalProcessorInformationEx` |
-| `GPU` | GPU name and VRAM capacity. | DXGI |
-| `Disk` | Used / total capacity for each disk. | `sysinfo` disk APIs |
+| `Physical memory` | Installed physical-memory capacity. | `GetPerformanceInfo` (`PhysicalTotal`) |
+| `Commit limit` | Current system commit limit. | PDH `\Memory\Commit Limit` |
+| `GPU n` | Adapter name plus dedicated and shared capacities. Each hardware adapter has its own row. | DXGI adapter description |
+| `Disk x` | Free and total capacity for each logical drive. | `GetLogicalDrives`, `GetDiskFreeSpaceExW` |
+
+Rendering and clipboard output consume the same ordered field list. `Ctrl+C` copies every field as plain `Label: value` text even when a small terminal clips later rows. The footer is `Ctrl+C Copy  Enter/Esc Close`.
 
 ## Process Info
 

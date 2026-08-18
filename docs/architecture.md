@@ -105,7 +105,7 @@ Applying a live sample updates the current `Snapshot`, process and system histor
 
 ### 4.3 Sampling cycle
 
-`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies `GetPerformanceInfo` and Win32/DXGI-derived values, and returns `CollectSnapshotResult { snapshot, warning }`. GPU Engine, GPU Process Memory, and GPU Adapter Memory counters share one persistent query and are collected every second. DXGI adapter identity and capacity are initialized once and rechecked every five samples so a topology change can replace the cached static adapter list. System GPU values join PDH instances to that catalog by LUID; a PDH-only LUID never creates an adapter entry. The only five-second cached process extras are USER and GDI object counts.
+`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies `GetPerformanceInfo` and Win32/DXGI-derived values, and returns `CollectSnapshotResult { snapshot, warning }`. GPU Engine, GPU Process Memory, and GPU Adapter Memory counters share one persistent query and are collected every second. DXGI adapter identity and capacity are initialized once and rechecked every five samples so a topology change can replace the cached static adapter list. System GPU values join PDH instances to that catalog by LUID; a PDH-only LUID never creates an adapter entry. The only five-second cached process extras are USER and GDI object counts. System Info reads memory, GPU, disk, and CPU capacity data from the latest live snapshot rather than collecting on the UI thread.
 
 The collection boundary deliberately produces one aggregate `Snapshot`. Individual collectors do not update `App`, histories, or widgets. Open Files is an explicit per-process investigation action rather than part of continuous sampling; it enumerates disk file handles only and remains off the UI thread.
 
@@ -130,6 +130,8 @@ Column selection and sorting are modeled separately through `MetricColumn`, `Sor
 - modal and asynchronous investigation state;
 - display-pause, recording, Log list, and Log view state;
 - runtime settings, theme, and transient action feedback.
+
+`App` also owns the Windows product version, build, and native architecture captured once during startup. System Info combines that static host metadata with the latest live `Snapshot`, so display pause and Log view do not substitute paused or recorded capacity fields for the current host. One ordered plain-text field model is the source for both dialog rows and complete clipboard output; terminal clipping affects drawing only.
 
 Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracking List is empty.
 

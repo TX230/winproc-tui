@@ -7,13 +7,16 @@ use ratatui::{
 
 use crate::{
     App,
-    app::{FocusedPanel, GraphSlot, GraphSourceState, ResourcePanel},
-    model::{DiskUsageSample, SystemMetric},
+    app::{
+        FocusedPanel, GraphSlot, GraphSourceState, ResourcePanel,
+        system_info::{SystemInfoValueStyle, system_info_fields},
+    },
+    model::SystemMetric,
     ui::{
         Theme,
         cpu_panel::{cpu_panel_lines_for_app, draw_cpu_panel},
         footer::shortcut_spans,
-        format::{format_frequency_mhz, format_integer, format_mb, ratio_optional},
+        format::{format_integer, format_mb, ratio_optional},
         graph_slot::graph_value_style,
         layout::system_panel_area_for_screen,
         widgets::block::{panel_block_focused, panel_title},
@@ -21,6 +24,7 @@ use crate::{
 };
 
 const SUMMARY_ROW_LABEL_WIDTH: usize = 17;
+const SYSTEM_INFO_LABEL_WIDTH: usize = 17;
 const GPU_ROW_LABEL_WIDTH: usize = 10;
 const MEMORY_COLUMN_GAP: u16 = 1;
 
@@ -103,13 +107,30 @@ pub(crate) fn draw_system_info_dialog(
     );
 
     frame.render_widget(
-        Paragraph::new(Line::from(shortcut_spans(&[("Enter/Esc", "Close")], theme))),
+        Paragraph::new(Line::from(shortcut_spans(
+            &[("Ctrl+C", "Copy"), ("Enter/Esc", "Close")],
+            theme,
+        ))),
         Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1),
     );
 }
 
 fn system_info_dialog_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
-    system_info_lines(app, theme)
+    system_info_fields(app)
+        .into_iter()
+        .map(|field| {
+            render_summary_info_line_with_label_width(
+                &field.label,
+                SYSTEM_INFO_LABEL_WIDTH,
+                &field.value,
+                match field.value_style {
+                    SystemInfoValueStyle::Plain => SummaryInfoStyle::Plain,
+                    SystemInfoValueStyle::Measurement => SummaryInfoStyle::Measurement,
+                },
+                theme,
+            )
+        })
+        .collect()
 }
 
 fn system_info_dialog_area(area: Rect) -> Rect {
@@ -197,45 +218,6 @@ fn system_activity_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
             }
         })
         .collect()
-}
-
-fn system_info_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
-    let snapshot = app.display_snapshot();
-    vec![
-        render_summary_info_line(
-            "CPU",
-            &format_cpu_summary(
-                snapshot.cpu_name.as_deref().unwrap_or("--"),
-                snapshot.cpu_frequency_mhz,
-            ),
-            SummaryInfoStyle::Plain,
-            theme,
-        ),
-        render_summary_info_line(
-            "Cores",
-            snapshot.cpu_topology.as_deref().unwrap_or("--"),
-            SummaryInfoStyle::Plain,
-            theme,
-        ),
-        render_summary_info_line(
-            "Cache",
-            snapshot.cpu_cache.as_deref().unwrap_or("--"),
-            SummaryInfoStyle::Measurement,
-            theme,
-        ),
-        render_summary_info_line(
-            "GPU",
-            &format_gpu_adapters(&snapshot.gpu_adapters),
-            SummaryInfoStyle::Plain,
-            theme,
-        ),
-        render_summary_info_line(
-            "Disk",
-            &format_disk_summary(&snapshot.disks),
-            SummaryInfoStyle::Measurement,
-            theme,
-        ),
-    ]
 }
 
 fn render_summary_graph_slot_value_line(
@@ -683,61 +665,6 @@ fn line_width(line: &Line<'_>) -> usize {
         .sum()
 }
 
-fn format_cpu_summary(name: &str, frequency_mhz: Option<u64>) -> String {
-    match frequency_mhz {
-        Some(_) => format!("{name} / {}", format_frequency_mhz(frequency_mhz)),
-        None => name.to_string(),
-    }
-}
-
-fn format_gpu_summary(name: &str, dedicated_total: Option<u64>) -> String {
-    match dedicated_total {
-        Some(total) => format!("{name} / {} GB VRAM", format_gb_number(total)),
-        None => name.to_string(),
-    }
-}
-
-fn format_gpu_adapters(adapters: &[crate::model::GpuAdapterSample]) -> String {
-    if adapters.is_empty() {
-        return "--".to_string();
-    }
-    adapters
-        .iter()
-        .enumerate()
-        .map(|(index, adapter)| {
-            format!(
-                "{}: {}",
-                index,
-                format_gpu_summary(
-                    adapter.name.as_deref().unwrap_or("--"),
-                    adapter.dedicated_total
-                )
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn format_disk_summary(disks: &[DiskUsageSample]) -> String {
-    if disks.is_empty() {
-        return "--".to_string();
-    }
-
-    disks
-        .iter()
-        .map(|disk| {
-            let used_bytes = disk.total_bytes.saturating_sub(disk.free_bytes);
-            format!(
-                "{} {}/{} GB",
-                disk.name,
-                format_gb_number(used_bytes),
-                format_gb_number(disk.total_bytes)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 fn format_optional_mbps(value: Option<u64>) -> String {
     value
         .map(|value| {
@@ -762,51 +689,10 @@ fn format_optional_queue_length(value: Option<f64>) -> String {
         .unwrap_or_else(|| format!("{:>4}", "--"))
 }
 
-fn format_gb_number(bytes: u64) -> String {
-    format_integer(((bytes as f64) / 1_000_000_000.0).round() as u64)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ui::THEMES;
-
-    #[test]
-    fn disk_summary_formats_all_disks_on_one_line_without_percent() {
-        let disks = vec![
-            DiskUsageSample {
-                name: "C:".to_string(),
-                free_bytes: 17_000_000_000,
-                total_bytes: 999_000_000_000,
-            },
-            DiskUsageSample {
-                name: "X:".to_string(),
-                free_bytes: 1_783_000_000_000,
-                total_bytes: 2_000_000_000_000,
-            },
-        ];
-
-        assert_eq!(
-            format_disk_summary(&disks),
-            "C: 982/999 GB, X: 217/2,000 GB"
-        );
-    }
-
-    #[test]
-    fn cpu_summary_places_clock_after_cpu_name() {
-        assert_eq!(
-            format_cpu_summary("Intel CPU", Some(2_100)),
-            "Intel CPU / 2.10 GHz"
-        );
-    }
-
-    #[test]
-    fn gpu_summary_appends_vram_capacity() {
-        assert_eq!(
-            format_gpu_summary("NVIDIA GPU", Some(8_406_000_000)),
-            "NVIDIA GPU / 8 GB VRAM"
-        );
-    }
 
     #[test]
     fn cache_and_standby_lines_show_single_value_without_empty_total() {
@@ -936,8 +822,18 @@ pub(crate) fn render_summary_info_line(
     value_style: SummaryInfoStyle,
     theme: Theme,
 ) -> Line<'static> {
+    render_summary_info_line_with_label_width(title, 7, value, value_style, theme)
+}
+
+fn render_summary_info_line_with_label_width(
+    title: &str,
+    label_width: usize,
+    value: &str,
+    value_style: SummaryInfoStyle,
+    theme: Theme,
+) -> Line<'static> {
     let mut spans = vec![Span::styled(
-        format!("{title:<7} "),
+        format!("{title:<label_width$} "),
         Style::default().fg(theme.muted),
     )];
     match value_style {

@@ -706,6 +706,12 @@ impl App {
         if self.show_system_info_dialog {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.close_system_info_dialog(),
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.copy_system_info_to_clipboard()?;
+                }
                 _ => {}
             }
             return Ok(());

@@ -55,7 +55,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+C",
-        label: "Copy selected row",
+        label: "Copy selected row / System Info",
     },
     HelpItem {
         key: "Ctrl+L",

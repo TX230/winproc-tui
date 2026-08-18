@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::{
     App,
+    app::system_info::{system_info_fields, system_info_plain_text},
     app::{FocusedPanel, GraphValueFormat},
     model::{MetricColumn, ProcessRow, history::SystemMetric},
     ui::format::{
@@ -25,6 +26,16 @@ impl App {
                 Ok(())
             }
         }
+    }
+
+    pub(crate) fn copy_system_info_to_clipboard(&mut self) -> Result<()> {
+        let field_count = system_info_fields(self).len();
+        let text = system_info_plain_text(self);
+        match copy_text_to_clipboard(&text) {
+            Ok(()) => self.status = format!("Copied System Info ({field_count} fields)"),
+            Err(error) => self.status = format!("Clipboard copy failed: {error}"),
+        }
+        Ok(())
     }
 
     pub(crate) fn copy_open_files_to_clipboard(&mut self) -> Result<()> {
