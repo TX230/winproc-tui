@@ -816,6 +816,7 @@ pub(crate) enum SummaryInfoStyle {
     Measurement,
 }
 
+#[cfg(test)]
 pub(crate) fn render_summary_info_line(
     title: &str,
     value: &str,
