@@ -7986,11 +7986,11 @@ processes = ["api.exe", "worker.exe"]
         assign_private_graph(&mut app);
         app.focused_panel = FocusedPanel::DetailsGraph;
         let graph = render_app_to_text(&app, 260, 45);
-        assert!(graph.contains("↑ Prev Slot"), "{graph}");
-        assert!(graph.contains("↓ Next Slot"), "{graph}");
+        assert!(graph.contains("↑/↓ Slot"), "{graph}");
+        assert!(graph.contains("←/→ Sample"), "{graph}");
+        assert!(!graph.contains("Prev Slot"), "{graph}");
+        assert!(!graph.contains("Next Slot"), "{graph}");
         assert!(graph.contains("Del Remove Graph"), "{graph}");
-        assert!(graph.contains("← Older"), "{graph}");
-        assert!(graph.contains("→ Newer"), "{graph}");
         assert!(graph.contains("Enter Info"), "{graph}");
         assert!(graph.contains("Ctrl+←/→ Pan"), "{graph}");
         assert!(graph.contains("PgUp/PgDn Span"), "{graph}");

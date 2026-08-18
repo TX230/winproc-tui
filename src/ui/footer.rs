@@ -64,12 +64,10 @@ fn context_shortcuts(app: &App, theme: Theme) -> Vec<Span<'static>> {
         }
         FocusedPanel::DetailsGraph => {
             vec![
-                ("↑", "Prev Slot"),
-                ("↓", "Next Slot"),
+                ("↑/↓", "Slot"),
+                ("←/→", "Sample"),
                 ("Shift+↑/↓", "Move"),
                 ("s", "Reorder"),
-                ("←", "Older"),
-                ("→", "Newer"),
                 ("Del", "Remove Graph"),
                 ("a/b", "Set A/B"),
                 ("PgUp/PgDn", "Span"),
