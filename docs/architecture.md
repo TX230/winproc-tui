@@ -2,11 +2,22 @@
 
 `winproc-tui` is a Windows 11 x64-only process monitoring TUI built with Rust 2024, ratatui, crossterm, Windows APIs, PDH, DXGI, and sysinfo.
 
-This document describes responsibility boundaries, runtime data flow, design decisions, major state, and invariants that should survive implementation changes. It is not an exhaustive UI or key-binding specification. User-facing behavior belongs in the [README](../README.md), [Japanese README](../README.ja.md), and in-app [Help](../src/ui/help.rs); metric definitions and the recording schema belong in [metrics.md](metrics.md).
+This document is the entry point for system-wide responsibility boundaries, runtime data flow, and cross-cutting design decisions. Feature-specific state and invariants are owned by the related design documents:
 
-## 1. Overview
+- [Tracking and Live History](tracking-and-history.md): tracking intent, process identity, named lists, Ghost Rows, and retention.
+- [Graph Workspace](graph-workspace.md): Graph identity, shared time state, Samples, A/B comparison, and responsive layout.
+- [Process Investigation](process-investigation.md): System Info, Process Info, Files, DLLs, Environment, and asynchronous target safety.
+- [Recording and Log View](recording-and-log-view.md): activity transitions, session ownership, failure handling, and log loading.
+- [Metrics](metrics.md): metric meanings, data sources, display formats, aggregation, and recording schemas.
+- [.NET Runtime Metrics Collection](dotnet-metrics-collection.md): diagnostics IPC, EventPipe parsing, and runtime-specific collection details.
 
-The application is coordinated by `App` and the single-threaded `run_tui` event loop. Sampling and other potentially slow Windows operations run outside the UI thread and return results asynchronously.
+Product positioning, installation, and first-use workflows belong in the [README](../README.md) and [Japanese README](../README.ja.md). Complete controls belong in the in-app [Help](../src/ui/help.rs), contextual footers, implementation, and tests.
+
+Maintainer release, Scoop, and Windows Package Manager procedures live in the [Release Workflow](release-workflow.md). The machine-readable schema for each current schema-v3 JSON Lines record lives under [`schemas/`](schemas/README.md).
+
+## 1. Runtime Overview
+
+`App` and the single-threaded `run_tui` event loop coordinate the application. Sampling and other potentially slow Windows operations run outside the UI thread and return typed results asynchronously.
 
 ```mermaid
 flowchart LR
@@ -24,239 +35,140 @@ flowchart LR
     App --> UI["UI<br/>ratatui rendering"]
     Model --> UI
     UI --> Terminal["Windows terminal"]
-    App -->|explicit list save / successful exit| Config
+    App -->|explicit save / successful exit| Config
 ```
 
-The diagram shows runtime data flow rather than a strict Rust module dependency graph. In particular, `ui` reads application state for rendering, while `app` also uses geometry helpers from `ui::layout` so drawing and mouse hit testing share the same rectangles.
+This is a runtime data-flow diagram, not a strict Rust dependency graph. `ui` reads application state for rendering, while `app` also consumes geometry helpers from `ui::layout` so drawing and mouse hit testing use the same rectangles.
 
-## 2. Design Principles and Decisions
-
-### 2.1 Keep the UI thread responsive
-
-Windows counter and handle collection can block or take variable time. `SamplingWorker` therefore owns `SamplingRuntime` on a dedicated thread, and `App` exchanges requests and results through channels. Process Image information, Process Info Files collection, loaded-DLL enumeration and file metadata, remote Environment reads, log-directory scans, and full log loading also use background work where blocking would otherwise affect input or drawing.
-
-.NET runtime collection adds one bounded EventPipe session thread per detected live `ProcessIdentity`. The live sampling worker checks each new identity's diagnostics pipe once, caches both positive and negative results for that lifetime, and hands an opened positive connection directly to its session thread. Session threads publish only their latest complete interval through a single-value cache; they never queue metric frames. `SamplingRuntime` applies fresh values to the aggregate snapshot and stops all sessions on entry to Log view. Removing a session sets an atomic stop request and transfers `StopTracing` plus thread joining to a short-lived cleanup thread, so the sampling worker never waits for EventPipe shutdown. Starting, parsing, stopping, retrying, and diagnostics-pipe failures remain sampler concerns and never block or mutate `App` directly. The one-off synchronous startup snapshot does not initiate runtime sessions because its sampler is discarded immediately afterward.
-
-`App` permits only one sampling request to be in flight. A slow collection delays the next result instead of creating an unbounded queue of sampling work.
-
-### 2.2 Redraw only when visible state changes
-
-`run_tui` is dirty-driven: it calls `terminal.draw` after input, resize, an applicable worker result, or another visible state change. It does not redraw continuously between events.
-
-Display pause captures the visible state rather than pausing collection. Live snapshots, histories, freshness, and recording continue to update in the background, while ordinary sample results do not trigger a redraw until display updates resume. Log view has its own loaded display state and does not support display pause.
-
-### 2.3 Treat Windows metrics as best effort
-
-Not every metric is available for every process. Access restrictions, process exit, unsupported hardware, and counter failures are represented as missing values or warnings rather than making the whole sample fail. UI formatting and recording omission rules are defined in [metrics.md](metrics.md).
-
-Expensive process extras and GPU values are collected every five base samples and cached between slow samples. The base sampling interval is fixed at one second.
-
-### 2.4 Separate tracking intent from process identity
-
-The Tracking List stores case-insensitive process names because PIDs change when applications restart and one name may have multiple live instances. Histories and selections use `ProcessIdentity { pid, name, start_time }` so PID reuse or a restarted process does not merge unrelated samples.
-
-Exited tracked processes remain available as Ghost Rows with their retained histories. Non-tracked processes do not receive the same long-lived retention.
-
-### 2.5 Bound live history asymmetrically
-
-Tracked processes retain 7,200 samples, approximately two hours at the one-second interval. Non-tracked processes retain 120 samples, approximately two minutes. System history also retains 7,200 samples.
-
-The per-identity sample limits are combined with identity-level pruning after every Live snapshot. Live history retains identities sampled within the general 120-second window, current processes, live and Ghost Row identities visible in a paused display, the newest exited identity for each tracked name, identities referenced by registered process Graphs, and the fixed target of an open Process Info dialog. Older exited or restarted identities are removed from both samples and peak state; exited-row metadata follows the durable investigation set rather than retaining every recent restart. This preserves recent history, the visible Ghost Row, and active investigations without allowing process churn to grow the identity maps indefinitely. Loaded logs are reconstructed from their recorded frames and are not pruned to the live-history capacities.
-
-### 2.6 Use JSON Lines for recording
-
-Recording uses JSON Lines so frames can be appended incrementally, flushed on stop or quit, partially inspected after interruption, and processed without constructing one in-memory document. Schema version 3 keeps the session record self-describing but stores recurring metrics in fixed-order arrays. A session-owned accumulator can emit every one, two, five, or ten base samples without changing the one-second Live collection path. It averages available values independently per process identity and GPU adapter, and it flushes a partial window before a clean end record. Each process and GPU adapter receives a session-local numeric ID and a definition record before its first output frame, avoiding repeated identity strings without conflating concurrent same-name processes. The reader builds a lightweight log-list summary from only the first and last non-empty records; it parses all frames only after a log is selected.
-
-The record types, fields, units, and missing-value rules are specified in [metrics.md](metrics.md).
-
-## 3. Main Components
+## 2. Component Boundaries
 
 | Component | Responsibility |
 |---|---|
-| `main`, `cli`, `config`, `platform` | Process startup, console control handling, terminal setup/restoration, CLI parsing, TOML persistence, and small Windows helpers. |
-| `app` | Main loop, application state, input dispatch, navigation, tracking, Graph/A/B state, recording, log loading, clipboard actions, and worker coordination. |
-| `model` | UI-independent snapshots, process/system values, column and sorting definitions, identities, and history containers. |
-| `samplers` | Collection through sysinfo, PDH, Win32, DXGI, .NET diagnostics IPC, and process-specific helpers; owns the sampling worker/runtime boundary. |
+| `main`, `cli`, `config`, `platform` | Process startup, single-instance enforcement, console control handling, terminal setup and restoration, CLI parsing, persistence, and small Windows helpers. |
+| `app` | Main loop, application state, actions, navigation, recording, log loading, clipboard operations, and worker coordination. |
+| `model` | UI-independent snapshots, process and system values, identities, column and sorting definitions, and history containers. |
+| `samplers` | Collection through sysinfo, PDH, Win32, DXGI, .NET diagnostics IPC, and process-specific helpers; owns the sampling worker and runtime boundary. |
 | `ui` | ratatui composition, panels and modals, formatting, themes, and shared screen geometry. |
 
-`model` is the data layer and does not depend on `ui` or `samplers`. `app` owns model values and coordinates the other components. The sampler produces model snapshots but does not mutate application or UI state directly.
+`model` is the data layer and does not depend on `ui` or `samplers`. Samplers produce model values but never mutate `App` or widgets directly. `App` owns the active model state and coordinates all transitions.
+
+## 3. Cross-Cutting Design Decisions
+
+### 3.1 Keep the UI thread responsive
+
+Windows counter, handle, module, file-metadata, remote-memory, and log operations can block or take variable time. Sampling, Process Info collection, log-directory scans, and full log loading therefore run on dedicated workers or bounded session threads.
+
+Requests and results cross thread boundaries through typed channels or bounded latest-value caches. `App` allows only one sample request in flight, so a slow collection delays the next result instead of creating an unbounded queue.
+
+Worker results carry enough identity, generation, or request information to reject stale results after selection, dialog, process-lifetime, or activity changes.
+
+### 3.2 Keep state ownership centralized
+
+`App` owns Live, paused, Recording, Log-list, and Log-view state. Display accessors select the appropriate snapshot and history without asking widgets to maintain activity-specific copies.
+
+Long-lived user intent and per-process identity remain separate. The feature documents define how Tracking Lists, Graph sources, Recording scope, and Process Info targets preserve that distinction.
+
+### 3.3 Treat Windows data as best effort
+
+Access restrictions, process exit, unsupported hardware, and counter failures produce unavailable values or warnings instead of failing the whole sample. Missing values remain explicit and are never replaced with plausible measurements. Formatting and recording omission rules are defined in [metrics.md](metrics.md).
+
+### 3.4 Redraw only when visible state changes
+
+`run_tui` is dirty-driven. It draws after input, resize, an applicable worker result, or another visible state transition rather than continuously between events.
+
+Display pause freezes only the visible state. Sampling, histories, freshness, and Recording continue in the background. Log view owns separate loaded state and does not support display pause.
+
+### 3.5 Preserve recoverable session data
+
+Configuration is replaced only after a successful interactive run, while explicit saved-list operations persist immediately. Recording uses appendable JSON Lines and preserves partial files after interruption or failure. Detailed persistence and lifecycle rules are defined by the relevant feature documents.
 
 ## 4. Runtime Flow
 
 ### 4.1 Startup and shutdown
 
-1. `main` parses the CLI and acquires a Windows session-local named mutex. A second instance exits before terminal setup or configuration access. The first instance then installs the Windows console control handler and resolves and loads `winproc-tui.toml`.
-2. `main` enters raw mode and the alternate screen once for the complete interactive session. Startup mode then either resumes the previous working Tracking List, clears it, or opens a chooser for the previous working list, an empty list, or a saved named list. `Esc` restores the terminal and exits; `Enter` applies the selected choice before `RuntimeConfig` is built and before any sample is collected.
-3. `App::new` performs one synchronous initial collection while the alternate screen remains active, so the first main screen has data without exposing the terminal prompt. It initializes histories and selection state, then spawns `SamplingWorker` for subsequent samples.
-4. `main` calls `run_tui` using the same terminal session that covered startup and initial collection.
-5. After the loop returns, `main` restores the terminal. It writes the current configuration only when `run_tui` succeeded, avoiding replacement of valid settings after a runtime failure. Tracking List startup changes and explicit Save, Save As, Rename, and Delete actions for named Tracking Lists persist immediately.
+1. `main` parses the CLI and acquires a Windows session-local named mutex. A second instance exits before terminal setup or configuration access.
+2. The first instance installs the console control handler, resolves configuration, and enters raw mode and the alternate screen.
+3. Tracking List startup state is resolved before the first sample. `App::new` then performs one synchronous initial collection so the first main screen has data without exposing the terminal prompt.
+4. `SamplingWorker` handles subsequent samples while `run_tui` uses the same terminal session.
+5. After the loop returns, `main` restores the terminal and saves session configuration only when the run succeeded.
 
-Interactive quit goes through application cleanup. If recording is active, the end record is attempted and the writer is flushed and closed before exit. Windows console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` set a termination request that enters the same cleanup path; close-class events wait for a bounded period so the main loop and workers can finish. Dropping `SamplingWorker` sends `Stop` and joins its thread.
+Interactive quit enters application cleanup. If Recording is active, the writer is finalized before exit. Console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` request the same cleanup path; close-class events wait for a bounded period. Dropping `SamplingWorker` sends `Stop` and joins its thread.
 
 ### 4.2 Main-loop cycle
 
 Each `run_tui` iteration:
 
-1. Applies completed sample, process-info, Open Files, loaded-DLL, Environment, and log-worker results.
-2. Recalculates layout state and draws only when the dirty flag is set.
-3. Polls terminal input with a bounded wait so worker results and console termination requests are checked promptly.
-4. Dispatches key and mouse input to `App`; resize events invalidate the layout.
-5. Requests the next sample when the one-second tick is due, unless a sample is already in flight or Log view is active.
+1. Applies completed sample, investigation, and log-worker results that still match current state.
+2. Recalculates layout state and draws only when dirty.
+3. Polls terminal input with a bounded wait so worker and termination results remain responsive.
+4. Dispatches input to `App`; resize invalidates layout.
+5. Requests the next sample when due, unless one is already in flight or Log view is active.
 
-Applying a live sample updates the current `Snapshot`, process and system histories, exited-tracked state, visible-row caches when appropriate, and the active recording accumulator. The accumulator writes only when the session's selected sample count is complete. A warning can accompany an otherwise usable snapshot.
+Applying a Live sample updates the aggregate `Snapshot`, process and system histories, exited-process state, visible-row caches when needed, and an active Recording accumulator. A warning may accompany an otherwise usable snapshot.
 
 ### 4.3 Sampling cycle
 
-`SamplingRuntime::collect` refreshes sysinfo state, samples system and per-process PDH counters, applies `GetPerformanceInfo` and Win32/DXGI-derived values, and returns `CollectSnapshotResult { snapshot, warning }`. GPU Engine, GPU Process Memory, and GPU Adapter Memory counters share one persistent query and are collected every second. DXGI adapter identity and capacity are initialized once and rechecked every five samples so a topology change can replace the cached static adapter list. System GPU values join PDH instances to that catalog by LUID; a PDH-only LUID never creates an adapter entry. The only five-second cached process extras are USER and GDI object counts. System Info reads memory, GPU, disk, and CPU capacity data from the latest live snapshot rather than collecting on the UI thread.
+`SamplingRuntime::collect` refreshes sysinfo, samples system and per-process PDH counters, applies Win32 and DXGI values, and returns one `CollectSnapshotResult { snapshot, warning }`.
 
-For each detected .NET 8/9/10 identity, `DotNetRuntimeSampler` maintains a raw diagnostics-IPC EventPipe session independently of Tracking List membership. It first requests explicit stack suppression with the filtered `System.Runtime` meter used by .NET 9/10. If that protocol command is unsupported, it opens one .NET 8-compatible session containing only the `System.Runtime` EventCounters provider, avoiding duplicate counter collection on newer runtimes. The parser consumes NetTrace v4 FastSerialization blocks and publishes only coherent collection intervals. Generation-based .NET 9/10 heap and fragmentation gauges are applied only when all gen0/gen1/gen2/LOH/POH series are present; the individual heap-size columns reuse those same tagged values. The .NET 8 fallback requires all 12 target counters in one cycle and resets an incomplete cycle when a counter repeats. It converts decimal-MB gauges to bytes, retains the generation-size EventCounters as byte values, derives fragmentation bytes from heap size and fragmentation percentage, and normalizes counter increments by their reported interval. Session state is keyed by full process identity, established sessions retry after a bounded delay if collection fails, values older than three seconds are ignored, and a fresh EventPipe value overrides its legacy PDH fallback without replacing it with missing data. These sessions do not run in Log view.
+GPU Engine, process GPU memory, and adapter memory share a persistent query. Adapter identity and capacity are periodically rechecked so topology changes can replace cached static data. Slow per-process extras are sampled less frequently and reused between refreshes; exact intervals and values remain in [metrics.md](metrics.md).
 
-.NET Framework 4.8 remains on the persistent process PDH query rather than EventPipe. The sampler joins `.NET CLR Memory` instances to process rows by the runtime `Process ID` counter and collects total heap, Gen1, Gen2, and LOH. It intentionally does not map Framework `Gen 0 heap size`, which is an allocation threshold rather than current generation occupancy, and Framework has no POH generation.
+.NET 8/9/10 sessions run independently per live `ProcessIdentity` and publish only complete recent intervals. They never update `App` directly and do not run in Log view. Protocol and fallback behavior are documented in [.NET Runtime Metrics Collection](dotnet-metrics-collection.md).
 
-The protocol request, runtime-version fallback, instrument mapping, parser constraints, lifecycle, and measured development cost are described in [.NET Runtime Metrics Collection](dotnet-metrics-collection.md).
+The collection boundary deliberately produces one aggregate `Snapshot`. Explicit process investigations remain outside normal sampling as described in [Process Investigation](process-investigation.md).
 
-The collection boundary deliberately produces one aggregate `Snapshot`. Individual collectors do not update `App`, histories, or widgets. Open Files is an explicit per-process investigation action rather than part of continuous sampling; it enumerates disk file handles only and remains off the UI thread.
+## 5. State Ownership
 
-## 5. State and Data Model
+`App` owns these high-level state groups:
 
-### 5.1 Snapshot and histories
-
-`Snapshot` is the aggregate value for one capture time. It contains system memory, a LUID-keyed `Vec<GpuAdapterSample>`, CPU, disk and activity values plus `Vec<ProcessRow>`. Unavailable values are optional so access failure or process exit can be represented without fabricating a measurement. Per-process `WS Shrbl` is derived from the two same-sample PDH Working Set counters; normal sampling never enumerates pages with `QueryWorkingSet`.
-
-`ProcessHistory` is keyed by `ProcessIdentity` and stores graphable samples and selected peaks. Live cleanup always prunes both maps with one retained-identity set so a removed sample series cannot leave an orphaned peak. `SystemHistory` stores the metrics used by MEM, LUID-keyed GPU, System Activity, and CPU graphs. A GPU Graph source carries the adapter LUID so switching the visible adapter does not retarget an existing Graph. Live histories apply the capacities and identity pruning described above; the log loader uses unbounded reconstruction for the selected recording.
-
-Column selection and sorting are modeled separately through `MetricColumn`, `SortColumn`, `ColumnPreset`, and `SortSpec`. Metric semantics and display units remain centralized in [metrics.md](metrics.md).
-
-### 5.2 Application state
-
-`App` owns these state groups:
-
-- sampling progress, the current live snapshot, freshness, and warning state;
+- sampling progress, current Live data, freshness, and warnings;
 - process-table selection, filtering, sorting, columns, and visible-row caches;
-- the working Tracking List, saved named lists, startup mode, process/system histories, and exited tracked rows;
-- the ordered Graph collection, active Graph, shared time/cursor/A/B state, and Graph-specific display state;
-- modal and asynchronous investigation state;
-- display-pause, recording, Log list, and Log view state;
-- runtime settings, theme, and transient action feedback.
+- tracking intent, saved definitions, histories, and exited rows;
+- ordered Graphs and shared comparison state;
+- modal and asynchronous investigation sessions;
+- display pause, Recording, Log list, and Log view;
+- runtime settings, theme, and transient feedback.
 
-`App` also owns the Windows product version, build, and native architecture captured once during startup. System Info combines that static host metadata with the latest live `Snapshot`, so display pause and Log view do not substitute paused or recorded capacity fields for the current host. One ordered plain-text field model is the source for both dialog rows and complete clipboard output; terminal clipping affects drawing only.
+`Snapshot` is the aggregate value for one capture time. It contains optional system and process measurements so unavailability can be represented without fabricating a value. `ProcessHistory` is keyed by full process identity, while `SystemHistory` owns system Graph sources. Detailed retention and Graph-source rules are defined in the related design documents.
 
-Display accessors select live, paused, or loaded-log data without making widgets own activity-specific copies. `tracked_only` remains independent from whether the Tracking List is empty.
+## 6. UI Boundary
 
-Process Info is one responsive modal with tab-specific scroll and collection state. Opening it fixes a `ProcessInfoDialogTarget` containing `ProcessIdentity`, the opening `ProcessRow`, and lifecycle. Every tab and worker request uses that target rather than consulting the current Processes selection again. The active tab remains session state after the dialog closes and is reused by ordinary Process Info opens; the direct Files action explicitly selects Files. Filters belong to one dialog session: tab switches and explicit refreshes preserve them, while opening a new Process Info session clears them. Files and DLL filtering use the full displayed path. DLL and Environment tabs separate their selectable lists from keyboard-scrollable detail views so complete metadata and values remain reachable on narrow terminals. A monotonically changing dialog generation accompanies Process Image, Files, DLL, and Environment requests, and DLL and Environment refreshes also have request ids, so a result from a closed, reopened, or superseded dialog request cannot update a newer session even when the same PID and identity are involved. DLL and Environment collection have independent workers from sampling, Image, and Open Files. Image collection inspects the loaded `coreclr.dll` or `clr.dll` to report the active .NET runtime version without adding module enumeration to normal sampling or recording. All live collectors reject a target that exits or changes identity during collection. Environment's PEB offsets, pointer-width handling, memory-region validation, 4 MiB cap, and UTF-16 parser remain inside the platform-facing collector; UI and recording code receive only typed entries or typed errors. Environment results are cleared when the dialog closes and never enter recording state. Log view uses recorded display state for Metrics and Image fallbacks and never starts live Process Info collection.
+Modal input has priority over underlying panels, and non-modal actions depend on the current focus state. Text editing and confirmation flows consume their own input instead of falling through to screen navigation.
 
-The working Tracking List is separate from saved named definitions. Plain `t`, or `Space` and double-click on a Process/PID cell, edits only the working copy; selecting PID still registers the row's process name. `Shift+T` changes the independent `tracked_only` state. The Tracking Lists dialog prepends a virtual `Empty (default)` entry to the saved definitions; it is active only when no named definition is active and the working list is empty, and it is never persisted, renamed, deleted, or overwritten. Loading either the virtual empty entry or a saved list replaces the working copy without changing `tracked_only`, while Save or Save As explicitly updates persistent definitions. Removing names during a load follows the same bounded-history pruning rule as manual untracking and requires confirmation when older retained samples would be discarded.
+Drawing and hit testing derive regions from shared layout helpers. Semantic interaction state stores identities or sources rather than screen coordinates, so scroll, resize, and filtering cannot retarget an action accidentally.
 
-### 5.3 Graph and Samples state
+The UI module renders state and exposes geometry; it does not collect metrics or own histories. Exact keys, colors, emphasis, widths, marker shapes, focus order, and drawing positions remain in implementation and rendering tests.
 
-Graphs are stored as an ordered `Vec<GraphEntry>` with a limit of 16. Each entry has a monotonically increasing, run-unique `GraphId` and one `GraphSlot` source. A removed ID is never reused, entries have no holes or duplicate sources, and a non-empty collection always has an `active_graph_id` that resolves to one entry. Process Graph sources retain a full `ProcessIdentity`, not a visible row or PID alone. Graph registrations, IDs, and scroll position are session state and are not written to settings.
+## 7. Invariants and Tests
 
-Reordering changes only the position of existing `GraphEntry` values. Direct workspace moves update the ordered collection immediately while keeping the moved entry active. The reorder dialog edits a draft `GraphId` sequence and replaces the collection order only when applied; canceling discards the draft. Both paths preserve Graph identity, active ID, selected time, visible range, live-follow state, and A/B timestamps.
+Cross-cutting invariants are:
 
-The collection shares one absolute `captured_at`-based visible time window, live-follow state, selected sample time, A/B timestamps, and Y-axis lower-bound mode. The shared right edge is derived from the latest sample across the registered Graphs; each series is plotted against that common reference rather than its own latest sample. `Fit all` spans from the earliest first sample through the latest last sample across all registered Graphs, so changing the active Graph cannot change the fitted window. Process Info also consumes the shared A/B timestamps for the process fixed when its dialog opens. Y-axis scale, sample availability, target, metric, and displayed values remain Graph-specific. Navigation may choose the nearest useful timestamp, but a Graph displays a value only when that series has a sample at the exact selected `captured_at`. This prevents one Graph from presenting another Graph's nearby sample as synchronized data. When the selected sample moves outside the shared visible time window, the window shifts only far enough to include it; selections already inside the window do not move it.
+- sampling and other expensive Windows work never block the UI thread;
+- only one instance reaches terminal or configuration setup in a Windows session;
+- `model` remains independent from UI and sampler implementation;
+- unavailable data stays explicit;
+- display pause does not pause sampling, histories, freshness, or Recording;
+- asynchronous results are applied only to the state and identity that requested them;
+- drawing and hit testing use the same geometry;
+- terminal restoration and Recording cleanup remain part of normal and console-triggered exit paths.
 
-`GraphSlotLayout` selects Auto or a row-major grid of one, two, or three columns. Auto chooses up to three columns while preserving the minimum card width; it does not depend on Processes count or vertical capacity. Explicit multi-column layouts fall back to fewer columns when the requested count does not fit. A single Graph always uses the full width. Cards are vertically scrollable by layout row, and selection adjusts the scroll position only enough to reveal the active card. Each card title calculates `B-A` from that Graph's exact metric samples and shows `--` when either point or value is unavailable. Layout and explicit Samples / Delta preferences are persisted in `winproc-tui.toml`.
+Feature-specific invariants live in their respective design documents rather than being repeated here.
 
-One Samples inspector is bound to the active Graph. It is placed to the right when Graph and Samples minimum widths fit, below when their minimum heights fit, and otherwise temporarily collapsed. The explicit user preference and temporary collapse are separate state, so a resize restores only the latter. Multi-column cards and Samples may coexist when their minimum widths fit. Changing the active Graph aligns Samples to the shared selected time without replacing a missing exact-time value with a nearby one.
+Unit tests live beside modules and in `src/main.rs`. `SamplingWorker::test_pair` supports asynchronous state tests without a real collector. ratatui `TestBackend` and buffer assertions cover layout, styling, and interaction-sensitive rendering.
 
-Graph assignment is independent from terminal geometry and Workspace visibility. A resize preserves entries, order, active ID, A/B points, selected time, and live-follow state; it recalculates Samples placement and effective columns, clamps row scroll, and minimally reveals the active card. When even one readable plot does not fit, the active card retains its title and remove action and renders a resize message. The Processes panel retains at least one selected data row when it has rows to show.
+## 8. Documentation Ownership
 
-`GraphWorkspaceLayout` is the single geometry result for shared controls, the titled Graph panel and viewport, visible cards and their title/remove/plot regions, Graph scrollbar, and the Samples inspector. Drawing and mouse hit testing consume those same rectangles. Only cards intersecting the current row viewport perform Graph-series rendering work; the active Samples series may still be resolved when its card is outside the viewport.
+When behavior changes, update its canonical owner:
 
-Process Info applies the stricter same-time invariant to every metric: it resolves each A, B, or displayed-current sample once by exact `ProcessIdentity` and exact `captured_at`, then derives all metric rows from those resolved samples. Display accessors keep paused and loaded-log histories separate from the updating live history.
-
-## 6. Input and UI Boundaries
-
-Input dispatch follows these rules:
-
-- Modal input has priority over the underlying panels.
-- Process Info tab, content, and scrollbar hit regions are derived from the same centered dialog layout used for drawing. Clicking outside the dialog neither dismisses it nor operates the underlying panels.
-- Process Info opens with its retained active tab focused. Metrics and Image have passive content, so Tab and Shift+Tab keep focus on Tabs while navigation keys scroll that content. Files, DLLs, and Environment cycle focus through Tabs and Content. Plain Left and Right switch tabs only while Tabs has focus, leaving interactive Content free to use those keys for filter editing. Tab activation preserves the fixed dialog target, tab-specific state, lazy collection, and worker-generation boundaries.
-- Filter editing accepts text-editing and confirm/cancel input instead of normal navigation.
-- Non-modal actions depend on the current `FocusedPanel`.
-- MEM and GPU share `FocusedPanel::System`, while `ResourcePanel` acts as its subfocus. The forward focus cycle visits MEM then GPU, and the reverse cycle visits GPU then MEM; drawing and input both consume this combined state.
-- Key press and repeat events are handled; release events are ignored to avoid duplicate processing while preserving terminal key repeat.
-- Process kill confirmation captures each selected live process as a `ProcessKillTarget` and executes `taskkill /f /pid` once per captured PID. It never expands the target set by image name.
-- Drawing and mouse hit testing derive panel, Graph Workspace, card, Samples, scrollbar, and interactive-control regions from shared layout helpers. Processes table rendering, horizontal visibility, cell formatting, and header hit testing consume the same identity-based resolved column widths. Display-only truncation cues never replace the complete process name or executable path held in application state.
-- Source-cell double-click state stores either the semantic `GraphSlot` or a `ProcessIdentity` plus Process/PID column, together with the click time, rather than screen coordinates. Scroll, drag, modal input, a different identity, column, or source, or more than 500 ms between clicks prevents the pair from toggling a Graph or Tracking List entry.
-
-The UI module renders state and exposes geometry helpers; it does not collect metrics or own histories. When Graphs are visible, the shared main-panel layout derives the Processes height and page size from filtered visible rows plus the optional Tracked Total row, capped at the existing panel maximum while reserving Graph Workspace space. Drawing, offset clamping, focus and mouse hit testing consume the same main-panel and Graph Workspace layout results. When Graphs are hidden, the Processes panel continues to use the full lower body. Exact colors, emphasis, cell widths, marker shapes, cursor-guide placement, and complete key lists are intentionally kept in implementation and rendering tests rather than duplicated here.
-
-## 7. Recording and Log View
-
-`Live`, `Recording`, and `LogView` are mutually constrained application activities. The Log list is a modal selection step, not a fourth activity. Full log loading permits only one in-flight request; the worker-owned path drives visible loading feedback, and additional open requests are ignored until the result is applied.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Live
-
-    Live --> Recording: Ctrl+R / choose path
-    Recording --> Recording: Ctrl+R / confirm stop
-    Recording --> Live: confirm Stop / end, flush, close
-    Recording --> Live: 24-hour limit / end, flush, close
-
-    Live --> LogList: Ctrl+L
-    LogView --> LogList: Ctrl+L
-    LogList --> LogView: select valid log
-    LogList --> Live: Esc / close
-    LogView --> Live: Esc
-
-    Recording --> Recording: Ctrl+L rejected
-    Recording --> Recording: t or Ctrl+T rejected
-    LogView --> LogView: Ctrl+R rejected
-
-    Live --> Exiting: quit
-    Recording --> Exiting: quit / stop and flush
-    LogView --> Exiting: quit
-    Exiting --> [*]
-```
-
-Starting recording requires at least one configured Tracking List name. It does not require a current live match: each output frame still records system metrics and writes an empty process-sample array until a matching process appears. `RecordingSession` owns a copy of the working Tracking List, its normalized lookup set, the selected `1s`/`2s`/`5s`/`10s` aggregation interval, and the pending frame accumulator. Session metadata records the fixed list and interval once. Every base snapshot is filtered through the same fixed scope, and missing values or absent processes are excluded from each metric's mean rather than converted to zero. Plain `t`, `Ctrl+T`, and Process/PID-cell Tracking List actions reject changes during Recording; `Shift+T` remains available because `tracked_only` is independent display state.
-
-`Ctrl+R` opens a stop confirmation where `Enter`, `Esc`, or `n` continues and `y` stops. Sampling and aggregation continue while it is open. Confirmed Stop and quit flush a partial aggregate before writing the end record and closing the log. Quit retains its existing single confirmation rather than nesting the stop confirmation.
-
-Each Recording session is limited to 24 hours. `RecordingSession` stores a monotonic start instant in addition to the wall-clock timestamp written to the log. The main loop checks that elapsed time on every poll cycle; at the limit it dismisses any recording-only notice or stop confirmation, writes an end record with reason `duration_limit`, flushes and closes the writer, and transitions to Live. This keeps the limit independent of wall-clock corrections and does not wait for another sample to complete.
-
-Recording lifecycle failures are application state, not status-only feedback. A create/open failure keeps the path dialog available behind the error; a header, frame, end, newline, or flush failure drops the active session, preserves any partial file, and shows a recording error. A failure while quitting cancels the quit so the error remains visible. Error state renders above other recording and quit modals.
-
-Recording and Log view are mutually exclusive at both user-action and worker-result boundaries. `Ctrl+L` is rejected during Recording, `Ctrl+R` is rejected in Log view, and a completed background log load is rejected if Recording began while it was in flight.
-
-The Log list scans supported `*.log` files on a background worker. Schema versions 2 and 3 are listed and loadable; malformed supported logs are reported without crashing the UI. Selecting a log triggers full background parsing. Both loaders reuse one input buffer and deserialize directly into typed records instead of building a generic JSON value tree for every line. The schema-v3 loader resolves process and GPU IDs through the preceding definition records while reconstructing snapshots and histories. It also retains the session interval and complete frame-time sequence so Log view can identify aggregate values and split Graph lines at missing process or metric windows. Log view shows the last process snapshot and the histories reconstructed from all frames; it does not play frames over time.
-
-## 8. Invariants, Tests, and Constraints
-
-The most important implementation invariants are:
-
-- sampling and other expensive investigation work must not block the UI thread;
-- only one `winproc-tui` instance may run in a Windows session, and a second launch must exit before terminal setup or configuration access;
-- display pause must not pause sampling, history updates, freshness, or recording;
-- Recording and Log view must never be active together;
-- one Recording session must use one fixed Tracking List copy for its session record, frame metadata, and process filtering;
-- one Recording session must use one fixed aggregation interval, must not treat unavailable values or absent processes as zero, and must flush a partial final window before a clean end record;
-- one Recording session must end and return to Live after at most 24 hours of monotonic elapsed time;
-- stopping or quitting Recording must flush and close the log, and cleanup failure must remain visible instead of exiting silently;
-- tracked names, currently matching live processes, and per-instance process identities must remain distinct concepts;
-- the working Tracking List must not overwrite a saved named definition without an explicit save action;
-- the built-in empty Tracking List must remain virtual and must not be stored among saved named definitions;
-- drawing and hit testing must use the same layout geometry;
-- dynamic Processes sizing must reserve a visible Tracked Total row, keep at least one process row when available, and give reclaimed height to Graphs without changing the full-height Graphs-hidden layout;
-- terminal resizes, Tracked-only changes, and layout transitions must preserve the ordered Graph collection, active ID, and comparison state while keeping every Graph reachable by row scrolling;
-- a non-empty Graph collection must contain at most 16 unique sources and have one valid active ID whose numeric value is never reused during the run;
-- reordering Graphs must preserve their IDs, active Graph, selected time, visible range, and A/B points;
-- two-column Graph layout and the active Samples inspector must be able to coexist;
-- shared Graph time state must not replace Graph-specific exact-time sample-availability checks;
-- Process Info comparisons must not substitute a nearby time or a different process identity;
-- all Process Info tabs must retain the target fixed when the dialog opened, and asynchronous results must match both its identity and dialog generation;
-- unavailable metrics must remain explicit rather than being converted to plausible values.
-- .NET runtime sessions must remain scoped to initially detected live identities independently of Tracking List membership, cache negative detection by full process identity, keep only the latest complete interval, and never undercount an incomplete generation series.
-
-Unit tests live both beside modules and in `src/main.rs`. `SamplingWorker::test_pair` supports asynchronous state tests without a real collector, while ratatui `TestBackend` and buffer assertions cover layout, styling, and interaction-sensitive rendering. Exact UI details removed from this document should be protected by those implementation tests when they are intentional behavior.
-
-Current constraints:
-
-- Windows 11 x64 is the supported platform; Windows APIs are used directly.
-- The base interval is fixed at one second, with selected slow metrics refreshed every five samples. Recording aggregation is independent and does not reduce Live sampling.
-- Protected processes and unavailable counters may yield missing values.
-- Live history is bounded and is not intended to be a long-term time-series database; recording provides the durable session format.
-
-When behavior changes, update the canonical owner rather than duplicating it here: README and Help for user controls, [metrics.md](metrics.md) for values and recording fields, and [AGENTS.md](../AGENTS.md) for agent-facing workflow and regression rules.
+| Change | Canonical documentation |
+|---|---|
+| Product positioning, installation, first-use workflow | README and Japanese README |
+| Complete controls and contextual actions | In-app Help, Footer, dialog guidance, implementation, and tests |
+| Metric meaning, source, format, aggregation, recording field | [metrics.md](metrics.md) |
+| Tracking intent, identity, list persistence, history retention | [tracking-and-history.md](tracking-and-history.md) |
+| Graph, Samples, A/B, and workspace layout state | [graph-workspace.md](graph-workspace.md) |
+| System Info and Process Info collection lifecycle | [process-investigation.md](process-investigation.md) |
+| Recording, log loading, and Log-view lifecycle | [recording-and-log-view.md](recording-and-log-view.md) |
+| Cross-component responsibility or runtime flow | This document |
+| Schema-v3 record shape | [`schemas/recording-v3-line.schema.json`](schemas/recording-v3-line.schema.json) and [metrics.md](metrics.md) |
+| Release, Scoop, and Windows Package Manager publication | [release-workflow.md](release-workflow.md) |
+| Agent workflow and regression rules | [AGENTS.md](../AGENTS.md) |

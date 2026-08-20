@@ -7,6 +7,8 @@ assignees: ''
 
 ---
 
+> Suspected security vulnerability? Do not open a public Issue. Use the [private reporting process](https://github.com/TX230/winproc-tui/security/policy).
+
 ## Describe the Bug
 
 <!-- A clear and concise description of what the bug is. -->

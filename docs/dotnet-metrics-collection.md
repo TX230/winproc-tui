@@ -176,7 +176,7 @@ sequenceDiagram
         T-->>R: Unsupported response
         R->>T: Open new pipe and send CollectTracing2
         T-->>R: Session ID and System.Runtime EventCounters stream
-        R->>R: Require all 12 counters in one cycle
+        R->>R: Require all 9 counters in one cycle
     end
 
     loop Each complete interval
@@ -207,7 +207,7 @@ Detection and current value display are independent of Tracking List membership.
 
 The UI thread performs no diagnostics IPC or trace parsing. The one-second sampling worker performs identity reconciliation and copies the latest published values; each detected runtime has a dedicated blocking reader thread.
 
-The Issue #75 development benchmark used 20 idle .NET processes on a 20-logical-CPU machine. The then-current 12-value .NET 8 collector observed:
+The Issue #75 development benchmark used 20 idle .NET processes on a 20-logical-CPU machine. It measured the collector before three GC-rate values were removed; the current .NET 8 mapping requires the nine counters listed above. The benchmark observed:
 
 - initial .NET 8 pipe detection in approximately 1.2-2 ms;
 - all 12 .NET 8 values available after approximately 1.16 s;
@@ -230,3 +230,10 @@ When changing this collector:
 5. Keep shutdown asynchronous and bounded from the caller's perspective.
 6. Check `model::columns`, `model::process`, `model::snapshot`, UI formatting, Details, clipboard output, history, and recording schemas.
 7. Cover request encoding, parser bounds, version fallback, conversions, and lifecycle behavior with focused tests before running the full Rust test suite.
+
+## References
+
+- [.NET diagnostics IPC protocol](https://github.com/dotnet/diagnostics/blob/main/documentation/design-docs/ipc-protocol.md)
+- [.NET runtime metrics](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics-runtime)
+- [Well-known .NET EventCounters](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters)
+- [Mapping .NET Framework performance counters to modern metrics](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/migrate-from-windows-performance-counters)

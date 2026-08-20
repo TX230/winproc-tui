@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::model::{GpuAdapterSample, ProcessRow, Snapshot};
 
@@ -6,7 +6,7 @@ pub(crate) const CURRENT_LOG_SCHEMA_VERSION: u64 = 3;
 pub(crate) const LEGACY_LOG_SCHEMA_VERSION: u64 = 2;
 
 pub(crate) const SYSTEM_U64_FIELD_COUNT: usize = 21;
-pub(crate) const PROCESS_F64_FIELD_COUNT: usize = 2;
+pub(crate) const PROCESS_F64_FIELD_COUNT: usize = 5;
 pub(crate) const PROCESS_U64_FIELD_COUNT: usize = 21;
 pub(crate) const GPU_F64_FIELD_COUNT: usize = 5;
 pub(crate) const GPU_U64_FIELD_COUNT: usize = 6;
@@ -38,6 +38,7 @@ pub(crate) mod system_u64 {
 pub(crate) mod process_f64 {
     pub(crate) const CPU_PERCENT: usize = 0;
     pub(crate) const GPU_PERCENT: usize = 1;
+    // Schema v3 positions 2..=4 are reserved for removed .NET GC-rate metrics.
 }
 
 pub(crate) mod process_u64 {
@@ -200,9 +201,39 @@ impl V3SystemMetrics {
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct V3ProcessSample(
     pub(crate) u32,
-    pub(crate) [Option<f64>; PROCESS_F64_FIELD_COUNT],
-    pub(crate) [Option<u64>; PROCESS_U64_FIELD_COUNT],
+    #[serde(deserialize_with = "deserialize_process_f64_values")]
+    pub(crate)  [Option<f64>; PROCESS_F64_FIELD_COUNT],
+    #[serde(deserialize_with = "deserialize_process_u64_values")]
+    pub(crate)  [Option<u64>; PROCESS_U64_FIELD_COUNT],
 );
+
+fn deserialize_process_f64_values<'de, D>(
+    deserializer: D,
+) -> Result<[Option<f64>; PROCESS_F64_FIELD_COUNT], D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values = Vec::<Option<f64>>::deserialize(deserializer)?;
+    let mut result = [None; PROCESS_F64_FIELD_COUNT];
+    for (target, value) in result.iter_mut().zip(values) {
+        *target = value;
+    }
+    Ok(result)
+}
+
+fn deserialize_process_u64_values<'de, D>(
+    deserializer: D,
+) -> Result<[Option<u64>; PROCESS_U64_FIELD_COUNT], D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values = Vec::<Option<u64>>::deserialize(deserializer)?;
+    let mut result = [None; PROCESS_U64_FIELD_COUNT];
+    for (target, value) in result.iter_mut().zip(values) {
+        *target = value;
+    }
+    Ok(result)
+}
 
 impl V3ProcessSample {
     pub(crate) fn from_row(process_id: u32, process: &ProcessRow) -> Self {
@@ -280,12 +311,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn v3_process_sample_rejects_obsolete_metric_array_lengths() {
-        let obsolete_float_values =
-            "[7,[12.5,5.5,0.5,1.5,2.5],[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]]";
-        let obsolete_integer_values = "[7,[12.5,5.5],[1,2,3,4,5,6,7,8,9,10,11,12,13]]";
+    fn v3_process_sample_pads_older_shorter_metric_arrays() {
+        let sample: V3ProcessSample =
+            serde_json::from_str("[7,[12.5,5.5],[1,2,3,4,5,6,7,8,9,10,11,12,13]]").unwrap();
 
-        assert!(serde_json::from_str::<V3ProcessSample>(obsolete_float_values).is_err());
-        assert!(serde_json::from_str::<V3ProcessSample>(obsolete_integer_values).is_err());
+        assert_eq!(sample.0, 7);
+        assert_eq!(sample.1[process_f64::CPU_PERCENT], Some(12.5));
+        assert_eq!(sample.1[2], None);
+        assert_eq!(sample.2[process_u64::IO_WRITE_BYTES_PER_SEC], Some(13));
+        assert_eq!(sample.2[process_u64::DOTNET_GC_COMMITTED_BYTES], None);
+        assert_eq!(sample.2[process_u64::DOTNET_GC_GEN0_HEAP_BYTES], None);
+        assert_eq!(sample.2[process_u64::DOTNET_GC_POH_BYTES], None);
+    }
+
+    #[test]
+    fn documented_v3_schema_matches_compact_field_counts() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../docs/schemas/recording-v3-line.schema.json"
+        ))
+        .expect("recording-v3-line.schema.json must be valid JSON");
+
+        assert_eq!(
+            schema.pointer("/$defs/session/properties/v/const"),
+            Some(&serde_json::json!(CURRENT_LOG_SCHEMA_VERSION))
+        );
+
+        for (definition, expected) in [
+            ("systemU64Values", SYSTEM_U64_FIELD_COUNT),
+            ("processF64Values", PROCESS_F64_FIELD_COUNT),
+            ("processU64Values", PROCESS_U64_FIELD_COUNT),
+            ("gpuF64Values", GPU_F64_FIELD_COUNT),
+            ("gpuU64Values", GPU_U64_FIELD_COUNT),
+        ] {
+            let pointer = format!("/$defs/{definition}");
+            let field_schema = schema
+                .pointer(&pointer)
+                .unwrap_or_else(|| panic!("missing schema definition {definition}"));
+            assert_eq!(
+                field_schema
+                    .get("maxItems")
+                    .and_then(serde_json::Value::as_u64),
+                Some(expected as u64),
+                "schema maxItems drifted for {definition}"
+            );
+            assert_eq!(
+                field_schema
+                    .get("prefixItems")
+                    .and_then(serde_json::Value::as_array)
+                    .map(Vec::len),
+                Some(expected),
+                "schema prefixItems drifted for {definition}"
+            );
+        }
     }
 }

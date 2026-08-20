@@ -5,6 +5,14 @@ This document describes how to create a GitHub Release for `winproc-tui` and att
 The examples below use `vX.Y.Z` as a placeholder for the release version (for example `v0.1.0`) and `TX230/winproc-tui` as the target repository.
 Replace `vX.Y.Z` (and the numeric `X.Y.Z` form used in file names) with the actual release version each time; the procedure itself does not change between versions.
 
+Use the document as three independent runbooks with explicit verification between them:
+
+1. [GitHub Release](#manual-release-procedure): build, package, draft, publish, and verify the immutable release asset.
+2. [Scoop Bucket](#scoop-bucket-publication): update and verify `TX230/scoop-bucket` only after the GitHub Release is public.
+3. [Windows Package Manager](#windows-package-manager-publication): submit to `microsoft/winget-pkgs` only after the same asset is public and verified.
+
+Completing one runbook does not authorize or imply completion of the next.
+
 ## Concepts
 
 ### Release Notes
@@ -176,9 +184,9 @@ The executable is generated at:
 target\release\winproc-tui.exe
 ```
 
-### 6. Create the Distribution Package
+### 6. Create the Distribution Package and Checksum
 
-After completing the test and build steps manually, use the packaging helper without rerunning them:
+After completing the test and build steps manually, use the packaging helper without rerunning them. This command creates both the release zip and its `.sha256` checksum file:
 
 ```powershell
 .\scripts\package-release.ps1 -Version $Version -SkipTests -SkipBuild
@@ -203,16 +211,11 @@ The package name includes:
 
 `winproc-tui.toml` is also not prepackaged. It is user-specific session state: the application starts with defaults when the file is absent, then creates or updates it next to `winproc-tui.exe` after a successful run. The helper stops with an error unless the archive contains exactly the executable and `LICENSE`.
 
-### 7. Create a Checksum File
+### 7. Verify the Checksum File
 
-```powershell
-Get-FileHash $ZipPath -Algorithm SHA256 |
-  ForEach-Object { "$($_.Hash)  $ZipName" } |
-  Set-Content $Sha256
-```
+The packaging helper creates the `.sha256` file with UTF-8 encoding and no BOM. Do not regenerate it with shell-dependent output defaults. GitHub also computes and displays a `sha256:` digest for each uploaded release asset.
 
-GitHub also computes and displays a `sha256:` digest for each uploaded release asset. The `.sha256` file remains useful as a downloadable checksum for command-line or scripted checks.
-Before upload, compare the generated checksum against the package you are about to attach:
+Before upload, compare the helper-generated checksum against the package you are about to attach:
 
 ```powershell
 Get-FileHash $ZipPath -Algorithm SHA256

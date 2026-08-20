@@ -47,11 +47,15 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | Whole-number decimal `KB/s` in Processes; Graph, Samples, and copy use the adaptive rate format described below |
 | `Full Path` | `path` | Executable path. Used to distinguish same-name processes from different build or working directories. | `sysinfo::Process::exe()` | Path text, shortened from the start when the cell is narrow |
 
-When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
+When the `Full Path` column is selected in the Process table, filtering matches both process name and executable path.
 When it is not selected, filtering matches process name only.
 Compact byte formatting is used in the Processes table and for Graph Y-axis tick labels. Sorting and Graph data continue to use the raw numeric values.
 
-The .NET 8/9/10 metrics are collected for every live process identity whose diagnostics pipe is found during its initial live-worker check; Tracking List registration is not required for display. Detection results are cached by `(PID, name, start_time)`, so a non-.NET process is not probed again during the same lifetime. Each detected identity owns an independent EventPipe session over the .NET diagnostics named pipe. Collection runs outside the UI thread, retains only the latest complete one-second interval, and stops when the identity exits or Live is replaced by Log view. Recording and long tracked-history retention remain limited to Tracking List processes. .NET 9/10 uses the `System.Runtime` meter; .NET 8 falls back to the `System.Runtime` EventCounters emitted for the same session. .NET Framework values come from the legacy PDH query and are limited to total heap, Gen1, Gen2, and LOH. Framework Gen0 remains unavailable because `Gen 0 heap size` reports a GC allocation threshold instead of current generation occupancy, and Framework has no POH generation. A process that is not supported, has diagnostics disabled, denies access, or omits an instrument keeps that value unavailable (`--`). Missing generations make a .NET 9/10 summed heap or fragmentation value unavailable rather than undercounting it. Because .NET 8 reports heap and committed sizes in decimal MB and fragmentation as a percentage, those three byte values are rounded after conversion; fragmentation bytes are an estimate derived from the reported heap size and percentage. A completed EventPipe value replaces the corresponding legacy PDH value only when it is available.
+Modern .NET metrics are collected for every detected live process identity; Tracking List registration is not required for the current display. Non-tracked processes keep only ordinary short Live history, while Recording remains limited to the session's fixed Tracking List scope.
+
+.NET 9/10 uses the `System.Runtime` meter, .NET 8 uses `System.Runtime` EventCounters, and .NET Framework uses the legacy PDH query for its supported subset. Unsupported, inaccessible, stale, or incomplete values remain unavailable (`--`) instead of being estimated from a different runtime source. .NET 8 byte conversions are rounded, and its fragmentation byte value is derived from the reported heap size and fragmentation percentage.
+
+Diagnostics-pipe detection, complete-interval rules, freshness, retry, and shutdown behavior are defined in [.NET Runtime Metrics Collection](dotnet-metrics-collection.md).
 
 The `.NET` column preset selects `.NET Gen2`, `.NET LOH`, and `.NET POH` by default because those heaps are the highest-value first view for long-lived, large, and pinned object growth. Gen0 and Gen1 remain selectable, graphable, copyable, and recordable.
 
@@ -59,10 +63,7 @@ The `.NET` column preset selects `.NET Gen2`, `.NET LOH`, and `.NET POH` by defa
 
 ## MEM and GPU Panels
 
-The first system resource region contains a two-column `MEM` panel and a per-adapter `GPU` panel. Both retain 7,200 one-second samples and do not depend on the Tracking List. Wide layouts show `MEM | GPU | NW/DISK | CPU`; narrow layouts show the selected `MEM` or `GPU` resource view while preserving `NW/DISK` and `CPU` when space permits.
-
-`Tab` / `Shift+Tab` treat `MEM` and `GPU` as separate stops in the normal panel focus cycle. Press `m` or `g` while either resource panel has focus to jump directly to `MEM` or `GPU`. For MEM, `Left` / `Right` move between columns and `Up` / `Down` select a row within the current column. For GPU, `Left` / `Right` change the adapter and `Up` / `Down` select a row. `Space` or double-click adds or removes the selected row in the Graph Workspace.
-All nine MEM rows are visible at once under the title `MEM`. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.
+MEM metrics and per-adapter GPU metrics retain 7,200 one-second samples and do not depend on the Tracking List. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.
 
 ### MEM left column: Overview
 
@@ -105,11 +106,7 @@ GPU Engine instance names are parsed for PID, LUID, physical-engine index, engin
 
 ## CPU Panel
 
-The `CPU` panel is the rightmost compact system-pressure display in the top panel row, after the MEM/GPU resource region and `NW/DISK`. Its width depends on the fixed summary rows rather than the number of logical CPUs.
-
-`Up` / `Down` moves through `Usage`, `Threads`, `Processes`, and the bottom `[Per-core Usage (P/E)]` button; `Home` / `End` jumps to the first or last item. `Space` or double-click adds or removes a selected metric in the Graph Workspace. `Enter` opens the dialog when the Per-core button has focus; clicking the button opens it directly. `Enter` or `Esc` closes the dialog. The button uses the shared focus-surface background and bold text while hovered.
-
-Like registered values in `PROCESSES`, MEM, GPU, and `NW/DISK`, a registered `Usage`, `Threads`, or `Processes` value is green and the active Graph value is bold. `Freq(P/E)` is display-only. Source panels do not show Graph slot ordinals or reserve width for them.
+`Usage`, `Threads`, and `Processes` are Graph sources. `Freq(P/E)` and the per-core values are display-only and are not recorded.
 
 | Display | Log field | Description | Primary source | Format |
 |---|---|---|---|---|
@@ -124,10 +121,8 @@ If P/E classification is unavailable or all logical CPUs report the same `Effici
 
 ## NW/DISK Activity
 
-The middle of the top panel shows `NW/DISK`, a compact System Activity view for network and disk counters.
-Pressing `i` opens `System Info` as a dialog instead of replacing this panel.
+`NW/DISK` displays compact network and disk activity counters.
 These values are sampled once per screen update and are stored in recording frames so Log view can show the recorded values.
-When the `NW/DISK` panel has focus, `Up` / `Down` select a metric and `Space` or double-click adds or removes it in the Graph Workspace, matching the MEM/GPU behavior.
 
 | Display name | Log field | Description | Primary source | Display format |
 |---|---|---|---|---|
@@ -141,7 +136,7 @@ Unavailable values are displayed as `--` and omitted from recording frames.
 
 ## System Info
 
-The `System Info` dialog is not part of metric history. It describes the current host, including while the display is paused or a recording is open in Log view; live System Activity and CPU summaries stay in the top panels. Opening the dialog performs no collection. It uses host metadata captured once during startup and capacity data from the latest live `Snapshot` produced by the sampling worker.
+System Info fields describe the current host rather than a historical sample. Field collection and lifecycle are defined in [Process Investigation](process-investigation.md).
 
 | Display name | Description | Primary source |
 |---|---|---|
@@ -157,13 +152,11 @@ The `System Info` dialog is not part of metric history. It describes the current
 | `GPU n` | Adapter name plus dedicated and shared capacities. Each hardware adapter has its own row. | DXGI adapter description |
 | `Disk x` | Free and total capacity for each logical drive. | `GetLogicalDrives`, `GetDiskFreeSpaceExW` |
 
-Rendering and clipboard output consume the same ordered field list. `Ctrl+C` copies every field as plain `Label: value` text even when a small terminal clips later rows. The footer is `Ctrl+C Copy  Enter/Esc Close`.
+Rendering and clipboard output consume the same ordered field list. Clipboard output includes every field as plain `Label: value` text even when a small terminal clips later rows.
 
 ## Process Info
 
-Pressing `Enter` on the Processes panel opens a responsive, tabbed `Process Info` dialog for the selected process. The dialog keeps one fixed `ProcessIdentity` across its tabs. It has a maximum outer size and shrinks independently in width and height to fit the terminal's available body area.
-
-Live static Process Info is collected on a worker thread after the dialog target has been stable for 200 ms. The dialog immediately uses the selected `ProcessRow` as a fallback for recorded fields, so its metric history does not wait for static collection.
+Process Info exposes Image and Metrics fields for one fixed process identity. Collection ownership, asynchronous target safety, and dialog lifecycle are defined in [Process Investigation](process-investigation.md).
 
 The `Image` tab displays these values:
 
@@ -231,9 +224,8 @@ In `DISPLAY PAUSED`, both the current Snapshot and history come from the paused 
 
 ## Open Files
 
-`f` (with the Processes panel focused) opens Process Info on its `Files` tab and displays disk file handles for the selected live process, grouped by path. Switching to `Files` from another Process Info tab lazily starts the same collection for the dialog's fixed target.
+The Process Info `Files` tab displays disk file handles for the selected live process, grouped by path.
 This is a supporting investigation tool after an increase in `Hndl` has been found, not a metric that is sampled continuously.
-While the `Files` tab is active, `Ctrl+U` refreshes the list on demand without queuing another request if a collection is already running.
 
 Sources are `NtQuerySystemInformation(SystemExtendedHandleInformation)`, `DuplicateHandle`, `GetFileType(FILE_TYPE_DISK)`, and `GetFinalPathNameByHandleW`.
 The app displays what can be collected with normal user permissions. Permission failures and handles that cannot be duplicated are treated as uncollected counts or `<access denied>`.
@@ -247,21 +239,17 @@ Usually this is only the path. If the same path has multiple handles, copy `path
 
 ## Loaded DLLs
 
-The Process Info `DLLs` tab explicitly takes a point-in-time snapshot of DLL modules loaded by the fixed live process target. It is not part of normal sampling, recording, or Log view. The collector runs on its own worker so Toolhelp enumeration and file metadata reads do not block input, drawing, Open Files, or the sampling worker.
-
-The collector combines native and WOW64 Toolhelp module snapshots, excludes the main executable and non-DLL modules, removes duplicate paths case-insensitively, and sorts by DLL name then directory. `ERROR_BAD_LENGTH` snapshot failures are retried up to three times. Process identity is checked before and after collection so a result from an exited process or reused PID is rejected.
+The Process Info `DLLs` tab displays a point-in-time snapshot of DLL modules loaded by the fixed live process target. It is not a sampled metric and is not recorded. The list excludes the main executable and non-DLL modules, removes duplicate paths case-insensitively, and sorts by DLL name then directory.
 
 The table exposes `DLL`, `Company`, `Product Version`, `File Version`, `Modified`, and `Directory`. Version-resource or file-metadata failures remain per-file values such as `<not available>` or `<missing>` and do not remove that DLL from the list. Narrow layouts prioritize DLL name, file version, modified time, and directory; the selected-row detail retains every full value.
 
-The filter searches every displayed field. `Ctrl+U` takes a new snapshot without queuing a duplicate request, and the previous successful snapshot remains visible while refreshing or after a refresh error. `Ctrl+C` copies only the selected DLL's full path. Log view displays `Not recorded in Log view.` and never starts the DLL worker.
+The filter searches every displayed field. Clipboard output contains only the selected DLL's full path. Collection and Log-view lifecycle are defined in [Process Investigation](process-investigation.md).
 
 ## Process Environment
 
-The Process Info `Environment` tab is an explicit, best-effort Windows 11 x64 investigation action. It reads the fixed live target's remote environment block only when the tab is first activated or `Ctrl+U` requests a refresh. It is not part of normal sampling, recording, or Log view, and the in-memory result is cleared when Process Info closes because values may contain passwords, tokens, or other secrets.
+The Process Info `Environment` tab displays a best-effort snapshot of the fixed live target's remote environment block. Environment values are not metrics and never enter normal sampling, recording, export, or Log view.
 
-The independent Environment worker distinguishes native x64 and WOW64 targets, queries the appropriate PEB, follows pointer-width-specific `ProcessParameters` and environment pointers, and reads UTF-16LE memory with `ReadProcessMemory`. Collection is limited to 4 MiB and requires a double-null terminator. Null or overflowing pointers, unreadable or partial regions, odd byte counts, invalid UTF-16, unsupported architecture, access denial, process exit, and identity change become typed unavailable states rather than raw addresses or OS status values.
-
-Entries are split at the first `=`. Windows per-drive entries such as `=C:=C:\work` keep `=C:` as the name by using the second separator. Empty values are valid; rows without a separator are counted and skipped. Names are sorted case-insensitively. The filter searches both names and values, and `Ctrl+C` copies only the selected `NAME=value` without a header. Status and error text never includes an environment value.
+Entries are split at the first `=`. Windows per-drive entries such as `=C:=C:\work` keep `=C:` as the name by using the second separator. Empty values are valid; rows without a separator are counted and skipped. Names are sorted case-insensitively. The filter searches both names and values, and clipboard output contains only the selected `NAME=value` without a header. Status and error text never includes an environment value.
 
 Log view displays `Not recorded in Log view.` and does not open a process or read remote memory. Recording and export schemas do not include Environment results.
 
@@ -326,9 +314,11 @@ The `B-A` value in each Graph card title uses the same metric-specific format as
 
 Recording logs are JSON Lines. The current writer outputs schema version 3 and the reader loads schema versions 2 and 3.
 
+The current schema-v3 writer shape is also available as a machine-readable [JSON Schema for each record line](schemas/recording-v3-line.schema.json). Cross-record ordering and identity rules remain normative in this document.
+
 At recording start, the writer copies the working Tracking List into the recording session. That fixed session copy supplies process matching until recording stops and is written once in the schema-v3 session record. The working list cannot be edited through the UI during recording.
 
-The Recording start dialog selects an aggregation interval of `1s`, `2s`, `5s`, or `10s`; `1s` is the default. The writer collects that many one-second snapshots and writes one representative frame. Numeric values are arithmetic means of the values available in the window. Missing values and an absent process do not contribute zero. Process values are aggregated independently by `(PID, name, start_time)`, and GPU values are aggregated independently by adapter LUID. Floating-point metrics remain floating point; averaged byte and count metrics are rounded to the nearest integer. The representative frame uses the final snapshot timestamp in the window.
+Recording uses an aggregation interval of `1s`, `2s`, `5s`, or `10s`; `1s` is the default. The writer collects that many one-second snapshots and writes one representative frame. Numeric values are arithmetic means of the values available in the window. Missing values and an absent process do not contribute zero. Process values are aggregated independently by `(PID, name, start_time)`, and GPU values are aggregated independently by adapter LUID. Floating-point metrics remain floating point; averaged byte and count metrics are rounded to the nearest integer. The representative frame uses the final snapshot timestamp in the window.
 
 Aggregation deliberately smooths short spikes. `1s` preserves the finest recorded detail, while longer intervals reduce file size, selected-log loading work, and Log-view memory for long-term trends. Stopping, quitting, or reaching the 24-hour limit flushes a partial final window before the end record so short or non-aligned recordings remain loadable.
 
@@ -410,10 +400,10 @@ A process sample is `[process_id, f64_values, u64_values]`.
 
 | Array | Index order |
 |---|---|
-| `f64_values` | CPU%, GPU% |
+| `f64_values` | CPU%, GPU%, reserved, reserved, reserved |
 | `u64_values` | private bytes, working set, working-set private, working-set shareable, threads, handles, USER objects, GDI objects, GPU dedicated, GPU shared, .NET heap, I/O read bytes/s, I/O write bytes/s, .NET GC committed, .NET GC fragmentation, .NET allocation bytes/s, .NET Gen0 heap, .NET Gen1 heap, .NET Gen2 heap, .NET LOH, .NET POH |
 
-Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers. For aggregated frames, those integers are the rounded arithmetic means described above. Process metric arrays must use the current fixed lengths; obsolete schema-v3 process arrays are not padded or truncated.
+Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Process `f64_values` positions 2 through 4 are retained as `null` reservations for the removed .NET GC-rate metrics, and legacy values in those positions are ignored when an older schema-v3 log is loaded. Integer byte and count values remain exact JSON integers. For aggregated frames, those integers are the rounded arithmetic means described above. The schema-v3 reader accepts older shorter process arrays and pads the newly appended positions as unavailable.
 
 An end payload is `[ended_at_ms, reason]`. The current writer uses `stopped` for an explicit stop or quit and `duration_limit` for the automatic 24-hour stop. A missing end record is valid after interruption; the last complete frame remains loadable.
 
@@ -550,3 +540,13 @@ Every optional MEM, GPU, and process field is omitted when unavailable. Later sc
 
 In schema version 2, `metrics` contains only values that were collected. Values that could not be collected were normally omitted; the reader also accepts `null` as a missing value.
 Missing values are displayed as `--` in the UI and are not treated as 0 in Graph.
+
+## References
+
+- [About Windows Performance Counters](https://learn.microsoft.com/en-us/windows/win32/perfctrs/about-performance-counters)
+- [Collecting Performance Data with PDH](https://learn.microsoft.com/en-us/windows/win32/perfctrs/collecting-performance-data)
+- [`PERFORMANCE_INFORMATION` structure](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information)
+- [`GetGuiResources`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getguiresources)
+- [`GetLogicalProcessorInformationEx`](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlogicalprocessorinformationex)
+- [.NET runtime metrics](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics-runtime)
+- [Well-known .NET EventCounters](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters)

@@ -1168,6 +1168,7 @@ mod tests {
             processes[0].1[crate::app::log_format::process_f64::CPU_PERCENT],
             Some(15.0)
         );
+        assert!(processes[0].1[2..=4].iter().all(Option::is_none));
         assert_eq!(
             processes[0].2[crate::app::log_format::process_u64::PRIVATE_BYTES],
             Some(101)

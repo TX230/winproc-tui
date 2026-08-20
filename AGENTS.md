@@ -9,8 +9,14 @@ This repository is the development repository for `winproc-tui`.
 
 This repository has specifications under `docs/`. Before changing implementation or explanations, read the documents relevant to the requested work.
 
-- `docs/metrics.md`: Metrics, data sources, display formats, CPU% semantics, sampling frequency, and recording logs.
-- `docs/architecture.md`: Responsibility boundaries, runtime data flow, design decisions, major state, invariants, and testing approach.
+- `docs/architecture.md`: System-wide responsibility boundaries, runtime data flow, and cross-cutting design decisions.
+- `docs/tracking-and-history.md`: Tracking intent, process identity, named lists, Ghost Rows, and Live-history retention.
+- `docs/graph-workspace.md`: Graph identity, shared time and A/B state, Samples, ordering, and responsive layout.
+- `docs/process-investigation.md`: System Info, Process Info, Files, DLLs, Environment, and asynchronous target safety.
+- `docs/recording-and-log-view.md`: Live / Recording / Log-view transitions, session ownership, failures, and log loading.
+- `docs/metrics.md`: Metrics, data sources, display formats, CPU% semantics, sampling frequency, aggregation, and recording schemas.
+- `docs/dotnet-metrics-collection.md`: .NET diagnostics IPC, EventPipe parsing, fallbacks, and runtime-specific collection details.
+- `docs/schemas/README.md`: Machine-readable recording-schema artifacts and their synchronization rules.
 - `docs/release-workflow.md`: Release tagging, packaging, and GitHub Release procedure.
 - `README.ja.md`: Japanese user-facing overview.
 - `README.md`: English user-facing overview for GitHub. Keep it synchronized with `README.ja.md`.
@@ -38,10 +44,14 @@ If the specifications and implementation conflict, inspect the implementation fi
 
 - In general, work on the change requested by the user. If the user selects a GitHub Issue, work on exactly that one issue.
 - Before implementing, read the target issue or request and related specifications. Do not mix requirements, design, and implementation instructions.
-- If metrics, data sources, display formats, or recording log values change, update `docs/metrics.md`.
-- If responsibility boundaries, runtime data flow, design decisions, major state, invariants, or the testing approach change, update `docs/architecture.md`.
-- If user-facing behavior changes, update Help, Footer, README, tests, and source as appropriate.
-- Keep exact key lists, colors, emphasis, cell widths, marker shapes, and drawing positions in implementation and tests rather than expanding `docs/architecture.md` with rendering details.
+- If metrics, data sources, display formats, aggregation, or recording fields change, update `docs/metrics.md`. When the schema-v3 record shape or positional arrays change, update `docs/schemas/recording-v3-line.schema.json` and its parity tests in the same work item.
+- If system-wide responsibility boundaries, runtime flow, or cross-cutting design decisions change, update `docs/architecture.md`.
+- If Tracking List, process-identity, Ghost Row, or Live-history behavior changes, update `docs/tracking-and-history.md`.
+- If Graph, Samples, A/B, ordering, or workspace-layout state changes, update `docs/graph-workspace.md`.
+- If System Info or Process Info collection and lifecycle behavior changes, update `docs/process-investigation.md`.
+- If Recording, log loading, or Log-view lifecycle changes, update `docs/recording-and-log-view.md`.
+- If user-facing behavior changes, update Help, Footer, tests, source, and the README only when positioning, installation, first-use workflow, or a major visible capability is affected.
+- Keep exact key lists, colors, emphasis, cell widths, marker shapes, focus order, and drawing positions in Help, Footer, implementation, and tests rather than expanding design documents with rendering details.
 - If release contents, packaging checks, tagging, or publishing steps change, update `scripts/package-release.ps1` and `docs/release-workflow.md` together.
 - After implementation, perform a documentation-impact check and update only the canonical owners affected by the change in the same work item.
 - If a technical choice needs durable context, keep it in the related specification, architecture document, or GitHub Issue.
@@ -54,7 +64,7 @@ If the specifications and implementation conflict, inspect the implementation fi
 - Keep commits scoped. Do not include unrelated dirty files or local-only artifacts.
 - When a coherent unit of AI work is complete, commit it promptly.
 - Do not commit ignored local-only files such as `notes/` or `logs/` unless the user explicitly asks to track them.
-- When committing implementation work, include updates to the affected canonical documentation in the same commit. Do not change `docs/architecture.md` mechanically when its design-level content is unaffected.
+- When committing implementation work, include updates to the affected canonical documentation in the same commit. Do not change design documents mechanically when their owned behavior is unaffected.
 - Reference the relevant GitHub Issue in the commit message or maintainer-requested pull request when useful.
 - Disambiguate GitHub item numbers in human-facing text and commit titles: write `Issue #n` for Issues and `PR #n` for pull requests. Avoid a bare `#n` except where GitHub syntax requires it, such as `Closes #n` or `Refs #n`.
 
@@ -99,7 +109,7 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Write GitHub Issue titles and bodies in English.
 - Use only two issue types: Bug report and Feature request.
 - Issue templates are intentionally light. At minimum, a goal or a description of what is broken is required. Background, scope, acceptance criteria, and test plan are optional and can be added when implementation actually starts or in related commits on the agent branch.
-- Keep durable product behavior in Help, Footer, README, tests, source, and this file when it is an agent-facing invariant. Keep metric definitions in `docs/metrics.md` and architecture in `docs/architecture.md`.
+- Keep complete controls and contextual behavior in Help, Footer, tests, and source. Keep the README focused on positioning, installation, first-use workflows, and major capabilities. Route durable design behavior to the owning document under `docs/`, and keep agent-facing invariants in this file.
 - Issue discussion, triage, labels, and status changes do not require repository commits by themselves.
 - Do not reintroduce `docs/backlog/index.md` or `docs/backlog/BL-xxx.md` unless the user explicitly reverses this policy.
 
@@ -167,8 +177,8 @@ git commit -m "<message> (Issue #n)" -m "Closes #n"
 - Use arrow glyphs such as `↑/↓` and `←/→` in on-screen shortcut guidance. In `PROCESSES`, MEM, GPU, NW/DISK, and CPU, indicate a registered Graph by coloring the metric value instead of reserving cells for its slot ordinal; use bold only for the active Graph value.
 - Clickable controls outside modal dialogs must change to the shared focus-surface background and bold text while hovered by the mouse; hover must not reuse warning or destructive selection colors.
 - Format shortcut guidance inside confirmation dialogs exactly like the screen footer: show each key first and its action label in the normal text style, then separate different actions with two spaces. Group keys that perform the same action with `/`, such as `Enter/Esc Close` or `Enter/Esc/n Continue`. In warning-border dialogs, render every key group in the warning color and bold text so the key color matches the border; do not reserve that style only for the affirmative action. Do not use prose-like slash-separated sentences such as `Enter selects / Esc cancels`.
-- Detailed user-facing controls and UI behavior belong in README, Help, Footer, tests, and implementation. Metric definitions belong in `docs/metrics.md`; design-level boundaries and invariants belong in `docs/architecture.md`.
-- When changing controls or UI behavior, update the canonical user-facing documentation and tests together. Help, Footer, README, tests, and actual key handling must stay aligned.
+- Complete controls and contextual UI behavior belong in Help, Footer, tests, and implementation. The README covers only the controls required for first use and links to in-app Help for the complete reference. Metric definitions and feature-design invariants belong in their canonical documents under `docs/`.
+- When changing controls or UI behavior, update Help, Footer, tests, actual key handling, and the owning design document as applicable. Update the README only when its first-use workflow or description of a major capability changes.
 
 ## Implementation Review Points
 

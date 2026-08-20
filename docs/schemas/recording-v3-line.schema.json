@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TX230/winproc-tui/blob/main/docs/schemas/recording-v3-line.schema.json",
+  "title": "winproc-tui schema-v3 JSON Lines record",
+  "description": "One non-empty line emitted by the current schema-v3 recording writer.",
+  "oneOf": [
+    { "$ref": "#/$defs/sessionRecord" },
+    { "$ref": "#/$defs/processRecord" },
+    { "$ref": "#/$defs/gpuRecord" },
+    { "$ref": "#/$defs/frameRecord" },
+    { "$ref": "#/$defs/endRecord" }
+  ],
+  "$defs": {
+    "nullableU64": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "nullableNumber": {
+      "type": ["number", "null"]
+    },
+    "sessionRecord": {
+      "type": "object",
+      "properties": {
+        "s": { "$ref": "#/$defs/session" }
+      },
+      "required": ["s"],
+      "additionalProperties": false
+    },
+    "session": {
+      "type": "object",
+      "properties": {
+        "v": { "const": 3 },
+        "id": { "type": "string", "pattern": "^[0-9]{14}$" },
+        "app": { "type": "string" },
+        "host": { "type": "string" },
+        "start": { "type": "integer" },
+        "interval": { "enum": [1, 2, 5, 10] },
+        "tracked": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "columns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sort": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "string" },
+            { "enum": ["asc", "desc"] }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "system": { "$ref": "#/$defs/sessionSystem" }
+      },
+      "required": ["v", "id", "app", "host", "start", "interval", "tracked", "columns", "sort", "system"],
+      "additionalProperties": false
+    },
+    "sessionSystem": {
+      "type": "object",
+      "properties": {
+        "cpu": { "type": "string" },
+        "cpu_mhz": { "type": "integer", "minimum": 0 },
+        "topology": { "type": "string" },
+        "cache": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "processRecord": {
+      "type": "object",
+      "properties": {
+        "p": { "$ref": "#/$defs/processDefinition" }
+      },
+      "required": ["p"],
+      "additionalProperties": false
+    },
+    "processDefinition": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "title": "process_id" },
+        { "type": "integer", "minimum": 0, "title": "pid" },
+        { "type": "string", "title": "name" },
+        { "$ref": "#/$defs/nullableU64", "title": "start_time" },
+        { "type": ["string", "null"], "title": "path" }
+      ],
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "gpuRecord": {
+      "type": "object",
+      "properties": {
+        "g": { "$ref": "#/$defs/gpuDefinition" }
+      },
+      "required": ["g"],
+      "additionalProperties": false
+    },
+    "gpuDefinition": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "title": "adapter_id" },
+        { "type": "integer", "minimum": 0, "title": "luid_high" },
+        { "type": "integer", "minimum": 0, "title": "luid_low" },
+        { "type": ["string", "null"], "title": "name" }
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "frameRecord": {
+      "type": "object",
+      "properties": {
+        "f": { "$ref": "#/$defs/frame" }
+      },
+      "required": ["f"],
+      "additionalProperties": false
+    },
+    "frame": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "title": "captured_at_ms" },
+        { "$ref": "#/$defs/systemMetrics" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/processSample" },
+          "title": "process_samples"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "systemMetrics": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/systemU64Values" },
+        { "$ref": "#/$defs/nullableNumber", "title": "disk_queue_length" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gpuSample" },
+          "title": "gpu_samples"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "systemU64Values": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/nullableU64", "title": "physical_memory_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "total_memory_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "available_memory_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "modified_memory_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "standby_memory_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "free_zeroed_memory_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "committed_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "commit_limit_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "paged_pool_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "nonpaged_pool_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "pages_input_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "pages_output_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "process_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "thread_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "cpu_percent" },
+        { "$ref": "#/$defs/nullableU64", "title": "cpu_user_percent" },
+        { "$ref": "#/$defs/nullableU64", "title": "cpu_kernel_percent" },
+        { "$ref": "#/$defs/nullableU64", "title": "disk_read_bytes_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "disk_write_bytes_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "network_received_bytes_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "network_sent_bytes_per_sec" }
+      ],
+      "minItems": 21,
+      "maxItems": 21
+    },
+    "gpuSample": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "title": "adapter_id" },
+        { "$ref": "#/$defs/gpuF64Values" },
+        { "$ref": "#/$defs/gpuU64Values" }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "gpuF64Values": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/nullableNumber", "title": "utilization_percent" },
+        { "$ref": "#/$defs/nullableNumber", "title": "encode_average_percent" },
+        { "$ref": "#/$defs/nullableNumber", "title": "encode_max_percent" },
+        { "$ref": "#/$defs/nullableNumber", "title": "decode_average_percent" },
+        { "$ref": "#/$defs/nullableNumber", "title": "decode_max_percent" }
+      ],
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "gpuU64Values": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/nullableU64", "title": "encode_engine_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "decode_engine_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "dedicated_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dedicated_total_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "shared_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "shared_total_bytes" }
+      ],
+      "minItems": 6,
+      "maxItems": 6
+    },
+    "processSample": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "title": "process_id" },
+        { "$ref": "#/$defs/processF64Values" },
+        { "$ref": "#/$defs/processU64Values" }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "processF64Values": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/nullableNumber", "title": "cpu_percent" },
+        { "$ref": "#/$defs/nullableNumber", "title": "gpu_percent" },
+        { "$ref": "#/$defs/nullableNumber", "title": "reserved_2" },
+        { "$ref": "#/$defs/nullableNumber", "title": "reserved_3" },
+        { "$ref": "#/$defs/nullableNumber", "title": "reserved_4" }
+      ],
+      "minItems": 0,
+      "maxItems": 5
+    },
+    "processU64Values": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/nullableU64", "title": "private_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "workset_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "workset_private_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "workset_shareable_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "thread_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "handle_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "user_object_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "gdi_object_count" },
+        { "$ref": "#/$defs/nullableU64", "title": "gpu_dedicated_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "gpu_shared_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_heap_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "io_read_bytes_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "io_write_bytes_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_committed_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_fragmentation_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_allocation_bytes_per_sec" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_gen0_heap_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_gen1_heap_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_gen2_heap_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_loh_bytes" },
+        { "$ref": "#/$defs/nullableU64", "title": "dotnet_gc_poh_bytes" }
+      ],
+      "minItems": 0,
+      "maxItems": 21
+    },
+    "endRecord": {
+      "type": "object",
+      "properties": {
+        "e": { "$ref": "#/$defs/end" }
+      },
+      "required": ["e"],
+      "additionalProperties": false
+    },
+    "end": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "title": "ended_at_ms" },
+        { "enum": ["stopped", "duration_limit"], "title": "reason" }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    }
+  }
+}

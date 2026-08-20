@@ -1520,7 +1520,7 @@ mod tests {
     }
 
     #[test]
-    fn v3_log_loads_all_active_metrics() {
+    fn v3_log_loads_active_metrics_and_ignores_reserved_gc_rate_positions() {
         let path = unique_log_path("v3-all-metrics");
         let captured_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
             .unwrap()
@@ -1575,7 +1575,7 @@ mod tests {
                 ),
                 vec![V3ProcessSample(
                     7,
-                    [Some(12.5), Some(5.5)],
+                    [Some(12.5), Some(5.5), Some(0.5), Some(1.5), Some(2.5)],
                     [
                         Some(1_000),
                         Some(900),
