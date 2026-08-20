@@ -282,6 +282,10 @@ fn process_info_image_lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'st
         ("Process", process_identity),
         ("User", info_value(info.map(|info| &info.user))),
         ("Architecture", info_value(info.map(|info| &info.arch))),
+        (
+            ".NET version",
+            info_value(info.map(|info| &info.dotnet_version)),
+        ),
         ("Parent", info_value(info.map(|info| &info.parent_process))),
         ("Started", started),
         ("Executable", executable),

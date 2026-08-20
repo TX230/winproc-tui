@@ -60,6 +60,7 @@ Move focus to a Graph or Samples table, then use `Left` / `Right` to select a sa
 6. Press `Ctrl+L` to select and inspect a saved log.
 
 Recording requires at least one process name in the Tracking List. It can still start when no matching process is currently running. MEM, per-adapter GPU, aggregate CPU values, and System Activity require no registration and are recorded in every frame; per-core usage is not recorded, and the process list remains empty until a match appears.
+Live .NET 8/9/10 processes are detected once per process identity and show managed heap, Gen0/Gen1/Gen2/LOH/POH sizes, GC committed and fragmented memory, allocation rate, and generation collection rates without requiring Tracking List registration. .NET Framework 4.8 exposes total heap, Gen1, Gen2, and LOH through legacy counters; Gen0 and POH remain `--`. Unsupported, inaccessible, or unavailable runtime values also remain `--`; recording still includes only tracked processes.
 The recording start dialog shows how many names will be captured and selects the Recording aggregation interval. That Tracking List and interval are fixed for the session: `t`, `Ctrl+T`, and Process/PID-cell Tracking List actions are unavailable until recording stops, while `Shift+T` can still change only the Tracked-only display.
 
 The Tracking Lists dialog loads, saves, renames, and deletes named process lists. `Empty (default)` clears the working list without changing Tracked-only. `Tracking List startup` is a left-aligned bordered radio group for `Resume last`, `Choose list`, and `Start empty`; focus it with `Tab`, change it with `Left` / `Right` / `Space`, and close the dialog with `Enter` or `Esc`. Loading a list may ask for confirmation before discarding retained history for removed names. When removing one tracked name requires that confirmation, `Enter` removes it and `Esc` cancels. Press `F1` or `?` in the app for the complete dialog controls.
@@ -88,12 +89,12 @@ In the quit confirmation, `Enter` or `q` quits and `Esc` cancels.
 
 ## Features
 
-- **Monitoring**: Shows two pages of memory pressure metrics, per-adapter GPU/Encode/Decode load and memory, network and disk activity, a compact CPU panel, and key per-process metrics including `WS Shrbl`. Sorting, column selection, filtering, and jump search help you narrow down the target.
+- **Monitoring**: Shows two pages of memory pressure metrics, per-adapter GPU/Encode/Decode load and memory, network and disk activity, a compact CPU panel, and key per-process metrics including `WS Shrbl`, modern .NET runtime metrics, and partial .NET Framework 4.8 heap metrics. Sorting, column selection, filtering, and jump search help you narrow down the target.
 - **Graphing**: Keeps up to 16 selected metrics in an ordered, scrollable Graph Workspace with one synchronized Samples inspector and recent history for comparison.
 - **Tracking Lists**: Registers process names of interest and can show only tracked rows. Lists can be named, saved, and switched for different tasks, and startup can resume the last working list, choose a saved list, or start empty. Last collected values remain visible after processes exit. MEM, GPU, average CPU usage, and System Activity always retain history without registration.
 - **Recording and Log view**: Saves tracked processes, MEM, per-adapter GPU, CPU average, and system activity values as JSON Lines logs and opens them later in the same Processes / Graph / Samples / A/B layout.
 - **A/B comparison**: Marks any two points as A and B, then shows the value difference and elapsed time between them.
-- **Process investigation**: Opens a responsive, tabbed Process Info dialog for metrics, executable details, and files currently open by the selected live process.
+- **Process investigation**: Opens a responsive, tabbed Process Info dialog for metrics, executable and loaded .NET runtime details, and files currently open by the selected live process.
 - **Interaction support**: `Ctrl+C` copies the selected row to the clipboard, and mouse-based row selection and scrollbars are supported.
 
 ## When This Helps

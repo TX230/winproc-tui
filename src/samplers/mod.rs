@@ -1,6 +1,7 @@
 mod counters;
 mod cpu;
 mod disk;
+mod dotnet_runtime;
 pub(crate) mod gpu;
 pub(crate) mod memory;
 pub(crate) mod open_files;
@@ -25,6 +26,7 @@ use crate::model::{GpuSample, ProcessExtraMetrics, ProcessRow, Snapshot};
 pub(crate) use counters::{ProcessCounterSampler, SystemCounterSampler};
 use cpu::collect_cpu_summary;
 use disk::collect_disk_usages;
+use dotnet_runtime::DotNetRuntimeSampler;
 use gpu::{GpuSampler, merge_process_gpu_metrics};
 use memory::{collect_performance_info, map_memory_counters};
 use process::collect_process_extras;
@@ -34,9 +36,10 @@ pub(crate) struct CollectSnapshotResult {
     pub(crate) warning: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SampleRequest {
     Sample,
+    SuspendDotNet,
     Stop,
 }
 
@@ -54,6 +57,7 @@ pub(crate) struct SamplingRuntime {
     options: SamplingOptions,
     sample_index: u64,
     cached_slow_process_extras: HashMap<u32, ProcessExtraMetrics>,
+    dotnet_runtime_sampler: DotNetRuntimeSampler,
 }
 
 const SLOW_SAMPLE_INTERVAL: u64 = 5;
@@ -86,10 +90,19 @@ impl SamplingRuntime {
             options,
             sample_index: 0,
             cached_slow_process_extras: HashMap::new(),
+            dotnet_runtime_sampler: DotNetRuntimeSampler::new(),
         }
     }
 
     pub(crate) fn collect(&mut self) -> CollectSnapshotResult {
+        self.collect_internal(false)
+    }
+
+    fn collect_live(&mut self) -> CollectSnapshotResult {
+        self.collect_internal(true)
+    }
+
+    fn collect_internal(&mut self, collect_dotnet: bool) -> CollectSnapshotResult {
         let collect_slow_metrics = self.sample_index % SLOW_SAMPLE_INTERVAL == 0;
         self.sample_index = self.sample_index.saturating_add(1);
         collect_snapshot(
@@ -100,6 +113,8 @@ impl SamplingRuntime {
             collect_slow_metrics,
             self.options,
             &mut self.cached_slow_process_extras,
+            &mut self.dotnet_runtime_sampler,
+            collect_dotnet,
         )
     }
 }
@@ -113,11 +128,12 @@ impl SamplingWorker {
             while let Ok(request) = request_rx.recv() {
                 match request {
                     SampleRequest::Sample => {
-                        let result = runtime.collect();
+                        let result = runtime.collect_live();
                         if result_tx.send(result).is_err() {
                             break;
                         }
                     }
+                    SampleRequest::SuspendDotNet => runtime.dotnet_runtime_sampler.suspend(),
                     SampleRequest::Stop => break,
                 }
             }
@@ -134,6 +150,10 @@ impl SamplingWorker {
         self.request_tx
             .send(SampleRequest::Sample)
             .context("sampling worker is unavailable")
+    }
+
+    pub(crate) fn suspend_dotnet(&self) {
+        let _ = self.request_tx.send(SampleRequest::SuspendDotNet);
     }
 
     pub(crate) fn try_recv(&self) -> std::result::Result<CollectSnapshotResult, TryRecvError> {
@@ -173,6 +193,8 @@ fn collect_snapshot(
     collect_slow_metrics: bool,
     options: SamplingOptions,
     cached_slow_process_extras: &mut HashMap<u32, ProcessExtraMetrics>,
+    dotnet_runtime_sampler: &mut DotNetRuntimeSampler,
+    collect_dotnet: bool,
 ) -> CollectSnapshotResult {
     system.refresh_memory();
     system.refresh_processes(ProcessesToUpdate::All, true);
@@ -227,11 +249,23 @@ fn collect_snapshot(
                 gpu_dedicated_bytes: extras.gpu_dedicated_bytes,
                 gpu_shared_bytes: extras.gpu_shared_bytes,
                 dotnet_heap_bytes: extras.dotnet_heap_bytes,
+                dotnet_gc_gen0_heap_bytes: None,
+                dotnet_gc_gen1_heap_bytes: extras.dotnet_gc_gen1_heap_bytes,
+                dotnet_gc_gen2_heap_bytes: extras.dotnet_gc_gen2_heap_bytes,
+                dotnet_gc_loh_bytes: extras.dotnet_gc_loh_bytes,
+                dotnet_gc_poh_bytes: None,
+                dotnet_gc_committed_bytes: None,
+                dotnet_gc_fragmentation_bytes: None,
+                dotnet_allocation_bytes_per_sec: None,
                 io_read_bytes_per_sec: extras.io_read_bytes_per_sec,
                 io_write_bytes_per_sec: extras.io_write_bytes_per_sec,
             }
         })
         .collect::<Vec<_>>();
+
+    if collect_dotnet {
+        dotnet_runtime_sampler.reconcile_and_apply(&mut processes);
+    }
 
     processes.sort_by(|left, right| {
         right

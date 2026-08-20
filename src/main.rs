@@ -296,6 +296,26 @@ mod tests {
     }
 
     #[test]
+    fn removed_gc_rate_columns_are_ignored_in_saved_config() {
+        let mut config = AppConfig::default();
+        config.process_table.preset = "Custom".to_string();
+        config.process_table.columns = vec![
+            ".NET GC0/s".to_string(),
+            "CPU%".to_string(),
+            ".NET GC2/s".to_string(),
+        ];
+        config.process_table.sort_by = ".NET GC1/s".to_string();
+
+        let runtime = build_runtime_config(config).unwrap();
+
+        assert_eq!(runtime.process_columns, vec![MetricColumn::CpuPercent]);
+        assert_eq!(
+            runtime.sort.column,
+            SortColumn::Metric(MetricColumn::WorksetPrivateBytes)
+        );
+    }
+
+    #[test]
     fn build_runtime_config_restores_and_clamps_column_width_overrides() {
         let mut config = AppConfig::default();
         config.process_table.column_widths.extend([
@@ -6771,8 +6791,8 @@ processes = ["api.exe", "worker.exe"]
 
         let narrow_buffer = render_app_to_buffer(&app, 35, 20);
         let narrow = buffer_to_text(&narrow_buffer);
-        assert!(narrow.contains("‹ 0/16 ›"), "{narrow}");
-        let (indicator_x, indicator_y) = find_text_position(&narrow_buffer, "‹ 0/16 ›")
+        assert!(narrow.contains("‹ 0/24 ›"), "{narrow}");
+        let (indicator_x, indicator_y) = find_text_position(&narrow_buffer, "‹ 0/24 ›")
             .expect("the zero-column indicator should render");
         app.on_mouse(
             left_click(indicator_x, indicator_y),
@@ -6781,8 +6801,8 @@ processes = ["api.exe", "worker.exe"]
         assert!(!app.watch_enabled);
 
         let wide = render_app_to_text(&app, 400, 20);
-        assert!(!wide.contains("‹ 1–16/16 ›"), "{wide}");
-        assert!(!wide.contains("‹ 0/16 ›"), "{wide}");
+        assert!(!wide.contains("‹ 1–24/24 ›"), "{wide}");
+        assert!(!wide.contains("‹ 0/24 ›"), "{wide}");
     }
 
     #[test]
@@ -10149,6 +10169,14 @@ processes = ["api.exe", "worker.exe"]
                 "GDI Objects",
                 "GPU Usage",
                 ".NET Heap",
+                ".NET Gen 0 Heap",
+                ".NET Gen 1 Heap",
+                ".NET Gen 2 Heap",
+                ".NET Large Object Heap",
+                ".NET Pinned Object Heap",
+                ".NET GC Committed",
+                ".NET GC Fragmentation",
+                ".NET Allocation Rate",
                 "GPU Dedicated Memory",
                 "GPU Shared Memory",
                 "I/O Read Throughput",
@@ -10173,15 +10201,22 @@ processes = ["api.exe", "worker.exe"]
                 .value,
             "800 Kbps"
         );
-        let compact = render_app_to_text(&app, 60, 40);
+        let compact = render_app_to_text(&app, 60, 50);
         for label in [
             "Private Bytes",
             "Working Set - Private",
             "Handles",
-            "GPU Dedicated Memory",
-            "I/O Write Throughput",
+            ".NET Pinned Object Heap",
         ] {
             assert!(compact.contains(label), "missing {label}: {compact}");
+        }
+        app.scroll_process_info_end();
+        let compact_end = render_app_to_text(&app, 60, 50);
+        for label in ["GPU Dedicated Memory", "I/O Write Throughput"] {
+            assert!(
+                compact_end.contains(label),
+                "missing {label}: {compact_end}"
+            );
         }
 
         app.ab_comparison = Some(app::AbComparison {
@@ -11243,6 +11278,7 @@ processes = ["api.exe", "worker.exe"]
         let first_page = render_app_to_text(&app, screen.width, screen.height);
         assert!(first_page.contains("User"), "{first_page}");
         assert!(first_page.contains("Architecture"), "{first_page}");
+        assert!(first_page.contains(".NET version"), "{first_page}");
         assert!(first_page.contains("Command line"), "{first_page}");
 
         app.scroll_process_info_end();
@@ -13463,6 +13499,7 @@ processes = ["api.exe", "worker.exe"]
             ppid: InfoValue::Value("1".to_string()),
             parent_process: InfoValue::Value("parent.exe / PID 1".to_string()),
             arch: InfoValue::Value("x64".to_string()),
+            dotnet_version: InfoValue::Value(".NET 10.0.2".to_string()),
             user: InfoValue::Value("test-user".to_string()),
             executable: InfoValue::Value(format!("C:/test/{name}")),
             command_line: InfoValue::Value(name.to_string()),
@@ -14789,6 +14826,14 @@ processes = ["api.exe", "worker.exe"]
                 gpu_dedicated_bytes: None,
                 gpu_shared_bytes: None,
                 dotnet_heap_bytes: None,
+                dotnet_gc_gen0_heap_bytes: None,
+                dotnet_gc_gen1_heap_bytes: None,
+                dotnet_gc_gen2_heap_bytes: None,
+                dotnet_gc_loh_bytes: None,
+                dotnet_gc_poh_bytes: None,
+                dotnet_gc_committed_bytes: None,
+                dotnet_gc_fragmentation_bytes: None,
+                dotnet_allocation_bytes_per_sec: None,
                 io_read_bytes_per_sec: None,
                 io_write_bytes_per_sec: None,
             })

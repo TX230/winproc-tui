@@ -24,8 +24,9 @@ use winapi::{
 
 use crate::{
     app::ProcessLifecycle,
-    model::{InfoValue, ProcessInfo, ProcessRow},
+    model::{InfoValue, ProcessInfo, ProcessModulesError, ProcessRow},
     platform::to_wide,
+    samplers::process_modules::loaded_module_paths,
 };
 
 #[derive(Debug, Clone)]
@@ -217,6 +218,7 @@ pub(crate) fn collect_process_info(
         .map(Path::new)
         .map(file_metadata_values)
         .unwrap_or_default();
+    let dotnet_version = process_dotnet_version(process.pid);
     let workset_bytes = format_optional_bytes(process.workset_bytes);
     let workset_private_bytes = format_optional_bytes(process.workset_private_bytes);
     ProcessInfo {
@@ -226,6 +228,7 @@ pub(crate) fn collect_process_info(
         ppid: InfoValue::from_option(ppid),
         parent_process: InfoValue::from_option(parent_process),
         arch: process_arch(process.pid),
+        dotnet_version,
         user: InfoValue::from_option(user),
         executable: executable_value,
         command_line: InfoValue::from_option(command_line),
@@ -248,6 +251,7 @@ fn exited_process_info(process: &ProcessRow) -> ProcessInfo {
         ppid: InfoValue::Exited,
         parent_process: InfoValue::Exited,
         arch: InfoValue::Exited,
+        dotnet_version: InfoValue::Exited,
         user: InfoValue::Exited,
         executable: InfoValue::Exited,
         command_line: InfoValue::Exited,
@@ -260,6 +264,86 @@ fn exited_process_info(process: &ProcessRow) -> ProcessInfo {
         workset_bytes: InfoValue::Exited,
         workset_private_bytes: InfoValue::Exited,
     }
+}
+
+fn process_dotnet_version(pid: u32) -> InfoValue {
+    match loaded_module_paths(pid) {
+        Ok(paths) => dotnet_version_from_module_paths(paths),
+        Err(ProcessModulesError::AccessDenied) => InfoValue::AccessDenied,
+        Err(ProcessModulesError::ProcessExited | ProcessModulesError::IdentityChanged) => {
+            InfoValue::Exited
+        }
+        Err(ProcessModulesError::QueryFailed) => InfoValue::NotAvailable,
+    }
+}
+
+fn dotnet_version_from_module_paths(paths: impl IntoIterator<Item = String>) -> InfoValue {
+    let mut coreclr = None;
+    let mut framework_clr = None;
+    for path in paths {
+        let module_name = Path::new(&path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        if module_name.eq_ignore_ascii_case("coreclr.dll") {
+            coreclr = Some(path);
+            break;
+        }
+        if module_name.eq_ignore_ascii_case("clr.dll") {
+            framework_clr = Some(path);
+        }
+    }
+
+    if let Some(path) = coreclr {
+        return runtime_version(&path, true)
+            .map(|version| InfoValue::Value(format!(".NET {version}")))
+            .unwrap_or(InfoValue::NotAvailable);
+    }
+    if let Some(path) = framework_clr {
+        return runtime_version(&path, false)
+            .map(|version| InfoValue::Value(format!(".NET Framework CLR {version}")))
+            .unwrap_or(InfoValue::NotAvailable);
+    }
+    InfoValue::Missing
+}
+
+fn runtime_version(path: &str, use_runtime_directory: bool) -> Option<String> {
+    if use_runtime_directory
+        && let Some(version) = Path::new(path)
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .filter(|name| looks_like_dotnet_runtime_version(name))
+    {
+        return Some(version.to_string());
+    }
+
+    let metadata = file_version_info(Path::new(path));
+    [&metadata.product_version, &metadata.file_version]
+        .into_iter()
+        .find_map(version_resource_value)
+}
+
+fn looks_like_dotnet_runtime_version(value: &str) -> bool {
+    let stable = value.split_once('-').map_or(value, |(stable, _)| stable);
+    let parts = stable.split('.').collect::<Vec<_>>();
+    parts.len() >= 3 && parts.iter().all(|part| part.parse::<u32>().is_ok())
+}
+
+fn version_resource_value(value: &InfoValue) -> Option<String> {
+    let InfoValue::Value(value) = value else {
+        return None;
+    };
+    let normalized = value.replace(", ", ".").replace(',', ".");
+    let version = normalized
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .split('+')
+        .next()
+        .unwrap_or_default();
+    let version = version.trim_matches('.');
+    (!version.is_empty()).then(|| version.to_string())
 }
 
 fn format_command_line(parts: &[OsString]) -> String {
@@ -551,6 +635,51 @@ mod tests {
         assert_eq!(
             command,
             "C:\\Program Files\\App\\app.exe --config C:\\work\\config.toml"
+        );
+    }
+
+    #[test]
+    fn coreclr_runtime_directory_identifies_the_loaded_dotnet_version() {
+        let value = dotnet_version_from_module_paths([
+            r"C:\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.36\coreclr.dll".to_string(),
+        ]);
+
+        assert_eq!(value, InfoValue::Value(".NET 6.0.36".to_string()));
+    }
+
+    #[test]
+    fn framework_clr_without_version_metadata_is_not_available() {
+        let value = dotnet_version_from_module_paths([r"C:\missing\clr.dll".to_string()]);
+
+        assert_eq!(value, InfoValue::NotAvailable);
+    }
+
+    #[test]
+    fn native_process_has_no_dotnet_version() {
+        assert_eq!(
+            dotnet_version_from_module_paths([r"C:\Windows\System32\kernel32.dll".to_string()]),
+            InfoValue::Missing
+        );
+    }
+
+    #[test]
+    fn runtime_version_parser_accepts_stable_and_preview_directories() {
+        assert!(looks_like_dotnet_runtime_version("8.0.25"));
+        assert!(looks_like_dotnet_runtime_version("9.0.0-preview.7"));
+        assert!(!looks_like_dotnet_runtime_version("application"));
+    }
+
+    #[test]
+    fn version_resource_parser_normalizes_windows_version_strings() {
+        assert_eq!(
+            version_resource_value(&InfoValue::Value(
+                "4, 8, 9037, 0 built by: NET481REL1".to_string()
+            )),
+            Some("4.8.9037.0".to_string())
+        );
+        assert_eq!(
+            version_resource_value(&InfoValue::Value("8.0.25+abcdef".to_string())),
+            Some("8.0.25".to_string())
         );
     }
 }

@@ -16,7 +16,7 @@ Live sampling is requested once per second. The header derives freshness from th
 
 ## Process Table Columns
 
-The Process table can select the 16 columns included in `MetricColumn::ALL`. All 16 are selected when no saved column selection exists.
+The Process table can select the 24 columns included in `MetricColumn::ALL`. All 24 are selected when no saved column selection exists.
 Most columns are numeric metrics that can be sorted, graphed, sampled, and recorded.
 `Full Path` is a text column for process identification; it can be displayed, sorted, copied, filtered, and recorded, but it is not a Graph metric.
 
@@ -32,7 +32,15 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | `USER` | `user_object_count` | Count of USER objects such as windows, menus, cursors, and icons. | `GetGuiResources(GR_USEROBJECTS)` | Integer |
 | `GDI` | `gdi_object_count` | Count of GDI objects such as bitmaps, brushes, pens, and fonts. | `GetGuiResources(GR_GDIOBJECTS)` | Integer |
 | `GPU%` | `gpu_percent` | Sum of the process's GPU engine utilization values, clamped to 100%. | PDH `\GPU Engine(pid_*)\Utilization Percentage` | `%` with 1 decimal place |
-| `.NET Heap` | `dotnet_heap_bytes` | Total .NET CLR managed heap size. | PDH `\.NET CLR Memory(*)\# Bytes in all Heaps` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Heap` | `dotnet_heap_bytes` | Managed heap size. | .NET 9/10 built-in metric `dotnet.gc.last_collection.heap.size`, summed across gen0, gen1, gen2, LOH, and POH; .NET 8 `System.Runtime` EventCounter `gc-heap-size`; legacy PDH `\.NET CLR Memory(*)\# Bytes in all Heaps` fallback | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Gen0` | `dotnet_gc_gen0_heap_bytes` | Generation 0 heap size after the last GC. | .NET 9/10 `dotnet.gc.last_collection.heap.size`, `gen0` tag; .NET 8 `System.Runtime` EventCounter `gen-0-size`; unavailable on .NET Framework because its similarly named PDH counter is an allocation threshold rather than the same measurement | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Gen1` | `dotnet_gc_gen1_heap_bytes` | Generation 1 heap size after the last GC. | .NET 9/10 `dotnet.gc.last_collection.heap.size`, `gen1` tag; .NET 8 `System.Runtime` EventCounter `gen-1-size`; .NET Framework PDH `\.NET CLR Memory(*)\Gen 1 heap size` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Gen2` | `dotnet_gc_gen2_heap_bytes` | Generation 2 heap size after the last GC. | .NET 9/10 `dotnet.gc.last_collection.heap.size`, `gen2` tag; .NET 8 `System.Runtime` EventCounter `gen-2-size`; .NET Framework PDH `\.NET CLR Memory(*)\Gen 2 heap size` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET LOH` | `dotnet_gc_loh_bytes` | Large object heap size after the last GC. | .NET 9/10 `dotnet.gc.last_collection.heap.size`, `loh` tag; .NET 8 `System.Runtime` EventCounter `loh-size`; .NET Framework PDH `\.NET CLR Memory(*)\Large Object Heap size` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET POH` | `dotnet_gc_poh_bytes` | Pinned object heap size after the last GC. | .NET 9/10 `dotnet.gc.last_collection.heap.size`, `poh` tag; .NET 8 `System.Runtime` EventCounter `poh-size`; unavailable on .NET Framework, which has no POH generation | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Commit` | `dotnet_gc_committed_bytes` | Memory committed by the GC. | .NET 9/10 built-in metric `dotnet.gc.last_collection.memory.committed_size`; .NET 8 `System.Runtime` EventCounter `gc-committed` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Frag` | `dotnet_gc_fragmentation_bytes` | Managed heap fragmentation after the last GC. | .NET 9/10 built-in metric `dotnet.gc.last_collection.heap.fragmentation.size`, summed across gen0, gen1, gen2, LOH, and POH; .NET 8 `System.Runtime` EventCounter `gc-fragmentation`, converted from percent using `gc-heap-size` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
+| `.NET Alloc/s` | `dotnet_allocation_bytes_per_sec` | Managed allocation rate over the collection interval. | .NET 9/10 built-in metric `dotnet.gc.heap.total_allocated`; .NET 8 `System.Runtime` EventCounter `alloc-rate` | Adaptive decimal bytes per second in Processes; exact bytes/s in detail/copy/log |
 | `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | Whole-number decimal `KB/s` in Processes; Graph, Samples, and copy use the adaptive rate format described below |
@@ -42,6 +50,10 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 When the `Full Path` column is selected in the Process table, `Ctrl+F` filtering matches both process name and executable path.
 When it is not selected, filtering matches process name only.
 Compact byte formatting is used in the Processes table and for Graph Y-axis tick labels. Sorting and Graph data continue to use the raw numeric values.
+
+The .NET 8/9/10 metrics are collected for every live process identity whose diagnostics pipe is found during its initial live-worker check; Tracking List registration is not required for display. Detection results are cached by `(PID, name, start_time)`, so a non-.NET process is not probed again during the same lifetime. Each detected identity owns an independent EventPipe session over the .NET diagnostics named pipe. Collection runs outside the UI thread, retains only the latest complete one-second interval, and stops when the identity exits or Live is replaced by Log view. Recording and long tracked-history retention remain limited to Tracking List processes. .NET 9/10 uses the `System.Runtime` meter; .NET 8 falls back to the `System.Runtime` EventCounters emitted for the same session. .NET Framework values come from the legacy PDH query and are limited to total heap, Gen1, Gen2, and LOH. Framework Gen0 remains unavailable because `Gen 0 heap size` reports a GC allocation threshold instead of current generation occupancy, and Framework has no POH generation. A process that is not supported, has diagnostics disabled, denies access, or omits an instrument keeps that value unavailable (`--`). Missing generations make a .NET 9/10 summed heap or fragmentation value unavailable rather than undercounting it. Because .NET 8 reports heap and committed sizes in decimal MB and fragmentation as a percentage, those three byte values are rounded after conversion; fragmentation bytes are an estimate derived from the reported heap size and percentage. A completed EventPipe value replaces the corresponding legacy PDH value only when it is available.
+
+The `.NET` column preset selects `.NET Gen2`, `.NET LOH`, and `.NET POH` by default because those heaps are the highest-value first view for long-lived, large, and pinned object growth. Gen0 and Gen1 remain selectable, graphable, copyable, and recordable.
 
 `WS Shrbl` is derived only when both PDH counters exist in the same sample and `Working Set >= Working Set - Private`. An invalid negative difference is unavailable (`--`); it is never clamped to zero. The collector does not call `QueryWorkingSet`, and the previous `WS Shrd` metric is not collected or exposed.
 
@@ -160,6 +172,7 @@ The `Image` tab displays these values:
 | `Process` | Process name and PID. |
 | `User` | User that owns the process. |
 | `Architecture` | `x64` or `x86` when available. |
+| `.NET version` | Loaded runtime derived from `coreclr.dll` for .NET Core / .NET 5+ or `clr.dll` for .NET Framework. Native processes show `--`. |
 | `Parent` | Parent process information. |
 | `Started` | Start time and uptime. |
 | `Executable` | Executable path. |
@@ -173,7 +186,7 @@ The `Image` tab displays these values:
 
 Unavailable values are displayed as one of `<access denied>`, `<exited>`, `<not available>`, `<missing>`, or `--`.
 
-The `Metrics` tab always lists the 15 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` is excluded. Unlike the compact Processes column headers, the tab uses descriptive row names:
+The `Metrics` tab always lists the 23 numeric selectable process metrics in `MetricColumn::ALL` order, independently of the current Processes preset. `Full Path` is excluded. Unlike the compact Processes column headers, the tab uses descriptive row names:
 
 | Processes column | Metrics row |
 |---|---|
@@ -188,6 +201,14 @@ The `Metrics` tab always lists the 15 numeric selectable process metrics in `Met
 | `GDI` | `GDI Objects` |
 | `GPU%` | `GPU Usage` |
 | `.NET Heap` | `.NET Heap` |
+| `.NET Gen0` | `.NET Gen 0 Heap` |
+| `.NET Gen1` | `.NET Gen 1 Heap` |
+| `.NET Gen2` | `.NET Gen 2 Heap` |
+| `.NET LOH` | `.NET Large Object Heap` |
+| `.NET POH` | `.NET Pinned Object Heap` |
+| `.NET Commit` | `.NET GC Committed` |
+| `.NET Frag` | `.NET GC Fragmentation` |
+| `.NET Alloc/s` | `.NET Allocation Rate` |
 | `GPU D` | `GPU Dedicated Memory` |
 | `GPU S` | `GPU Shared Memory` |
 | `IO Read/s` | `I/O Read Throughput` |
@@ -286,6 +307,7 @@ When start time is available, it is included in the identity to avoid mixing his
 |---|---|
 | Byte-based process metric | Processes and the Process Info Metrics section use adaptive decimal `B` / `KB` / `MB` / `GB` / `TB` / `PB` / `EB` values with one decimal above bytes. Graph Y-axis ticks use the same compact units and may add precision to keep nearby tick labels distinct. Samples, cursor labels, Graph A/B details and deltas, clipboard output, and recording logs retain exact byte integers. |
 | Count metric | Graph Y-axis ticks, Samples, cursor labels, A/B details and deltas, clipboard output, and recording logs use integers. |
+| .NET byte rate | Processes and Process Info use adaptive decimal bytes with `/s`; Samples, cursor labels, A/B details, clipboard output, and recording logs retain the exact bytes-per-second value. |
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |
@@ -389,9 +411,9 @@ A process sample is `[process_id, f64_values, u64_values]`.
 | Array | Index order |
 |---|---|
 | `f64_values` | CPU%, GPU% |
-| `u64_values` | private bytes, working set, working-set private, working-set shareable, threads, handles, USER objects, GDI objects, GPU dedicated, GPU shared, .NET heap, I/O read bytes/s, I/O write bytes/s |
+| `u64_values` | private bytes, working set, working-set private, working-set shareable, threads, handles, USER objects, GDI objects, GPU dedicated, GPU shared, .NET heap, I/O read bytes/s, I/O write bytes/s, .NET GC committed, .NET GC fragmentation, .NET allocation bytes/s, .NET Gen0 heap, .NET Gen1 heap, .NET Gen2 heap, .NET LOH, .NET POH |
 
-Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers. For aggregated frames, those integers are the rounded arithmetic means described above.
+Fixed-order missing positions are `null`; they remain unavailable in Log view and are not treated as zero. Integer byte and count values remain exact JSON integers. For aggregated frames, those integers are the rounded arithmetic means described above. Process metric arrays must use the current fixed lengths; obsolete schema-v3 process arrays are not padded or truncated.
 
 An end payload is `[ended_at_ms, reason]`. The current writer uses `stopped` for an explicit stop or quit and `duration_limit` for the automatic 24-hour stop. A missing end record is valid after interruption; the last complete frame remains loadable.
 
@@ -400,7 +422,7 @@ Example with one process definition and one compact frame:
 ```json
 {"s":{"v":3,"id":"20260504143012","app":"1.0.0","host":"PC","start":1777872612000,"interval":1,"tracked":["app.exe"],"columns":["PrivBytes"],"sort":["Process","asc"],"system":{"cpu":"Example CPU"}}}
 {"p":[0,1234,"app.exe",1700000000,"C:\\work\\app.exe"]}
-{"f":[1777872612000,[[1234567890,34359738368,12000000000,null,null,null,2345678901,68719476736,null,null,12,4,214,3812,37,29,8,10000000,20000000,30000000,40000000],1.5,[]],[[0,[12.5,null],[123456789,98765432,90000000,8589932,42,512,21,35,null,null,null,1048576,524288]]]]}
+{"f":[1777872612000,[[1234567890,34359738368,12000000000,null,null,null,2345678901,68719476736,null,null,12,4,214,3812,37,29,8,10000000,20000000,30000000,40000000],1.5,[]],[[0,[12.5,null,null,null,null],[123456789,98765432,90000000,8589932,42,512,21,35,null,null,null,1048576,524288,null,null,null,null,null,null,null,null]]]]}
 {"e":[1777872613000,"stopped"]}
 ```
 

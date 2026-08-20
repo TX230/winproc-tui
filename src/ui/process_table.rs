@@ -977,6 +977,31 @@ fn format_process_column(process: &ProcessRow, column: MetricColumn, column_widt
             .map(|value| format!("{value:.1}%"))
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::DotNetHeapBytes => format_optional_compact_bytes(process.dotnet_heap_bytes),
+        MetricColumn::DotNetGcGen0HeapBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_gen0_heap_bytes)
+        }
+        MetricColumn::DotNetGcGen1HeapBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_gen1_heap_bytes)
+        }
+        MetricColumn::DotNetGcGen2HeapBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_gen2_heap_bytes)
+        }
+        MetricColumn::DotNetGcLohBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_loh_bytes)
+        }
+        MetricColumn::DotNetGcPohBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_poh_bytes)
+        }
+        MetricColumn::DotNetGcCommittedBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_committed_bytes)
+        }
+        MetricColumn::DotNetGcFragmentationBytes => {
+            format_optional_compact_bytes(process.dotnet_gc_fragmentation_bytes)
+        }
+        MetricColumn::DotNetAllocationBytesPerSec => process
+            .dotnet_allocation_bytes_per_sec
+            .map(|value| format!("{}/s", format_compact_bytes(value)))
+            .unwrap_or_else(|| "--".to_string()),
         MetricColumn::GpuDedicatedBytes => {
             format_optional_compact_bytes(process.gpu_dedicated_bytes)
         }
@@ -1046,6 +1071,14 @@ mod tests {
             gpu_dedicated_bytes: None,
             gpu_shared_bytes: None,
             dotnet_heap_bytes: None,
+            dotnet_gc_gen0_heap_bytes: None,
+            dotnet_gc_gen1_heap_bytes: None,
+            dotnet_gc_gen2_heap_bytes: None,
+            dotnet_gc_loh_bytes: None,
+            dotnet_gc_poh_bytes: None,
+            dotnet_gc_committed_bytes: None,
+            dotnet_gc_fragmentation_bytes: None,
+            dotnet_allocation_bytes_per_sec: None,
             io_read_bytes_per_sec: None,
             io_write_bytes_per_sec: None,
         };
@@ -1108,6 +1141,14 @@ mod tests {
             gpu_dedicated_bytes: None,
             gpu_shared_bytes: None,
             dotnet_heap_bytes: None,
+            dotnet_gc_gen0_heap_bytes: None,
+            dotnet_gc_gen1_heap_bytes: None,
+            dotnet_gc_gen2_heap_bytes: None,
+            dotnet_gc_loh_bytes: None,
+            dotnet_gc_poh_bytes: None,
+            dotnet_gc_committed_bytes: None,
+            dotnet_gc_fragmentation_bytes: None,
+            dotnet_allocation_bytes_per_sec: None,
             io_read_bytes_per_sec: Some(12_345_678),
             io_write_bytes_per_sec: Some(98_765_432),
         };
@@ -1249,15 +1290,15 @@ mod tests {
         assert_eq!(process_metric_overflow_indicator(&all, columns.len()), None);
         assert_eq!(
             process_metric_overflow_indicator(&leading, columns.len()).as_deref(),
-            Some("‹ 1–3/16 ›")
+            Some("‹ 1–3/24 ›")
         );
         assert_eq!(
             process_metric_overflow_indicator(&offset, columns.len()).as_deref(),
-            Some("‹ 10–12/16 ›")
+            Some("‹ 10–12/24 ›")
         );
         assert_eq!(
             process_metric_overflow_indicator(&[], columns.len()).as_deref(),
-            Some("‹ 0/16 ›")
+            Some("‹ 0/24 ›")
         );
     }
 
@@ -1289,6 +1330,14 @@ mod tests {
             gpu_dedicated_bytes: None,
             gpu_shared_bytes: None,
             dotnet_heap_bytes: None,
+            dotnet_gc_gen0_heap_bytes: None,
+            dotnet_gc_gen1_heap_bytes: None,
+            dotnet_gc_gen2_heap_bytes: None,
+            dotnet_gc_loh_bytes: None,
+            dotnet_gc_poh_bytes: None,
+            dotnet_gc_committed_bytes: None,
+            dotnet_gc_fragmentation_bytes: None,
+            dotnet_allocation_bytes_per_sec: None,
             io_read_bytes_per_sec: None,
             io_write_bytes_per_sec: None,
         };

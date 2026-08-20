@@ -1049,6 +1049,9 @@ fn sample_max<'a>(
 fn format_metric_axis_value(value: f64, metric: GraphValueFormat) -> String {
     match metric {
         GraphValueFormat::Bytes => format_compact_bytes(value.round().max(0.0) as u64),
+        GraphValueFormat::BytesPerSec => {
+            format!("{}/s", format_compact_bytes(value.round().max(0.0) as u64))
+        }
         _ => format_metric_exact_value(value, metric),
     }
 }
@@ -1128,6 +1131,9 @@ fn format_metric_exact_value(value: f64, metric: GraphValueFormat) -> String {
     match metric {
         GraphValueFormat::Bytes | GraphValueFormat::Count => {
             format_integer(value.round().max(0.0) as u64)
+        }
+        GraphValueFormat::BytesPerSec => {
+            format!("{}/s", format_integer(value.round().max(0.0) as u64))
         }
         GraphValueFormat::Percent => format!("{value:.1}%"),
         GraphValueFormat::AdaptiveBitsPerSec => format_io_rate(value.round().max(0.0) as u64),
@@ -1233,6 +1239,9 @@ fn format_ab_delta(delta: f64, metric: GraphValueFormat) -> String {
     match metric {
         GraphValueFormat::Bytes | GraphValueFormat::Count => {
             format_signed_integer(delta.round() as i128)
+        }
+        GraphValueFormat::BytesPerSec => {
+            format!("{}/s", format_signed_integer(delta.round() as i128))
         }
         GraphValueFormat::Percent => format!("{delta:+.1}%"),
         GraphValueFormat::AdaptiveBitsPerSec => format_signed_io_rate(delta.round() as i128),

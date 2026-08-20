@@ -363,6 +363,26 @@ fn format_process_metric_column(process: &ProcessRow, column: MetricColumn) -> S
             .map(|value| format!("{value:.1}%"))
             .unwrap_or_else(|| "--".to_string()),
         MetricColumn::DotNetHeapBytes => format_optional_integer(process.dotnet_heap_bytes),
+        MetricColumn::DotNetGcGen0HeapBytes => {
+            format_optional_integer(process.dotnet_gc_gen0_heap_bytes)
+        }
+        MetricColumn::DotNetGcGen1HeapBytes => {
+            format_optional_integer(process.dotnet_gc_gen1_heap_bytes)
+        }
+        MetricColumn::DotNetGcGen2HeapBytes => {
+            format_optional_integer(process.dotnet_gc_gen2_heap_bytes)
+        }
+        MetricColumn::DotNetGcLohBytes => format_optional_integer(process.dotnet_gc_loh_bytes),
+        MetricColumn::DotNetGcPohBytes => format_optional_integer(process.dotnet_gc_poh_bytes),
+        MetricColumn::DotNetGcCommittedBytes => {
+            format_optional_integer(process.dotnet_gc_committed_bytes)
+        }
+        MetricColumn::DotNetGcFragmentationBytes => {
+            format_optional_integer(process.dotnet_gc_fragmentation_bytes)
+        }
+        MetricColumn::DotNetAllocationBytesPerSec => {
+            format_optional_integer(process.dotnet_allocation_bytes_per_sec)
+        }
         MetricColumn::GpuDedicatedBytes => format_optional_integer(process.gpu_dedicated_bytes),
         MetricColumn::GpuSharedBytes => format_optional_integer(process.gpu_shared_bytes),
         MetricColumn::IoReadBytesPerSec => process
@@ -390,6 +410,9 @@ fn format_graph_sample_value(value: Option<f64>, value_format: GraphValueFormat)
         GraphValueFormat::MegabitsPerSec => format_mbps(value.round().max(0.0) as u64),
         GraphValueFormat::MegabytesPerSec => format_mb_per_sec(value.round().max(0.0) as u64),
         GraphValueFormat::QueueLength => format!("{value:.1}"),
+        GraphValueFormat::BytesPerSec => {
+            format!("{}/s", format_integer(value.round().max(0.0) as u64))
+        }
         GraphValueFormat::Bytes | GraphValueFormat::Count => {
             format_integer(value.round().max(0.0) as u64)
         }
@@ -423,6 +446,9 @@ fn format_details_delta(delta: f64, value_format: GraphValueFormat) -> String {
             format_signed_integer(mb_per_sec) + " MB/s"
         }
         GraphValueFormat::QueueLength => format!("{delta:+.1}"),
+        GraphValueFormat::BytesPerSec => {
+            format!("{}/s", format_signed_integer(delta.round() as i128))
+        }
         GraphValueFormat::Bytes | GraphValueFormat::Count => {
             format_signed_integer(delta.round() as i128)
         }

@@ -59,7 +59,7 @@ const PROCESS_MODULES_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(
 const PROCESS_ENVIRONMENT_IN_FLIGHT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PROCESS_NAVIGATION_ORDER_HOLD: Duration = Duration::from_millis(750);
 pub(crate) const SAMPLE_STALE_AFTER_SECONDS: u64 = 3;
-const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 15] = [
+const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 23] = [
     MetricColumn::CpuPercent,
     MetricColumn::PrivateBytes,
     MetricColumn::WorksetBytes,
@@ -71,6 +71,14 @@ const PROCESS_INFO_METRIC_COLUMNS: [MetricColumn; 15] = [
     MetricColumn::GdiObjectCount,
     MetricColumn::GpuPercent,
     MetricColumn::DotNetHeapBytes,
+    MetricColumn::DotNetGcGen0HeapBytes,
+    MetricColumn::DotNetGcGen1HeapBytes,
+    MetricColumn::DotNetGcGen2HeapBytes,
+    MetricColumn::DotNetGcLohBytes,
+    MetricColumn::DotNetGcPohBytes,
+    MetricColumn::DotNetGcCommittedBytes,
+    MetricColumn::DotNetGcFragmentationBytes,
+    MetricColumn::DotNetAllocationBytesPerSec,
     MetricColumn::GpuDedicatedBytes,
     MetricColumn::GpuSharedBytes,
     MetricColumn::IoReadBytesPerSec,
@@ -90,6 +98,14 @@ const fn process_info_metric_label(column: MetricColumn) -> &'static str {
         MetricColumn::GdiObjectCount => "GDI Objects",
         MetricColumn::GpuPercent => "GPU Usage",
         MetricColumn::DotNetHeapBytes => ".NET Heap",
+        MetricColumn::DotNetGcGen0HeapBytes => ".NET Gen 0 Heap",
+        MetricColumn::DotNetGcGen1HeapBytes => ".NET Gen 1 Heap",
+        MetricColumn::DotNetGcGen2HeapBytes => ".NET Gen 2 Heap",
+        MetricColumn::DotNetGcLohBytes => ".NET Large Object Heap",
+        MetricColumn::DotNetGcPohBytes => ".NET Pinned Object Heap",
+        MetricColumn::DotNetGcCommittedBytes => ".NET GC Committed",
+        MetricColumn::DotNetGcFragmentationBytes => ".NET GC Fragmentation",
+        MetricColumn::DotNetAllocationBytesPerSec => ".NET Allocation Rate",
         MetricColumn::GpuDedicatedBytes => "GPU Dedicated Memory",
         MetricColumn::GpuSharedBytes => "GPU Shared Memory",
         MetricColumn::IoReadBytesPerSec => "I/O Read Throughput",
@@ -158,6 +174,14 @@ pub(crate) enum DetailsMetric {
     GdiObjectCount,
     GpuPercent,
     DotNetHeap,
+    DotNetGcGen0Heap,
+    DotNetGcGen1Heap,
+    DotNetGcGen2Heap,
+    DotNetGcLoh,
+    DotNetGcPoh,
+    DotNetGcCommitted,
+    DotNetGcFragmentation,
+    DotNetAllocation,
     GpuDedicated,
     GpuShared,
     IoRead,
@@ -167,6 +191,7 @@ pub(crate) enum DetailsMetric {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphValueFormat {
     Bytes,
+    BytesPerSec,
     Count,
     Percent,
     AdaptiveBitsPerSec,
@@ -185,8 +210,16 @@ impl GraphValueFormat {
             | DetailsMetric::WorksetPrivate
             | DetailsMetric::WorksetShareable
             | DetailsMetric::DotNetHeap
+            | DetailsMetric::DotNetGcGen0Heap
+            | DetailsMetric::DotNetGcGen1Heap
+            | DetailsMetric::DotNetGcGen2Heap
+            | DetailsMetric::DotNetGcLoh
+            | DetailsMetric::DotNetGcPoh
+            | DetailsMetric::DotNetGcCommitted
+            | DetailsMetric::DotNetGcFragmentation
             | DetailsMetric::GpuDedicated
             | DetailsMetric::GpuShared => Self::Bytes,
+            DetailsMetric::DotNetAllocation => Self::BytesPerSec,
             DetailsMetric::ThreadCount
             | DetailsMetric::HandleCount
             | DetailsMetric::UserObjectCount
@@ -298,6 +331,7 @@ enum ProcessMetricValue {
     Bytes(u64),
     Count(u64),
     IoRate(u64),
+    ByteRate(u64),
 }
 
 impl ProcessMetricValue {
@@ -314,6 +348,26 @@ impl ProcessMetricValue {
             MetricColumn::GdiObjectCount => sample.gdi_object_count.map(Self::Count),
             MetricColumn::GpuPercent => sample.gpu_percent.map(Self::Percent),
             MetricColumn::DotNetHeapBytes => sample.dotnet_heap_bytes.map(Self::Bytes),
+            MetricColumn::DotNetGcGen0HeapBytes => {
+                sample.dotnet_gc_gen0_heap_bytes.map(Self::Bytes)
+            }
+            MetricColumn::DotNetGcGen1HeapBytes => {
+                sample.dotnet_gc_gen1_heap_bytes.map(Self::Bytes)
+            }
+            MetricColumn::DotNetGcGen2HeapBytes => {
+                sample.dotnet_gc_gen2_heap_bytes.map(Self::Bytes)
+            }
+            MetricColumn::DotNetGcLohBytes => sample.dotnet_gc_loh_bytes.map(Self::Bytes),
+            MetricColumn::DotNetGcPohBytes => sample.dotnet_gc_poh_bytes.map(Self::Bytes),
+            MetricColumn::DotNetGcCommittedBytes => {
+                sample.dotnet_gc_committed_bytes.map(Self::Bytes)
+            }
+            MetricColumn::DotNetGcFragmentationBytes => {
+                sample.dotnet_gc_fragmentation_bytes.map(Self::Bytes)
+            }
+            MetricColumn::DotNetAllocationBytesPerSec => {
+                sample.dotnet_allocation_bytes_per_sec.map(Self::ByteRate)
+            }
             MetricColumn::GpuDedicatedBytes => sample.gpu_dedicated_bytes.map(Self::Bytes),
             MetricColumn::GpuSharedBytes => sample.gpu_shared_bytes.map(Self::Bytes),
             MetricColumn::IoReadBytesPerSec => sample.io_read_bytes_per_sec.map(Self::IoRate),
@@ -328,6 +382,7 @@ impl ProcessMetricValue {
             Self::Bytes(value) => format_compact_bytes(value),
             Self::Count(value) => format_integer(value),
             Self::IoRate(value) => format_io_rate(value),
+            Self::ByteRate(value) => format!("{}/s", format_compact_bytes(value)),
         }
     }
 
@@ -344,6 +399,10 @@ impl ProcessMetricValue {
             )),
             (Self::IoRate(value), Self::IoRate(baseline)) => Some(format_signed_io_rate(
                 i128::from(value) - i128::from(baseline),
+            )),
+            (Self::ByteRate(value), Self::ByteRate(baseline)) => Some(format!(
+                "{}/s",
+                format_signed_compact_bytes(i128::from(value) - i128::from(baseline))
             )),
             _ => None,
         }
@@ -582,6 +641,14 @@ impl DetailsMetric {
             Self::GdiObjectCount => crate::model::MetricColumn::GdiObjectCount,
             Self::GpuPercent => crate::model::MetricColumn::GpuPercent,
             Self::DotNetHeap => crate::model::MetricColumn::DotNetHeapBytes,
+            Self::DotNetGcGen0Heap => crate::model::MetricColumn::DotNetGcGen0HeapBytes,
+            Self::DotNetGcGen1Heap => crate::model::MetricColumn::DotNetGcGen1HeapBytes,
+            Self::DotNetGcGen2Heap => crate::model::MetricColumn::DotNetGcGen2HeapBytes,
+            Self::DotNetGcLoh => crate::model::MetricColumn::DotNetGcLohBytes,
+            Self::DotNetGcPoh => crate::model::MetricColumn::DotNetGcPohBytes,
+            Self::DotNetGcCommitted => crate::model::MetricColumn::DotNetGcCommittedBytes,
+            Self::DotNetGcFragmentation => crate::model::MetricColumn::DotNetGcFragmentationBytes,
+            Self::DotNetAllocation => crate::model::MetricColumn::DotNetAllocationBytesPerSec,
             Self::GpuDedicated => crate::model::MetricColumn::GpuDedicatedBytes,
             Self::GpuShared => crate::model::MetricColumn::GpuSharedBytes,
             Self::IoRead => crate::model::MetricColumn::IoReadBytesPerSec,
@@ -616,6 +683,14 @@ impl DetailsMetric {
             MetricColumn::GdiObjectCount => Some(Self::GdiObjectCount),
             MetricColumn::GpuPercent => Some(Self::GpuPercent),
             MetricColumn::DotNetHeapBytes => Some(Self::DotNetHeap),
+            MetricColumn::DotNetGcGen0HeapBytes => Some(Self::DotNetGcGen0Heap),
+            MetricColumn::DotNetGcGen1HeapBytes => Some(Self::DotNetGcGen1Heap),
+            MetricColumn::DotNetGcGen2HeapBytes => Some(Self::DotNetGcGen2Heap),
+            MetricColumn::DotNetGcLohBytes => Some(Self::DotNetGcLoh),
+            MetricColumn::DotNetGcPohBytes => Some(Self::DotNetGcPoh),
+            MetricColumn::DotNetGcCommittedBytes => Some(Self::DotNetGcCommitted),
+            MetricColumn::DotNetGcFragmentationBytes => Some(Self::DotNetGcFragmentation),
+            MetricColumn::DotNetAllocationBytesPerSec => Some(Self::DotNetAllocation),
             MetricColumn::GpuDedicatedBytes => Some(Self::GpuDedicated),
             MetricColumn::GpuSharedBytes => Some(Self::GpuShared),
             MetricColumn::IoReadBytesPerSec => Some(Self::IoRead),
@@ -6853,6 +6928,7 @@ impl App {
             self.status = "Log view is unavailable during recording".to_string();
             return;
         }
+        self.sampling_worker.suspend_dotnet();
         self.log_view_path = Some(loaded.path.clone());
         self.log_view_interval_seconds = Some(loaded.interval_seconds);
         self.log_view_frame_times = loaded.frame_times;
@@ -7255,6 +7331,26 @@ fn process_sample_metric_value(
         DetailsMetric::UserObjectCount => sample.user_object_count.map(|value| value as f64),
         DetailsMetric::GdiObjectCount => sample.gdi_object_count.map(|value| value as f64),
         DetailsMetric::DotNetHeap => sample.dotnet_heap_bytes.map(|value| value as f64),
+        DetailsMetric::DotNetGcGen0Heap => {
+            sample.dotnet_gc_gen0_heap_bytes.map(|value| value as f64)
+        }
+        DetailsMetric::DotNetGcGen1Heap => {
+            sample.dotnet_gc_gen1_heap_bytes.map(|value| value as f64)
+        }
+        DetailsMetric::DotNetGcGen2Heap => {
+            sample.dotnet_gc_gen2_heap_bytes.map(|value| value as f64)
+        }
+        DetailsMetric::DotNetGcLoh => sample.dotnet_gc_loh_bytes.map(|value| value as f64),
+        DetailsMetric::DotNetGcPoh => sample.dotnet_gc_poh_bytes.map(|value| value as f64),
+        DetailsMetric::DotNetGcCommitted => {
+            sample.dotnet_gc_committed_bytes.map(|value| value as f64)
+        }
+        DetailsMetric::DotNetGcFragmentation => sample
+            .dotnet_gc_fragmentation_bytes
+            .map(|value| value as f64),
+        DetailsMetric::DotNetAllocation => sample
+            .dotnet_allocation_bytes_per_sec
+            .map(|value| value as f64),
         DetailsMetric::GpuDedicated => sample.gpu_dedicated_bytes.map(|value| value as f64),
         DetailsMetric::GpuShared => sample.gpu_shared_bytes.map(|value| value as f64),
         DetailsMetric::IoRead => sample.io_read_bytes_per_sec.map(|value| value as f64),
@@ -7432,6 +7528,46 @@ fn tracked_total_row(
             tracked
                 .iter()
                 .filter_map(|process| process.dotnet_heap_bytes),
+        ),
+        dotnet_gc_gen0_heap_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_gen0_heap_bytes),
+        ),
+        dotnet_gc_gen1_heap_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_gen1_heap_bytes),
+        ),
+        dotnet_gc_gen2_heap_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_gen2_heap_bytes),
+        ),
+        dotnet_gc_loh_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_loh_bytes),
+        ),
+        dotnet_gc_poh_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_poh_bytes),
+        ),
+        dotnet_gc_committed_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_committed_bytes),
+        ),
+        dotnet_gc_fragmentation_bytes: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_gc_fragmentation_bytes),
+        ),
+        dotnet_allocation_bytes_per_sec: sum_optional_u64(
+            tracked
+                .iter()
+                .filter_map(|process| process.dotnet_allocation_bytes_per_sec),
         ),
         io_read_bytes_per_sec: sum_optional_u64(
             tracked

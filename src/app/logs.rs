@@ -457,6 +457,14 @@ fn parse_v3_process(
         gpu_dedicated_bytes: integers[process_u64::GPU_DEDICATED_BYTES],
         gpu_shared_bytes: integers[process_u64::GPU_SHARED_BYTES],
         dotnet_heap_bytes: integers[process_u64::DOTNET_HEAP_BYTES],
+        dotnet_gc_gen0_heap_bytes: integers[process_u64::DOTNET_GC_GEN0_HEAP_BYTES],
+        dotnet_gc_gen1_heap_bytes: integers[process_u64::DOTNET_GC_GEN1_HEAP_BYTES],
+        dotnet_gc_gen2_heap_bytes: integers[process_u64::DOTNET_GC_GEN2_HEAP_BYTES],
+        dotnet_gc_loh_bytes: integers[process_u64::DOTNET_GC_LOH_BYTES],
+        dotnet_gc_poh_bytes: integers[process_u64::DOTNET_GC_POH_BYTES],
+        dotnet_gc_committed_bytes: integers[process_u64::DOTNET_GC_COMMITTED_BYTES],
+        dotnet_gc_fragmentation_bytes: integers[process_u64::DOTNET_GC_FRAGMENTATION_BYTES],
+        dotnet_allocation_bytes_per_sec: integers[process_u64::DOTNET_ALLOCATION_BYTES_PER_SEC],
         io_read_bytes_per_sec: integers[process_u64::IO_READ_BYTES_PER_SEC],
         io_write_bytes_per_sec: integers[process_u64::IO_WRITE_BYTES_PER_SEC],
     })
@@ -914,6 +922,14 @@ impl ProcessRecord {
             gpu_dedicated_bytes: metrics.gpu_dedicated_bytes,
             gpu_shared_bytes: metrics.gpu_shared_bytes,
             dotnet_heap_bytes: metrics.dotnet_heap_bytes,
+            dotnet_gc_gen0_heap_bytes: metrics.dotnet_gc_gen0_heap_bytes,
+            dotnet_gc_gen1_heap_bytes: metrics.dotnet_gc_gen1_heap_bytes,
+            dotnet_gc_gen2_heap_bytes: metrics.dotnet_gc_gen2_heap_bytes,
+            dotnet_gc_loh_bytes: metrics.dotnet_gc_loh_bytes,
+            dotnet_gc_poh_bytes: metrics.dotnet_gc_poh_bytes,
+            dotnet_gc_committed_bytes: metrics.dotnet_gc_committed_bytes,
+            dotnet_gc_fragmentation_bytes: metrics.dotnet_gc_fragmentation_bytes,
+            dotnet_allocation_bytes_per_sec: metrics.dotnet_allocation_bytes_per_sec,
             io_read_bytes_per_sec: metrics.io_read_bytes_per_sec,
             io_write_bytes_per_sec: metrics.io_write_bytes_per_sec,
         })
@@ -935,6 +951,14 @@ struct ProcessMetricsRecord {
     gpu_dedicated_bytes: Option<u64>,
     gpu_shared_bytes: Option<u64>,
     dotnet_heap_bytes: Option<u64>,
+    dotnet_gc_gen0_heap_bytes: Option<u64>,
+    dotnet_gc_gen1_heap_bytes: Option<u64>,
+    dotnet_gc_gen2_heap_bytes: Option<u64>,
+    dotnet_gc_loh_bytes: Option<u64>,
+    dotnet_gc_poh_bytes: Option<u64>,
+    dotnet_gc_committed_bytes: Option<u64>,
+    dotnet_gc_fragmentation_bytes: Option<u64>,
+    dotnet_allocation_bytes_per_sec: Option<u64>,
     io_read_bytes_per_sec: Option<u64>,
     io_write_bytes_per_sec: Option<u64>,
 }
@@ -1496,7 +1520,7 @@ mod tests {
     }
 
     #[test]
-    fn v3_log_preserves_all_compact_metric_positions() {
+    fn v3_log_loads_all_active_metrics() {
         let path = unique_log_path("v3-all-metrics");
         let captured_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
             .unwrap()
@@ -1566,6 +1590,14 @@ mod tests {
                         Some(70),
                         Some(80),
                         Some(90),
+                        Some(100),
+                        Some(110),
+                        Some(120),
+                        Some(130),
+                        Some(140),
+                        Some(150),
+                        Some(160),
+                        Some(170),
                     ],
                 )],
             )),
@@ -1587,6 +1619,14 @@ mod tests {
         assert_eq!(process.gpu_dedicated_bytes, Some(50));
         assert_eq!(process.gpu_shared_bytes, Some(60));
         assert_eq!(process.dotnet_heap_bytes, Some(70));
+        assert_eq!(process.dotnet_gc_committed_bytes, Some(100));
+        assert_eq!(process.dotnet_gc_fragmentation_bytes, Some(110));
+        assert_eq!(process.dotnet_allocation_bytes_per_sec, Some(120));
+        assert_eq!(process.dotnet_gc_gen0_heap_bytes, Some(130));
+        assert_eq!(process.dotnet_gc_gen1_heap_bytes, Some(140));
+        assert_eq!(process.dotnet_gc_gen2_heap_bytes, Some(150));
+        assert_eq!(process.dotnet_gc_loh_bytes, Some(160));
+        assert_eq!(process.dotnet_gc_poh_bytes, Some(170));
         assert_eq!(process.io_read_bytes_per_sec, Some(80));
         assert_eq!(process.io_write_bytes_per_sec, Some(90));
 

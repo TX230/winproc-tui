@@ -172,9 +172,7 @@ pub(crate) fn collect_process_modules(
     process: &ProcessRow,
 ) -> std::result::Result<ProcessModulesReport, ProcessModulesError> {
     verify_process_identity(identity)?;
-    let native = enumerate_module_paths(process.pid, TH32CS_SNAPMODULE)?;
-    let wow64 = enumerate_module_paths(process.pid, TH32CS_SNAPMODULE32)?;
-    let entries = module_entries_from_paths(native.into_iter().chain(wow64), process);
+    let entries = module_entries_from_paths(loaded_module_paths(process.pid)?, process);
     verify_process_identity(identity)?;
     Ok(ProcessModulesReport {
         pid: process.pid,
@@ -182,6 +180,14 @@ pub(crate) fn collect_process_modules(
         captured_at: Local::now(),
         entries,
     })
+}
+
+pub(crate) fn loaded_module_paths(
+    pid: u32,
+) -> std::result::Result<Vec<String>, ProcessModulesError> {
+    let native = enumerate_module_paths(pid, TH32CS_SNAPMODULE)?;
+    let wow64 = enumerate_module_paths(pid, TH32CS_SNAPMODULE32)?;
+    Ok(native.into_iter().chain(wow64).collect())
 }
 
 fn verify_process_identity(
@@ -376,6 +382,14 @@ mod tests {
             gpu_dedicated_bytes: None,
             gpu_shared_bytes: None,
             dotnet_heap_bytes: None,
+            dotnet_gc_gen0_heap_bytes: None,
+            dotnet_gc_gen1_heap_bytes: None,
+            dotnet_gc_gen2_heap_bytes: None,
+            dotnet_gc_loh_bytes: None,
+            dotnet_gc_poh_bytes: None,
+            dotnet_gc_committed_bytes: None,
+            dotnet_gc_fragmentation_bytes: None,
+            dotnet_allocation_bytes_per_sec: None,
             io_read_bytes_per_sec: None,
             io_write_bytes_per_sec: None,
         }

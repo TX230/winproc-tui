@@ -54,6 +54,9 @@ pub(crate) struct ProcessCounterSampler {
     io_write_counter: Option<PDH_HCOUNTER>,
     dotnet_process_id_counter: Option<PDH_HCOUNTER>,
     dotnet_heap_counter: Option<PDH_HCOUNTER>,
+    dotnet_gen1_heap_counter: Option<PDH_HCOUNTER>,
+    dotnet_gen2_heap_counter: Option<PDH_HCOUNTER>,
+    dotnet_loh_counter: Option<PDH_HCOUNTER>,
 }
 
 impl SystemCounterSampler {
@@ -316,6 +319,12 @@ impl ProcessCounterSampler {
                 add_optional_pdh_counter(query, "\\.NET CLR Memory(*)\\Process ID");
             let dotnet_heap_counter =
                 add_optional_pdh_counter(query, "\\.NET CLR Memory(*)\\# Bytes in all Heaps");
+            let dotnet_gen1_heap_counter =
+                add_optional_pdh_counter(query, "\\.NET CLR Memory(*)\\Gen 1 heap size");
+            let dotnet_gen2_heap_counter =
+                add_optional_pdh_counter(query, "\\.NET CLR Memory(*)\\Gen 2 heap size");
+            let dotnet_loh_counter =
+                add_optional_pdh_counter(query, "\\.NET CLR Memory(*)\\Large Object Heap size");
 
             ensure_pdh_success(PdhCollectQueryData(query), "priming process query")?;
 
@@ -330,6 +339,9 @@ impl ProcessCounterSampler {
                 io_write_counter,
                 dotnet_process_id_counter,
                 dotnet_heap_counter,
+                dotnet_gen1_heap_counter,
+                dotnet_gen2_heap_counter,
+                dotnet_loh_counter,
             })
         }
     }
@@ -395,24 +407,59 @@ impl ProcessCounterSampler {
             |metric, value| metric.io_write_bytes_per_sec = Some(value),
         );
 
-        if let (Some(dotnet_process_id_counter), Some(dotnet_heap_counter)) =
-            (self.dotnet_process_id_counter, self.dotnet_heap_counter)
+        if let Some(dotnet_pids) = self
+            .dotnet_process_id_counter
+            .and_then(read_named_counter_items)
         {
-            if let (Some(dotnet_pids), Some(dotnet_heaps)) = (
-                read_named_counter_items(dotnet_process_id_counter),
-                read_named_counter_items(dotnet_heap_counter),
-            ) {
-                let heaps_by_pid = map_process_counter_instances_to_pids(dotnet_pids, dotnet_heaps);
-                for (pid, heap_bytes) in heaps_by_pid {
-                    metrics.entry(pid).or_default().dotnet_heap_bytes = Some(heap_bytes);
-                }
-            }
+            self.merge_dotnet_u64_counter(
+                &mut metrics,
+                dotnet_pids.clone(),
+                self.dotnet_heap_counter,
+                |metric, value| metric.dotnet_heap_bytes = Some(value),
+            );
+            self.merge_dotnet_u64_counter(
+                &mut metrics,
+                dotnet_pids.clone(),
+                self.dotnet_gen1_heap_counter,
+                |metric, value| metric.dotnet_gc_gen1_heap_bytes = Some(value),
+            );
+            self.merge_dotnet_u64_counter(
+                &mut metrics,
+                dotnet_pids.clone(),
+                self.dotnet_gen2_heap_counter,
+                |metric, value| metric.dotnet_gc_gen2_heap_bytes = Some(value),
+            );
+            self.merge_dotnet_u64_counter(
+                &mut metrics,
+                dotnet_pids,
+                self.dotnet_loh_counter,
+                |metric, value| metric.dotnet_gc_loh_bytes = Some(value),
+            );
         }
 
         metrics
     }
 
     fn merge_u64_counter(
+        &self,
+        metrics: &mut std::collections::HashMap<u32, ProcessExtraMetrics>,
+        process_ids: Vec<(String, u64)>,
+        counter: Option<PDH_HCOUNTER>,
+        apply: impl Fn(&mut ProcessExtraMetrics, u64),
+    ) {
+        let Some(counter) = counter else {
+            return;
+        };
+        let Some(items) = read_named_counter_items(counter) else {
+            return;
+        };
+
+        for (pid, value) in map_process_counter_instances_to_pids(process_ids, items) {
+            apply(metrics.entry(pid).or_default(), value);
+        }
+    }
+
+    fn merge_dotnet_u64_counter(
         &self,
         metrics: &mut std::collections::HashMap<u32, ProcessExtraMetrics>,
         process_ids: Vec<(String, u64)>,

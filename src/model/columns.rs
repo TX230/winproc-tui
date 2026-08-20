@@ -102,6 +102,14 @@ pub(crate) enum MetricColumn {
     GdiObjectCount,
     GpuPercent,
     DotNetHeapBytes,
+    DotNetGcGen0HeapBytes,
+    DotNetGcGen1HeapBytes,
+    DotNetGcGen2HeapBytes,
+    DotNetGcLohBytes,
+    DotNetGcPohBytes,
+    DotNetGcCommittedBytes,
+    DotNetGcFragmentationBytes,
+    DotNetAllocationBytesPerSec,
     GpuDedicatedBytes,
     GpuSharedBytes,
     IoReadBytesPerSec,
@@ -148,7 +156,7 @@ impl ProcessColumnWidths {
 }
 
 impl MetricColumn {
-    pub(crate) const ALL: [Self; 16] = [
+    pub(crate) const ALL: [Self; 24] = [
         Self::CpuPercent,
         Self::PrivateBytes,
         Self::WorksetBytes,
@@ -160,6 +168,14 @@ impl MetricColumn {
         Self::GdiObjectCount,
         Self::GpuPercent,
         Self::DotNetHeapBytes,
+        Self::DotNetGcGen0HeapBytes,
+        Self::DotNetGcGen1HeapBytes,
+        Self::DotNetGcGen2HeapBytes,
+        Self::DotNetGcLohBytes,
+        Self::DotNetGcPohBytes,
+        Self::DotNetGcCommittedBytes,
+        Self::DotNetGcFragmentationBytes,
+        Self::DotNetAllocationBytesPerSec,
         Self::GpuDedicatedBytes,
         Self::GpuSharedBytes,
         Self::IoReadBytesPerSec,
@@ -180,6 +196,14 @@ impl MetricColumn {
             Self::GdiObjectCount => "GDI",
             Self::GpuPercent => "GPU%",
             Self::DotNetHeapBytes => ".NET Heap",
+            Self::DotNetGcGen0HeapBytes => ".NET Gen0",
+            Self::DotNetGcGen1HeapBytes => ".NET Gen1",
+            Self::DotNetGcGen2HeapBytes => ".NET Gen2",
+            Self::DotNetGcLohBytes => ".NET LOH",
+            Self::DotNetGcPohBytes => ".NET POH",
+            Self::DotNetGcCommittedBytes => ".NET Commit",
+            Self::DotNetGcFragmentationBytes => ".NET Frag",
+            Self::DotNetAllocationBytesPerSec => ".NET Alloc/s",
             Self::GpuDedicatedBytes => "GPU D",
             Self::GpuSharedBytes => "GPU S",
             Self::IoReadBytesPerSec => "IO Read/s",
@@ -202,7 +226,27 @@ impl MetricColumn {
             Self::UserObjectCount => "USER objects such as windows and menus",
             Self::GdiObjectCount => "GDI objects such as pens, fonts, and bitmaps",
             Self::GpuPercent => "Per-process GPU engine utilization",
-            Self::DotNetHeapBytes => ".NET CLR heap size, when available",
+            Self::DotNetHeapBytes => ".NET managed heap size after the last GC, when available",
+            Self::DotNetGcGen0HeapBytes => {
+                ".NET generation 0 heap size after the last GC, when available"
+            }
+            Self::DotNetGcGen1HeapBytes => {
+                ".NET generation 1 heap size after the last GC, when available"
+            }
+            Self::DotNetGcGen2HeapBytes => {
+                ".NET generation 2 heap size after the last GC, when available"
+            }
+            Self::DotNetGcLohBytes => {
+                ".NET large object heap size after the last GC, when available"
+            }
+            Self::DotNetGcPohBytes => {
+                ".NET pinned object heap size after the last GC, when available"
+            }
+            Self::DotNetGcCommittedBytes => ".NET GC committed memory, when available",
+            Self::DotNetGcFragmentationBytes => {
+                ".NET managed heap fragmentation after the last GC, when available"
+            }
+            Self::DotNetAllocationBytesPerSec => ".NET managed allocation rate, when available",
             Self::GpuDedicatedBytes => "Dedicated GPU memory used by the process",
             Self::GpuSharedBytes => "Shared system memory used by the process for GPU resources",
             Self::IoReadBytesPerSec => "I/O read throughput by the process (file/net/dev)",
@@ -222,7 +266,15 @@ impl MetricColumn {
             Self::WorksetBytes | Self::GpuDedicatedBytes | Self::GpuSharedBytes => 8,
             Self::WorksetPrivateBytes => 9,
             Self::WorksetShareableBytes => 10,
-            Self::DotNetHeapBytes => 11,
+            Self::DotNetHeapBytes
+            | Self::DotNetGcGen0HeapBytes
+            | Self::DotNetGcGen1HeapBytes
+            | Self::DotNetGcGen2HeapBytes
+            | Self::DotNetGcLohBytes
+            | Self::DotNetGcPohBytes
+            | Self::DotNetGcCommittedBytes
+            | Self::DotNetGcFragmentationBytes => 11,
+            Self::DotNetAllocationBytesPerSec => 12,
             Self::IoReadBytesPerSec | Self::IoWriteBytesPerSec => 12,
             Self::FullPath => 36,
         }
@@ -248,6 +300,26 @@ impl MetricColumn {
             Self::GdiObjectCount => row.gdi_object_count.map(|value| value.to_string()),
             Self::GpuPercent => row.gpu_percent.map(|value| value.to_string()),
             Self::DotNetHeapBytes => row.dotnet_heap_bytes.map(|value| value.to_string()),
+            Self::DotNetGcGen0HeapBytes => {
+                row.dotnet_gc_gen0_heap_bytes.map(|value| value.to_string())
+            }
+            Self::DotNetGcGen1HeapBytes => {
+                row.dotnet_gc_gen1_heap_bytes.map(|value| value.to_string())
+            }
+            Self::DotNetGcGen2HeapBytes => {
+                row.dotnet_gc_gen2_heap_bytes.map(|value| value.to_string())
+            }
+            Self::DotNetGcLohBytes => row.dotnet_gc_loh_bytes.map(|value| value.to_string()),
+            Self::DotNetGcPohBytes => row.dotnet_gc_poh_bytes.map(|value| value.to_string()),
+            Self::DotNetGcCommittedBytes => {
+                row.dotnet_gc_committed_bytes.map(|value| value.to_string())
+            }
+            Self::DotNetGcFragmentationBytes => row
+                .dotnet_gc_fragmentation_bytes
+                .map(|value| value.to_string()),
+            Self::DotNetAllocationBytesPerSec => row
+                .dotnet_allocation_bytes_per_sec
+                .map(|value| value.to_string()),
             Self::GpuDedicatedBytes => row.gpu_dedicated_bytes.map(|value| value.to_string()),
             Self::GpuSharedBytes => row.gpu_shared_bytes.map(|value| value.to_string()),
             Self::IoReadBytesPerSec => row.io_read_bytes_per_sec.map(|value| value.to_string()),
@@ -279,6 +351,36 @@ impl MetricColumn {
             Self::DotNetHeapBytes => {
                 compare_optional_u64(left.dotnet_heap_bytes, right.dotnet_heap_bytes)
             }
+            Self::DotNetGcGen0HeapBytes => compare_optional_u64(
+                left.dotnet_gc_gen0_heap_bytes,
+                right.dotnet_gc_gen0_heap_bytes,
+            ),
+            Self::DotNetGcGen1HeapBytes => compare_optional_u64(
+                left.dotnet_gc_gen1_heap_bytes,
+                right.dotnet_gc_gen1_heap_bytes,
+            ),
+            Self::DotNetGcGen2HeapBytes => compare_optional_u64(
+                left.dotnet_gc_gen2_heap_bytes,
+                right.dotnet_gc_gen2_heap_bytes,
+            ),
+            Self::DotNetGcLohBytes => {
+                compare_optional_u64(left.dotnet_gc_loh_bytes, right.dotnet_gc_loh_bytes)
+            }
+            Self::DotNetGcPohBytes => {
+                compare_optional_u64(left.dotnet_gc_poh_bytes, right.dotnet_gc_poh_bytes)
+            }
+            Self::DotNetGcCommittedBytes => compare_optional_u64(
+                left.dotnet_gc_committed_bytes,
+                right.dotnet_gc_committed_bytes,
+            ),
+            Self::DotNetGcFragmentationBytes => compare_optional_u64(
+                left.dotnet_gc_fragmentation_bytes,
+                right.dotnet_gc_fragmentation_bytes,
+            ),
+            Self::DotNetAllocationBytesPerSec => compare_optional_u64(
+                left.dotnet_allocation_bytes_per_sec,
+                right.dotnet_allocation_bytes_per_sec,
+            ),
             Self::GpuDedicatedBytes => {
                 compare_optional_u64(left.gpu_dedicated_bytes, right.gpu_dedicated_bytes)
             }
@@ -311,6 +413,14 @@ impl MetricColumn {
             Self::GdiObjectCount => row.gdi_object_count.is_some(),
             Self::GpuPercent => row.gpu_percent.is_some(),
             Self::DotNetHeapBytes => row.dotnet_heap_bytes.is_some(),
+            Self::DotNetGcGen0HeapBytes => row.dotnet_gc_gen0_heap_bytes.is_some(),
+            Self::DotNetGcGen1HeapBytes => row.dotnet_gc_gen1_heap_bytes.is_some(),
+            Self::DotNetGcGen2HeapBytes => row.dotnet_gc_gen2_heap_bytes.is_some(),
+            Self::DotNetGcLohBytes => row.dotnet_gc_loh_bytes.is_some(),
+            Self::DotNetGcPohBytes => row.dotnet_gc_poh_bytes.is_some(),
+            Self::DotNetGcCommittedBytes => row.dotnet_gc_committed_bytes.is_some(),
+            Self::DotNetGcFragmentationBytes => row.dotnet_gc_fragmentation_bytes.is_some(),
+            Self::DotNetAllocationBytesPerSec => row.dotnet_allocation_bytes_per_sec.is_some(),
             Self::GpuDedicatedBytes => row.gpu_dedicated_bytes.is_some(),
             Self::GpuSharedBytes => row.gpu_shared_bytes.is_some(),
             Self::IoReadBytesPerSec => row.io_read_bytes_per_sec.is_some(),
@@ -344,6 +454,18 @@ impl FromStr for MetricColumn {
             "gdi" | "gdiobjects" | "gdiobjectcount" => Ok(Self::GdiObjectCount),
             "gpu%" | "gpupercent" | "gpuutilization" | "gpuusage" => Ok(Self::GpuPercent),
             ".netheap" | "netheap" | "dotnetheap" => Ok(Self::DotNetHeapBytes),
+            ".netgen0" | "netgen0" | "dotnetgen0" => Ok(Self::DotNetGcGen0HeapBytes),
+            ".netgen1" | "netgen1" | "dotnetgen1" => Ok(Self::DotNetGcGen1HeapBytes),
+            ".netgen2" | "netgen2" | "dotnetgen2" => Ok(Self::DotNetGcGen2HeapBytes),
+            ".netloh" | "netloh" | "dotnetloh" => Ok(Self::DotNetGcLohBytes),
+            ".netpoh" | "netpoh" | "dotnetpoh" => Ok(Self::DotNetGcPohBytes),
+            ".netcommit" | "netcommit" | "dotnetcommit" => Ok(Self::DotNetGcCommittedBytes),
+            ".netfrag" | "netfrag" | "dotnetfrag" | "dotnetfragmentation" => {
+                Ok(Self::DotNetGcFragmentationBytes)
+            }
+            ".netalloc/s" | "netalloc/s" | "netallocs" | "dotnetalloc" => {
+                Ok(Self::DotNetAllocationBytesPerSec)
+            }
             "gpud" | "gpudedicated" => Ok(Self::GpuDedicatedBytes),
             "gpus" | "gpushared" => Ok(Self::GpuSharedBytes),
             "ioread/s" | "ioreads" | "ioread" => Ok(Self::IoReadBytesPerSec),
@@ -397,10 +519,9 @@ impl ColumnPreset {
                 MetricColumn::GdiObjectCount,
             ],
             Self::DotNet => &[
-                MetricColumn::PrivateBytes,
-                MetricColumn::WorksetPrivateBytes,
-                MetricColumn::DotNetHeapBytes,
-                MetricColumn::HandleCount,
+                MetricColumn::DotNetGcGen2HeapBytes,
+                MetricColumn::DotNetGcLohBytes,
+                MetricColumn::DotNetGcPohBytes,
             ],
             Self::Gpu => &[
                 MetricColumn::PrivateBytes,
@@ -581,6 +702,14 @@ mod tests {
             gpu_dedicated_bytes: None,
             gpu_shared_bytes: None,
             dotnet_heap_bytes: None,
+            dotnet_gc_gen0_heap_bytes: None,
+            dotnet_gc_gen1_heap_bytes: None,
+            dotnet_gc_gen2_heap_bytes: None,
+            dotnet_gc_loh_bytes: None,
+            dotnet_gc_poh_bytes: None,
+            dotnet_gc_committed_bytes: None,
+            dotnet_gc_fragmentation_bytes: None,
+            dotnet_allocation_bytes_per_sec: None,
             io_read_bytes_per_sec: None,
             io_write_bytes_per_sec: None,
         }
@@ -607,6 +736,18 @@ mod tests {
         assert_eq!(
             ColumnPreset::Custom.effective_columns(),
             ColumnPreset::Default.columns()
+        );
+    }
+
+    #[test]
+    fn dotnet_preset_prioritizes_long_lived_and_large_object_heaps() {
+        assert_eq!(
+            ColumnPreset::DotNet.columns(),
+            &[
+                MetricColumn::DotNetGcGen2HeapBytes,
+                MetricColumn::DotNetGcLohBytes,
+                MetricColumn::DotNetGcPohBytes,
+            ]
         );
     }
 
@@ -649,6 +790,14 @@ mod tests {
             gdi_object_count: Some(9),
             gpu_percent: Some(10.5),
             dotnet_heap_bytes: Some(1011),
+            dotnet_gc_gen0_heap_bytes: Some(1012),
+            dotnet_gc_gen1_heap_bytes: Some(1013),
+            dotnet_gc_gen2_heap_bytes: Some(1014),
+            dotnet_gc_loh_bytes: Some(1015),
+            dotnet_gc_poh_bytes: Some(1016),
+            dotnet_gc_committed_bytes: Some(1012),
+            dotnet_gc_fragmentation_bytes: Some(1013),
+            dotnet_allocation_bytes_per_sec: Some(1014),
             gpu_dedicated_bytes: Some(1012),
             gpu_shared_bytes: Some(1013),
             io_read_bytes_per_sec: Some(1014),
@@ -702,6 +851,50 @@ mod tests {
             Some("1011")
         );
         assert_eq!(
+            MetricColumn::DotNetGcGen0HeapBytes
+                .raw_value(&row)
+                .as_deref(),
+            Some("1012")
+        );
+        assert_eq!(
+            MetricColumn::DotNetGcGen1HeapBytes
+                .raw_value(&row)
+                .as_deref(),
+            Some("1013")
+        );
+        assert_eq!(
+            MetricColumn::DotNetGcGen2HeapBytes
+                .raw_value(&row)
+                .as_deref(),
+            Some("1014")
+        );
+        assert_eq!(
+            MetricColumn::DotNetGcLohBytes.raw_value(&row).as_deref(),
+            Some("1015")
+        );
+        assert_eq!(
+            MetricColumn::DotNetGcPohBytes.raw_value(&row).as_deref(),
+            Some("1016")
+        );
+        assert_eq!(
+            MetricColumn::DotNetGcCommittedBytes
+                .raw_value(&row)
+                .as_deref(),
+            Some("1012")
+        );
+        assert_eq!(
+            MetricColumn::DotNetGcFragmentationBytes
+                .raw_value(&row)
+                .as_deref(),
+            Some("1013")
+        );
+        assert_eq!(
+            MetricColumn::DotNetAllocationBytesPerSec
+                .raw_value(&row)
+                .as_deref(),
+            Some("1014")
+        );
+        assert_eq!(
             MetricColumn::GpuDedicatedBytes.raw_value(&row).as_deref(),
             Some("1012")
         );
@@ -747,11 +940,21 @@ mod tests {
             MetricColumn::GpuDedicatedBytes,
             MetricColumn::GpuSharedBytes,
             MetricColumn::DotNetHeapBytes,
+            MetricColumn::DotNetGcGen0HeapBytes,
+            MetricColumn::DotNetGcGen1HeapBytes,
+            MetricColumn::DotNetGcGen2HeapBytes,
+            MetricColumn::DotNetGcLohBytes,
+            MetricColumn::DotNetGcPohBytes,
         ] {
             assert!(column.label().chars().count() + 2 <= column.width() as usize);
         }
 
         assert_eq!(MetricColumn::DotNetHeapBytes.width(), 11);
+        assert_eq!(MetricColumn::DotNetGcGen0HeapBytes.width(), 11);
+        assert_eq!(MetricColumn::DotNetGcGen1HeapBytes.width(), 11);
+        assert_eq!(MetricColumn::DotNetGcGen2HeapBytes.width(), 11);
+        assert_eq!(MetricColumn::DotNetGcLohBytes.width(), 11);
+        assert_eq!(MetricColumn::DotNetGcPohBytes.width(), 11);
     }
 
     #[test]

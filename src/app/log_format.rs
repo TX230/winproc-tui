@@ -7,7 +7,7 @@ pub(crate) const LEGACY_LOG_SCHEMA_VERSION: u64 = 2;
 
 pub(crate) const SYSTEM_U64_FIELD_COUNT: usize = 21;
 pub(crate) const PROCESS_F64_FIELD_COUNT: usize = 2;
-pub(crate) const PROCESS_U64_FIELD_COUNT: usize = 13;
+pub(crate) const PROCESS_U64_FIELD_COUNT: usize = 21;
 pub(crate) const GPU_F64_FIELD_COUNT: usize = 5;
 pub(crate) const GPU_U64_FIELD_COUNT: usize = 6;
 
@@ -54,6 +54,14 @@ pub(crate) mod process_u64 {
     pub(crate) const DOTNET_HEAP_BYTES: usize = 10;
     pub(crate) const IO_READ_BYTES_PER_SEC: usize = 11;
     pub(crate) const IO_WRITE_BYTES_PER_SEC: usize = 12;
+    pub(crate) const DOTNET_GC_COMMITTED_BYTES: usize = 13;
+    pub(crate) const DOTNET_GC_FRAGMENTATION_BYTES: usize = 14;
+    pub(crate) const DOTNET_ALLOCATION_BYTES_PER_SEC: usize = 15;
+    pub(crate) const DOTNET_GC_GEN0_HEAP_BYTES: usize = 16;
+    pub(crate) const DOTNET_GC_GEN1_HEAP_BYTES: usize = 17;
+    pub(crate) const DOTNET_GC_GEN2_HEAP_BYTES: usize = 18;
+    pub(crate) const DOTNET_GC_LOH_BYTES: usize = 19;
+    pub(crate) const DOTNET_GC_POH_BYTES: usize = 20;
 }
 
 pub(crate) mod gpu_f64 {
@@ -216,6 +224,16 @@ impl V3ProcessSample {
         integers[process_u64::DOTNET_HEAP_BYTES] = process.dotnet_heap_bytes;
         integers[process_u64::IO_READ_BYTES_PER_SEC] = process.io_read_bytes_per_sec;
         integers[process_u64::IO_WRITE_BYTES_PER_SEC] = process.io_write_bytes_per_sec;
+        integers[process_u64::DOTNET_GC_COMMITTED_BYTES] = process.dotnet_gc_committed_bytes;
+        integers[process_u64::DOTNET_GC_FRAGMENTATION_BYTES] =
+            process.dotnet_gc_fragmentation_bytes;
+        integers[process_u64::DOTNET_ALLOCATION_BYTES_PER_SEC] =
+            process.dotnet_allocation_bytes_per_sec;
+        integers[process_u64::DOTNET_GC_GEN0_HEAP_BYTES] = process.dotnet_gc_gen0_heap_bytes;
+        integers[process_u64::DOTNET_GC_GEN1_HEAP_BYTES] = process.dotnet_gc_gen1_heap_bytes;
+        integers[process_u64::DOTNET_GC_GEN2_HEAP_BYTES] = process.dotnet_gc_gen2_heap_bytes;
+        integers[process_u64::DOTNET_GC_LOH_BYTES] = process.dotnet_gc_loh_bytes;
+        integers[process_u64::DOTNET_GC_POH_BYTES] = process.dotnet_gc_poh_bytes;
         Self(process_id, floats, integers)
     }
 }
@@ -254,5 +272,20 @@ impl V3GpuSample {
         integers[gpu_u64::SHARED_BYTES] = adapter.shared_used;
         integers[gpu_u64::SHARED_TOTAL_BYTES] = adapter.shared_total;
         Self(adapter_id, floats, integers)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v3_process_sample_rejects_obsolete_metric_array_lengths() {
+        let obsolete_float_values =
+            "[7,[12.5,5.5,0.5,1.5,2.5],[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]]";
+        let obsolete_integer_values = "[7,[12.5,5.5],[1,2,3,4,5,6,7,8,9,10,11,12,13]]";
+
+        assert!(serde_json::from_str::<V3ProcessSample>(obsolete_float_values).is_err());
+        assert!(serde_json::from_str::<V3ProcessSample>(obsolete_integer_values).is_err());
     }
 }
