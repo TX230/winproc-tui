@@ -6,13 +6,13 @@
 
 Language: [English](README.md) | [日本語](README.ja.md)
 
-`winproc-tui` is a keyboard-first process monitor for Windows 11. It shows how an application's memory, handles, GUI resources, GPU memory, I/O, and other metrics change over time, directly in the terminal.
+`winproc-tui` is a keyboard-first process monitor for Windows 11. It shows how an application's memory, handles, GUI resources, GPU memory, I/O, .NET runtime metrics, and other metrics change over time, directly in the terminal.
 
 Select the metrics that matter, keep up to 16 Graphs in one workspace, compare exact points with A/B markers, and record sessions for later inspection. The focus is fast, repeatable investigation of selected processes during development and testing—not broad system inspection.
 
 ![The winproc-tui main screen showing system and process metrics, the Graph Workspace, Samples, and an A/B comparison](assets/screenshots/main-screen.png)
 
-_Private memory growth shown alongside system activity, with A and B marking the interval to compare._
+_The `Private Bytes` graph for `memory-eater.exe`, showing the change from point A to point B._
 
 ## Install
 
@@ -21,16 +21,18 @@ Official Windows binaries are published only on [TX230/winproc-tui Releases](htt
 ### WinGet
 
 ```powershell
-winget install --id TX230.winproc-tui -e
+winget install winproc-tui
 winproc-tui
 ```
 
 Update or uninstall with:
 
 ```powershell
-winget upgrade --id TX230.winproc-tui -e
-winget uninstall --id TX230.winproc-tui -e
+winget upgrade winproc-tui
+winget uninstall winproc-tui
 ```
+
+To match the package ID exactly, replace `winproc-tui` in any `winget` command above with `--id TX230.winproc-tui -e`.
 
 ### Scoop
 
@@ -61,7 +63,7 @@ System MEM, GPU, CPU, and network/disk metrics can be graphed directly from thei
 
 ![Graph Workspace showing 12 metrics in a three-column layout](assets/screenshots/main-screen-12slots.png)
 
-_A three-column Graph Workspace comparing 12 metrics while preserving the process and system overview._
+_A customized layout displaying 12 Graphs._
 
 ### Compare Two Points
 
@@ -94,10 +96,13 @@ Layouts, visible columns, sorting, and Tracking Lists are restored on the next l
 
 `winproc-tui` is a good fit when you need to:
 
-- Find out whether a process's memory or handle usage keeps growing.
-- Measure resource usage before and after a specific operation or code change.
-- See which files and DLLs a process is using and which runtime it loaded.
-- Record a background service and return to the period around a later incident.
+- Understand a process's resource usage and identify opportunities to optimize it.
+- Check for memory, handle, and other resource leaks.
+- Compare `Private Bytes` with `Working Set - Private` to investigate whether a large allocated buffer may be going unused.
+- Review handle-count trends and the Files tab in Process Info to find files that may not have been closed.
+- Inspect the paths and versions of DLLs loaded by a process.
+- Compare resource usage before and after a specific operation or code change.
+- Record a target process and later inspect history around the time an issue occurred.
 
 Use Windows Performance Monitor (PerfMon) for arbitrary counters, remote monitoring, and managed Data Collector Sets. Use Process Explorer or System Informer for broad system inspection. Choose `winproc-tui` when the task is to follow selected processes and compare their recent behavior quickly and repeatedly.
 
