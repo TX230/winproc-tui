@@ -19,7 +19,7 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
 
     let activity = app.activity();
     match activity {
-        AppActivity::Live => spans.push(mode_span("LIVE", theme.success, theme)),
+        AppActivity::Live => spans.push(mode_span("LIVE", theme.active_series, theme)),
         AppActivity::Recording => {
             spans.push(mode_span("REC", theme.danger, theme));
             if let Some(interval_seconds) = app

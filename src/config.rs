@@ -44,7 +44,7 @@ impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             mouse: true,
-            theme: "Dark".to_string(),
+            theme: "Green".to_string(),
         }
     }
 }

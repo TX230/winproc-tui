@@ -1313,6 +1313,11 @@ impl App {
         THEMES[self.theme_index]
     }
 
+    pub(crate) fn cycle_theme(&mut self) {
+        self.theme_index = (self.theme_index + 1) % THEMES.len();
+        self.status = format!("Color scheme: {}", self.theme().name);
+    }
+
     pub(crate) fn activity(&self) -> AppActivity {
         if self.recording_session.is_some() {
             return AppActivity::Recording;

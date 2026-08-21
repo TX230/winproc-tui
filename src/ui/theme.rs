@@ -30,69 +30,106 @@ pub(crate) struct Theme {
     pub(crate) selection: Color,
 }
 
-pub(crate) const THEMES: [Theme; 2] = [
+const fn dark_theme(
+    name: &'static str,
+    accent: Color,
+    focus_border: Color,
+    key_hint: Color,
+    table_selection_surface: Color,
+    table_column_surface: Color,
+    table_intersection_surface: Color,
+    active_series: Color,
+    warning: Color,
+    tracked: Color,
+) -> Theme {
     Theme {
-        name: "Dark",
+        name,
         background: Color::Rgb(12, 13, 14),
         panel: Color::Rgb(17, 19, 21),
         panel_alt: Color::Rgb(26, 29, 32),
         border: Color::Rgb(53, 58, 64),
         text: Color::Rgb(230, 226, 218),
         muted: Color::Rgb(154, 152, 146),
-        accent: Color::Rgb(201, 206, 214),
-        focus_border: Color::Rgb(104, 196, 164),
+        accent,
+        focus_border,
         focus_surface: Color::Rgb(48, 52, 58),
-        key_hint: Color::Rgb(83, 151, 128),
-        table_selection_surface: Color::Rgb(19, 51, 48),
+        key_hint,
+        table_selection_surface,
         table_multi_selection_surface: Color::Rgb(45, 48, 52),
-        table_column_surface: Color::Rgb(39, 49, 54),
-        table_intersection_surface: Color::Rgb(32, 79, 73),
+        table_column_surface,
+        table_intersection_surface,
         graph_line: Color::Rgb(139, 144, 150),
-        active_series: Color::Rgb(72, 190, 151),
+        active_series,
         cursor_guide: Color::Rgb(101, 106, 112),
         success: Color::Rgb(120, 194, 139),
-        warning: Color::Rgb(214, 170, 94),
+        warning,
         danger: Color::Rgb(224, 108, 117),
-        tracked: Color::Rgb(185, 160, 106),
+        tracked,
         exited: Color::Rgb(109, 114, 122),
         highlight: Color::Rgb(34, 37, 41),
         selection: Color::Rgb(27, 30, 33),
-    },
-    Theme {
-        name: "Light",
-        background: Color::Rgb(242, 241, 237),
-        panel: Color::Rgb(250, 249, 246),
-        panel_alt: Color::Rgb(231, 229, 223),
-        border: Color::Rgb(169, 165, 157),
-        text: Color::Rgb(37, 36, 33),
-        muted: Color::Rgb(103, 99, 93),
-        accent: Color::Rgb(66, 70, 76),
-        focus_border: Color::Rgb(32, 130, 94),
-        focus_surface: Color::Rgb(212, 209, 202),
-        key_hint: Color::Rgb(54, 112, 91),
-        table_selection_surface: Color::Rgb(218, 239, 235),
-        table_multi_selection_surface: Color::Rgb(215, 211, 203),
-        table_column_surface: Color::Rgb(215, 221, 218),
-        table_intersection_surface: Color::Rgb(184, 222, 214),
-        graph_line: Color::Rgb(104, 109, 114),
-        active_series: Color::Rgb(16, 119, 79),
-        cursor_guide: Color::Rgb(154, 150, 142),
-        success: Color::Rgb(47, 114, 68),
-        warning: Color::Rgb(147, 98, 20),
-        danger: Color::Rgb(179, 58, 71),
-        tracked: Color::Rgb(122, 103, 65),
-        exited: Color::Rgb(111, 106, 100),
-        highlight: Color::Rgb(221, 218, 211),
-        selection: Color::Rgb(236, 234, 229),
-    },
+    }
+}
+
+pub(crate) const THEMES: [Theme; 4] = [
+    dark_theme(
+        "Green",
+        Color::Rgb(201, 206, 214),
+        Color::Rgb(104, 196, 164),
+        Color::Rgb(83, 151, 128),
+        Color::Rgb(19, 51, 48),
+        Color::Rgb(39, 49, 54),
+        Color::Rgb(32, 79, 73),
+        Color::Rgb(72, 190, 151),
+        Color::Rgb(214, 170, 94),
+        Color::Rgb(72, 190, 151),
+    ),
+    dark_theme(
+        "Yellow",
+        Color::Rgb(226, 200, 111),
+        Color::Rgb(239, 209, 116),
+        Color::Rgb(169, 144, 77),
+        Color::Rgb(63, 54, 28),
+        Color::Rgb(55, 51, 41),
+        Color::Rgb(92, 77, 33),
+        Color::Rgb(224, 196, 108),
+        Color::Rgb(229, 139, 82),
+        Color::Rgb(224, 196, 108),
+    ),
+    dark_theme(
+        "Orange",
+        Color::Rgb(238, 157, 99),
+        Color::Rgb(242, 163, 111),
+        Color::Rgb(181, 111, 67),
+        Color::Rgb(67, 39, 25),
+        Color::Rgb(56, 46, 40),
+        Color::Rgb(97, 54, 31),
+        Color::Rgb(229, 139, 82),
+        Color::Rgb(214, 170, 94),
+        Color::Rgb(229, 139, 82),
+    ),
+    dark_theme(
+        "Cyan",
+        Color::Rgb(121, 216, 232),
+        Color::Rgb(116, 220, 235),
+        Color::Rgb(84, 167, 181),
+        Color::Rgb(23, 58, 64),
+        Color::Rgb(41, 54, 58),
+        Color::Rgb(32, 88, 97),
+        Color::Rgb(69, 199, 214),
+        Color::Rgb(214, 170, 94),
+        Color::Rgb(69, 199, 214),
+    ),
 ];
 
 pub(crate) fn theme_index_by_name(name: &str) -> usize {
-    if name.eq_ignore_ascii_case("Light") || name.eq_ignore_ascii_case("Neutral Light") {
-        1
-    } else {
-        0
+    if name.eq_ignore_ascii_case("Multi") {
+        return 3;
     }
+    THEMES
+        .iter()
+        .position(|theme| theme.name.eq_ignore_ascii_case(name))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -100,83 +137,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn built_in_themes_are_dark_and_light_only() {
-        assert_eq!(THEMES.len(), 2);
-        assert_eq!(THEMES[0].name, "Dark");
-        assert_eq!(THEMES[1].name, "Light");
+    fn built_in_themes_are_four_dark_color_schemes() {
+        assert_eq!(THEMES.len(), 4);
+        assert_eq!(
+            THEMES.map(|theme| theme.name),
+            ["Green", "Yellow", "Orange", "Cyan"]
+        );
+        for theme in THEMES {
+            assert_eq!(theme.background, Color::Rgb(12, 13, 14));
+            assert_eq!(theme.panel, Color::Rgb(17, 19, 21));
+            assert_eq!(theme.text, Color::Rgb(230, 226, 218));
+        }
     }
 
     #[test]
     fn built_in_themes_separate_focus_selection_and_semantic_status_colors() {
-        let dark = THEMES[0];
-        assert_eq!(dark.accent, Color::Rgb(201, 206, 214));
-        assert_eq!(dark.focus_border, Color::Rgb(104, 196, 164));
-        assert_ne!(dark.focus_border, dark.accent);
-        assert_eq!(dark.focus_surface, Color::Rgb(48, 52, 58));
-        assert_eq!(dark.key_hint, Color::Rgb(83, 151, 128));
-        assert_ne!(dark.key_hint, dark.focus_border);
-        assert_eq!(dark.table_selection_surface, Color::Rgb(19, 51, 48));
-        assert_eq!(dark.table_multi_selection_surface, Color::Rgb(45, 48, 52));
-        assert_eq!(dark.table_column_surface, Color::Rgb(39, 49, 54));
-        assert_eq!(dark.table_intersection_surface, Color::Rgb(32, 79, 73));
-        assert_ne!(dark.table_multi_selection_surface, dark.panel);
-        assert_ne!(
-            dark.table_multi_selection_surface,
-            dark.table_column_surface
-        );
-        assert_ne!(dark.table_selection_surface, dark.table_column_surface);
-        assert_ne!(
-            dark.table_selection_surface,
-            dark.table_intersection_surface
-        );
-        assert_ne!(dark.table_column_surface, dark.table_intersection_surface);
-        assert_eq!(dark.cursor_guide, Color::Rgb(101, 106, 112));
-        assert_eq!(dark.graph_line, Color::Rgb(139, 144, 150));
-        assert_eq!(dark.active_series, Color::Rgb(72, 190, 151));
-        assert_ne!(dark.focus_border, dark.active_series);
-        assert_eq!(dark.success, Color::Rgb(120, 194, 139));
-        assert_eq!(dark.tracked, Color::Rgb(185, 160, 106));
-        assert_ne!(dark.warning, dark.tracked);
+        for theme in THEMES {
+            assert_ne!(theme.focus_border, theme.active_series);
+            assert_ne!(theme.key_hint, theme.focus_border);
+            assert_ne!(theme.table_multi_selection_surface, theme.panel);
+            assert_ne!(
+                theme.table_multi_selection_surface,
+                theme.table_column_surface
+            );
+            assert_ne!(theme.table_selection_surface, theme.table_column_surface);
+            assert_ne!(
+                theme.table_selection_surface,
+                theme.table_intersection_surface
+            );
+            assert_ne!(theme.table_column_surface, theme.table_intersection_surface);
+            assert_ne!(theme.warning, theme.tracked);
+        }
 
-        let light = THEMES[1];
-        assert_eq!(light.accent, Color::Rgb(66, 70, 76));
-        assert_eq!(light.focus_border, Color::Rgb(32, 130, 94));
-        assert_ne!(light.focus_border, light.accent);
-        assert_eq!(light.focus_surface, Color::Rgb(212, 209, 202));
-        assert_eq!(light.key_hint, Color::Rgb(54, 112, 91));
-        assert_ne!(light.key_hint, light.focus_border);
-        assert_eq!(light.table_selection_surface, Color::Rgb(218, 239, 235));
-        assert_eq!(
-            light.table_multi_selection_surface,
-            Color::Rgb(215, 211, 203)
-        );
-        assert_eq!(light.table_column_surface, Color::Rgb(215, 221, 218));
-        assert_eq!(light.table_intersection_surface, Color::Rgb(184, 222, 214));
-        assert_ne!(light.table_multi_selection_surface, light.panel);
-        assert_ne!(
-            light.table_multi_selection_surface,
-            light.table_column_surface
-        );
-        assert_ne!(light.table_selection_surface, light.table_column_surface);
-        assert_ne!(
-            light.table_selection_surface,
-            light.table_intersection_surface
-        );
-        assert_ne!(light.table_column_surface, light.table_intersection_surface);
-        assert_eq!(light.cursor_guide, Color::Rgb(154, 150, 142));
-        assert_eq!(light.graph_line, Color::Rgb(104, 109, 114));
-        assert_eq!(light.active_series, Color::Rgb(16, 119, 79));
-        assert_ne!(light.focus_border, light.active_series);
-        assert_eq!(light.success, Color::Rgb(47, 114, 68));
-        assert_eq!(light.tracked, Color::Rgb(122, 103, 65));
-        assert_ne!(light.warning, light.tracked);
+        for theme in THEMES {
+            assert_eq!(theme.active_series, theme.tracked);
+        }
     }
 
     #[test]
     fn theme_lookup_keeps_legacy_names_compatible() {
+        assert_eq!(theme_index_by_name("Green"), 0);
+        assert_eq!(theme_index_by_name("yellow"), 1);
+        assert_eq!(theme_index_by_name("ORANGE"), 2);
+        assert_eq!(theme_index_by_name("Cyan"), 3);
+        assert_eq!(theme_index_by_name("Multi"), 3);
         assert_eq!(theme_index_by_name("Dark"), 0);
-        assert_eq!(theme_index_by_name("Light"), 1);
-        assert_eq!(theme_index_by_name("Neutral Light"), 1);
+        assert_eq!(theme_index_by_name("Light"), 0);
+        assert_eq!(theme_index_by_name("Neutral Light"), 0);
         assert_eq!(theme_index_by_name("Ocean Pop"), 0);
         assert_eq!(theme_index_by_name("unknown"), 0);
     }

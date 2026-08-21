@@ -50,6 +50,10 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Toggle Help",
     },
     HelpItem {
+        key: "F12",
+        label: "Cycle color scheme",
+    },
+    HelpItem {
         key: "Tab/Shift+Tab",
         label: "Move focus",
     },
@@ -528,7 +532,7 @@ fn help_lines(theme: Theme) -> Vec<Line<'static>> {
 
 fn help_hint() -> String {
     format!(
-        "Footer: focused actions. History: {}/{} normal/tracked. Green selects; amber marks.",
+        "Footer: focused actions. History: {}/{} normal/tracked. Scheme colors mark active items; T marks tracked.",
         format_integer(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as u64),
         format_integer(TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u64)
     )

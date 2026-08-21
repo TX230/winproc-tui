@@ -41,6 +41,11 @@ impl App {
         }
         self.clear_source_cell_click();
 
+        if key.code == KeyCode::F(12) {
+            self.cycle_theme();
+            return Ok(());
+        }
+
         if self.recording_error.is_some() {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.dismiss_recording_error(),

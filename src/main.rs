@@ -706,6 +706,22 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
+    fn app_config_saves_selected_color_scheme() {
+        let mut app = make_test_app(3, 10);
+        app.theme_index = 3;
+        let path = unique_config_path("color-scheme");
+
+        write_app_config(&path, &app).unwrap();
+        let rendered = std::fs::read_to_string(&path).unwrap();
+        let loaded = load_config(&path).unwrap();
+        let runtime = build_runtime_config(loaded).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(rendered.contains("theme = \"Cyan\""), "{rendered}");
+        assert_eq!(runtime.initial_theme, "Cyan");
+    }
+
+    #[test]
     fn app_config_saves_graph_layout_and_explicit_samples_preference() {
         let mut app = make_test_app(3, 10);
         app.graph_slot_layout = GraphSlotLayout::TwoColumns;
@@ -1527,6 +1543,30 @@ processes = ["api.exe", "worker.exe"]
 
         assert_eq!(app.theme_index, initial_theme_index);
         assert!(app.status.is_empty());
+    }
+
+    #[test]
+    fn f12_cycles_color_schemes_and_wraps() {
+        let mut app = make_test_app(3, 10);
+
+        for expected in ["Yellow", "Orange", "Cyan", "Green"] {
+            app.on_key(KeyEvent::new(KeyCode::F(12), KeyModifiers::NONE))
+                .unwrap();
+            assert_eq!(app.theme().name, expected);
+            assert_eq!(app.status, format!("Color scheme: {expected}"));
+        }
+    }
+
+    #[test]
+    fn f12_switches_color_scheme_without_closing_help() {
+        let mut app = make_test_app(3, 10);
+        app.show_help = true;
+
+        app.on_key(KeyEvent::new(KeyCode::F(12), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.theme().name, "Yellow");
+        assert!(app.show_help);
     }
 
     #[test]
@@ -4122,7 +4162,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn panel_focus_and_active_graph_use_distinct_frames_in_both_themes() {
+    fn panel_focus_and_active_graph_use_distinct_frames_in_all_color_schemes() {
         let screen = Rect::new(0, 0, 180, 60);
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(3, 10);
@@ -4230,7 +4270,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn active_graph_series_and_slot_tokens_match_in_both_themes() {
+    fn active_graph_series_and_slot_tokens_match_in_all_color_schemes() {
         let screen = Rect::new(0, 0, 180, 70);
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(1, 10);
@@ -4391,7 +4431,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn top_level_panel_titles_follow_their_border_color_in_both_themes() {
+    fn top_level_panel_titles_follow_their_border_color_in_all_color_schemes() {
         let screen = Rect::new(0, 0, 180, 60);
         for theme_index in 0..ui::THEMES.len() {
             let mut app = make_test_app(3, 10);
@@ -4467,7 +4507,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn panel_and_dialog_title_names_are_uppercase_and_bold_in_both_themes() {
+    fn panel_and_dialog_title_names_are_uppercase_and_bold_in_all_color_schemes() {
         let screen = Rect::new(0, 0, 180, 60);
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(3, 10);
@@ -4924,7 +4964,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn graph_shared_controls_follow_footer_shortcut_color_roles_in_both_themes() {
+    fn graph_shared_controls_follow_footer_shortcut_color_roles_in_all_color_schemes() {
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(3, 10);
             app.theme_index = theme_index;
@@ -6416,7 +6456,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn compact_system_rows_use_the_process_selection_surface_in_both_themes() {
+    fn compact_system_rows_use_the_process_selection_surface_in_all_color_schemes() {
         let screen = Rect::new(0, 0, 180, 30);
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(2, 10);
@@ -6549,7 +6589,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn header_and_footer_roles_apply_to_both_themes() {
+    fn header_and_footer_roles_apply_to_all_color_schemes() {
         for theme_index in 0..ui::THEMES.len() {
             let mut app = make_test_app(1, 10);
             app.theme_index = theme_index;
@@ -6571,7 +6611,7 @@ processes = ["api.exe", "worker.exe"]
                 find_text_position(&buffer, "LIVE").expect("live badge should be rendered");
             assert_eq!(live_y, 0);
             assert_eq!(buffer[(live_x, live_y)].fg, theme.background);
-            assert_eq!(buffer[(live_x, live_y)].bg, theme.success);
+            assert_eq!(buffer[(live_x, live_y)].bg, theme.active_series);
 
             let (shortcut_x, shortcut_y) = find_text_position(&buffer, "c Columns")
                 .expect("process shortcut should be rendered");
@@ -7831,10 +7871,12 @@ processes = ["api.exe", "worker.exe"]
             rendered.contains("F1/?") && rendered.contains("Toggle Help"),
             "{rendered}"
         );
+        assert!(rendered.contains("F12"), "{rendered}");
+        assert!(rendered.contains("Cycle color scheme"), "{rendered}");
         assert!(rendered.contains("Esc/Enter/F1/? Close"), "{rendered}");
         assert!(rendered.contains("Footer: focused actions."), "{rendered}");
         assert!(
-            rendered.contains("Green selects; amber marks."),
+            rendered.contains("Scheme colors mark active items; T marks tracked."),
             "{rendered}"
         );
         assert!(!rendered_lower.contains("baseline"), "{rendered}");
@@ -8013,6 +8055,7 @@ processes = ["api.exe", "worker.exe"]
         assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
         assert!(rendered.contains("Esc Quit"), "{rendered}");
         assert!(!rendered.contains("Tab Focus"), "{rendered}");
+        assert!(rendered.contains("F12 Color"), "{rendered}");
         assert!(rendered.contains("F1/? Help"), "{rendered}");
         assert!(!rendered.contains("Status  "), "{rendered}");
         assert!(!rendered.contains("Copied row: proc-0"), "{rendered}");
@@ -9227,7 +9270,7 @@ processes = ["api.exe", "worker.exe"]
     }
 
     #[test]
-    fn recording_dialog_shortcuts_use_footer_roles_in_both_themes() {
+    fn recording_dialog_shortcuts_use_footer_roles_in_all_color_schemes() {
         for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
             let mut app = make_test_app(1, 10);
             app.theme_index = theme_index;
@@ -14584,7 +14627,7 @@ processes = ["api.exe", "worker.exe"]
                 mouse: true,
                 config_path: None,
                 recording_last_dir: None,
-                initial_theme: "Dark".to_string(),
+                initial_theme: "Green".to_string(),
                 initial_graph_slot_layout: GraphSlotLayout::Auto,
                 initial_show_samples_panel: true,
                 initial_show_sample_delta: true,
