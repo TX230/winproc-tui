@@ -107,7 +107,7 @@ pub(crate) enum OpenFilesRequest {
     Collect {
         generation: u64,
         identity: ProcessIdentity,
-        process: ProcessRow,
+        process: Box<ProcessRow>,
     },
     Stop,
 }
@@ -177,7 +177,7 @@ impl OpenFilesWorker {
             .send(OpenFilesRequest::Collect {
                 generation,
                 identity,
-                process,
+                process: Box::new(process),
             })
             .context("open files worker is unavailable")
     }

@@ -664,11 +664,8 @@ impl MetricAccumulator {
         else {
             return;
         };
-        match event.instrument.as_str() {
-            GC_TOTAL_ALLOCATED => {
-                self.allocation_bytes_per_sec = nonnegative_rounded_u64(rate);
-            }
-            _ => {}
+        if event.instrument.as_str() == GC_TOTAL_ALLOCATED {
+            self.allocation_bytes_per_sec = nonnegative_rounded_u64(rate);
         }
     }
 

@@ -12,6 +12,7 @@ Maintainer-requested or AI-assisted pull requests should fill in the sections be
 ## Verification
 
 - [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
 - [ ] `cargo test`
 - [ ] Manual check, if UI behavior changed:
 

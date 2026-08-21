@@ -1,5 +1,4 @@
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct ProcessRow {
     pub(crate) pid: u32,
     pub(crate) name: String,
@@ -52,9 +51,10 @@ pub(crate) struct ProcessExtraMetrics {
     pub(crate) io_write_bytes_per_sec: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) enum InfoValue {
     Value(String),
+    #[default]
     Missing,
     AccessDenied,
     Exited,
@@ -79,12 +79,6 @@ impl InfoValue {
             .filter(|value| !value.trim().is_empty())
             .map(Self::Value)
             .unwrap_or(Self::Missing)
-    }
-}
-
-impl Default for InfoValue {
-    fn default() -> Self {
-        Self::Missing
     }
 }
 

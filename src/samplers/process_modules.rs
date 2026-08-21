@@ -41,7 +41,7 @@ pub(crate) enum ProcessModulesRequest {
         generation: u64,
         request_id: u64,
         identity: ProcessIdentity,
-        process: ProcessRow,
+        process: Box<ProcessRow>,
     },
     Stop,
 }
@@ -110,7 +110,7 @@ impl ProcessModulesWorker {
                 generation,
                 request_id,
                 identity,
-                process,
+                process: Box::new(process),
             })
             .context("process modules worker is unavailable")
     }

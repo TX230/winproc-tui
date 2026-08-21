@@ -754,6 +754,8 @@ pub(crate) fn render_summary_line(
     )
 }
 
+// Summary rows expose formatting and semantic style inputs independently.
+#[allow(clippy::too_many_arguments)]
 fn render_summary_line_with_label_width(
     title: &str,
     label_width: usize,

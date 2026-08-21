@@ -429,7 +429,7 @@ mod tests {
         assert_eq!(layout.list.height, 4);
         assert_eq!(layout.shortcuts.y, layout.popup.bottom() - 2);
         assert_eq!(layout.shortcuts.y, layout.list.bottom() + 1);
-        assert!(layout.shortcuts.bottom() <= layout.popup.bottom() - 1);
+        assert!(layout.shortcuts.bottom() < layout.popup.bottom());
         assert_eq!(
             startup_choice_index_at(screen, layout.list.x + 1, layout.list.y + 2, 0, 4),
             Some(2)

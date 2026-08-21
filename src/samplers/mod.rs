@@ -103,7 +103,7 @@ impl SamplingRuntime {
     }
 
     fn collect_internal(&mut self, collect_dotnet: bool) -> CollectSnapshotResult {
-        let collect_slow_metrics = self.sample_index % SLOW_SAMPLE_INTERVAL == 0;
+        let collect_slow_metrics = self.sample_index.is_multiple_of(SLOW_SAMPLE_INTERVAL);
         self.sample_index = self.sample_index.saturating_add(1);
         collect_snapshot(
             &mut self.system,
@@ -185,6 +185,9 @@ impl Drop for SamplingWorker {
     }
 }
 
+// Collector inputs are independently optional and mutably borrowed from SamplingRuntime.
+// Keeping them explicit avoids another state-owning wrapper around the runtime.
+#[allow(clippy::too_many_arguments)]
 fn collect_snapshot(
     system: &mut System,
     mut system_sampler: Option<&mut SystemCounterSampler>,

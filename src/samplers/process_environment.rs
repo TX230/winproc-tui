@@ -11,7 +11,7 @@ use sysinfo::{Pid, System};
 use winapi::{
     ctypes::c_void,
     shared::{
-        minwindef::{FALSE, ULONG},
+        minwindef::{FALSE, FARPROC, ULONG},
         ntdef::{HANDLE, LONG, PVOID},
         winerror::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER},
     },
@@ -57,7 +57,7 @@ pub(crate) enum ProcessEnvironmentRequest {
         generation: u64,
         request_id: u64,
         identity: ProcessIdentity,
-        process: ProcessRow,
+        process: Box<ProcessRow>,
     },
     Stop,
 }
@@ -125,7 +125,7 @@ impl ProcessEnvironmentWorker {
                 generation,
                 request_id,
                 identity,
-                process,
+                process: Box::new(process),
             })
             .context("process environment worker is unavailable")
     }
@@ -333,12 +333,11 @@ fn resolve_nt_query_information_process()
     if module.is_null() {
         return Err(ProcessEnvironmentError::NotAvailable);
     }
-    let address =
-        unsafe { GetProcAddress(module, b"NtQueryInformationProcess\0".as_ptr().cast::<i8>()) };
+    let address = unsafe { GetProcAddress(module, c"NtQueryInformationProcess".as_ptr()) };
     if address.is_null() {
         return Err(ProcessEnvironmentError::NotAvailable);
     }
-    Ok(unsafe { transmute::<_, NtQueryInformationProcessFn>(address) })
+    Ok(unsafe { transmute::<FARPROC, NtQueryInformationProcessFn>(address) })
 }
 
 trait RemoteMemory {
@@ -486,7 +485,7 @@ fn read_environment_block(
 }
 
 fn environment_block_end(bytes: &[u8]) -> Option<usize> {
-    if bytes.len() < 4 || bytes.len() % 2 != 0 {
+    if bytes.len() < 4 || !bytes.len().is_multiple_of(2) {
         return None;
     }
     let mut previous_null = false;
@@ -503,14 +502,14 @@ fn environment_block_end(bytes: &[u8]) -> Option<usize> {
 fn parse_environment_block(
     bytes: &[u8],
 ) -> std::result::Result<(Vec<ProcessEnvironmentEntry>, usize), ProcessEnvironmentError> {
-    if bytes.len() > MAX_ENVIRONMENT_BYTES || bytes.len() % 2 != 0 {
+    if bytes.len() > MAX_ENVIRONMENT_BYTES || !bytes.len().is_multiple_of(2) {
         return Err(if bytes.len() > MAX_ENVIRONMENT_BYTES {
             ProcessEnvironmentError::TooLarge
         } else {
             ProcessEnvironmentError::ReadFailed
         });
     }
-    let end = environment_block_end(bytes).ok_or_else(|| {
+    let end = environment_block_end(bytes).ok_or({
         if bytes.len() >= MAX_ENVIRONMENT_BYTES {
             ProcessEnvironmentError::TooLarge
         } else {
@@ -541,7 +540,7 @@ fn parse_environment_block(
             None => malformed += 1,
         }
     }
-    entries.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    entries.sort_by_key(|left| left.name.to_lowercase());
     Ok((entries, malformed))
 }
 
@@ -737,7 +736,7 @@ mod tests {
             Err(ProcessEnvironmentError::ReadFailed)
         );
         assert_eq!(
-            parse_environment_block(&[b'A']),
+            parse_environment_block(b"A"),
             Err(ProcessEnvironmentError::ReadFailed)
         );
         let too_large = vec![b'A'; MAX_ENVIRONMENT_BYTES];

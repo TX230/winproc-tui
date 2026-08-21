@@ -3784,8 +3784,7 @@ processes = ["api.exe", "worker.exe"]
         app.process_history = ProcessHistory::default();
         app.system_history = SystemHistory::default();
         for offset in 0..=7_200 {
-            app.snapshot.captured_at =
-                app.snapshot.captured_at + chrono::Duration::seconds(i64::from(offset));
+            app.snapshot.captured_at += chrono::Duration::seconds(i64::from(offset));
             app.process_history
                 .record_snapshot_unbounded(app.snapshot.captured_at, &app.snapshot.processes);
             app.system_history.record_snapshot_unbounded(&app.snapshot);

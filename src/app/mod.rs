@@ -86,15 +86,13 @@ pub(crate) fn run_tui(
         let trace_selected = app.process_table_state.selected();
         let trace_start = Instant::now();
         let sample_dirty = app.poll_sample_results()?;
-        if sample_dirty {
-            if let Some(trace) = loop_trace.as_mut() {
-                trace.log(
-                    "sample",
-                    trace_start.elapsed(),
-                    trace_selected,
-                    trace_selected,
-                );
-            }
+        if sample_dirty && let Some(trace) = loop_trace.as_mut() {
+            trace.log(
+                "sample",
+                trace_start.elapsed(),
+                trace_selected,
+                trace_selected,
+            );
         }
         dirty |= sample_dirty;
         dirty |= app.poll_process_info_results()?;

@@ -34,7 +34,7 @@ pub(crate) enum ProcessInfoRequest {
     Collect {
         generation: u64,
         identity: crate::model::ProcessIdentity,
-        process: ProcessRow,
+        process: Box<ProcessRow>,
         lifecycle: ProcessLifecycle,
     },
     Stop,
@@ -101,7 +101,7 @@ impl ProcessInfoWorker {
             .send(ProcessInfoRequest::Collect {
                 generation,
                 identity,
-                process,
+                process: Box::new(process),
                 lifecycle,
             })
             .context("process info worker is unavailable")

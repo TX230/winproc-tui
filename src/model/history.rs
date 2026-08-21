@@ -378,7 +378,6 @@ impl ProcessHistory {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SystemSample {
-    #[allow(dead_code)]
     pub(crate) captured_at: DateTime<Local>,
     pub(crate) cpu_average_percent: Option<u64>,
     pub(crate) physical_memory_bytes: Option<u64>,

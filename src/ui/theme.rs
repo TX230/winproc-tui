@@ -22,7 +22,6 @@ pub(crate) struct Theme {
     pub(crate) cursor_guide: Color,
     pub(crate) success: Color,
     pub(crate) warning: Color,
-    #[allow(dead_code)]
     pub(crate) danger: Color,
     pub(crate) tracked: Color,
     pub(crate) exited: Color,
@@ -30,6 +29,8 @@ pub(crate) struct Theme {
     pub(crate) selection: Color,
 }
 
+// Each theme varies this complete set of semantic colors while sharing neutral surfaces.
+#[allow(clippy::too_many_arguments)]
 const fn dark_theme(
     name: &'static str,
     accent: Color,

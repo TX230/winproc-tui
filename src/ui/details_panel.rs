@@ -140,6 +140,8 @@ fn graph_y_axis_label_width_for_indices(app: &App, indices: &[usize]) -> usize {
         .unwrap_or(1)
 }
 
+// Graph rendering combines independent layout, series, and shared-time inputs.
+#[allow(clippy::too_many_arguments)]
 fn render_graph_card(
     frame: &mut ratatui::Frame<'_>,
     card: &GraphCardLayout,
@@ -335,6 +337,8 @@ struct SampleViewport {
     total: usize,
 }
 
+// Samples rendering keeps selection, comparison, and layout inputs explicit for parity tests.
+#[allow(clippy::too_many_arguments)]
 fn draw_samples_subpanel(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
@@ -625,6 +629,8 @@ fn samples_scrollbar_position(total: usize, rows: usize, start: usize) -> usize 
     (start.min(max_offset) * max_scrollbar_position + max_offset / 2) / max_offset
 }
 
+// Plot construction needs the complete shared-time and slot-specific rendering context.
+#[allow(clippy::too_many_arguments)]
 fn draw_graph_content(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
@@ -736,7 +742,7 @@ fn draw_graph_content(
                 .labels(y_labels),
         );
     let selected_value_label = selected_age_seconds
-        .and_then(|_| selected_sample_time)
+        .and(selected_sample_time)
         .and_then(|time| sample_index_at_time(samples, time))
         .and_then(|index| samples.get(index))
         .map(|sample| format_metric_sample_value(sample, metric));
@@ -1030,10 +1036,7 @@ fn sample_moving_average(
     (count > 0).then_some((selected_sample.captured_at, total / f64::from(count)))
 }
 
-fn sample_max<'a>(
-    samples: &'a [GraphSample],
-    metric: GraphValueFormat,
-) -> Option<(&'a GraphSample, f64)> {
+fn sample_max(samples: &[GraphSample], metric: GraphValueFormat) -> Option<(&GraphSample, f64)> {
     let mut max: Option<(&GraphSample, f64)> = None;
     for sample in samples {
         let Some(value) = metric_value(sample, metric) else {

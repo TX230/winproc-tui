@@ -83,16 +83,14 @@ pub(crate) struct GraphSpanControlAreas {
 }
 
 pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
-    std::rc::Rc::from(
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(18),
-                Constraint::Length(2),
-            ])
-            .split(area),
-    )
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(18),
+            Constraint::Length(2),
+        ])
+        .split(area)
 }
 
 pub(crate) fn system_panel_area_for_screen(area: Rect) -> Rect {

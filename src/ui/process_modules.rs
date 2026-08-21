@@ -388,11 +388,9 @@ fn render_scrollbar(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme
     let total = process_modules_total_rows(app, area.width);
     let rows = app.process_info_dlls_scroll.page_size.max(1);
     let max_offset = total.saturating_sub(rows.min(total));
-    let position = if max_offset == 0 {
-        0
-    } else {
-        app.process_info_dlls_scroll.offset.min(max_offset) * total.saturating_sub(1) / max_offset
-    };
+    let position = (app.process_info_dlls_scroll.offset.min(max_offset) * total.saturating_sub(1))
+        .checked_div(max_offset)
+        .unwrap_or(0);
     let mut state = ScrollbarState::new(total)
         .position(position)
         .viewport_content_length(rows);

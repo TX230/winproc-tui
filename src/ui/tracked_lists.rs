@@ -476,7 +476,6 @@ fn draw_switch_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, th
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_confirm(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,

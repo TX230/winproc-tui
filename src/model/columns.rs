@@ -284,7 +284,7 @@ impl MetricColumn {
         Self::ALL.contains(&self)
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub(crate) fn raw_value(self, row: &ProcessRow) -> Option<String> {
         match self {
             Self::CpuPercent => row.cpu_percent.map(|value| value.to_string()),
@@ -476,8 +476,9 @@ impl FromStr for MetricColumn {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ColumnPreset {
+    #[default]
     Default,
     Memory,
     Resources,
@@ -547,12 +548,6 @@ impl ColumnPreset {
         } else {
             columns
         }
-    }
-}
-
-impl Default for ColumnPreset {
-    fn default() -> Self {
-        Self::Default
     }
 }
 

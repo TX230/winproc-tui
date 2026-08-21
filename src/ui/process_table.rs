@@ -140,7 +140,7 @@ pub(crate) fn draw_process_table(
         .header(header)
         .column_spacing(TABLE_COLUMN_SPACING);
 
-    let mut state = app.process_table_state.clone();
+    let mut state = app.process_table_state;
     *state.offset_mut() = 0;
     let selected = app
         .process_table_state
@@ -169,15 +169,17 @@ pub(crate) fn process_metric_column_index_at(
     let visible_columns = visible_metric_columns(area.width, columns, metric_offset, widths);
     let column_rects = process_table_column_rects(area, &visible_columns, widths);
 
-    if let Some(pid_rect) = column_rects.get(1) {
-        if x >= pid_rect.x && x < pid_rect.right() {
-            return Some(0);
-        }
+    if let Some(pid_rect) = column_rects.get(1)
+        && x >= pid_rect.x
+        && x < pid_rect.right()
+    {
+        return Some(0);
     }
-    if let Some(process_rect) = column_rects.get(2) {
-        if x >= process_rect.x && x < process_rect.right() {
-            return Some(1);
-        }
+    if let Some(process_rect) = column_rects.get(2)
+        && x >= process_rect.x
+        && x < process_rect.right()
+    {
+        return Some(1);
     }
 
     visible_columns
@@ -398,6 +400,8 @@ fn header_label(label: &str, direction: Option<SortDirection>) -> Line<'static> 
     Line::from(spans)
 }
 
+// Row rendering keeps geometry and selection inputs explicit for cell-level styling.
+#[allow(clippy::too_many_arguments)]
 fn process_table_row(
     row: &VisibleProcessRow<'_>,
     app: &App,
@@ -462,6 +466,8 @@ fn process_table_row(
     Row::new(cells).style(process_row_style(row_selected, row.multi_selected, theme))
 }
 
+// Metric cells combine value, graph, and two-dimensional selection state.
+#[allow(clippy::too_many_arguments)]
 fn process_metric_cell(
     process: &ProcessRow,
     column: MetricColumn,

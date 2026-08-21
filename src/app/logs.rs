@@ -769,6 +769,9 @@ fn add_process_names(names: &mut Vec<String>, seen: &mut HashSet<String>, snapsh
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "record_type")]
+// Legacy v2 records are deserialized and consumed one line at a time. Boxing the frame payload
+// would add a heap allocation for every frame without reducing retained log memory.
+#[allow(clippy::large_enum_variant)]
 enum LoadRecord {
     #[serde(rename = "session")]
     Session {

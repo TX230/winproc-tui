@@ -67,7 +67,7 @@ pub(crate) fn format_integer(value: u64) -> String {
     let first_group_len = digits.len() % 3;
 
     for (index, ch) in digits.chars().enumerate() {
-        if index > 0 && (index + 3 - first_group_len) % 3 == 0 {
+        if index > 0 && (index + 3 - first_group_len).is_multiple_of(3) {
             formatted.push(',');
         }
         formatted.push(ch);
@@ -93,7 +93,7 @@ fn format_unsigned_integer(value: u128) -> String {
     let first_group_len = digits.len() % 3;
 
     for (index, ch) in digits.chars().enumerate() {
-        if index > 0 && (index + 3 - first_group_len) % 3 == 0 {
+        if index > 0 && (index + 3 - first_group_len).is_multiple_of(3) {
             formatted.push(',');
         }
         formatted.push(ch);

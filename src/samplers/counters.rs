@@ -361,14 +361,13 @@ impl ProcessCounterSampler {
         };
 
         let mut metrics = std::collections::HashMap::<u32, ProcessExtraMetrics>::new();
-        if let Some(cpu_counter) = self.cpu_counter {
-            if let Some(cpu_items) = read_named_counter_double_items(cpu_counter) {
-                let cpu_by_pid =
-                    map_process_counter_instances_to_pids(process_ids.clone(), cpu_items);
-                for (pid, cpu_percent) in cpu_by_pid {
-                    metrics.entry(pid).or_default().cpu_percent =
-                        normalize_process_cpu_percent(cpu_percent, logical_processor_count);
-                }
+        if let Some(cpu_counter) = self.cpu_counter
+            && let Some(cpu_items) = read_named_counter_double_items(cpu_counter)
+        {
+            let cpu_by_pid = map_process_counter_instances_to_pids(process_ids.clone(), cpu_items);
+            for (pid, cpu_percent) in cpu_by_pid {
+                metrics.entry(pid).or_default().cpu_percent =
+                    normalize_process_cpu_percent(cpu_percent, logical_processor_count);
             }
         }
 

@@ -27,11 +27,11 @@ impl PathCompletionState {
     pub(crate) fn complete_directory_path(&mut self, value: &str, cursor: usize) -> PathCompletion {
         let cursor = floor_char_boundary(value, cursor.min(value.len()));
 
-        if let Some(session) = &mut self.session {
-            if session.matches(value, cursor) {
-                session.advance();
-                return session.to_completion();
-            }
+        if let Some(session) = &mut self.session
+            && session.matches(value, cursor)
+        {
+            session.advance();
+            return session.to_completion();
         }
 
         let (head, tail) = value.split_at(cursor);

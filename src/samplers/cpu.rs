@@ -120,16 +120,16 @@ fn collect_cpu_topology() -> CpuTopologySample {
                 physical_cores = physical_cores.saturating_add(1);
                 let processor = info.u.Processor();
                 let group_masks = std::slice::from_raw_parts(
-                    (*processor).GroupMask.as_ptr(),
-                    (*processor).GroupCount as usize,
+                    processor.GroupMask.as_ptr(),
+                    processor.GroupCount as usize,
                 );
-                let efficiency_class = (*processor).EfficiencyClass;
+                let efficiency_class = processor.EfficiencyClass;
                 let thread_count = group_masks
                     .iter()
                     .map(|group| group.Mask.count_ones())
                     .sum::<u32>();
                 logical_threads = logical_threads.saturating_add(thread_count.max(1));
-                smt_enabled |= ((*processor).Flags & LTP_PC_SMT) != 0;
+                smt_enabled |= (processor.Flags & LTP_PC_SMT) != 0;
                 for group in group_masks {
                     push_efficiency_class_bits(
                         &mut sample.logical_efficiency_classes,
@@ -140,8 +140,8 @@ fn collect_cpu_topology() -> CpuTopologySample {
                 }
             } else if relationship == RelationCache {
                 let cache = info.u.Cache();
-                let cache_size = (*cache).CacheSize as u64;
-                match (*cache).Level {
+                let cache_size = cache.CacheSize as u64;
+                match cache.Level {
                     1 => {
                         sample.l1_cache_bytes = Some(
                             sample
@@ -240,7 +240,7 @@ fn average_current_frequency_mhz(
         total = total.saturating_add(frequency);
         count = count.saturating_add(1);
     }
-    if count > 0 { Some(total / count) } else { None }
+    total.checked_div(count)
 }
 
 fn cpu_core_kind(index: usize, efficiency_classes: &[Option<u8>]) -> Option<CpuCoreKind> {
@@ -309,7 +309,7 @@ fn read_registry_string(sub_key: &str, value_name: &str) -> Option<String> {
             return None;
         }
 
-        let mut buffer = vec![0u16; (size as usize + 1) / 2];
+        let mut buffer = vec![0u16; (size as usize).div_ceil(2)];
         let status = RegGetValueW(
             HKEY_LOCAL_MACHINE,
             sub_key_wide.as_ptr(),

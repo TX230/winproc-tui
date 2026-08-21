@@ -1666,14 +1666,13 @@ impl App {
         self.visible_process_entries
             .extend(self.visible_ghost_entries(&filter, filter_includes_path));
         self.prune_process_selection_to_visible_live_rows();
-        if let Some(selected) = self.process_table_state.selected() {
-            if selected < self.visible_process_entries.len()
-                && self.visible_process_identity_at(selected).is_none()
-                && let Some(index) = self.first_selectable_process_index()
-            {
-                self.process_table_state.select(Some(index));
-                self.selected_process_identity = self.visible_process_identity_at(index);
-            }
+        if let Some(selected) = self.process_table_state.selected()
+            && selected < self.visible_process_entries.len()
+            && self.visible_process_identity_at(selected).is_none()
+            && let Some(index) = self.first_selectable_process_index()
+        {
+            self.process_table_state.select(Some(index));
+            self.selected_process_identity = self.visible_process_identity_at(index);
         }
     }
 
@@ -3321,7 +3320,7 @@ impl App {
 
         let comparison = self
             .ab_comparison
-            .get_or_insert_with(|| AbComparison { a: None, b: None });
+            .get_or_insert(AbComparison { a: None, b: None });
         match label {
             'A' => comparison.a = Some(point),
             'B' => comparison.b = Some(point),
@@ -7455,16 +7454,6 @@ fn failed_taskkill_targets(attempts: &[TaskkillAttempt]) -> String {
         .join(", ")
 }
 
-#[cfg(test)]
-mod process_kill_tests {
-    use super::taskkill_force_pid_args;
-
-    #[test]
-    fn taskkill_targets_one_pid() {
-        assert_eq!(taskkill_force_pid_args(42), ["/f", "/pid", "42"]);
-    }
-}
-
 fn tracked_live_identities(
     processes: &[ProcessRow],
     normalized_tracked_names: &HashSet<String>,
@@ -7689,4 +7678,14 @@ fn sample_time_span_seconds(first: DateTime<Local>, last: DateTime<Local>) -> u3
         .max(1)
         .min(i64::from(u32::MAX));
     span as u32
+}
+
+#[cfg(test)]
+mod process_kill_tests {
+    use super::taskkill_force_pid_args;
+
+    #[test]
+    fn taskkill_targets_one_pid() {
+        assert_eq!(taskkill_force_pid_args(42), ["/f", "/pid", "42"]);
+    }
 }

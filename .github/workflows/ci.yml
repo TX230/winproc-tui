@@ -18,11 +18,14 @@ jobs:
       - name: Install Rust 1.95.0
         shell: pwsh
         run: |
-          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
           rustup default 1.95.0
 
       - name: Check formatting
         run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run tests
         run: cargo test

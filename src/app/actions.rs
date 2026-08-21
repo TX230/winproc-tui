@@ -35,6 +35,12 @@ use crate::{
 const PROCESS_WHEEL_ROWS: usize = 1;
 
 impl App {
+    fn request_process_kill_or_hide_ghost(&mut self) {
+        if !self.request_process_kill_confirmation() {
+            self.hide_selected_ghost_row();
+        }
+    }
+
     pub(crate) fn on_key(&mut self, key: KeyEvent) -> Result<()> {
         if key.kind == KeyEventKind::Release {
             return Ok(());
@@ -289,20 +295,17 @@ impl App {
                 KeyCode::Esc => self.cancel_recording_path_dialog(),
                 KeyCode::Enter => self.confirm_recording_path()?,
                 KeyCode::Tab | KeyCode::BackTab => self.focus_next_recording_control(),
-                KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if self.recording_path_focused() {
-                        self.complete_recording_path();
-                    }
+                KeyCode::Char(' ')
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && self.recording_path_focused() =>
+                {
+                    self.complete_recording_path();
                 }
-                KeyCode::Backspace => {
-                    if self.recording_path_focused() {
-                        self.pop_recording_path_char();
-                    }
+                KeyCode::Backspace if self.recording_path_focused() => {
+                    self.pop_recording_path_char();
                 }
-                KeyCode::Delete => {
-                    if self.recording_path_focused() {
-                        self.delete_recording_path_char();
-                    }
+                KeyCode::Delete if self.recording_path_focused() => {
+                    self.delete_recording_path_char();
                 }
                 KeyCode::Left => {
                     if self.recording_path_focused() {
@@ -318,15 +321,11 @@ impl App {
                         self.select_next_recording_interval();
                     }
                 }
-                KeyCode::Home => {
-                    if self.recording_path_focused() {
-                        self.move_recording_path_cursor_home();
-                    }
+                KeyCode::Home if self.recording_path_focused() => {
+                    self.move_recording_path_cursor_home();
                 }
-                KeyCode::End => {
-                    if self.recording_path_focused() {
-                        self.move_recording_path_cursor_end();
-                    }
+                KeyCode::End if self.recording_path_focused() => {
+                    self.move_recording_path_cursor_end();
                 }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
@@ -1144,115 +1143,91 @@ impl App {
             KeyCode::BackTab => {
                 self.cycle_focus_previous();
             }
-            KeyCode::Left => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    if key.modifiers.contains(KeyModifiers::SHIFT)
-                        && !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                    {
-                        self.move_selected_process_column_left();
-                    } else {
-                        self.select_previous_process_column();
-                    }
+            KeyCode::Left if self.focused_panel == FocusedPanel::Processes => {
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.move_selected_process_column_left();
+                } else {
+                    self.select_previous_process_column();
                 }
             }
-            KeyCode::Right => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    if key.modifiers.contains(KeyModifiers::SHIFT)
-                        && !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                    {
-                        self.move_selected_process_column_right();
-                    } else {
-                        self.select_next_process_column();
-                    }
+            KeyCode::Right if self.focused_panel == FocusedPanel::Processes => {
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.move_selected_process_column_right();
+                } else {
+                    self.select_next_process_column();
                 }
             }
-            KeyCode::Up => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    if key.modifiers.contains(KeyModifiers::SHIFT)
-                        && !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                    {
-                        self.extend_process_selection_up(1);
-                    } else if key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::SHIFT)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                    {
-                        self.move_selection_cursor_up(1);
-                    } else {
-                        self.move_selection_up(1);
-                    }
+            KeyCode::Up if self.focused_panel == FocusedPanel::Processes => {
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.extend_process_selection_up(1);
+                } else if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::SHIFT)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.move_selection_cursor_up(1);
+                } else {
+                    self.move_selection_up(1);
                 }
             }
-            KeyCode::Down => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    if key.modifiers.contains(KeyModifiers::SHIFT)
-                        && !key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                    {
-                        self.extend_process_selection_down(1);
-                    } else if key.modifiers.contains(KeyModifiers::CONTROL)
-                        && !key.modifiers.contains(KeyModifiers::SHIFT)
-                        && !key.modifiers.contains(KeyModifiers::ALT)
-                    {
-                        self.move_selection_cursor_down(1);
-                    } else {
-                        self.move_selection_down(1);
-                    }
+            KeyCode::Down if self.focused_panel == FocusedPanel::Processes => {
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.extend_process_selection_down(1);
+                } else if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::SHIFT)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.move_selection_cursor_down(1);
+                } else {
+                    self.move_selection_down(1);
                 }
             }
-            KeyCode::PageUp => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    self.move_selection_up(self.process_page_size);
-                }
+            KeyCode::PageUp if self.focused_panel == FocusedPanel::Processes => {
+                self.move_selection_up(self.process_page_size);
             }
-            KeyCode::PageDown => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    self.move_selection_down(self.process_page_size);
-                }
+            KeyCode::PageDown if self.focused_panel == FocusedPanel::Processes => {
+                self.move_selection_down(self.process_page_size);
             }
-            KeyCode::Home => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    self.select_first_row();
-                }
+            KeyCode::Home if self.focused_panel == FocusedPanel::Processes => {
+                self.select_first_row();
             }
-            KeyCode::End => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    self.select_last_row();
-                }
+            KeyCode::End if self.focused_panel == FocusedPanel::Processes => {
+                self.select_last_row();
             }
-            KeyCode::Enter => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    self.open_selected_process_info_dialog()?;
-                }
+            KeyCode::Enter if self.focused_panel == FocusedPanel::Processes => {
+                self.open_selected_process_info_dialog()?;
             }
-            KeyCode::Char(ch @ '1'..='4') => {
-                if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() {
-                    let _ = ch;
-                    self.status = "Use Space or double-click to graph this metric".to_string();
-                }
+            KeyCode::Char(ch @ '1'..='4')
+                if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() =>
+            {
+                let _ = ch;
+                self.status = "Use Space or double-click to graph this metric".to_string();
             }
-            KeyCode::Char('0') => {
-                if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() {
-                    self.status = "Remove Graphs with Delete or the remove button".to_string();
-                }
+            KeyCode::Char('0')
+                if self.focused_panel == FocusedPanel::Processes && key.modifiers.is_empty() =>
+            {
+                self.status = "Remove Graphs with Delete or the remove button".to_string();
             }
-            KeyCode::Delete => {
-                if self.focused_panel == FocusedPanel::Processes {
-                    if !self.request_process_kill_confirmation() {
-                        self.hide_selected_ghost_row();
-                    }
-                }
+            KeyCode::Delete if self.focused_panel == FocusedPanel::Processes => {
+                self.request_process_kill_or_hide_ghost();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'d')
                     && key.modifiers.is_empty()
                     && self.focused_panel == FocusedPanel::Processes =>
             {
-                if !self.request_process_kill_confirmation() {
-                    self.hide_selected_ghost_row();
-                }
+                self.request_process_kill_or_hide_ghost();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'c')
@@ -1342,13 +1317,12 @@ impl App {
             {
                 self.toggle_focused_process_multi_selection();
             }
-            KeyCode::Char(' ') => {
+            KeyCode::Char(' ')
                 if self.focused_panel == FocusedPanel::Processes
                     && !key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT)
-                {
-                    self.toggle_selected_process_cell_action();
-                }
+                    && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.toggle_selected_process_cell_action();
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'f')
@@ -2680,9 +2654,7 @@ fn process_row_index_at(layout: ProcessTableLayout, y: u16, offset: usize) -> Op
 }
 
 fn graph_workspace_layout_for_app(app: &App, screen_area: Rect) -> Option<GraphWorkspaceLayout> {
-    let Some(details) = main_panel_areas_for_app(screen_area, app).details else {
-        return None;
-    };
+    let details = main_panel_areas_for_app(screen_area, app).details?;
     Some(graph_workspace_layout(details, app))
 }
 
