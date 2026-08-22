@@ -361,6 +361,8 @@ scoop install tx230/winproc-tui
 scoop uninstall --purge winproc-tui
 ```
 
+If the local bucket test scripts cannot start because a required PowerShell module such as `BuildHelpers` is not installed, do not modify the maintainer's PowerShell environment only for the release. Still parse the manifest, run `checkver`, and complete the lifecycle test in a clean Windows Sandbox. After publishing, treat the bucket CI as the authoritative bucket-test result and require both its Windows PowerShell and PowerShell 7 jobs to pass. A successful local-manifest install is not enough by itself; repeat the install from `tx230/winproc-tui` after the remote manifest is public.
+
 Confirm at least:
 
 - The manifest passes the Scoop schema and bucket tests.
@@ -430,16 +432,22 @@ gh repo sync TX230/winget-pkgs `
 
 git clone `
   --filter=blob:none `
-  --sparse `
+  --no-checkout `
   https://github.com/TX230/winget-pkgs.git `
   <winget-pkgs>
 
 Set-Location <winget-pkgs>
-git sparse-checkout set manifests/t/TX230/winproc-tui Tools
+git sparse-checkout init --no-cone
+git sparse-checkout set `
+  /manifests/t/TX230/winproc-tui/ `
+  /Tools/SandboxTest.ps1 `
+  /.github/pull_request_template.md
+git switch master
 git switch -c update-tx230-winproc-tui-X.Y.Z
+git status --short
 ```
 
-Do not reuse a dirty checkout from an earlier Sandbox test. `SandboxTest.ps1` may leave generated or modified validation files, and unrelated changes must not enter the manifest commit.
+The first status check must be clean. On Windows, a broad sparse checkout of `Tools` can expose line-ending-only changes in unrelated helper files. Do not stage or normalize those files as part of a package update. Discard that temporary clone and recreate the narrow `--no-checkout` sparse checkout above. Do not reuse a dirty checkout from an earlier Sandbox test: `SandboxTest.ps1` may leave generated or modified validation files, and unrelated changes must not enter the manifest commit.
 
 ### Create the Version Manifests
 
@@ -500,6 +508,18 @@ winget validate --manifest <manifest-directory>
 
 The host `SandboxTest.ps1` process returns after Windows Sandbox accepts the generated configuration. An exit code of zero therefore confirms the host-side manifest validation, dependency preparation, and Sandbox launch, but it does not prove that the install or lifecycle commands inside the Sandbox succeeded. For an unattended test, pass a helper through the script's `Script` parameter, have that helper write a structured success or failure result into the writable `MapFolder`, and wait for and inspect that result on the host before marking the Sandbox test as passed. Remove or reject a stale result file before each run.
 
+For an upgrade lifecycle test, start `SandboxTest.ps1` with the previous version's local manifest, map the clone root, and let the helper upgrade to the new local manifest:
+
+```powershell
+.\Tools\SandboxTest.ps1 `
+  <previous-manifest-directory> `
+  -Script <lifecycle-helper-script> `
+  -MapFolder <winget-pkgs> `
+  -WinGetOptions '--scope machine --silent --accept-source-agreements'
+```
+
+The helper's result should identify the tested versions and report each install, upgrade, config-preservation, uninstall, clean-install, and alias-removal assertion separately. Keep the result file outside the version manifest directory and remove it after host-side inspection so it cannot enter the pull request.
+
 For Sandbox automation:
 
 - Add `--accept-source-agreements` to commands that access a catalog source.
@@ -556,6 +576,8 @@ After submission, distinguish these states clearly:
 - The winget validation pipeline is a separate automated check.
 - An open, non-draft, mergeable pull request can still be blocked pending Microsoft moderator review.
 - The package is not available from the public winget source until the pull request is merged and the catalog is updated.
+
+The numbered validation checks run sequentially and later checks can remain queued while an earlier installer scan or installation validation is still running. A queued or in-progress check without a failure conclusion, bot error, label, or reviewer request is not a manifest rejection. Monitor the individual checks and comments; do not change the manifest or Release asset solely because the upstream validation queue is slow.
 
 Update README installation instructions only after the first manifest is available from the public winget source.
 
