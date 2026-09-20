@@ -80,7 +80,7 @@ impl App {
         }
         let area = crate::ui::process_info_content_area_for_screen(self.last_screen_area);
         let stride = open_files::entry_row_height(area.width.saturating_sub(1) as usize);
-        let line = open_files::entry_row_prefix(self) + self.open_files_selected * stride;
+        let line = self.open_files_selected * stride;
         let total = self.open_files_total_rows();
         self.open_files_scroll.ensure_visible(line, total);
         self.open_files_scroll
@@ -218,11 +218,7 @@ impl App {
     fn select_open_file_at_scroll_offset(&mut self, area: Rect) {
         if !self.open_files_show_detail {
             let stride = open_files::entry_row_height(area.width.saturating_sub(1) as usize);
-            let index = self
-                .open_files_scroll
-                .offset
-                .saturating_sub(open_files::entry_row_prefix(self))
-                .div_ceil(stride);
+            let index = self.open_files_scroll.offset.div_ceil(stride);
             self.open_files_selected =
                 index.min(open_files::filtered_entries(self).len().saturating_sub(1));
         }

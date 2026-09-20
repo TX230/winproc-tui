@@ -106,17 +106,22 @@ pub(crate) fn process_info_dialog_layout_for_screen(screen: Rect) -> ProcessInfo
     let available = screen_regions.get(1).copied().unwrap_or(screen);
     let modal = PROCESS_INFO_MODAL.layout(available);
     let tab_height = tab_row_count(modal.content.width).min(modal.content.height);
+    let top_gap = u16::from(modal.content.height.saturating_sub(tab_height) > 1);
     let tabs = Rect::new(
         modal.content.x,
-        modal.content.y,
+        modal.content.y.saturating_add(top_gap),
         modal.content.width,
         tab_height,
     );
+    let gap = u16::from(modal.content.height.saturating_sub(tab_height + top_gap) > 1);
     let content = Rect::new(
         modal.content.x,
-        tabs.bottom(),
+        tabs.bottom().saturating_add(gap),
         modal.content.width,
-        modal.content.height.saturating_sub(tab_height),
+        modal
+            .content
+            .height
+            .saturating_sub(tab_height + top_gap + gap),
     );
     ProcessInfoDialogLayout {
         area: modal.area,
@@ -124,6 +129,45 @@ pub(crate) fn process_info_dialog_layout_for_screen(screen: Rect) -> ProcessInfo
         content,
         footer: modal.footer,
     }
+}
+
+// Keep capture metadata, filters, and column headings outside the scrolling rows.
+pub(crate) fn inspection_table_areas(area: Rect, header_rows: usize) -> (Rect, Rect) {
+    let height = header_rows.min(area.height.saturating_sub(1) as usize) as u16;
+    (
+        Rect::new(area.x, area.y, area.width, height),
+        Rect::new(area.x, area.y + height, area.width, area.height - height),
+    )
+}
+
+pub(crate) fn inspection_header_rows(app: &App) -> usize {
+    match app.process_info_tab {
+        ProcessInfoTab::Files => super::open_files::fixed_header_rows(app),
+        ProcessInfoTab::Dlls => super::process_modules::fixed_header_rows(app),
+        ProcessInfoTab::Environment => super::process_environment::fixed_header_rows(app),
+        _ => 0,
+    }
+}
+
+pub(crate) fn draw_inspection_lines(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    mut lines: Vec<Line<'static>>,
+    header_rows: usize,
+    offset: usize,
+    theme: Theme,
+) {
+    let body_lines = lines.split_off(header_rows.min(lines.len()));
+    let (header, body) = inspection_table_areas(area, header_rows);
+    let style = Style::default().fg(theme.text).bg(theme.panel_alt);
+    let offset = offset.min(body_lines.len().saturating_sub(body.height as usize));
+    frame.render_widget(Paragraph::new(lines).style(style), header);
+    frame.render_widget(
+        Paragraph::new(body_lines)
+            .style(style)
+            .scroll((offset as u16, 0)),
+        body,
+    );
 }
 
 pub(crate) fn process_info_content_area_for_screen(screen: Rect) -> Rect {
@@ -183,16 +227,15 @@ fn process_info_title(app: &App, theme: Theme) -> Line<'static> {
     let foreground = contrasting_foreground(theme.focus_border, theme);
     let title_style = Style::default().fg(foreground).bg(theme.focus_border);
     let mut spans = vec![Span::styled(
-        " PROCESS INFO",
+        " PROCESS INFO ",
         title_style.add_modifier(Modifier::BOLD),
     )];
     if let Some(process) = app.process_info_target_process() {
         spans.push(Span::styled(
-            format!(" · {} · PID {}", process.name, process.pid),
-            title_style.remove_modifier(Modifier::BOLD),
+            format!(" · {} · PID {} ", process.name, process.pid),
+            Style::default().fg(theme.text).bg(theme.panel_alt),
         ));
     }
-    spans.push(Span::styled(" ", title_style));
     Line::from(spans)
 }
 
@@ -208,16 +251,17 @@ fn draw_tabs(
             continue;
         }
         let style = if tab == active {
-            let style = if focused {
-                Style::default()
-                    .fg(theme.focus_border)
-                    .bg(theme.focus_surface)
+            let style = Style::default()
+                .fg(contrasting_foreground(theme.focus_border, theme))
+                .bg(theme.focus_border)
+                .add_modifier(Modifier::BOLD);
+            if focused {
+                style.add_modifier(Modifier::UNDERLINED)
             } else {
-                Style::default().fg(theme.accent).bg(theme.panel_alt)
-            };
-            style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                style
+            }
         } else {
-            Style::default().fg(theme.muted).bg(theme.panel_alt)
+            Style::default().fg(theme.text).bg(theme.panel_alt)
         };
         frame.render_widget(
             Paragraph::new(format!(" {} ", tab.label())).style(style),
@@ -488,7 +532,7 @@ fn render_scrollable_lines(
         .end_symbol(Some("▼"))
         .thumb_symbol("█")
         .track_symbol(Some("│"))
-        .style(Style::default().fg(theme.muted).bg(theme.panel_alt))
+        .style(Style::default().fg(theme.text).bg(theme.panel_alt))
         .thumb_style(
             Style::default()
                 .fg(if focused {
@@ -541,7 +585,10 @@ fn draw_footer(frame: &mut ratatui::Frame<'_>, footer: Rect, app: &App, theme: T
 
 fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
     if app.process_info_filter_editing {
-        return crate::ui::footer::shortcut_spans(crate::app::text_input::FILTER_SHORTCUTS, theme);
+        return crate::ui::footer::shortcut_spans(
+            crate::app::text_input::INSPECTION_FILTER_SHORTCUTS,
+            theme,
+        );
     }
     if app.process_info_tab == ProcessInfoTab::Network
         && app.process_info_focus == ProcessInfoFocus::Content
@@ -586,7 +633,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("Tab", "next"),
                 ("Ctrl+Z", "restore"),
                 ("Ctrl+U", "refresh"),
-                ("Esc", "close"),
+                ("Esc", "tabs"),
             ],
             ProcessInfoTab::Scheduling => vec![
                 ("a", "affinity"),
@@ -596,7 +643,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("Ctrl+Z", "restore"),
                 ("Ctrl+U", "refresh"),
                 ("Tab", "next"),
-                ("Esc", "close"),
+                ("Esc", "tabs"),
             ],
             ProcessInfoTab::Metrics => vec![
                 ("↑/↓", "scroll"),
@@ -618,7 +665,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("↑/↓", "select"),
                 ("Ctrl+←/→", "tabs"),
                 ("Tab", "next"),
-                ("Esc", "close"),
+                ("Esc", "tabs"),
             ],
             ProcessInfoTab::Dlls => vec![
                 ("Enter", "details"),
@@ -627,7 +674,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("↑/↓", "select"),
                 ("Ctrl+←/→", "tabs"),
                 ("Tab", "next"),
-                ("Esc", "close"),
+                ("Esc", "tabs"),
             ],
             ProcessInfoTab::Environment => vec![
                 ("/", "filter"),
@@ -637,7 +684,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("↑/↓", "select"),
                 ("Ctrl+←/→", "tabs"),
                 ("Tab", "next"),
-                ("Esc", "close"),
+                ("Esc", "tabs"),
             ],
         }
     };

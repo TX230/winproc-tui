@@ -310,6 +310,9 @@ fn network_process_filter_accepts_direct_text_without_intercepting_navigation() 
     assert!(!app.process_network.detail);
     assert!(app.show_process_info_dialog);
     press(&mut app, KeyCode::Esc);
+    assert!(app.show_process_info_dialog);
+    assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);
+    press(&mut app, KeyCode::Esc);
     assert!(!app.show_process_info_dialog);
 }
 
@@ -339,6 +342,9 @@ fn network_process_filter_click_focuses_direct_input_and_shows_matching_shortcut
     assert!(text.contains("Ctrl+U refresh"));
     assert!(text.contains("[Alt+A] All endpoints"));
     assert!(!text.contains("/ filter"));
+    press(&mut app, KeyCode::Esc);
+    assert!(app.show_process_info_dialog);
+    assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);
     press(&mut app, KeyCode::Esc);
     assert!(!app.show_process_info_dialog);
 }

@@ -362,6 +362,31 @@ impl App {
         }
 
         if self.show_process_info_dialog {
+            if !self.scheduling.applying {
+                if key.modifiers == KeyModifiers::CONTROL
+                    && matches!(key.code, KeyCode::Left | KeyCode::Right)
+                {
+                    self.process_info_filter_editing = false;
+                    self.process_network.editing = false;
+                    if key.code == KeyCode::Left {
+                        self.previous_process_info_tab()?;
+                    } else {
+                        self.next_process_info_tab()?;
+                    }
+                    return Ok(());
+                }
+                if key.code == KeyCode::Esc {
+                    if self.process_info_focus == ProcessInfoFocus::Tabs {
+                        self.close_process_info_dialog();
+                    } else if !self.close_process_info_detail() {
+                        self.process_info_filter_editing = false;
+                        self.process_network.editing = false;
+                        self.stop_process_info_scrollbar_drag();
+                        self.process_info_focus = ProcessInfoFocus::Tabs;
+                    }
+                    return Ok(());
+                }
+            }
             if self.on_inspection_filter_key(key) {
                 return Ok(());
             }

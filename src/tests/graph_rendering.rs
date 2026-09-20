@@ -383,14 +383,8 @@ fn panel_and_dialog_title_names_are_uppercase_and_bold_in_all_color_schemes() {
         assert_dialog_title_style(&process_info, "PROCESS INFO", theme);
         let (metadata_x, metadata_y) = find_text_position(&process_info, "proc-0 · PID 0")
             .expect("Process Info target metadata should render");
-        assert_eq!(
-            process_info[(metadata_x, metadata_y)].fg,
-            ui::theme::contrasting_foreground(theme.focus_border, theme)
-        );
-        assert_eq!(
-            process_info[(metadata_x, metadata_y)].bg,
-            theme.focus_border
-        );
+        assert_eq!(process_info[(metadata_x, metadata_y)].fg, theme.text);
+        assert_eq!(process_info[(metadata_x, metadata_y)].bg, theme.panel_alt);
         assert!(
             !process_info[(metadata_x, metadata_y)]
                 .modifier

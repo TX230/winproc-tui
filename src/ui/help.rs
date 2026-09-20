@@ -270,7 +270,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
 const PROCESS_INFO_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Ctrl+←/→",
-        label: "Switch Info tabs",
+        label: "Switch Info tabs, including during filter editing",
     },
     HelpItem {
         key: "Tab / Shift+Tab",
@@ -302,7 +302,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Esc/Enter (file detail)",
-        label: "Return to handle list; Esc closes list",
+        label: "Return to handle list; Esc then focuses tabs",
     },
     HelpItem {
         key: "Ctrl+C (Files)",
@@ -338,7 +338,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter / Esc",
-        label: "Open selected row detail / return or close",
+        label: "Open row detail / back to list, then tabs, then close",
     },
     HelpItem {
         key: "Ctrl+C",
@@ -365,7 +365,7 @@ const SCHEDULING_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter / Esc",
-        label: "Select focused priority / close; requires live display",
+        label: "Select focused priority / focus tabs; requires live display",
     },
     HelpItem {
         key: "Ctrl+U / Ctrl+Z",
@@ -739,7 +739,7 @@ const NETWORK_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Esc (detail/list)",
-        label: "Back / close; global results are retained",
+        label: "Detail: back to list; Info list: focus tabs; global list: close",
     },
     HelpItem {
         key: "Tab / Ctrl+←/→ (Info)",

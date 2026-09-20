@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Position, Rect},
     prelude::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 use crate::{
@@ -46,6 +46,8 @@ pub(crate) fn entry_row_prefix(app: &App) -> usize {
 }
 
 pub(crate) fn index_at(area: Rect, app: &App, x: u16, y: u16) -> Option<usize> {
+    let (_, area) =
+        super::process_info_dialog::inspection_table_areas(area, fixed_header_rows(app));
     if app.open_files_show_detail
         || !area.contains((x, y).into())
         || x == area.right().saturating_sub(1)
@@ -53,8 +55,7 @@ pub(crate) fn index_at(area: Rect, app: &App, x: u16, y: u16) -> Option<usize> {
         return None;
     }
     let line = app.open_files_scroll.offset + usize::from(y - area.y);
-    let index = line.checked_sub(entry_row_prefix(app))?
-        / entry_row_height(area.width.saturating_sub(1) as usize);
+    let index = line / entry_row_height(area.width.saturating_sub(1) as usize);
     (index < filtered_entries(app).len()).then_some(index)
 }
 
@@ -65,27 +66,23 @@ pub(crate) fn draw_open_files_tab(
     theme: Theme,
 ) {
     let lines = open_files_lines(app, theme, area.width.saturating_sub(1) as usize);
-    let line_count = lines.len();
-    let rows = area.height.max(1) as usize;
-    let offset = app
-        .open_files_scroll
-        .offset
-        .min(line_count.saturating_sub(rows));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .style(Style::default().fg(theme.text).bg(theme.panel_alt))
-            .scroll((offset as u16, 0)),
+    super::process_info_dialog::draw_inspection_lines(
+        frame,
         area,
+        lines,
+        fixed_header_rows(app),
+        app.open_files_scroll.offset,
+        theme,
     );
-    set_open_files_filter_cursor(frame, area, app, line_count);
+    set_open_files_filter_cursor(frame, area, app);
     render_open_files_scrollbar(frame, area, app, theme);
 }
 
 pub(crate) fn open_files_scrollbar_area(area: Rect, app: &App) -> Option<Rect> {
+    let (_, area) =
+        super::process_info_dialog::inspection_table_areas(area, fixed_header_rows(app));
     let rows = app.open_files_scroll.page_size.max(1);
-    if open_files_lines(app, app.theme(), area.width.saturating_sub(1) as usize).len() <= rows
-        || area.is_empty()
-    {
+    if open_files_total_rows(app) <= rows || area.is_empty() {
         return None;
     }
     Some(Rect::new(
@@ -96,11 +93,27 @@ pub(crate) fn open_files_scrollbar_area(area: Rect, app: &App) -> Option<Rect> {
     ))
 }
 
+pub(crate) fn fixed_header_rows(app: &App) -> usize {
+    if app.activity() == AppActivity::LogView
+        || app.open_files_show_detail
+        || app.open_files_result.is_none()
+        || app
+            .open_files_result
+            .as_ref()
+            .is_some_and(|report| report.error.is_some())
+    {
+        return 0;
+    }
+    entry_row_prefix(app).saturating_sub(usize::from(filtered_entries(app).is_empty()))
+}
+
 pub(crate) fn open_files_total_rows(app: &App) -> usize {
     let width = super::process_info_content_area_for_screen(app.last_screen_area)
         .width
         .saturating_sub(1) as usize;
-    open_files_lines(app, app.theme(), width).len()
+    open_files_lines(app, app.theme(), width)
+        .len()
+        .saturating_sub(fixed_header_rows(app))
 }
 
 fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>> {
@@ -171,7 +184,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
                 ""
             }
         ),
-        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        Style::default().fg(theme.text),
     )));
     lines.push(Line::from(vec![
         Span::styled("Filter: ", Style::default().fg(theme.muted)),
@@ -226,12 +239,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
     lines
 }
 
-fn set_open_files_filter_cursor(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    app: &App,
-    line_count: usize,
-) {
+fn set_open_files_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
     if app.process_info_focus != ProcessInfoFocus::Content || app.open_files_show_detail {
         return;
     }
@@ -243,15 +251,11 @@ fn set_open_files_filter_cursor(
     }
 
     let filter_row = 1usize;
-    let rows = area.height.max(1) as usize;
-    let offset = app
-        .open_files_scroll
-        .offset
-        .min(line_count.saturating_sub(rows));
-    if filter_row < offset || filter_row >= offset.saturating_add(rows) {
+    let (header, _) =
+        super::process_info_dialog::inspection_table_areas(area, fixed_header_rows(app));
+    if filter_row >= header.height as usize || area.width == 0 {
         return;
     }
-
     let (_, cursor_x) = filter_input_view(
         &app.open_files_filter,
         app.open_files_filter_cursor,
@@ -262,7 +266,7 @@ fn set_open_files_filter_cursor(
         area.x
             .saturating_add((label_width + cursor_x) as u16)
             .min(area.right().saturating_sub(1)),
-        area.y.saturating_add((filter_row - offset) as u16),
+        area.y.saturating_add(filter_row as u16),
     ));
 }
 
@@ -275,7 +279,7 @@ fn render_open_files_scrollbar(
     let Some(scrollbar_area) = open_files_scrollbar_area(area, app) else {
         return;
     };
-    let total = open_files_lines(app, theme, area.width.saturating_sub(1) as usize).len();
+    let total = open_files_total_rows(app);
     let rows = app.open_files_scroll.page_size.max(1);
     let mut state = ScrollbarState::new(total)
         .position(open_files_scrollbar_position(

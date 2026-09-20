@@ -10,6 +10,16 @@ pub(crate) const FILTER_SHORTCUTS: &[(&str, &str)] = &[
     ("Backspace/Del", "Erase"),
 ];
 
+pub(crate) const INSPECTION_FILTER_SHORTCUTS: &[(&str, &str)] = &[
+    ("Enter", "Apply"),
+    ("Esc", "tabs"),
+    ("Ctrl+←/→", "tabs"),
+    ("Ctrl+U", "Clear text"),
+    ("←/→", "Cursor"),
+    ("Home/End", "Edge"),
+    ("Backspace/Del", "Erase"),
+];
+
 pub(crate) fn edit(text: &mut String, cursor: &mut usize, key: KeyEvent) -> bool {
     *cursor = (*cursor).min(text.len());
     while !text.is_char_boundary(*cursor) {
@@ -128,11 +138,6 @@ impl App {
         };
         match key.code {
             KeyCode::Enter => self.process_info_filter_editing = false,
-            KeyCode::Esc => {
-                text.clear();
-                *cursor = 0;
-                self.process_info_filter_editing = false;
-            }
             _ => {
                 edit(text, cursor, key);
             }

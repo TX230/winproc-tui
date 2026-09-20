@@ -16,6 +16,12 @@ The active tab is retained between ordinary opens. A direct investigation action
 
 All live collectors verify that the process still has the expected identity. A PID that exits or is reused must never deliver information to the open dialog.
 
+## Navigation and Scrolling
+
+Process Info handles tab switching before filter editing: Ctrl+Left/Right changes tabs while retaining filter text. Escape returns from a row detail to its list, from tab content or filter editing to the tab row without clearing the filter, and from the tab row closes Process Info. Pending Scheduling changes retain their existing input lock until completion.
+
+Files, DLLs, Environment, and Network lists scroll their data rows independently. Capture information, filters, warnings, and column headings remain fixed above the rows. Drawing, row selection, scrollbars, and mouse hit testing share the scrolling body geometry. Detail views retain their own scrolling content.
+
 ## Tab Collection Boundaries
 
 | Tab | Data source and lifecycle |
@@ -126,7 +132,7 @@ Passive tabs keep navigation on their content without creating a false focus sto
 
 ### Explicit filter editing
 
-Ctrl+F enters filter editing in Files, DLLs, Environment, and Network. Outside editing, `/` also starts the global Network or Environment filter, or returns file search from Mode/Results to Query. The activation key is consumed; subsequent slashes are literal input. Detail views retain their own input priority. Within the editor, arrows and Home/End move the text cursor, Backspace/Delete erase, Ctrl+U clears text, Enter applies, and Esc clears and leaves editing. Tab leaves editing and resumes control navigation. Outside explicit editing, list navigation and refresh retain their contextual meanings; direct typing remains available. The Processes filter and global Network editor use the same editing keys.
+Ctrl+F enters filter editing in Files, DLLs, Environment, and Network. Outside editing, `/` also starts the global Network or Environment filter, or returns file search from Mode/Results to Query. The activation key is consumed; subsequent slashes are literal input. Detail views retain their own input priority. Within the editor, arrows and Home/End move the text cursor, Backspace/Delete erase, Ctrl+U clears text, Enter applies, and Ctrl+Left/Right changes Process Info tabs without editing the text. In Process Info, Esc leaves editing and focuses the tab row while preserving the filter. In the Processes and global Network editors, Esc retains its clear-and-exit behavior. Tab leaves editing and resumes control navigation. Outside explicit editing, list navigation and refresh retain their contextual meanings; direct typing remains available. The Processes filter and global Network editor use the same editing keys.
 
 Process context menus expose Process Info and live Files for their captured target. These routes use the same fixed-target opening actions as the Processes shortcuts. The Find by file workspace identifies its results as processes using the queried file, without implying account ownership.
 

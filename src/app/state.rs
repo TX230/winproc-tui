@@ -4944,11 +4944,21 @@ impl App {
         if self.process_info_tab == ProcessInfoTab::Network {
             return;
         }
+        let header = crate::ui::process_info_dialog::inspection_header_rows(self);
+        let page_size = page_size.saturating_sub(header.min(page_size.saturating_sub(1)));
+        let resized = self.active_process_info_scroll().page_size != page_size.max(1);
         let total = self.process_info_total_rows();
         self.active_process_info_scroll_mut()
             .set_page_size(page_size, total);
-        if self.process_info_tab == ProcessInfoTab::Files {
-            self.ensure_open_file_visible();
+        match self.process_info_tab {
+            ProcessInfoTab::Files => self.ensure_open_file_visible(),
+            ProcessInfoTab::Dlls if resized && !self.process_modules_show_detail => {
+                self.ensure_selected_process_module_visible()
+            }
+            ProcessInfoTab::Environment if resized && !self.process_environment_show_detail => {
+                self.ensure_selected_process_environment_visible()
+            }
+            _ => {}
         }
     }
 
@@ -5003,6 +5013,7 @@ impl App {
 
     pub(crate) fn activate_process_info_tab(&mut self, tab: ProcessInfoTab) -> Result<()> {
         self.process_info_filter_editing = false;
+        self.process_network.editing = false;
         if !self.show_process_info_dialog {
             return Ok(());
         }
@@ -5802,10 +5813,9 @@ impl App {
             }
             _ => return false,
         }
-        let total = self.process_info_total_rows();
-        let page_size = self.process_info_page_size();
-        self.active_process_info_scroll_mut()
-            .set_page_size(page_size, total);
+        self.set_process_info_page_size(crate::ui::process_info_page_size_for_screen(
+            self.last_screen_area,
+        ));
         true
     }
 
@@ -5818,6 +5828,7 @@ impl App {
             }
             ProcessInfoTab::Network if self.process_network.detail => {
                 self.process_network.detail = false;
+                self.process_network.detail_entry = None;
                 self.process_network.scroll.reset();
             }
             ProcessInfoTab::Dlls if self.process_modules_show_detail => {
@@ -5832,6 +5843,9 @@ impl App {
             }
             _ => return false,
         }
+        self.set_process_info_page_size(crate::ui::process_info_page_size_for_screen(
+            self.last_screen_area,
+        ));
         true
     }
 
@@ -6032,8 +6046,7 @@ impl App {
                 .set_page_size(self.process_info_dlls_scroll.page_size, total);
             return;
         }
-        let prefix = 3 + usize::from(self.process_modules_error.is_some());
-        let selected_line = prefix.saturating_add(self.process_modules_selected);
+        let selected_line = self.process_modules_selected;
         let page_size = self.process_info_dlls_scroll.page_size.max(1);
         if selected_line < self.process_info_dlls_scroll.offset {
             self.process_info_dlls_scroll.offset = selected_line;
@@ -6323,14 +6336,7 @@ impl App {
                 .set_page_size(self.process_info_environment_scroll.page_size, total);
             return;
         }
-        let prefix = 4
-            + usize::from(self.process_environment_error.is_some())
-            + self
-                .process_environment_result
-                .as_ref()
-                .map(|report| usize::from(report.malformed_entries > 0))
-                .unwrap_or(0);
-        let selected_line = prefix.saturating_add(self.process_environment_selected);
+        let selected_line = self.process_environment_selected;
         let page_size = self.process_info_environment_scroll.page_size.max(1);
         if selected_line < self.process_info_environment_scroll.offset {
             self.process_info_environment_scroll.offset = selected_line;

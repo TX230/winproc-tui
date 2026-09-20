@@ -1088,3 +1088,64 @@ fn stale_open_files_result_cannot_replace_reopened_dialog_request() {
             .ends_with("new.log")
     );
 }
+
+#[test]
+fn process_info_files_keeps_tab_selection_distinct_from_focus_and_summary() {
+    use ratatui::style::Modifier;
+
+    for theme_index in 0..ui::THEMES.len() {
+        for (width, height) in [(60, 24), (80, 24), (160, 40)] {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            show_process_info_files_tab(&mut app);
+            app.open_files_result = Some(test_open_files_report("proc-0", 0, "sample.bin"));
+            let screen = Rect::new(0, 0, width, height);
+            let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen);
+            let theme = app.theme();
+            for focus in [app::ProcessInfoFocus::Tabs, app::ProcessInfoFocus::Content] {
+                app.process_info_focus = focus;
+                let buffer = render_app_to_buffer(&app, width, height);
+                let (x, y) =
+                    super::support::find_text_position_in_area(&buffer, layout.tabs, "Files")
+                        .expect("active Files tab");
+                assert_eq!(buffer[(x, y)].bg, theme.focus_border);
+                assert_eq!(
+                    buffer[(x, y)].fg,
+                    ui::theme::contrasting_foreground(theme.focus_border, theme)
+                );
+                assert!(buffer[(x, y)].modifier.contains(Modifier::BOLD));
+                assert_eq!(
+                    buffer[(x, y)].modifier.contains(Modifier::UNDERLINED),
+                    focus == app::ProcessInfoFocus::Tabs
+                );
+                assert_eq!(
+                    ui::process_info_tab_at(screen, x, y),
+                    Some(app::ProcessInfoTab::Files)
+                );
+                let (x, y) =
+                    super::support::find_text_position_in_area(&buffer, layout.tabs, "Image")
+                        .expect("inactive Image tab");
+                assert_eq!(buffer[(x, y)].bg, theme.panel_alt);
+                assert_eq!(buffer[(x, y)].fg, theme.text);
+                assert_eq!(layout.tabs.y, layout.area.y + 2);
+                for x in layout.tabs.x..layout.tabs.right() {
+                    let gap_cell = &buffer[(x, layout.tabs.y - 1)];
+                    assert_eq!(gap_cell.symbol(), " ");
+                    assert_eq!(gap_cell.bg, theme.panel_alt);
+                    assert_eq!(ui::process_info_tab_at(screen, x, layout.tabs.y - 1), None);
+                }
+                assert_eq!(layout.content.y, layout.tabs.bottom() + 1);
+                for x in layout.tabs.x..layout.tabs.right() {
+                    assert_eq!(buffer[(x, layout.tabs.bottom())].symbol(), " ");
+                    assert_eq!(
+                        ui::process_info_tab_at(screen, x, layout.tabs.bottom()),
+                        None
+                    );
+                }
+                let (x, y) = find_text_position(&buffer, "Live result").expect("capture summary");
+                assert_eq!(buffer[(x, y)].fg, theme.text);
+                assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
+            }
+        }
+    }
+}

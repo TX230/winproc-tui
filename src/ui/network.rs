@@ -574,7 +574,8 @@ pub(crate) fn shortcuts(
         ]
     } else {
         vec![
-            ("Esc", "close"),
+            ("Esc", "tabs"),
+            ("Ctrl+←/→", "tabs"),
             ("Enter", "details"),
             ("Ctrl+U", "refresh"),
             ("Ctrl+C", "copy"),

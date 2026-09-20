@@ -635,7 +635,7 @@ fn process_info_scrollbar_thumb_follows_content_focus() {
             .map(|index| test_process_module_entry(&format!("module-{index}.dll"), "Test"))
             .collect(),
     ));
-    let screen = Rect::new(0, 0, 60, 12);
+    let screen = Rect::new(0, 0, 60, 16);
     app.set_screen_area(screen);
     app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
     let scrollbar =
@@ -732,8 +732,11 @@ fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
     let tabs_area = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen).tabs;
     let (tab_x, tab_y) = find_text_position_in_area(&tabs_focused, tabs_area, "Metrics")
         .expect("active Process Info tab should render");
-    assert_eq!(tabs_focused[(tab_x, tab_y)].fg, app.theme().focus_border);
-    assert_eq!(tabs_focused[(tab_x, tab_y)].bg, app.theme().focus_surface);
+    assert_eq!(
+        tabs_focused[(tab_x, tab_y)].fg,
+        ui::theme::contrasting_foreground(app.theme().focus_border, app.theme())
+    );
+    assert_eq!(tabs_focused[(tab_x, tab_y)].bg, app.theme().focus_border);
     assert!(
         tabs_focused[(tab_x, tab_y)]
             .modifier
@@ -961,4 +964,170 @@ fn process_metrics_show_gpu_and_io_before_optional_runtime_rows_at_120x60() {
             .position(|label| *label == "I/O Write Throughput")
             < labels.iter().position(|label| *label == ".NET Heap")
     );
+}
+
+#[test]
+fn inspection_filter_keeps_text_when_switching_tabs_or_escaping() {
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+        app::ProcessInfoTab::Network,
+    ] {
+        for direction in [KeyCode::Left, KeyCode::Right] {
+            let mut app = make_test_app(1, 10);
+            let (files, _files_requests, _files_results) = OpenFilesWorker::test_pair();
+            app.open_files_worker = files;
+            let (network, _network_requests, _network_results) =
+                crate::samplers::network::NetworkWorker::test_pair();
+            app.network_worker = network;
+            let (scheduling, _scheduling_requests, _scheduling_results) =
+                crate::samplers::scheduling::SchedulingWorker::test_pair();
+            app.scheduling_worker = scheduling;
+            app.open_selected_process_info_dialog().unwrap();
+            app.process_info_tab = tab;
+            app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+                .unwrap();
+            for ch in "日a".chars() {
+                app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
+                    .unwrap();
+            }
+            app.on_key(KeyEvent::new(direction, KeyModifiers::CONTROL))
+                .unwrap();
+            assert_eq!(
+                app.process_info_tab,
+                if direction == KeyCode::Left {
+                    tab.previous()
+                } else {
+                    tab.next()
+                }
+            );
+            assert!(!app.process_info_filter_editing);
+            assert!(!app.process_network.editing);
+            app.process_info_tab = tab;
+            app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+                .unwrap();
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.show_process_info_dialog);
+            assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+            assert!(!app.process_info_filter_editing);
+            let text = match tab {
+                app::ProcessInfoTab::Files => &app.open_files_filter,
+                app::ProcessInfoTab::Dlls => &app.process_modules_filter,
+                app::ProcessInfoTab::Environment => &app.process_environment_filter,
+                _ => &app.process_network.filter,
+            };
+            assert_eq!(text, "日a");
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                .unwrap();
+            assert!(!app.show_process_info_dialog);
+        }
+    }
+}
+
+#[test]
+fn inspection_tables_pin_headers_and_keep_scrolled_rows_clickable() {
+    use super::support::{test_open_files_report, test_process_environment_report};
+    use crate::model::ProcessEnvironmentEntry;
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+    ] {
+        for (width, height) in [(60, 24), (120, 30)] {
+            let mut app = make_test_app(1, 10);
+            app.open_selected_process_info_dialog().unwrap();
+            app.process_info_tab = tab;
+            app.process_info_focus = app::ProcessInfoFocus::Content;
+            let mut files = test_open_files_report("proc-0", 0, "row-0.bin");
+            files.entries = (0..50)
+                .map(|i| {
+                    let mut entry = files.entries[0].clone();
+                    entry.path = format!("C:/row-{i}.bin");
+                    entry.handle.value = i;
+                    entry
+                })
+                .collect();
+            files.inaccessible_handles = 2;
+            app.open_files_result = Some(files);
+            app.process_modules_result = Some(test_process_modules_report(
+                "proc-0",
+                0,
+                (0..50)
+                    .map(|i| test_process_module_entry(&format!("row-{i}.dll"), "Test"))
+                    .collect(),
+            ));
+            app.process_environment_result = Some(test_process_environment_report(
+                "proc-0",
+                0,
+                (0..50)
+                    .map(|i| ProcessEnvironmentEntry {
+                        name: format!("ROW_{i}"),
+                        value: format!("value-{i}"),
+                    })
+                    .collect(),
+            ));
+            let screen = Rect::new(0, 0, width, height);
+            app::sync_layout_state(&mut app, screen);
+            let content = ui::process_info_content_area_for_screen(screen);
+            let (header, body) = ui::process_info_dialog::inspection_table_areas(
+                content,
+                ui::process_info_dialog::inspection_header_rows(&app),
+            );
+            let first = render_app_to_buffer(&app, width, height);
+            if tab != app::ProcessInfoTab::Files {
+                app.on_mouse(
+                    MouseEvent {
+                        kind: MouseEventKind::ScrollDown,
+                        column: body.x,
+                        row: body.y,
+                        modifiers: KeyModifiers::NONE,
+                    },
+                    screen,
+                );
+                let offset = app.process_info_scroll_offset();
+                assert!(offset > 0);
+                app::sync_layout_state(&mut app, screen);
+                assert_eq!(app.process_info_scroll_offset(), offset);
+            }
+            app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+                .unwrap();
+            let last = render_app_to_buffer(&app, width, height);
+            assert!(app.process_info_scroll_offset() > 0);
+            for y in header.y..header.bottom() {
+                for x in header.x..header.right() {
+                    assert_eq!(first[(x, y)], last[(x, y)], "header changed for {tab:?}");
+                }
+            }
+            let at = |app: &crate::App, x, y| match tab {
+                app::ProcessInfoTab::Files => ui::open_files::index_at(content, app, x, y),
+                app::ProcessInfoTab::Dlls => {
+                    ui::process_modules::process_module_index_at(content, app, x, y)
+                }
+                _ => ui::process_environment::process_environment_index_at(content, app, x, y),
+            };
+            assert_eq!(at(&app, header.x, header.y + 1), None);
+            let index = at(&app, body.x, body.y).expect("visible row");
+            assert!(index > 0);
+            app.on_mouse(left_click(body.x, body.y), screen);
+            let selected = match tab {
+                app::ProcessInfoTab::Files => app.open_files_selected,
+                app::ProcessInfoTab::Dlls => app.process_modules_selected,
+                _ => app.process_environment_selected,
+            };
+            assert_eq!(selected, index);
+            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.process_info_detail_is_open());
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                .unwrap();
+            assert!(!app.process_info_detail_is_open());
+            assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.show_process_info_dialog);
+            assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+        }
+    }
 }

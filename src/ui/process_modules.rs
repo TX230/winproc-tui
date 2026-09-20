@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Position, Rect},
     prelude::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 use crate::{
@@ -19,27 +19,37 @@ pub(crate) fn draw_process_modules_tab(
     theme: Theme,
 ) {
     let lines = process_module_lines(app, theme, area.width as usize);
-    let line_count = lines.len();
-    let rows = area.height.max(1) as usize;
-    let offset = app
-        .process_info_dlls_scroll
-        .offset
-        .min(line_count.saturating_sub(rows));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .style(Style::default().fg(theme.text).bg(theme.panel_alt))
-            .scroll((offset as u16, 0)),
+    super::process_info_dialog::draw_inspection_lines(
+        frame,
         area,
+        lines,
+        fixed_header_rows(app),
+        app.process_info_dlls_scroll.offset,
+        theme,
     );
-    set_filter_cursor(frame, area, app, line_count);
+    set_filter_cursor(frame, area, app);
     render_scrollbar(frame, area, app, theme);
 }
 
+pub(crate) fn fixed_header_rows(app: &App) -> usize {
+    if app.activity() == AppActivity::LogView
+        || app.process_modules_show_detail
+        || app.process_modules_result.is_none()
+    {
+        return 0;
+    }
+    entry_row_prefix(app).saturating_sub(usize::from(filtered_entries(app).is_empty()))
+}
+
 pub(crate) fn process_modules_total_rows(app: &App, width: u16) -> usize {
-    process_module_lines(app, app.theme(), width as usize).len()
+    process_module_lines(app, app.theme(), width as usize)
+        .len()
+        .saturating_sub(fixed_header_rows(app))
 }
 
 pub(crate) fn process_modules_scrollbar_area(area: Rect, app: &App) -> Option<Rect> {
+    let (_, area) =
+        super::process_info_dialog::inspection_table_areas(area, fixed_header_rows(app));
     let rows = app.process_info_dlls_scroll.page_size.max(1);
     if process_modules_total_rows(app, area.width) <= rows || area.is_empty() {
         return None;
@@ -53,9 +63,11 @@ pub(crate) fn process_modules_scrollbar_area(area: Rect, app: &App) -> Option<Re
 }
 
 pub(crate) fn process_module_index_at(area: Rect, app: &App, x: u16, y: u16) -> Option<usize> {
+    let (_, area) =
+        super::process_info_dialog::inspection_table_areas(area, fixed_header_rows(app));
     if app.process_modules_show_detail
         || x < area.x
-        || x >= area.right()
+        || x >= area.right().saturating_sub(1)
         || y < area.y
         || y >= area.bottom()
     {
@@ -69,8 +81,7 @@ pub(crate) fn process_module_index_at(area: Rect, app: &App, x: u16, y: u16) -> 
         .process_info_dlls_scroll
         .offset
         .saturating_add((y - area.y) as usize);
-    let prefix = entry_row_prefix(app);
-    let index = line.checked_sub(prefix)?;
+    let index = line;
     (index < entries.len()).then_some(index)
 }
 
@@ -349,7 +360,7 @@ fn filter_input_view(value: &str, cursor: usize, width: usize) -> (String, usize
     )
 }
 
-fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, total: usize) {
+fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
     if app.process_info_focus != ProcessInfoFocus::Content
         || app.process_modules_show_detail
         || app.process_modules_result.is_none()
@@ -357,12 +368,9 @@ fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, tota
         return;
     }
     let filter_row = 1usize;
-    let rows = area.height.max(1) as usize;
-    let offset = app
-        .process_info_dlls_scroll
-        .offset
-        .min(total.saturating_sub(rows));
-    if filter_row < offset || filter_row >= offset.saturating_add(rows) {
+    let (header, _) =
+        super::process_info_dialog::inspection_table_areas(area, fixed_header_rows(app));
+    if filter_row >= header.height as usize || area.width == 0 {
         return;
     }
     let input_width = (area.width as usize)
@@ -377,7 +385,7 @@ fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, tota
         area.x
             .saturating_add(("Filter: ".len() + cursor_x) as u16)
             .min(area.right().saturating_sub(1)),
-        area.y.saturating_add((filter_row - offset) as u16),
+        area.y.saturating_add(filter_row as u16),
     ));
 }
 
