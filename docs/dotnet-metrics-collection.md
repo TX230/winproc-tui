@@ -50,7 +50,7 @@ flowchart TD
     latest --> fresh{"Age at most 3 seconds?"}
     fresh -->|No| unavailable
     fresh -->|Yes| merge["Merge values into ProcessRow"]
-    merge --> display["Processes, Details, and Graph"]
+    merge --> display["Processes, Process Info, and Graphs"]
     merge --> scope{"Retention scope"}
     scope -->|Not tracked| short["Short Live history"]
     scope -->|Tracked| long["Long history and recording scope"]
@@ -200,7 +200,7 @@ Detection and current value display are independent of Tracking List membership.
 - every detected live process may show current .NET values;
 - non-tracked processes keep only the ordinary short live history;
 - tracked processes keep the long live history;
-- recording includes only processes in the recording session's fixed tracked scope;
+- Recording includes only processes matching the session's fixed Tracking List;
 - unavailable values are displayed as `--` and omitted from object-based recording fields, while fixed-order schema positions use `null`.
 
 ## Expected Cost
@@ -228,7 +228,7 @@ When changing this collector:
 3. Preserve complete-interval publication and missing-value semantics.
 4. Keep pipe I/O and parsing outside the UI thread.
 5. Keep shutdown asynchronous and bounded from the caller's perspective.
-6. Check `model::columns`, `model::process`, `model::snapshot`, UI formatting, Details, clipboard output, history, and recording schemas.
+6. Check `model::columns`, `model::process`, `model::snapshot`, UI formatting, Process Info, clipboard output, history, and recording schemas.
 7. Cover request encoding, parser bounds, version fallback, conversions, and lifecycle behavior with focused tests before running the full Rust test suite.
 
 ## References

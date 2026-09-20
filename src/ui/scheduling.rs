@@ -142,7 +142,7 @@ pub(crate) fn lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'static>> {
             .collect::<Vec<_>>()
     };
     if app.activity() == AppActivity::LogView {
-        return wrap("Not recorded in Log view.");
+        return wrap("This information is not included in recording logs.");
     }
     let geometry = layout(app, width.saturating_add(1));
     let mut result = vec![Line::default(); geometry.summary_start];

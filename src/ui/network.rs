@@ -55,7 +55,7 @@ pub(crate) fn content_layout(area: Rect) -> ContentLayout {
         )
     };
     let controls = row(1);
-    let mode_width = 19.min(controls.width);
+    let mode_width = ("[Alt+A] Listening TCP + UDP".len() as u16).min(controls.width);
     ContentLayout {
         status: row(0),
         filter: Rect::new(
@@ -174,7 +174,8 @@ pub(crate) fn draw_content(
     let normal = Style::default().fg(theme.text).bg(theme.panel_alt);
     if not_recorded {
         frame.render_widget(
-            Paragraph::new("Not recorded in Log view.").style(normal.fg(theme.muted)),
+            Paragraph::new("This information is not included in recording logs.")
+                .style(normal.fg(theme.muted)),
             area,
         );
         return;
@@ -235,10 +236,10 @@ pub(crate) fn draw_content(
     }
     frame.render_widget(
         Paragraph::new(match (view.target.is_some(), view.all) {
-            (true, true) => "[Alt+A] All",
-            (true, false) => "[Alt+A] Listen+UDP",
+            (true, true) => "[Alt+A] All endpoints",
+            (true, false) => "[Alt+A] Listening TCP + UDP",
             (false, true) => "[a] All endpoints",
-            (false, false) => "[a] Listen + UDP",
+            (false, false) => "[a] Listening TCP + UDP",
         })
         .style(normal.fg(theme.accent)),
         layout.mode,

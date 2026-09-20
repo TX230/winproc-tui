@@ -418,7 +418,7 @@ impl App {
             return;
         };
         if name.is_empty() {
-            self.set_investigation_profile_name_error("Name is required.");
+            self.set_investigation_profile_name_error("Enter a profile name.");
             return;
         }
 

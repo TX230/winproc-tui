@@ -994,7 +994,10 @@ fn files_tab_in_log_view_does_not_request_live_collection() {
         Err(TryRecvError::Empty)
     ));
     let rendered = render_app_to_text(&app, 120, 40);
-    assert!(rendered.contains("Not recorded in Log view."), "{rendered}");
+    assert!(
+        rendered.contains("This information is not included in recording logs."),
+        "{rendered}"
+    );
 }
 
 #[test]

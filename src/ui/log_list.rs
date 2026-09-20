@@ -80,10 +80,10 @@ pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &Ap
             .unwrap_or_else(|| "--".to_string());
         let mut preview = vec![Line::from(format!("{start} → {end} · Interval {interval}"))];
         let names = if summary.tracked_names.is_empty() {
-            "Tracked names: --".to_string()
+            "Tracked process names: --".to_string()
         } else {
             format!(
-                "Tracked names ({}): {}",
+                "Tracked process names ({}): {}",
                 summary.tracked_names.len(),
                 summary.tracked_names.join(", ")
             )
@@ -190,7 +190,7 @@ pub(crate) fn draw_log_dir_dialog(
             &[
                 ("Enter", "apply"),
                 ("Esc", "cancel"),
-                ("Ctrl+Space", "complete"),
+                ("Ctrl+Space", "Complete path"),
             ],
             theme,
         ))),
@@ -201,7 +201,7 @@ pub(crate) fn draw_log_dir_dialog(
             &[
                 ("Enter", "apply"),
                 ("Esc", "cancel"),
-                ("Ctrl+Space", "complete"),
+                ("Ctrl+Space", "Complete path"),
             ],
             theme,
         )))

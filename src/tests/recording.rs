@@ -31,9 +31,12 @@ fn ctrl_r_requires_tracked_processes_before_opening_recording_dialog() {
     assert_eq!(app.status, "No tracked processes to record");
 
     let rendered = render_app_to_text(&app, 100, 45);
-    assert!(rendered.contains("No tracked names"), "{rendered}");
     assert!(
-        rendered.contains("Processes: select a name, then press t to track."),
+        rendered.contains("The tracking list is empty."),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("In Processes, focus a process and press t to track its name."),
         "{rendered}"
     );
     assert!(!rendered.contains("[ OK ]"), "{rendered}");
@@ -206,10 +209,7 @@ fn ctrl_r_confirms_stop_and_defaults_to_continue() {
     assert!(app.show_recording_stop_confirmation);
     assert_eq!(app.activity(), AppActivity::Recording);
     let rendered = render_app_to_text(&app, 100, 45);
-    assert!(
-        rendered.contains("Stop recording and close this log?"),
-        "{rendered}"
-    );
+    assert!(rendered.contains("Stop recording?"), "{rendered}");
     assert!(
         rendered.contains("Recording continues until Stop is confirmed."),
         "{rendered}"
@@ -582,7 +582,8 @@ fn recording_path_dialog_uses_terminal_cursor_without_inline_marker() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("Enter start  Esc cancel  Tab focus  ←/→ value  Ctrl+Space complete"),
+        rendered
+            .contains("Enter start  Esc cancel  Tab focus  ←/→ value  Ctrl+Space Complete path"),
         "{rendered}"
     );
     assert!(

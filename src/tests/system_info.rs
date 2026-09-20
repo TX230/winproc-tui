@@ -197,7 +197,7 @@ fn ctrl_c_copies_selected_process_row_text() {
         app::clipboard::last_copied_text().as_deref(),
         Some("0\tproc-0\t388,067,328\t--")
     );
-    assert_eq!(app.status, "Copied cursor row: proc-0");
+    assert_eq!(app.status, "Copied process row: proc-0");
 }
 
 #[test]

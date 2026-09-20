@@ -87,28 +87,29 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                 (
                     "Space",
                     if app.selected_process_column_toggles_tracking() {
-                        "Track name"
+                        "Track process name"
                     } else {
                         "Graph"
                     },
                 ),
-                ("t", "Track name"),
+                ("t", "Track process name"),
                 ("c", "Columns"),
                 ("w/W", "Width"),
                 ("s", "Sort"),
                 ("g", "Graphs"),
                 ("Ctrl+I", "Jump"),
-                ("Enter/f", "Row info/files"),
+                ("Enter", "Process Info"),
+                ("f", "Files"),
                 (
                     "d",
                     if app.selected_process_identities.is_empty() {
-                        "Kill row"
+                        "Kill process"
                     } else {
                         "Kill selected"
                     },
                 ),
                 ("Ctrl+C", "Copy row"),
-                ("Alt+↑/↓", "Cursor"),
+                ("Alt+↑/↓", "Focus"),
                 ("Ctrl+F", "Filter"),
             ]
         }
@@ -148,7 +149,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     if app.focused_panel == FocusedPanel::Processes && app.watch_enabled {
         items.push(("Ctrl+A", "Select all"));
     }
-    if items.first() == Some(&("Space", "Track name")) {
+    if items.first() == Some(&("Space", "Track process name")) {
         items.retain(|(key, _)| *key != "t");
     }
     let primary_key = items.first().map(|(key, _)| *key);
@@ -209,7 +210,8 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         Some("Ctrl+B"),
         (!app.selected_process_identities.is_empty()).then_some("d"),
         Some("Ctrl+F"),
-        Some("Enter/f"),
+        Some("Enter"),
+        Some("f"),
         Some("←/→"),
         Some("a/b"),
         Some("Del"),

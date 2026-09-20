@@ -10,13 +10,13 @@ A source identifies one graphable system metric or one process metric. Process s
 
 The collection has no holes or duplicate sources. A non-empty collection always has one `active_graph_id` that resolves to an entry, and an ID is never reused during the run.
 
-Graph registrations are runtime session state. They are not written to `winproc-tui.toml`, and every new Live session starts with an empty workspace. Loading or saving an Investigation Profile does not add, remove, reorder, or otherwise change the current Graphs.
+Graphs remain available only for the current session. They are not written to `winproc-tui.toml`, and the Graph workspace starts empty each time the app starts. Opening or saving an Investigation Profile does not add, remove, reorder, or otherwise change the current Graphs.
 
 ## Persistence Boundary
 
 Graph source, order, active ID, Raw/MA5 mode, A/B points, selected sample time, fit-all state, visible-time offset, live-follow position, and Graph scroll position remain session-local. Process Graphs require a full runtime `ProcessIdentity`, so a tracked process name in an Investigation Profile is never treated as enough information to recreate one.
 
-Graph layout, fixed time span, Samples and Delta visibility, and Y-axis lower-bound mode are application-wide presentation preferences stored once in `winproc-tui.toml`. They apply to the current workspace but do not belong to an Investigation Profile.
+Graph layout, fixed time span, Samples and Delta visibility, and Y-axis lower-bound mode are app settings stored once in `winproc-tui.toml`. They apply to the current workspace but do not belong to an Investigation Profile.
 
 ## Shared and Graph-Specific State
 
@@ -29,11 +29,11 @@ Graph layout, fixed time span, Samples and Delta visibility, and Y-axis lower-bo
 | Y-axis lower-bound mode | Process or GPU identity |
 | Log-view frame interval | Raw or MA5 display mode |
 
-The shared right edge comes from the latest sample across all registered Graphs. Each series is plotted against that reference rather than against its own latest sample.
+The shared right edge comes from the latest sample across all Graphs in the workspace. Each series is plotted against that reference rather than against its own latest sample.
 
 `Fit all` spans the earliest first sample through the latest last sample across the whole workspace. Changing the active Graph therefore cannot change the fitted time range.
 
-## Registration and Ordering
+## Adding, Removing, and Ordering Graphs
 
 Adding or removing a source changes only that source's entry. Removing an entry does not renumber or reuse Graph IDs.
 
@@ -65,7 +65,7 @@ Time-axis labels adapt to the available card width without overlapping. Endpoint
 
 Cards scroll by layout row. Selection changes scroll position only enough to keep the active card visible. The Samples inspector is placed beside Graphs when width permits, below them when height permits, and otherwise collapses temporarily. Temporary collapse is distinct from the saved visibility preference so resizing can restore the inspector.
 
-Graph assignment is independent from terminal geometry and workspace visibility. Resize preserves entries, order, active ID, selected time, A/B timestamps, and live-follow state while recalculating effective columns, Samples placement, and row scroll. If a readable plot cannot fit, the active card retains its identity and remove action and shows a resize message.
+The Graphs in the workspace are independent from terminal geometry and workspace visibility. Resize preserves entries, order, active ID, selected time, A/B timestamps, and live-follow state while recalculating effective columns, Samples placement, and row scroll. If a readable plot cannot fit, the active card retains its identity and remove action and shows a resize message.
 
 The vertical split above the Graph Workspace uses either `Auto` or a saved preferred `PROCESSES` table-body capacity. `Auto` allocates about two fifths of the lower workspace body capacity to Processes, while reserving a readable Graph card and workspace controls. Sparse results remain content-sized. A manual preference uses the saved capacity, but the effective height still shrinks to the number of rendered process rows and always leaves the Graph Workspace its minimum readable height. Content or terminal-size clamps do not overwrite the preference, so later growth or a larger terminal restores it. Hiding Graphs gives `PROCESSES` the full lower area; showing them again reapplies the saved split across Live, Recording, and Log view. The `[process_table]` configuration stores this as `body_rows = "auto"` or a positive integer.
 
@@ -76,11 +76,11 @@ Drawing and mouse hit testing consume one `GraphWorkspaceLayout` result for shar
 ## Invariants
 
 - A non-empty workspace contains at most 16 unique sources and one valid active ID.
-- Graph registrations and their runtime identities are never persisted or reconstructed from process names.
+- Graphs and their runtime identities are never persisted or reconstructed from process names.
 - Graph IDs are run-unique and never reused.
 - Reordering preserves identity and all shared comparison state.
 - Raw or MA5 mode remains owned by its Graph entry across reordering and resize.
-- Resize and visibility changes never discard Graph registrations.
+- Resize and visibility changes never remove Graphs from the workspace.
 - Process/Graph split clamps never overwrite the saved `Auto` or preferred body-row setting.
 - Every Graph remains reachable through row scrolling.
 - Shared time state never substitutes another series' nearby sample.
@@ -91,7 +91,7 @@ Process Graph and Samples captions retain the target PID when names must be shor
 
 Graph and Samples show their local history/follow state independently of the activity header. Manual history inspection offers a return to the latest sample; paused and recorded latest samples are labeled by their source. Returning to latest or reaching the latest pan boundary uses that same source label; it never implies that display pause has ended or that recorded samples are live.
 
-MEM, GPU, NW/DISK, and CPU remain separate across terminal widths. When the full row does not fit, MEM omits its secondary memory-pressure column before the panels shrink. The row fills the available width, and drawing, hit testing, and keyboard metric selection use the visible layout. Resizing a selected hidden MEM column returns selection to the corresponding overview row; Graph registrations remain intact.
+MEM, GPU, NW/DISK, and CPU remain separate across terminal widths. When the full row does not fit, MEM omits its secondary memory-pressure column before the panels shrink. The row fills the available width, and drawing, hit testing, and keyboard metric selection use the visible layout. Resizing a selected hidden MEM column returns selection to the corresponding overview row; Graphs remain intact.
 
 Directional panel navigation treats GRAPHS as one workspace and Samples as a separate visible panel. Entering or leaving GRAPHS preserves its active card; card selection and shared-time panning remain independent operations.
 

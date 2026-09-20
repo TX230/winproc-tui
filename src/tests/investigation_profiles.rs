@@ -471,9 +471,9 @@ fn profile_dialog_changes_the_unified_startup_mode() {
     );
     let rendered = render_app_to_text(&app, 100, 45);
     assert!(rendered.contains("STARTUP BEHAVIOR"), "{rendered}");
-    assert!(rendered.contains("> Choose Profile"), "{rendered}");
+    assert!(rendered.contains("> Ask at startup"), "{rendered}");
     assert!(
-        rendered.contains("Choose tracked names to load"),
+        rendered.contains("Choose a tracking list at startup."),
         "{rendered}"
     );
 
@@ -505,7 +505,7 @@ fn profile_open_dialog_is_direct_and_has_no_management_shortcuts() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("Profiles store tracked names; Graphs last for this session."),
+        rendered.contains("Profiles save tracking lists only; current Graphs stay unchanged."),
         "{rendered}"
     );
     assert!(rendered.contains("SAVED PROFILES"), "{rendered}");
@@ -523,7 +523,7 @@ fn profile_open_dialog_is_direct_and_has_no_management_shortcuts() {
     assert!(!rendered.contains("(*)"), "{rendered}");
     assert!(rendered.contains("winproc-tui.exe"), "{rendered}");
     assert!(rendered.contains("memory-eater.exe"), "{rendered}");
-    assert!(rendered.contains("2 tracked"), "{rendered}");
+    assert!(rendered.contains("2 process names"), "{rendered}");
     for removed in [
         "┃Processes",
         "┃Tracked-only",
@@ -558,8 +558,8 @@ fn empty_profile_detail_shows_only_the_empty_tracking_message() {
 
     let rendered = render_app_to_text(&app, 76, 35);
     assert!(rendered.contains("SELECTED PROFILE · Empty"), "{rendered}");
-    assert!(rendered.contains("(No tracked processes)"), "{rendered}");
-    assert!(rendered.contains("0 tracked"), "{rendered}");
+    assert!(rendered.contains("(Empty tracking list)"), "{rendered}");
+    assert!(rendered.contains("0 process names"), "{rendered}");
 }
 
 #[test]
@@ -586,7 +586,7 @@ fn profile_dialog_startup_mode_has_mouse_parity() {
             break;
         }
     }
-    let (column, row) = hit.expect("Choose Profile should have a hit region");
+    let (column, row) = hit.expect("Ask at startup should have a hit region");
 
     app.on_mouse(
         MouseEvent {
@@ -625,7 +625,7 @@ fn profile_load_retained_history_confirmation_uses_enter_and_escape() {
     assert_eq!(app.watch_list, ["old.exe"]);
 
     let rendered = render_app_to_text(&app, 100, 45);
-    assert!(rendered.contains("Enter Load  Esc Cancel"), "{rendered}");
+    assert!(rendered.contains("Enter Open  Esc Cancel"), "{rendered}");
 
     {
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
@@ -689,7 +689,7 @@ fn ctrl_t_opens_profiles_and_save_load_are_rejected_outside_live() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("Save the current tracked names as your first profile."),
+        rendered.contains("Save the current tracking list as your first profile."),
         "{rendered}"
     );
     assert!(!rendered.contains("S Save New"), "{rendered}");
@@ -747,7 +747,7 @@ fn reopening_a_modified_profile_confirms_and_cancel_preserves_changes() {
             Some(InvestigationProfilesView::ConfirmLoad { .. })
         ));
         let text = render_app_to_text(&app, 120, 60);
-        assert!(text.contains("Replace unsaved changes?"));
+        assert!(text.contains("Discard unsaved tracking changes and open this profile?"));
         assert!(text.contains("worker.exe"));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap();
@@ -776,7 +776,7 @@ fn empty_profile_browser_has_a_save_route_and_explicit_scope() {
     app.open_investigation_profiles();
     let rendered = render_app_to_text(&app, 120, 60);
     assert!(rendered.contains("Ctrl+S Save As"));
-    assert!(rendered.contains("Presentation preferences are shared"));
+    assert!(rendered.contains("Profiles do not include app settings or Graphs"));
     app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL))
         .unwrap();
     assert!(matches!(
@@ -784,5 +784,56 @@ fn empty_profile_browser_has_a_save_route_and_explicit_scope() {
         Some(InvestigationProfilesView::NameInput { .. })
     ));
     let rendered = render_app_to_text(&app, 120, 60);
-    assert!(rendered.contains("Save tracked names. Graphs last for this session."));
+    assert!(rendered.contains("Save the current tracking list as a profile."));
+}
+
+#[test]
+fn profile_open_warning_keeps_scope_and_clickable_actions_at_compact_widths() {
+    for width in [80, 120, 180] {
+        let mut app = make_test_app(1, 10);
+        app.runtime.saved_investigation_profiles = vec![profile("Saved")];
+        app.active_investigation_profile = Some("Saved".to_string());
+        app.watch_list = vec!["proc-0".to_string(), "worker.exe".to_string()];
+        record_tracked_process_history_samples(&mut app, "worker.exe", 191);
+        app.open_investigation_profiles();
+        app.load_selected_investigation_profile();
+        let Some(InvestigationProfilesView::ConfirmLoad { pending }) =
+            app.investigation_profiles_view()
+        else {
+            panic!("expected unsaved changes and history confirmation");
+        };
+        let discarded = pending.tracking_switch.discarded_sample_count;
+        assert!(discarded > 0);
+        let screen = Rect::new(0, 0, width, 24);
+        let buffer = render_app_to_buffer(&app, width, 24);
+        let text = super::support::buffer_to_text(&buffer);
+        for expected in [
+            "Discard unsaved tracking changes and open this profile?".to_string(),
+            "Removes 1 entry from the tracking list.".to_string(),
+            format!("{discarded} older samples for 1 process name will be discarded."),
+            "Removed: worker.exe".to_string(),
+        ] {
+            assert!(text.contains(&expected), "{expected} at {width}: {text}");
+        }
+        let (x, y) = find_text_position(&buffer, "Enter Open").unwrap();
+        assert_eq!(buffer[(x, y - 1)].symbol(), " ");
+        app.on_mouse(super::support::left_click(x + 9, y), screen);
+        assert!(app.investigation_profiles_dialog.is_none());
+        assert_eq!(app.watch_list, ["proc-0"]);
+    }
+}
+
+#[test]
+fn long_profile_names_keep_process_name_counts_visible() {
+    for width in [80, 120, 180] {
+        for name in ["Long profile ".repeat(20), "調査プロファイル".repeat(20)] {
+            let mut app = make_test_app(1, 10);
+            app.runtime.saved_investigation_profiles = vec![profile(&name)];
+            app.active_investigation_profile = Some(name);
+            app.open_investigation_profiles();
+            let text = render_app_to_text(&app, width, 24);
+            assert!(text.contains("1 process name  [current]"), "{text}");
+            assert!(text.contains("..."));
+        }
+    }
 }

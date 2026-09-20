@@ -337,7 +337,7 @@ fn network_process_filter_click_focuses_direct_input_and_shows_matching_shortcut
     );
     let text = render_app_to_text(&app, screen.width, screen.height);
     assert!(text.contains("Ctrl+U refresh"));
-    assert!(text.contains("[Alt+A] All"));
+    assert!(text.contains("[Alt+A] All endpoints"));
     assert!(!text.contains("/ filter"));
     press(&mut app, KeyCode::Esc);
     assert!(!app.show_process_info_dialog);
@@ -365,7 +365,10 @@ fn network_log_view_performs_no_collection_and_discards_live_results() {
         })
         .unwrap();
     assert!(!app.poll_network_results());
-    assert!(render_app_to_text(&app, 100, 30).contains("Not recorded in Log view."));
+    assert!(
+        render_app_to_text(&app, 100, 30)
+            .contains("This information is not included in recording logs.")
+    );
     assert!(!app.network_browser.visible);
 }
 
@@ -907,4 +910,58 @@ fn open_network_list(app: &mut App) {
     assert!(app.network_browser.editing);
     // Accept the initial filter before exercising endpoint-list commands.
     press(app, KeyCode::Enter);
+}
+
+#[test]
+fn network_mode_labels_fit_and_click_at_compact_widths() {
+    for width in [80, 120, 180] {
+        for global in [true, false] {
+            let (mut app, requests, results) = setup();
+            if global {
+                open_network_list(&mut app);
+            } else {
+                app.open_selected_process_info_dialog().unwrap();
+                app.activate_process_info_tab(ProcessInfoTab::Network)
+                    .unwrap();
+            }
+            let snapshot = report(&app);
+            deliver(&mut app, &results, capture(&requests), snapshot);
+            let screen = Rect::new(0, 0, width, 24);
+            sync_layout_state(&mut app, screen);
+            let area = ui::network::active_content_area(screen, global);
+            let layout = ui::network::content_layout(area);
+            assert_eq!(layout.filter.right(), layout.mode.x);
+            assert!(layout.filter.width >= 16);
+            if global {
+                app.network_browser.all = false;
+            } else {
+                app.process_network.all = false;
+            }
+            for all in [false, true] {
+                let label = format!(
+                    "{} {}",
+                    if global { "[a]" } else { "[Alt+A]" },
+                    if all {
+                        "All endpoints"
+                    } else {
+                        "Listening TCP + UDP"
+                    }
+                );
+                let buffer = render_app_to_buffer(&app, width, 24);
+                let (x, y) = find_text_position(&buffer, &label).expect("complete mode label");
+                let end = x + label.len() as u16 - 1;
+                assert!(layout.mode.contains((end, y).into()));
+                app.on_mouse(left_click(end, y), screen);
+                assert_eq!(
+                    if global {
+                        app.network_browser.all
+                    } else {
+                        app.process_network.all
+                    },
+                    !all
+                );
+            }
+            assert!(matches!(requests.try_recv(), Err(TryRecvError::Empty)));
+        }
+    }
 }

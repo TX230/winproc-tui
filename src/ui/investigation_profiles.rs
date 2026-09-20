@@ -28,7 +28,6 @@ const MAX_LIST_HEIGHT: u16 = 6;
 const NAME_DIALOG_WIDTH: u16 = 60;
 const NAME_DIALOG_HEIGHT: u16 = 8;
 const CONFIRM_DIALOG_WIDTH: u16 = 68;
-const CONFIRM_DIALOG_HEIGHT: u16 = 8;
 const STARTUP_DIALOG_WIDTH: u16 = 72;
 const STARTUP_DIALOG_HEIGHT: u16 = 12;
 const STARTUP_OPTION_ROW: u16 = 3;
@@ -82,9 +81,11 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
     frame.render_widget(
         Paragraph::new(match app.activity() {
             AppActivity::Live if count == 0 => {
-                "Save the current tracked names as your first profile."
+                "Save the current tracking list as your first profile."
             }
-            AppActivity::Live => "Profiles store tracked names; Graphs last for this session.",
+            AppActivity::Live => {
+                "Profiles save tracking lists only; current Graphs stay unchanged."
+            }
             AppActivity::Recording => "Stop Recording to open a profile. Delete remains available.",
             AppActivity::LogView => "Return to Live to open a profile. Delete remains available.",
         })
@@ -149,7 +150,7 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
         );
         if profile.tracked_names.is_empty() {
             frame.render_widget(
-                Paragraph::new("(No tracked processes)").style(Style::default().fg(theme.muted)),
+                Paragraph::new("(Empty tracking list)").style(Style::default().fg(theme.muted)),
                 row(content, layout.summary_row),
             );
         } else {
@@ -174,7 +175,7 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
             theme,
         );
         frame.render_widget(
-            Paragraph::new("Presentation preferences are shared across profiles.")
+            Paragraph::new("Profiles do not include app settings or Graphs.")
                 .style(Style::default().fg(theme.text)),
             row(content, layout.summary_row),
         );
@@ -215,7 +216,7 @@ fn draw_startup(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Th
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
-        Paragraph::new("Restore tracked names; Graphs start empty.")
+        Paragraph::new("Choose how to start. Graphs start empty.")
             .style(Style::default().fg(theme.muted)),
         row(content, 0),
     );
@@ -279,12 +280,12 @@ fn draw_name_input(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
-        Paragraph::new("Save tracked names. Graphs last for this session.")
+        Paragraph::new("Save the current tracking list as a profile.")
             .style(Style::default().fg(theme.text)),
         row(content, 0),
     );
     frame.render_widget(
-        Paragraph::new("Presentation preferences are shared.")
+        Paragraph::new("Profiles do not include app settings or Graphs.")
             .style(Style::default().fg(theme.muted)),
         row(content, 1),
     );
@@ -345,23 +346,23 @@ fn draw_load_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, _the
     draw_confirm(
         frame,
         area,
-        "LOAD INVESTIGATION PROFILE?",
+        "OPEN INVESTIGATION PROFILE?",
         &format!(
-            "{} Removes {} tracked name{}.",
+            "{}\nRemoves {} {} from the tracking list.",
             if pending.unsaved_changes {
-                "Replace unsaved changes?"
+                "Discard unsaved tracking changes and open this profile?"
             } else {
-                "Load profile?"
+                "Open this profile?"
             },
             pending.tracking_switch.removed_name_count,
             if pending.tracking_switch.removed_name_count == 1 {
-                ""
+                "entry"
             } else {
-                "s"
+                "entries"
             }
         ),
         &format!(
-            "{} older sample{} across {} name{} will be discarded.\nRemoved: {}",
+            "{} older sample{} for {} process name{} will be discarded.\nRemoved: {}",
             pending.tracking_switch.discarded_sample_count,
             if pending.tracking_switch.discarded_sample_count == 1 {
                 ""
@@ -388,7 +389,7 @@ fn draw_load_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, _the
                 52
             )
         ),
-        &[("Enter", "Load"), ("Esc", "Cancel")],
+        &[("Enter", "Open"), ("Esc", "Cancel")],
         app,
     );
 }
@@ -403,34 +404,61 @@ fn draw_confirm(
     app: &App,
 ) {
     let theme = app.theme();
-    let popup = centered_dialog_rect(area, CONFIRM_DIALOG_WIDTH, CONFIRM_DIALOG_HEIGHT);
+    let width = CONFIRM_DIALOG_WIDTH.min(area.width);
+    let wrap = |value: &str| {
+        value
+            .lines()
+            .flat_map(|line| {
+                super::process_info_dialog::wrap_display_width(
+                    line,
+                    width.saturating_sub(2) as usize,
+                )
+            })
+            .map(Line::raw)
+            .collect::<Vec<_>>()
+    };
+    let message = wrap(message);
+    let detail = wrap(detail);
+    let message_height = message.len() as u16;
+    let detail_height = detail.len() as u16;
+    let popup = centered_dialog_rect(area, width, message_height + detail_height + 5);
     let block = confirm_dialog::warning_block(title, theme);
     let content = block.inner(popup);
+    let shortcuts_area = row(content, content.height.saturating_sub(1));
+    let body = Rect {
+        height: content.height.saturating_sub(2),
+        ..content
+    };
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
     frame.render_widget(
         Paragraph::new(message).alignment(Alignment::Center),
-        row(content, 1),
+        Rect {
+            height: message_height,
+            ..row(content, 1)
+        }
+        .intersection(body),
     );
     frame.render_widget(
         Paragraph::new(detail)
             .alignment(Alignment::Center)
             .style(Style::default().fg(theme.warning)),
         Rect {
-            height: 2,
-            ..row(content, 2)
-        },
+            height: detail_height,
+            ..row(content, 1 + message_height)
+        }
+        .intersection(body),
     );
     crate::ui::footer::register_shortcut_text(
         app,
-        row(content, 5),
+        shortcuts_area,
         &ratatui::text::Text::from(Line::from(warning_shortcut_spans(shortcuts, theme))),
         ratatui::layout::Alignment::Center,
     );
     frame.render_widget(
         Paragraph::new(Line::from(warning_shortcut_spans(shortcuts, theme)))
             .alignment(Alignment::Center),
-        row(content, 5),
+        shortcuts_area,
     );
 }
 
@@ -489,22 +517,22 @@ fn profile_row_text(
     width: usize,
 ) -> String {
     let suffix = format!(
-        "  {:>2} tracked{}",
+        "  {:>2} process name{}{}",
         tracked_count,
+        if tracked_count == 1 { "" } else { "s" },
         if active { "  [current]" } else { "" }
     );
     let name_width = width.saturating_sub(cursor.chars().count() + 1 + suffix.chars().count());
-    format!(
-        "{cursor} {:<name_width$}{suffix}",
-        truncate(name, name_width)
-    )
+    let name = truncate(name, name_width);
+    let padding = name_width.saturating_sub(Span::raw(&name).width());
+    format!("{cursor} {name}{}{suffix}", " ".repeat(padding))
 }
 
 fn startup_description(startup: InvestigationStartup) -> &'static str {
     match startup {
-        InvestigationStartup::ResumeLast => "Restore tracked names",
-        InvestigationStartup::ChooseProfile => "Choose tracked names to load",
-        InvestigationStartup::StartEmpty => "Start without tracked names",
+        InvestigationStartup::ResumeLast => "Restore the previous tracking list",
+        InvestigationStartup::ChooseProfile => "Choose a tracking list at startup.",
+        InvestigationStartup::StartEmpty => "Start with an empty tracking list",
     }
 }
 
@@ -525,21 +553,26 @@ fn draw_section_label(
     );
 }
 
-fn truncate(value: &str, width: usize) -> String {
-    let len = value.chars().count();
+pub(crate) fn truncate(value: &str, width: usize) -> String {
+    let len = Span::raw(value).width();
     if len <= width {
         return value.to_string();
     }
     if width <= 3 {
         return ".".repeat(width);
     }
-    format!(
-        "{}...",
-        value
-            .chars()
-            .take(width.saturating_sub(3))
-            .collect::<String>()
-    )
+    let mut result = String::new();
+    let mut used = 0;
+    for ch in value.chars() {
+        let cells = Span::raw(ch.to_string()).width();
+        if used + cells > width - 3 {
+            break;
+        }
+        result.push(ch);
+        used += cells;
+    }
+    result.push_str("...");
+    result
 }
 
 #[derive(Clone, Copy)]

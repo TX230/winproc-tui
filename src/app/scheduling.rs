@@ -55,7 +55,7 @@ impl App {
 
     pub(crate) fn scheduling_disabled_reason(&self) -> Option<&'static str> {
         if self.activity() == AppActivity::LogView {
-            Some("Not recorded in Log view.")
+            Some("This information is not included in recording logs.")
         } else if self.is_display_paused() {
             Some("Resume the display before changing scheduling.")
         } else if !self.show_process_info_dialog || !self.process_info_target_is_currently_live() {

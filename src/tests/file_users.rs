@@ -201,12 +201,12 @@ fn file_users_partial_zero_results_show_coverage_and_full_diagnostics() {
         ..FileSearchReport::default()
     };
     let text = render_app_to_text(&app, 120, 35);
-    assert!(text.contains("Timed out (partial scope)"));
+    assert!(text.contains("Timed out (partial results)"));
     assert!(text.contains("No matches found in the inspected scope."));
     app.file_users.focus = FileUsersFocus::Results;
     press(&mut app, KeyCode::Char(' '));
     let details = ui::file_users::detail_lines(&app.file_users, 120).join("\n");
-    assert!(details.contains("Processes denied access: 3"));
+    assert!(details.contains("Access denied for 3 processes"));
     assert!(details.contains("Handles unreadable: 5"));
     assert!(details.contains("Memory-mapped-only"));
 }

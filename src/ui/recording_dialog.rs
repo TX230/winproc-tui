@@ -25,7 +25,7 @@ const RECORDING_INTERVAL_ROW: u16 = 5;
 const RECORDING_INFO_LABEL_WIDTH: u16 = 15;
 const RECORDING_OVERWRITE_WIDTH: u16 = 48;
 const RECORDING_OVERWRITE_HEIGHT: u16 = 7;
-const RECORDING_NO_TRACKED_WIDTH: u16 = 52;
+const RECORDING_NO_TRACKED_WIDTH: u16 = 64;
 const RECORDING_NO_TRACKED_HEIGHT: u16 = 7;
 const RECORDING_FIXED_WIDTH: u16 = 58;
 const RECORDING_FIXED_HEIGHT: u16 = 6;
@@ -157,7 +157,7 @@ pub(crate) fn draw_recording_path_dialog(
                 ("Esc", "cancel"),
                 ("Tab", "focus"),
                 ("←/→", "value"),
-                ("Ctrl+Space", "complete"),
+                ("Ctrl+Space", "Complete path"),
             ],
             theme,
         )),
@@ -170,7 +170,7 @@ pub(crate) fn draw_recording_path_dialog(
                 ("Esc", "cancel"),
                 ("Tab", "focus"),
                 ("←/→", "value"),
-                ("Ctrl+Space", "complete"),
+                ("Ctrl+Space", "Complete path"),
             ],
             theme,
         )),
@@ -263,7 +263,7 @@ pub(crate) fn draw_recording_stop_confirm(
         confirm_dialog::centered_dialog_rect(area, RECORDING_STOP_WIDTH, RECORDING_STOP_HEIGHT);
     let lines = Text::from(vec![
         Line::from(Span::styled(
-            "Stop recording and close this log?",
+            "Stop recording?",
             Style::default().fg(theme.text),
         )),
         Line::from(""),
@@ -448,12 +448,12 @@ pub(crate) fn draw_recording_no_tracked_warning(
     );
     let lines = Text::from(vec![
         Line::from(Span::styled(
-            "No tracked names",
+            "The tracking list is empty.",
             Style::default().fg(theme.text),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Processes: select a name, then press t to track.",
+            "In Processes, focus a process and press t to track its name.",
             Style::default().fg(theme.text),
         )),
         Line::from(""),

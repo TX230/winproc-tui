@@ -55,7 +55,10 @@ fn log_list_renders_session_rows() {
     assert!(rendered.contains("00:02:05"), "{rendered}");
     assert!(rendered.contains("app.exe"), "{rendered}");
     assert!(rendered.contains("Interval 5s"), "{rendered}");
-    assert!(rendered.contains("Tracked names (1):"), "{rendered}");
+    assert!(
+        rendered.contains("Tracked process names (1):"),
+        "{rendered}"
+    );
     assert!(rendered.contains("winproc-tui-demo.log"), "{rendered}");
     assert!(
         !rendered.contains("C:/logs/winproc-tui-demo.log"),
@@ -310,9 +313,9 @@ fn log_dir_dialog_shows_shortcuts_below_directory_input() {
     app.open_log_dir_dialog().unwrap();
     let buffer = render_app_to_buffer(&app, 120, 45);
     let (_, shortcut_y) =
-        find_text_position(&buffer, "Enter apply  Esc cancel  Ctrl+Space complete")
+        find_text_position(&buffer, "Enter apply  Esc cancel  Ctrl+Space Complete path")
             .expect("directory shortcuts should render");
-    assert!(find_text_position(&buffer, "Ctrl+Space complete").is_some());
+    assert!(find_text_position(&buffer, "Ctrl+Space Complete path").is_some());
     let (_, label_y) =
         find_text_position(&buffer, "Directory").expect("directory label should render");
 

@@ -10,7 +10,7 @@ Display pause and Log view do not replace those host-capacity fields with paused
 
 ## Fixed Process Target
 
-Opening Process Info creates a `ProcessInfoDialogTarget` containing the selected `ProcessIdentity`, opening `ProcessRow`, and lifecycle. Every tab and worker request uses that fixed target instead of consulting the current Processes selection again.
+Opening Process Info creates a `ProcessInfoDialogTarget` containing the target process's `ProcessIdentity`, opening `ProcessRow`, and lifecycle. Every tab and worker request uses that fixed target instead of following later changes to Processes focus or selection.
 
 The active tab is retained between ordinary opens. A direct investigation action can select a specific tab for the new dialog session. Opening a new session clears session-local filters, while tab switches and explicit refreshes preserve them.
 
@@ -60,7 +60,7 @@ Potentially blocking native calls run in a hidden helper process belonging to a 
 
 Results distinguish completed, cancelled, timed-out, limited, and failed captures. Process-level access failures and exits, handle-level failures, unnamed disk-file handles, and unvisited handles have separate counts. A zero-result capture says no matches were found in the inspected scope, without claiming a file has no users or that a matching handle necessarily prevents deletion. Details retain full paths and coverage information when the table is clipped.
 
-Navigating reopens and verifies the owner's native creation time in the helper before opening its Files tab. Closing Process Info returns to retained search results. Switching investigation views preserves the query draft and results. Opening or reopening file search returns to Query editing at the end of the retained draft without starting a scan. Request IDs reject replies after cancellation, a new search, or a closed browser. Query drafts and the query associated with captured results remain distinct. Queries, results, and helper protocol data are not saved to configuration, sampling history, Recording, or exports.
+Opening a file-search result first reopens the process in the helper and verifies its native creation time, then opens its Files tab. Closing Process Info returns to retained search results. Switching investigation views preserves the query draft and results. Opening or reopening file search returns to Query editing at the end of the retained draft without starting a scan. Request IDs reject replies after cancellation, a new search, or a closed browser. Query drafts and the query associated with captured results remain distinct. Queries, results, and helper protocol data are not saved to configuration, sampling history, Recording, or exports.
 
 Matching semantics, limits, and clipboard fields are owned by [metrics.md](metrics.md). Memory-mapped-only file use, hard links, short names, reparse aliases, and uninspectable processes are outside an exhaustive ownership guarantee.
 
@@ -134,4 +134,4 @@ Metrics identifies paused and recorded snapshots in its value heading and timest
 
 Metrics keeps a stable order with general CPU, memory, GPU and I/O rows ahead of optional .NET runtime rows. Unavailable runtime values remain visible as `--`; temporary absence does not hide rows or imply that the process has no .NET runtime.
 
-Process context actions open the captured process lifetime, including Files and Network through the existing worker and activity boundaries. Endpoint context menus capture the displayed endpoint and owner metadata; owner navigation still re-verifies native creation time before opening Process Info. Endpoint details and copy retain that captured row even if a later capture or selection changes.
+Process context actions open the captured process lifetime, including Files and Network through the existing worker and activity boundaries. Endpoint context menus capture the displayed endpoint and owner metadata; opening Process Info still re-verifies the owning process's native creation time. Endpoint details and copy retain that captured row even if a later capture or selection changes.

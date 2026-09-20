@@ -143,7 +143,7 @@ impl InvestigationStartup {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::ResumeLast => "Resume last",
-            Self::ChooseProfile => "Choose Profile",
+            Self::ChooseProfile => "Ask at startup",
             Self::StartEmpty => "Start empty",
         }
     }

@@ -175,7 +175,10 @@ fn scheduling_blocks_readonly_pause_log_exit_and_realtime_restore() {
     f.app.log_view_path = Some("recording.log".into());
     f.app.refresh_scheduling();
     f.app.apply_priority_change(false);
-    assert!(render_app_to_text(&f.app, 80, 24).contains("Not recorded in Log view."));
+    assert!(
+        render_app_to_text(&f.app, 80, 24)
+            .contains("This information is not included in recording logs.")
+    );
     f.app.log_view_path = None;
     f.app.snapshot.processes.remove(0);
     f.app.refresh_scheduling();

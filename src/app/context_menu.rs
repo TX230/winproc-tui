@@ -113,9 +113,9 @@ impl App {
         );
         menu.add(
             if self.is_tracked_process_name(&target.identity.name) {
-                "Untrack name"
+                "Untrack process name"
             } else {
-                "Track name"
+                "Track process name"
             },
             ContextAction::Track(target.identity.name.clone()),
             self.activity() == AppActivity::Live,
@@ -133,7 +133,11 @@ impl App {
             ContextAction::Copy(target.identity.pid.to_string()),
             true,
         );
-        menu.add("Copy name", ContextAction::Copy(target.identity.name), true);
+        menu.add(
+            "Copy process name",
+            ContextAction::Copy(target.identity.name),
+            true,
+        );
         menu
     }
 
@@ -208,7 +212,7 @@ impl App {
             anchor,
         );
         menu.add(
-            "Inspect verified owner",
+            "Open Process Info",
             ContextAction::Owner(entry.owner.clone(), global),
             entry.owner.is_some() && self.network_view(global).pending.is_none(),
         );

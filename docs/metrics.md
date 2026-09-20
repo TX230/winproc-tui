@@ -51,7 +51,7 @@ When the `Full Path` column is selected in the Process table, filtering matches 
 When it is not selected, filtering matches process name only.
 Compact byte formatting is used in the Processes table and for Graph Y-axis tick labels. Sorting and Graph data continue to use the raw numeric values.
 
-Modern .NET metrics are collected for every detected live process identity; Tracking List registration is not required for the current display. Non-tracked processes keep only ordinary short Live history, while Recording remains limited to the session's fixed Tracking List scope.
+Modern .NET metrics are collected for every detected live process identity; its process name does not need to be in the Tracking List to display current values. Non-tracked processes keep only ordinary short Live history, while Recording remains limited to the session's fixed Tracking List scope.
 
 .NET 9/10 uses the `System.Runtime` meter, .NET 8 uses `System.Runtime` EventCounters, and .NET Framework uses the legacy PDH query for its supported subset. Unsupported, inaccessible, stale, or incomplete values remain unavailable (`--`) instead of being estimated from a different runtime source. .NET 8 byte conversions are rounded, and its fragmentation byte value is derived from the reported heap size and fragmentation percentage.
 
@@ -307,7 +307,7 @@ The Process Info `Environment` tab displays a best-effort snapshot of the fixed 
 
 Entries are split at the first `=`. Windows per-drive entries such as `=C:=C:\work` keep `=C:` as the name by using the second separator. Empty values are valid; rows without a separator are counted and skipped. Names are sorted case-insensitively. The filter searches both names and values, and clipboard output contains only the selected `NAME=value` without a header. Status and error text never includes an environment value.
 
-Log view displays `Not recorded in Log view.` and does not open a process or read remote memory. Recording and export schemas do not include Environment results.
+Log view displays `This information is not included in recording logs.` and does not open a process or read remote memory. Recording and export schemas do not include Environment results.
 
 ## Meaning of CPU%
 
@@ -377,7 +377,7 @@ Live and paused-display statistics begin directly with `Min`; raw stored values 
 
 ### Graph display smoothing
 
-Each Graph independently displays either its raw stored samples or `MA5`. Raw is the default and retains the existing plotted representation. `MA5` is a trailing simple moving average of exactly five contiguous available stored values, including the current value. The first four values after registration or any gap produce no MA5 point. An unavailable current metric, a missing frame, a process absence, or an adapter absence clears the window, so the line never connects or averages across that gap. Process Graphs remain keyed by full process identity, and GPU Graphs remain keyed by adapter LUID, so process restarts, PID reuse, and adapter changes cannot share an MA5 window.
+Each Graph independently displays either its raw stored samples or `MA5`. Raw is the default and retains the existing plotted representation. `MA5` is a trailing simple moving average of exactly five contiguous available stored values, including the current value. The first four values in a retained sample series or after any gap produce no MA5 point. An unavailable current metric, a missing frame, a process absence, or an adapter absence clears the window, so the line never connects or averages across that gap. Process Graphs remain keyed by full process identity, and GPU Graphs remain keyed by adapter LUID, so process restarts, PID reuse, and adapter changes cannot share an MA5 window.
 
 MA5 is a display-only derivation calculated in one bounded pass over the retained samples of each visible Graph. Its values determine the plotted line and visible Y-axis bounds. Raw histories are never rewritten. Samples rows, Max, A/B points, `B-A`, range statistics, clipboard output, Recording aggregation, and stored log data continue to use raw exact values. The Samples MA5 summary follows the same complete-window and gap rules.
 
@@ -426,7 +426,7 @@ The session payload uses these fields:
 
 A process definition is `[process_id, pid, name, start_time, path]`. `process_id` is a monotonically assigned session-local integer. `start_time` and `path` may be `null`. A definition with the same ID may be emitted again before a later frame if its path becomes available or changes.
 
-Process identity is not based on the tracked name alone. The writer registers the sampled `(PID, name, start_time)` identity and assigns each identity a separate `process_id`. Therefore:
+Process identity is not based on the tracked process name alone. The writer registers the sampled `(PID, name, start_time)` identity and assigns each identity a separate `process_id`. Therefore:
 
 - a matching process that starts after recording begins receives a definition immediately before its first frame;
 - concurrent processes with the same name but different PIDs receive different IDs and histories;
@@ -529,7 +529,7 @@ Frame record fields:
 | `captured_at` | string | RFC 3339 timestamp. |
 | `tracked_names` | string array | Session Tracking List; fixed-scope schema-v2 writers repeated the same list in every frame. |
 | `system_metrics` | object | System metrics recorded with the frame, including MEM, per-adapter GPU, CPU average, and System Activity values. |
-| `processes` | object array | Live processes matching the fixed session Tracking List. This can be empty when the configured tracked names have no live match. |
+| `processes` | object array | Live processes matching the fixed session Tracking List. This can be empty when no live process matches the session's Tracking List. |
 
 Process object fields:
 

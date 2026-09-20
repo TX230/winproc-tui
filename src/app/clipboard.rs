@@ -115,7 +115,7 @@ impl App {
 
         match copy_text_to_clipboard(&value) {
             Ok(()) => {
-                self.status = format!("Copied cursor row: {process_name}");
+                self.status = format!("Copied process row: {process_name}");
             }
             Err(error) => {
                 self.status = format!("Clipboard copy failed: {error}");

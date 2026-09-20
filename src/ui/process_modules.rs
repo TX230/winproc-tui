@@ -105,7 +105,7 @@ pub(crate) fn selected_entry(app: &App) -> Option<&ProcessModuleEntry> {
 fn process_module_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>> {
     if app.activity() == AppActivity::LogView {
         return vec![Line::from(Span::styled(
-            "Not recorded in Log view.",
+            "This information is not included in recording logs.",
             Style::default().fg(theme.muted),
         ))];
     }

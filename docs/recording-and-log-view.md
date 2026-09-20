@@ -35,17 +35,17 @@ Recording and Log view are mutually exclusive at both user-action and asynchrono
 
 ## Recording Scope
 
-Starting Recording requires at least one configured name in the working Tracking List. It does not require a currently matching process.
+Starting Recording requires at least one process name in the working Tracking List. It does not require a currently matching process.
 
 `RecordingSession` owns a copy of the working Tracking List and its normalized lookup set. Session metadata records that scope once, and every frame filters process samples through it. Tracking List edits are rejected until the session ends; Tracked-only remains available because it changes only the display.
 
-When no configured name matches a live process, frames still contain system metrics and an empty process array. A configured name, a currently matching process, and one `(PID, name, start_time)` identity must remain distinct.
+When no process name in the session's Tracking List matches a live process, frames still contain system metrics and an empty process array. A tracked process name, a currently matching process, and one `(PID, name, start_time)` identity must remain distinct.
 
 ## Aggregation
 
 Live sampling and Live history remain at one-second resolution. Recording independently selects a `1s`, `2s`, `5s`, or `10s` aggregation interval and owns the pending accumulator.
 
-The current selector value is the default for the next Recording and is stored once as an application-wide preference. Opening or saving an Investigation Profile never changes it. Profile opening and saving are unavailable during Recording, and opening is unavailable in Log view. Profile deletion does not affect activity state.
+The current selector value is the default for the next Recording and is stored once as an app setting. Opening or saving an Investigation Profile never changes it. Profile opening and saving are unavailable during Recording, and opening is unavailable in Log view. Profile deletion does not affect activity state.
 
 Available values are averaged independently per process identity and GPU adapter. Missing values and absent processes do not contribute zero. Stopping, quitting, or reaching the duration limit flushes a partial final window before the clean end record.
 
@@ -89,7 +89,7 @@ Loaded histories are not pruned to Live-history capacities. Missing process or m
 
 - Recording and Log view are never active together.
 - One session uses one fixed Tracking List scope and one fixed aggregation interval.
-- Loading a profile never changes either the current session interval or the default interval for a future Recording.
+- Opening a profile never changes either the current session interval or the default interval for a future Recording.
 - Missing values and absent processes are never converted to zero.
 - A partial final aggregation window is flushed before a clean end record.
 - Recording ends and returns to Live after at most 24 hours of monotonic elapsed time.
@@ -97,8 +97,8 @@ Loaded histories are not pruned to Live-history capacities. Missing process or m
 - Partial logs remain available after interruption or failure.
 - Log view reconstructs histories but never plays frames over time.
 
-In Log view, the footer exposes a direct return to Live and explicit metric-to-Graph registration. Returning to Live is separate from quitting; Graph registration remains a user action.
+In Log view, the footer provides shortcuts to return to Live and to add a metric to Graphs. Returning to Live is separate from quitting; users add Graphs explicitly.
 
 The Recording progress indicator remains visible and advances while the display is paused, independently of the frozen process snapshot.
 
-The log browser previews the selected recording's tracked names, recorded interval and time range from cached summaries. Selection performs no file reads or history reconstruction; the existing background summary scan reads recording metadata and the tail. Older metadata omissions appear as `--`, and invalid-file indications are retained.
+The log browser previews the selected recording's tracked process names, recorded interval and time range from cached summaries. Selection performs no file reads or history reconstruction; the existing background summary scan reads recording metadata and the tail. Older metadata omissions appear as `--`, and invalid-file indications are retained.

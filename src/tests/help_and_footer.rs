@@ -115,11 +115,8 @@ fn help_dialog_buffer_shows_two_column_layout() {
     assert!(rendered.contains("Clear A/B comparison"), "{rendered}");
 
     assert!(rendered.contains("Pan time range"), "{rendered}");
-    assert!(
-        rendered.contains("Select previous Graph slot"),
-        "{rendered}"
-    );
-    assert!(rendered.contains("Select next Graph slot"), "{rendered}");
+    assert!(rendered.contains("Select previous Graph"), "{rendered}");
+    assert!(rendered.contains("Select next Graph"), "{rendered}");
     assert!(rendered.contains("Select older sample"), "{rendered}");
     assert!(rendered.contains("Select newer sample"), "{rendered}");
     assert!(rendered.contains("Remove active Graph"), "{rendered}");
@@ -159,28 +156,34 @@ fn help_dialog_buffer_shows_two_column_layout() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("Save the active Investigation Profile"),
+        rendered.contains("Save the active profile; open Save As"),
         "{rendered}"
     );
-    assert!(rendered.contains("Copy cursor row"), "{rendered}");
+    assert!(rendered.contains("Copy the focused row"), "{rendered}");
     assert!(!rendered.contains("Open Settings"), "{rendered}");
 
     assert!(rendered.contains("Select row range"), "{rendered}");
-    assert!(rendered.contains("Toggle row selection"), "{rendered}");
+    assert!(
+        rendered.contains("Select/deselect the focused live process"),
+        "{rendered}"
+    );
     assert!(rendered.contains("Ctrl+A (Tracked-only)"), "{rendered}");
     assert!(
         rendered.contains("Select all listed process rows"),
         "{rendered}"
     );
     assert!(
-        rendered.contains("Cursor position within highlighted rows"),
+        rendered.contains("The stronger cell highlight shows keyboard focus."),
         "{rendered}"
     );
     assert!(
-        rendered.contains("Kill selected live process"),
+        rendered.contains("Kill selected processes, or the focused process if none are selected"),
         "{rendered}"
     );
-    assert!(rendered.contains("Info/detail / Files"), "{rendered}");
+    assert!(
+        rendered.contains("Open Files for the focused process"),
+        "{rendered}"
+    );
     assert!(rendered.contains("Switch Info tabs"), "{rendered}");
     assert!(rendered.contains("Refresh Info tab"), "{rendered}");
 
@@ -399,8 +402,8 @@ fn footer_shows_process_context_on_one_row() {
     assert!(rendered.contains("Ctrl+I Jump"), "{rendered}");
     assert!(!rendered.contains("Shift+←/→ Move column"), "{rendered}");
     assert!(rendered.contains("Space Graph"), "{rendered}");
-    assert!(rendered.contains("Enter/f Row info/files"), "{rendered}");
-    assert!(rendered.contains("t Track name"), "{rendered}");
+    assert!(rendered.contains("Enter Process Info"), "{rendered}");
+    assert!(rendered.contains("t Track process name"), "{rendered}");
     assert!(rendered.contains("Shift+T Tracked-only"), "{rendered}");
     assert!(rendered.contains("d Kill"), "{rendered}");
     assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
@@ -477,7 +480,7 @@ fn process_footer_labels_space_for_the_selected_cell_action() {
 
     let identity_column = render_app_to_text(&app, 170, 30);
     assert!(
-        identity_column.contains("Space Track name"),
+        identity_column.contains("Space Track process name"),
         "{identity_column}"
     );
     assert!(
@@ -489,7 +492,7 @@ fn process_footer_labels_space_for_the_selected_cell_action() {
     let metric_column = render_app_to_text(&app, 170, 30);
     assert!(metric_column.contains("Space Graph"), "{metric_column}");
     assert!(
-        !metric_column.contains("Space Track name"),
+        !metric_column.contains("Space Track process name"),
         "{metric_column}"
     );
 }
@@ -698,7 +701,7 @@ fn investigation_actions_fit_at_120_columns() {
     for (panel, expected) in [
         (
             FocusedPanel::Processes,
-            vec!["Space Graph", "Ctrl+F Filter", "Enter/f Row info/files"],
+            vec!["Space Graph", "Ctrl+F Filter", "Enter Process Info"],
         ),
         (
             FocusedPanel::DetailsGraph,
@@ -841,8 +844,13 @@ fn visible_footer_actions_complete_mouse_dialog_workflows() {
     assert!(app.show_column_picker);
     click_visible_shortcut(&mut app, "Enter/Esc close");
     assert!(!app.show_column_picker);
-    click_visible_shortcut(&mut app, "Enter/f Row info/files");
+    click_visible_shortcut(&mut app, "Enter Process Info");
     assert!(app.show_process_info_dialog);
+    click_visible_shortcut(&mut app, "Esc close");
+    assert!(!app.show_process_info_dialog);
+    click_visible_shortcut(&mut app, "f Files");
+    assert!(app.show_process_info_dialog);
+    assert_eq!(app.process_info_tab, crate::app::ProcessInfoTab::Files);
     click_visible_shortcut(&mut app, "Esc close");
     assert!(!app.show_process_info_dialog);
     app.request_quit_confirmation();
@@ -1030,11 +1038,15 @@ fn help_enters_the_current_panel_section_at_180_by_60() {
             "Samples",
             "Select older sample",
         ),
-        (FocusedPanel::System, "MEM/GPU", "Move selected metric"),
+        (
+            FocusedPanel::System,
+            "MEM/GPU",
+            "Select the previous/next metric",
+        ),
         (
             FocusedPanel::SystemActivity,
             "NW/DISK",
-            "Move selected metric",
+            "Select the previous/next metric",
         ),
         (FocusedPanel::Cpu, "CPU", "Per-core"),
     ] {

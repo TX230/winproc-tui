@@ -72,7 +72,7 @@ Scheduling has an independent worker for priority reads and explicit confirmed c
 
 `App` owns Live, paused, Recording, Log-list, and Log-view state. Display accessors select the appropriate snapshot and history without asking widgets to maintain activity-specific copies.
 
-Long-lived tracking intent and per-process identity remain separate. The Current Investigation owns the working Tracking List, and named Investigation Profiles store reusable tracked process names only. Application-wide presentation preferences are stored independently. Graph sources, Recording scope, and Process Info targets preserve runtime identity where required.
+Long-lived tracking intent and per-process identity remain separate. The Current Investigation owns the working Tracking List, and named Investigation Profiles store reusable tracking lists only. App settings are stored independently. Graph sources, Recording scope, and Process Info targets preserve runtime identity where required.
 
 ### 3.3 Treat Windows data as best effort
 
@@ -96,7 +96,7 @@ Configuration is stored beside the real executable after resolving command links
 
 1. `main` parses the CLI and acquires a Windows session-local named mutex. A second instance exits before terminal setup or configuration access.
 2. The first instance installs the console control handler, resolves the real executable and its adjacent configuration, migrates a launcher-adjacent configuration when required, and enters raw mode and the alternate screen.
-3. Investigation startup state is resolved before the first sample so the selected Tracking List applies to the initial capture. Application-wide presentation preferences load independently. `App::new` then performs one synchronous initial collection with an empty Graph workspace.
+3. Investigation startup state is resolved before the first sample so the selected Tracking List applies to the initial capture. App settings load independently. `App::new` then performs one synchronous initial collection with an empty Graph workspace.
 4. `SamplingWorker` handles subsequent samples while `run_tui` uses the same terminal session.
 5. After the loop returns, `main` restores the terminal and saves session configuration only when the run succeeded.
 
@@ -130,7 +130,7 @@ The collection boundary deliberately produces one aggregate `Snapshot`. Explicit
 
 - sampling progress, current Live data, freshness, and warnings;
 - process-table selection, filtering, sorting, columns, and visible-row caches;
-- Current Investigation, Tracking-List-only Investigation Profiles, tracking intent, histories, and exited rows;
+- Current Investigation, Investigation Profiles containing tracking lists, tracking intent, histories, and exited rows;
 - ordered Graphs and shared comparison state;
 - modal and asynchronous investigation sessions;
 - display pause, Recording, Log list, and Log view;
@@ -199,6 +199,6 @@ Help is an independent input layer above every dialog, including text editing an
 
 ### Appearance
 
-The four accent preferences share readable dark surfaces. Settings shows the active preference and applies an explicit choice immediately; navigation or hover alone never changes it. A separate high-contrast option strengthens neutral text, framing, and guides without replacing the accent preference. Both settings persist as application-wide presentation state.
+The four accent preferences share readable dark surfaces. Settings shows the active preference and applies an explicit choice immediately; navigation or hover alone never changes it. A separate high-contrast option strengthens neutral text, framing, and guides without replacing the accent preference. Both are saved as app settings and apply to all profiles.
 
-Border colors frame regions; inactive but relevant state uses readable text colors. Focus uses a border and emphasis, cursor and multi-selection use separate surfaces, tracking retains its marker, registered values retain the Graph caption, and activity, warnings, and errors retain text labels. These cues supplement color. Higher-contrast dark presentation keeps the same geometry; light and terminal-adaptive palettes remain deferred because the application owns dark surfaces throughout the screen and would need a separately validated palette.
+Border colors frame regions; inactive but relevant state uses readable text colors. Focus uses a border and emphasis, the focused cell and selected process rows use separate surfaces, tracking retains its marker, metric values added to Graphs retain the Graph caption, and activity, warnings, and errors retain text labels. These cues supplement color. Higher-contrast dark presentation keeps the same geometry; light and terminal-adaptive palettes remain deferred because the application owns dark surfaces throughout the screen and would need a separately validated palette.

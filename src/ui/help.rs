@@ -60,8 +60,12 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
         label: "Filename / path substring / exact path",
     },
     HelpItem {
-        key: "Enter / Space (file results)",
-        label: "Verified owner's Files / full path and coverage",
+        key: "Enter (file results)",
+        label: "Open Files for the process using this file",
+    },
+    HelpItem {
+        key: "Space (file results)",
+        label: "Show the full path and search coverage",
     },
     HelpItem {
         key: "Esc (file search)",
@@ -136,7 +140,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+C",
-        label: "Copy cursor row / System Info",
+        label: "Copy the focused row, or the contents of System Info",
     },
     HelpItem {
         key: "Ctrl+L",
@@ -159,15 +163,23 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Stronger cell highlight",
-        label: "Cursor position within highlighted rows",
+        label: "The stronger cell highlight shows keyboard focus.",
     },
     HelpItem {
         key: "* before PID",
         label: "Multi-selected row; count stays in Processes title",
     },
     HelpItem {
-        key: "Enter / Ctrl+C / d",
-        label: "Inspect cursor / copy cursor / kill selected set (or cursor)",
+        key: "Enter",
+        label: "Open Process Info for the focused process",
+    },
+    HelpItem {
+        key: "Ctrl+C",
+        label: "Copy the focused row",
+    },
+    HelpItem {
+        key: "d/Delete",
+        label: "Kill selected processes, or the focused process if none are selected",
     },
     HelpItem {
         key: "v",
@@ -187,7 +199,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "↑/↓",
-        label: "Move selected row",
+        label: "Move focus to the previous/next row; clear process selection.",
     },
     HelpItem {
         key: "Shift+↑/↓",
@@ -195,7 +207,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Alt+↑/↓",
-        label: "Move cursor only",
+        label: "Move focus to the previous/next row; keep process selection.",
     },
     HelpItem {
         key: "Ctrl+A (Tracked-only)",
@@ -203,7 +215,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+Space",
-        label: "Toggle row selection",
+        label: "Select/deselect the focused live process",
     },
     HelpItem {
         key: "PageUp/PageDown",
@@ -226,8 +238,12 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Widen / narrow column",
     },
     HelpItem {
-        key: "Space",
-        label: "Track name (all matching PIDs, Live) / metric Graph",
+        key: "Space (Process/PID)",
+        label: "Track/untrack by process name (Live only)",
+    },
+    HelpItem {
+        key: "Space (metric)",
+        label: "Add/remove Graph",
     },
     HelpItem {
         key: "s",
@@ -242,16 +258,12 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Toggle Graphs panel",
     },
     HelpItem {
-        key: "Enter / f",
-        label: "Info/detail / Files",
+        key: "f",
+        label: "Open Files for the focused process",
     },
     HelpItem {
         key: "i",
         label: "Open System Info",
-    },
-    HelpItem {
-        key: "d/Delete",
-        label: "Kill selected live process",
     },
 ];
 
@@ -380,7 +392,7 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "↑/↓",
-        label: "Move selected metric",
+        label: "Select the previous/next metric",
     },
     HelpItem {
         key: "Home/End",
@@ -399,7 +411,7 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
 const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "↑/↓",
-        label: "Move selected metric",
+        label: "Select the previous/next metric",
     },
     HelpItem {
         key: "Home/End",
@@ -433,19 +445,27 @@ const CPU_ROWS: &[HelpItem] = &[
 const TRACKING_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Tracking scope",
-        label: "One image name includes all matching PIDs",
+        label: "Tracking applies to all processes with the same process name, including those started later.",
     },
     HelpItem {
-        key: "Profiles / Resume last",
-        label: "Keep tracked names; Graphs are session-only",
+        key: "Profiles",
+        label: "Save named tracking lists",
+    },
+    HelpItem {
+        key: "Resume last",
+        label: "Restore the previous tracking list",
+    },
+    HelpItem {
+        key: "Graphs",
+        label: "Start empty each time the app starts",
     },
     HelpItem {
         key: "Ctrl+S (Profiles)",
-        label: "Save current tracked names as a new profile",
+        label: "Save the current tracking list as a new profile",
     },
     HelpItem {
         key: "t",
-        label: "Track / Untrack selected process (Live only)",
+        label: "Track/untrack the focused process name (Live only)",
     },
     HelpItem {
         key: "Ctrl+T",
@@ -453,18 +473,18 @@ const TRACKING_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+S",
-        label: "Save the active Investigation Profile (Live only)",
+        label: "Save the active profile; open Save As if none is active (Live only)",
     },
 ];
 
 const GRAPH_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Up",
-        label: "Select previous Graph slot",
+        label: "Select previous Graph",
     },
     HelpItem {
         key: "Down",
-        label: "Select next Graph slot",
+        label: "Select next Graph",
     },
     HelpItem {
         key: "Shift+↑/↓",
@@ -519,7 +539,7 @@ const GRAPH_ROWS: &[HelpItem] = &[
 const SAMPLES_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "History / Follow latest",
-        label: "Local sample state; End returns to the latest sample",
+        label: "Browse past samples; press End to follow the latest sample.",
     },
     HelpItem {
         key: "Shift+↑/↓",
@@ -667,7 +687,7 @@ const NETWORK_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "a / Alt+A (Info)",
-        label: "Listen + UDP / All endpoints",
+        label: "Listening TCP + UDP / All endpoints",
     },
     HelpItem {
         key: "Type (Info)",
@@ -699,7 +719,7 @@ const NETWORK_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter (global list)",
-        label: "Verify owner and open Process Info",
+        label: "Open Process Info for the process using this endpoint",
     },
     HelpItem {
         key: "Space (global), Enter (Info)",
@@ -1190,19 +1210,21 @@ fn help_modal(area: Rect) -> ScrollableModal {
 mod tests {
     use super::*;
     #[test]
-    fn every_help_item_remains_readable_at_120_columns() {
-        let lines = help_lines(crate::ui::THEMES[0], 116);
-        assert!(lines.iter().all(|line| line.width() <= 116));
-        let text: String = lines
-            .iter()
-            .flat_map(|l| l.spans.iter())
-            .flat_map(|s| s.content.chars())
-            .filter(|c| !c.is_whitespace())
-            .collect();
-        for section in LEFT_SECTIONS.iter().chain(RIGHT_SECTIONS) {
-            for item in section.rows {
-                let label: String = item.label.chars().filter(|c| !c.is_whitespace()).collect();
-                assert!(text.contains(&label), "{}", item.label);
+    fn every_help_item_remains_readable_at_supported_widths() {
+        for width in [76, 116, 176] {
+            let lines = help_lines(crate::ui::THEMES[0], width);
+            assert!(lines.iter().all(|line| line.width() <= width));
+            let text: String = lines
+                .iter()
+                .flat_map(|l| l.spans.iter())
+                .flat_map(|s| s.content.chars())
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            for section in LEFT_SECTIONS.iter().chain(RIGHT_SECTIONS) {
+                for item in section.rows {
+                    let label: String = item.label.chars().filter(|c| !c.is_whitespace()).collect();
+                    assert!(text.contains(&label), "{} at width {width}", item.label);
+                }
             }
         }
     }

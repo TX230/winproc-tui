@@ -94,7 +94,7 @@ fn status(view: &FileUsersView) -> String {
             .is_some_and(|end| *end != FileSearchEnd::Complete);
     format!(
         "{state}{} · {} matches",
-        if partial { " (partial scope)" } else { "" },
+        if partial { " (partial results)" } else { "" },
         view.report.matches.len()
     )
 }
@@ -117,7 +117,7 @@ pub(crate) fn detail_lines(view: &FileUsersView, width: u16) -> Vec<String> {
     lines.extend([
         format!("Processes in handle table: {}", p.total_processes),
         format!("Processes inspected: {}", p.inspected_processes),
-        format!("Processes denied access: {}", p.denied_processes),
+        format!("Access denied for {} processes", p.denied_processes),
         format!("Processes exited during scan: {}", p.exited_processes),
         format!(
             "Processes unavailable or unverified: {}",

@@ -533,7 +533,7 @@ fn dialog_shortcut_guidance_is_separated_from_content_by_a_blank_row() {
     cases.push((
         "recording",
         render_app_to_buffer(&recording, screen.width, screen.height),
-        "Enter start  Esc cancel  Tab focus  ←/→ value  Ctrl+Space complete",
+        "Enter start  Esc cancel  Tab focus  ←/→ value  Ctrl+Space Complete path",
     ));
 
     let mut log_directory = make_test_app(3, 10);
@@ -542,7 +542,7 @@ fn dialog_shortcut_guidance_is_separated_from_content_by_a_blank_row() {
     cases.push((
         "log-directory",
         render_app_to_buffer(&log_directory, screen.width, screen.height),
-        "Enter apply  Esc cancel  Ctrl+Space complete",
+        "Enter apply  Esc cancel  Ctrl+Space Complete path",
     ));
 
     for (name, buffer, shortcuts) in cases {

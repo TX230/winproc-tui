@@ -89,7 +89,7 @@ fn context_menu_limits_and_process_info_keep_fixed_targets() {
     assert!(
         menu.items
             .iter()
-            .any(|i| i.label == "Track name" && !i.enabled)
+            .any(|i| i.label == "Track process name" && !i.enabled)
     );
     assert!(menu.items.iter().any(|i| i.label == "Files" && !i.enabled));
 }

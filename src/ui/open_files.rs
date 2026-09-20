@@ -107,7 +107,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
     let mut lines = Vec::new();
     if app.activity() == AppActivity::LogView {
         lines.push(Line::from(Span::styled(
-            "Not recorded in Log view.",
+            "This information is not included in recording logs.",
             Style::default().fg(theme.muted),
         )));
         return lines;

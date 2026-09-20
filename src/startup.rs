@@ -26,7 +26,7 @@ const DIALOG_WIDTH: u16 = 68;
 const MAX_LIST_HEIGHT: u16 = 9;
 const PANEL_CHROME_HEIGHT: u16 = 6;
 const LIST_TOP_OFFSET: u16 = 2;
-const LEAD_TEXT: &str = "Choose an Investigation Profile.";
+const LEAD_TEXT: &str = "Choose the tracking list to start with.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StartupOutcome {
@@ -51,16 +51,25 @@ enum StartupInvestigationChoice {
 }
 
 impl StartupInvestigationChoice {
-    fn label(&self) -> String {
+    fn label(&self, width: usize) -> String {
         match self {
-            Self::ResumeLast => "Last investigation".to_string(),
-            Self::StartEmpty => "Empty investigation".to_string(),
+            Self::ResumeLast => "Previous tracking list".to_string(),
+            Self::StartEmpty => "Empty tracking list".to_string(),
             Self::Saved(profile) => {
-                format!(
-                    "{}  ({} tracked)",
-                    profile.name,
-                    profile.tracked_names.len()
-                )
+                let suffix = format!(
+                    "  ({} process name{})",
+                    profile.tracked_names.len(),
+                    if profile.tracked_names.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                );
+                let name = crate::ui::investigation_profiles::truncate(
+                    &profile.name,
+                    width.saturating_sub(suffix.len()),
+                );
+                format!("{name}{suffix}")
             }
         }
     }
@@ -238,7 +247,11 @@ fn draw_startup_choice(
             } else {
                 Style::default().fg(theme.text)
             };
-            let label = format!("{} {}", if is_selected { ">" } else { " " }, choice.label());
+            let label = format!(
+                "{} {}",
+                if is_selected { ">" } else { " " },
+                choice.label(layout.list.width.saturating_sub(2) as usize)
+            );
             let padding =
                 usize::from(layout.list.width).saturating_sub(Span::raw(label.as_str()).width());
             Line::from(Span::styled(
@@ -395,6 +408,33 @@ mod tests {
     }
 
     #[test]
+    fn long_startup_profile_names_keep_counts_visible() {
+        for name in ["Long profile ".repeat(20), "調査プロファイル".repeat(20)] {
+            let saved = SavedInvestigationProfile {
+                name,
+                investigation: InvestigationStateConfig {
+                    tracked_names: vec!["api.exe".into()],
+                    ..Default::default()
+                },
+            };
+            for width in [80, 120, 180] {
+                let choices = vec![StartupInvestigationChoice::Saved(saved.clone())];
+                let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+                terminal
+                    .draw(|frame| draw_startup_choice(frame, &choices, 0, 0, THEMES[0]))
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                assert!((0..buffer.area.height).any(|y| {
+                    (0..buffer.area.width)
+                        .map(|x| buffer[(x, y)].symbol())
+                        .collect::<String>()
+                        .contains("(1 process name)")
+                }));
+            }
+        }
+    }
+
+    #[test]
     fn startup_screen_shows_identity_choices_and_footer_without_redundant_copy() {
         let rendered = render_startup_choice(0);
 
@@ -408,8 +448,8 @@ mod tests {
         );
         assert!(rendered.contains("STARTUP"), "{rendered}");
         assert!(rendered.contains(LEAD_TEXT), "{rendered}");
-        assert!(rendered.contains("Last investigation"), "{rendered}");
-        assert!(rendered.contains("Empty investigation"), "{rendered}");
+        assert!(rendered.contains("Previous tracking list"), "{rendered}");
+        assert!(rendered.contains("Empty tracking list"), "{rendered}");
         assert!(!rendered.contains("Choose a Tracking List"));
         assert!(!rendered.contains("START MENU"));
         assert!(
@@ -485,8 +525,8 @@ mod tests {
             },
         };
         assert_eq!(
-            StartupInvestigationChoice::Saved(saved.clone()).label(),
-            "API  (2 tracked)"
+            StartupInvestigationChoice::Saved(saved.clone()).label(usize::MAX),
+            "API  (2 process names)"
         );
         apply_startup_choice(&mut config, StartupInvestigationChoice::Saved(saved));
 
