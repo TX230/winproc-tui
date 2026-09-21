@@ -1,6 +1,6 @@
 [package]
 name = "winproc-tui"
-version = "1.3.0"
+version = "1.3.1"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-first process monitoring tool for Windows 11 with live system-wide and per-process resource metrics including .NET runtime metrics, time-series analysis, and recording"
