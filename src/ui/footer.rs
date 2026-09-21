@@ -122,7 +122,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                 ("m", "Raw/MA5"),
                 ("Del", "Remove"),
                 ("a/b", "A/B range"),
-                ("PgUp/PgDn", "Span"),
+                ("PageUp/PageDown", "Span"),
                 ("Alt+←/→", "Pan"),
                 ("Enter", "Info"),
                 ("f/z", "Fit/Min 0"),
@@ -131,14 +131,13 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         }
         FocusedPanel::DetailsSamples => {
             vec![
-                ("↑/←", "Older"),
-                ("↓/→", "Newer"),
                 ("Shift+↑/↓", "Move"),
                 ("s", "Reorder"),
                 ("m", "Raw/MA5"),
                 ("Del", "Remove"),
                 ("a/b", "A/B range"),
-                ("PgUp/PgDn", "Scroll"),
+                ("PageUp/PageDown", "Scroll"),
+                ("Alt+←/→", "Pan"),
                 ("Home/End", "Edge"),
                 ("f/z", "Fit/Min 0"),
                 ("Shift+A/B", "Jump A/B"),
@@ -194,7 +193,12 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     items.push(("Ctrl+T", "Profiles"));
     items.push(("F12", "Theme"));
     items.push(("F1/?", "Help"));
-    items.push(("Tab", "Focus"));
+    if !matches!(
+        app.focused_panel,
+        FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+    ) {
+        items.push(("Tab", "Focus"));
+    }
     items.push(("Ctrl+↑↓←→", "Panel"));
 
     let mut prioritized = Vec::new();
@@ -203,17 +207,19 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         Some("F1/?"),
         Some("Ctrl+R"),
         app.is_display_paused().then_some("Ctrl+P"),
+        Some("Ctrl+B"),
+        Some("Alt+←/→"),
+        Some("PageUp/PageDown"),
+        Some("a/b"),
         Some("Tab"),
         Some("Ctrl+↑↓←→"),
         primary_key,
         Some("Ctrl+A"),
-        Some("Ctrl+B"),
         (!app.selected_process_identities.is_empty()).then_some("d"),
         Some("Ctrl+F"),
         Some("Enter"),
         Some("f"),
         Some("←/→"),
-        Some("a/b"),
         Some("Del"),
         Some("Ctrl+P"),
         Some("i"),

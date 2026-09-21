@@ -570,6 +570,10 @@ const SAMPLES_ROWS: &[HelpItem] = &[
         label: "Move sample selection by page",
     },
     HelpItem {
+        key: "Alt+←/→",
+        label: "Pan time range",
+    },
+    HelpItem {
         key: "Home/End",
         label: "Move to top / bottom",
     },

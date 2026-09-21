@@ -1008,7 +1008,7 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Left => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    if key.modifiers == KeyModifiers::ALT {
                         self.shift_graph_time_window(true);
                     } else {
                         self.select_details_sample_older(1);
@@ -1016,7 +1016,7 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Right => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    if key.modifiers == KeyModifiers::ALT {
                         self.shift_graph_time_window(false);
                     } else {
                         self.select_details_sample_newer(1);

@@ -519,18 +519,18 @@ fn footer_shortcuts_follow_the_focused_panel() {
     assert!(graph.contains("m Raw/MA5"), "{graph}");
     assert!(graph.contains("Enter Info"), "{graph}");
     assert!(graph.contains("Alt+←/→ Pan"), "{graph}");
-    assert!(graph.contains("PgUp/PgDn Span"), "{graph}");
+    assert!(graph.contains("PageUp/PageDown Span"), "{graph}");
     assert!(graph.contains("f/z Fit/Min 0"), "{graph}");
     assert!(graph.contains("a/b A/B range"), "{graph}");
     assert!(graph.contains("Shift+A/B Jump A/B"), "{graph}");
 
     app.focused_panel = FocusedPanel::DetailsSamples;
     let samples = render_app_to_text(&app, 300, 45);
-    assert!(samples.contains("↑/← Older"), "{samples}");
-    assert!(samples.contains("↓/→ Newer"), "{samples}");
+    assert!(!samples.contains("↑/← Older"), "{samples}");
+    assert!(!samples.contains("↓/→ Newer"), "{samples}");
     assert!(samples.contains("Del Remove"), "{samples}");
     assert!(samples.contains("m Raw/MA5"), "{samples}");
-    assert!(samples.contains("PgUp/PgDn Scroll"), "{samples}");
+    assert!(samples.contains("PageUp/PageDown Scroll"), "{samples}");
     assert!(samples.contains("Home/End Edge"), "{samples}");
     assert!(samples.contains("f/z Fit/Min 0"), "{samples}");
     assert!(samples.contains("Shift+A/B Jump A/B"), "{samples}");
@@ -581,8 +581,12 @@ fn footer_shows_pause_and_focus_for_every_focused_panel() {
             rendered.contains("Ctrl+P Pause"),
             "{focused_panel:?}: {rendered}"
         );
-        assert!(
+        assert_eq!(
             rendered.contains("Tab Focus"),
+            !matches!(
+                focused_panel,
+                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+            ),
             "{focused_panel:?}: {rendered}"
         );
     }
@@ -620,7 +624,11 @@ fn footer_fits_whole_shortcuts_and_preserves_essential_actions() {
                     for required in [
                         "ESC Menu",
                         "F1/? Help",
-                        "Tab Focus",
+                        if panel == FocusedPanel::Processes {
+                            "Tab Focus"
+                        } else {
+                            "Alt+←/→ Pan"
+                        },
                         if paused {
                             "Ctrl+P Resume"
                         } else {
@@ -705,11 +713,11 @@ fn investigation_actions_fit_at_120_columns() {
         ),
         (
             FocusedPanel::DetailsGraph,
-            vec!["←/→ Sample", "a/b A/B range", "Del Remove"],
+            vec!["Alt+←/→ Pan", "PageUp/PageDown Span", "a/b A/B range"],
         ),
         (
             FocusedPanel::DetailsSamples,
-            vec!["a/b A/B range", "Del Remove"],
+            vec!["Alt+←/→ Pan", "PageUp/PageDown Scroll", "a/b A/B range"],
         ),
     ] {
         app.focused_panel = panel;
@@ -726,6 +734,55 @@ fn investigation_actions_fit_at_120_columns() {
     app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL))
         .unwrap();
     assert!(app.log_view_path.is_none());
+}
+
+#[test]
+fn graph_time_shortcuts_fit_at_80_columns_in_each_activity() {
+    for panel in [FocusedPanel::DetailsGraph, FocusedPanel::DetailsSamples] {
+        for activity in ["live", "paused", "recording", "log"] {
+            let mut app = make_test_app(3, 10);
+            assign_private_graph(&mut app);
+            app.focused_panel = panel;
+            match activity {
+                "paused" => app.toggle_display_pause(),
+                "recording" => {
+                    let path = super::support::unique_recording_path("graph-footer");
+                    super::support::track_process_name(&mut app, "proc-0");
+                    app.recording_path_draft = path.display().to_string();
+                    app.confirm_recording_path().unwrap();
+                }
+                "log" => app.log_view_path = Some("example.log".into()),
+                _ => {}
+            }
+            let rendered = render_app_to_text(&app, 80, 60);
+            let footer = rendered.lines().last().unwrap();
+            for hint in ["ESC Menu", "F1/? Help", "Alt+←/→ Pan", "PageUp/PageDown"] {
+                assert!(footer.contains(hint), "{panel:?}, {activity}: {footer}");
+            }
+            assert!(!footer.contains("Tab Focus"), "{footer}");
+            if activity == "recording" {
+                assert!(footer.contains("Ctrl+R Stop"), "{footer}");
+            } else if activity == "paused" {
+                assert!(footer.contains("Ctrl+P Resume"), "{footer}");
+            } else if activity == "log" {
+                assert!(footer.contains("Ctrl+B Live"), "{footer}");
+            }
+            let region = app
+                .shortcut_map
+                .borrow()
+                .regions
+                .iter()
+                .find(|region| region.key == KeyEvent::new(KeyCode::Left, KeyModifiers::ALT))
+                .copied()
+                .expect("pan shortcut maps to the advertised key");
+            assert_eq!(region.area.y, 59);
+            if let Some(session) = app.recording_session.as_ref() {
+                let path = session.path.clone();
+                app.stop_recording().unwrap();
+                std::fs::remove_file(path).unwrap();
+            }
+        }
+    }
 }
 
 #[test]

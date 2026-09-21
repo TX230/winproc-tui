@@ -460,6 +460,64 @@ fn graph_focus_keys_zoom_pan_and_select_samples() {
 }
 
 #[test]
+fn alt_arrows_pan_the_shared_range_from_graph_and_samples() {
+    for focus in [FocusedPanel::DetailsGraph, FocusedPanel::DetailsSamples] {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in 0..=120 {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.graph_time_span_seconds = 60;
+        app.select_details_sample_latest();
+        app.focused_panel = focus;
+        let selected = app.details_sample_selected;
+        let selected_time = app.selected_details_sample_time();
+        let active = app.active_graph_id;
+        let latest = app.snapshot.captured_at + chrono::Duration::seconds(120);
+        app.ab_comparison = Some(app::AbComparison {
+            a: Some(app::AbComparisonPoint {
+                captured_at: latest - chrono::Duration::seconds(60),
+            }),
+            b: Some(app::AbComparisonPoint {
+                captured_at: latest,
+            }),
+        });
+        let ab = app.ab_comparison.clone();
+        let modifiers = KeyModifiers::ALT;
+
+        app.on_key(KeyEvent::new(KeyCode::Left, modifiers)).unwrap();
+        assert_eq!(app.graph_time_offset_seconds, 8, "{focus:?}");
+        assert_eq!(
+            app.graph_time_window_right_at,
+            Some(latest - chrono::Duration::seconds(8))
+        );
+        assert!(!app.details_live);
+        assert_eq!(app.graph_time_span_seconds, 60);
+        assert_eq!(app.details_sample_selected, selected);
+        assert_eq!(app.selected_details_sample_time(), selected_time);
+        assert_eq!(app.active_graph_id, active);
+        assert_eq!(app.ab_comparison, ab);
+        assert_eq!(app.focused_panel, focus);
+
+        app.on_key(KeyEvent::new(KeyCode::Right, modifiers))
+            .unwrap();
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert!(app.graph_time_window_right_at.is_none());
+        assert!(app.details_live);
+        assert_eq!(app.graph_time_span_seconds, 60);
+        assert_eq!(app.details_sample_selected, selected);
+        assert_eq!(app.selected_details_sample_time(), selected_time);
+        assert_eq!(app.active_graph_id, active);
+        assert_eq!(app.ab_comparison, ab);
+        assert_eq!(app.focused_panel, focus);
+    }
+}
+
+#[test]
 fn graph_up_down_changes_graph_while_samples_up_down_changes_sample() {
     let mut app = make_test_app(1, 10);
     let ids = (0..3)
