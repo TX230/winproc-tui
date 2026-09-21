@@ -153,7 +153,8 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     }
     let primary_key = items.first().map(|(key, _)| *key);
     if app.can_adjust_process_panel_height() {
-        items.insert(0, ("h/H/Alt+H", "Height"));
+        items.insert(0, ("h/Shift+H", "Height"));
+        items.push(("Alt+H", "Auto height"));
     }
     if app.focused_panel == FocusedPanel::Processes && app.activity() != AppActivity::LogView {
         let view_index = items
@@ -208,6 +209,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         Some("Ctrl+R"),
         app.is_display_paused().then_some("Ctrl+P"),
         Some("Ctrl+B"),
+        (app.focused_panel == FocusedPanel::Processes).then_some("h/Shift+H"),
         Some("Alt+←/→"),
         Some("PageUp/PageDown"),
         Some("a/b"),

@@ -542,7 +542,7 @@ fn footer_shortcuts_follow_the_focused_panel() {
 fn footer_shows_process_height_shortcuts_only_for_visible_workspace_focus() {
     let mut app = make_test_app(3, 10);
     let hidden = render_app_to_text(&app, 360, 45);
-    assert!(!hidden.contains("h/H/Alt+H Height"), "{hidden}");
+    assert!(!hidden.contains("h/Shift+H Height"), "{hidden}");
 
     assign_private_graph(&mut app);
     for focused_panel in [
@@ -553,14 +553,23 @@ fn footer_shows_process_height_shortcuts_only_for_visible_workspace_focus() {
         app.focused_panel = focused_panel;
         let rendered = render_app_to_text(&app, 360, 45);
         assert!(
-            rendered.contains("h/H/Alt+H Height"),
+            rendered.contains("h/Shift+H Height"),
             "{focused_panel:?}: {rendered}"
         );
     }
 
+    app.focused_panel = FocusedPanel::Processes;
+    for width in [80, 120, 180] {
+        let rendered = render_app_to_text(&app, width, 45);
+        let footer = rendered.lines().last().unwrap();
+        assert!(footer.contains("h/Shift+H Height"), "{width}: {footer}");
+    }
+    let wide = render_app_to_text(&app, 360, 45);
+    assert!(wide.lines().last().unwrap().contains("Alt+H Auto height"));
+
     app.focused_panel = FocusedPanel::System;
     let system = render_app_to_text(&app, 360, 45);
-    assert!(!system.contains("h/H/Alt+H Height"), "{system}");
+    assert!(!system.contains("h/Shift+H Height"), "{system}");
 }
 
 #[test]
