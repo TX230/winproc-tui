@@ -30,3 +30,5 @@ mod system_panels;
 mod terminal_output;
 mod terminal_performance;
 mod tracking_history;
+
+mod graph_csv;

@@ -83,6 +83,8 @@ Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows
 
 ## Capabilities
 
+Export all registered Graphs to one CSV from **View > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
+
 - **Live monitoring**: Shows system memory pressure, per-adapter GPU load and memory, network and disk activity, CPU activity, and detailed per-process metrics.
 - **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
 - **Graphs and A/B comparison**: Keeps up to 16 metrics in an ordered workspace with synchronized Samples, then compares metric values at two selected sample times.

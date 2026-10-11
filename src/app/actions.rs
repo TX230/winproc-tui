@@ -777,6 +777,10 @@ impl App {
             return Ok(());
         }
 
+        if self.graph_csv_dialog.is_some() {
+            self.graph_csv_key(key);
+            return Ok(());
+        }
         if self.graph_reorder_dialog.is_some() {
             match key.code {
                 KeyCode::Esc => self.cancel_graph_reorder_dialog(),
@@ -891,6 +895,16 @@ impl App {
             return Ok(());
         }
 
+        if matches!(key.code, KeyCode::Char('e' | 'E'))
+            && key.modifiers == KeyModifiers::CONTROL
+            && matches!(
+                self.focused_panel,
+                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+            )
+        {
+            self.open_graph_csv();
+            return Ok(());
+        }
         if is_ctrl_s(key) {
             self.save_active_investigation_profile();
             return Ok(());
@@ -1790,6 +1804,10 @@ impl App {
             return;
         }
 
+        if self.graph_csv_dialog.is_some() {
+            crate::ui::graph_csv::mouse(self, mouse, screen_area);
+            return;
+        }
         if self.graph_reorder_dialog.is_some() {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left) => {

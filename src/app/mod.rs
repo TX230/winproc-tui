@@ -4,6 +4,7 @@ pub(crate) mod context_menu;
 pub(crate) mod export;
 pub(crate) mod feedback;
 pub(crate) mod file_users;
+pub(crate) mod graph_csv;
 pub(crate) mod help;
 pub(crate) mod log_format;
 pub(crate) mod logs;
@@ -118,6 +119,7 @@ pub(crate) fn run_tui(terminal: &mut AppTerminal, app: &mut App) -> Result<()> {
         dirty |= app.poll_network_results();
         dirty |= app.poll_file_users_results();
         dirty |= app.poll_scheduling_results();
+        dirty |= app.poll_graph_csv();
         dirty |= app.poll_threads();
         dirty |= app.poll_log_workers();
         dirty |= app.request_due_process_info()?;

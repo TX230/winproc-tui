@@ -22,7 +22,7 @@ impl App {
         {
             return "Tracking";
         }
-        if self.graph_reorder_dialog.is_some() {
+        if self.graph_reorder_dialog.is_some() || self.graph_csv_dialog.is_some() {
             return "Graph Workspace";
         }
         if self.show_cpu_core_dialog {

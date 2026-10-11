@@ -960,6 +960,7 @@ impl MainMenuSection {
                 ToggleSamples,
                 ToggleDelta,
                 CycleGraphLayout,
+                ExportGraphsCsv,
             ],
             (Self::View, _) => &[
                 OpenColumns,
@@ -970,6 +971,7 @@ impl MainMenuSection {
                 ToggleSamples,
                 ToggleDelta,
                 CycleGraphLayout,
+                ExportGraphsCsv,
             ],
             (Self::Settings, _) => &[
                 SetTheme(0),
@@ -997,6 +999,7 @@ pub(crate) enum MainMenuAction {
     ToggleSamples,
     ToggleDelta,
     CycleGraphLayout,
+    ExportGraphsCsv,
     StartRecording,
     StopRecording,
     ReturnToLive,
@@ -1022,6 +1025,7 @@ impl MainMenuAction {
             Self::ToggleSamples => "Samples",
             Self::ToggleDelta => "Delta",
             Self::CycleGraphLayout => "Graph layout",
+            Self::ExportGraphsCsv => "Export Graphs to CSV",
             Self::StartRecording => "Start Recording",
             Self::StopRecording => "Stop Recording",
             Self::ReturnToLive => "Return to Live",
@@ -1220,6 +1224,7 @@ pub(crate) struct App {
     pub(crate) show_details: bool,
     pub(crate) graph_entries: Vec<GraphEntry>,
     pub(crate) graph_reorder_dialog: Option<GraphReorderDialog>,
+    pub(crate) graph_csv_dialog: Option<super::graph_csv::CsvDialog>,
     pub(crate) active_graph_id: Option<GraphId>,
     pub(crate) next_graph_id: u64,
     pub(crate) graph_scroll_row: usize,
@@ -1527,6 +1532,7 @@ impl App {
             show_details: false,
             graph_entries: Vec::new(),
             graph_reorder_dialog: None,
+            graph_csv_dialog: None,
             active_graph_id: None,
             next_graph_id: 1,
             graph_scroll_row: 0,
@@ -1746,6 +1752,7 @@ impl App {
             || self.show_cpu_core_dialog
             || self.show_system_info_dialog
             || self.graph_reorder_dialog.is_some()
+            || self.graph_csv_dialog.is_some()
             || self.show_quit_confirmation
             || self.show_recording_no_tracked_warning
             || self.show_recording_path_dialog
@@ -6787,6 +6794,10 @@ impl App {
                 Ok(())
             }
             MainMenuAction::OpenLog => self.open_log_list(),
+            MainMenuAction::ExportGraphsCsv => {
+                self.open_graph_csv();
+                Ok(())
+            }
             MainMenuAction::OpenStartupBehavior => {
                 self.open_investigation_startup();
                 Ok(())

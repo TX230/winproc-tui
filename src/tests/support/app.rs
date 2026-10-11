@@ -322,6 +322,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         show_details: false,
         graph_entries: Vec::new(),
         graph_reorder_dialog: None,
+        graph_csv_dialog: None,
         active_graph_id: None,
         next_graph_id: 0,
         graph_scroll_row: 0,

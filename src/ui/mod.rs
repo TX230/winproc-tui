@@ -6,6 +6,7 @@ pub(crate) mod details_panel;
 pub(crate) mod file_users;
 pub(crate) mod footer;
 pub(crate) mod format;
+pub(crate) mod graph_csv;
 pub(crate) mod graph_reorder;
 pub(crate) mod graph_slot;
 pub(crate) mod header;
@@ -190,6 +191,10 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     if app.show_system_info_dialog {
         app.shortcut_map.borrow_mut().regions.clear();
         draw_system_info_dialog(frame, area, app, theme);
+    }
+    if app.graph_csv_dialog.is_some() {
+        app.shortcut_map.borrow_mut().regions.clear();
+        graph_csv::draw(frame, area, app, theme);
     }
     if app.graph_reorder_dialog.is_some() {
         app.shortcut_map.borrow_mut().regions.clear();

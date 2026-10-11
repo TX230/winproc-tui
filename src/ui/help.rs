@@ -503,6 +503,10 @@ const GRAPH_ROWS: &[HelpItem] = &[
         label: "Move active Graph",
     },
     HelpItem {
+        key: "Ctrl+E",
+        label: "Export all registered Graphs to CSV",
+    },
+    HelpItem {
         key: "s",
         label: "Open Graph reorder dialog",
     },
@@ -556,6 +560,10 @@ const SAMPLES_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Shift+↑/↓, Shift+PgUp/PgDn",
         label: "Select by row/page; Ctrl+C copies selected samples",
+    },
+    HelpItem {
+        key: "Ctrl+E",
+        label: "Export all registered Graphs to CSV",
     },
     HelpItem {
         key: "s",
