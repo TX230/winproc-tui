@@ -32,6 +32,7 @@ Files, DLLs, Environment, and Network lists scroll their data rows independently
 | DLLs | Takes an explicit module and file-metadata snapshot on its own worker. |
 | Environment | Reads the live target's remote environment block on an independent worker and clears values when the dialog closes. |
 | Network | Captures TCP/UDP endpoints for the fixed live process through the shared Network worker on first activation or explicit refresh. |
+| Threads | Captures a read-only thread table on its own worker on first activation or explicit refresh. |
 | Scheduling | Reads the fixed live process's CPU priority class and single-group CPU affinity on its own worker, with explicit changes and restoration. |
 
 Image, Files, DLL, Environment, Network, and Scheduling collection never runs as part of ordinary sampling. Each request carries the dialog generation; collectors can also carry request IDs to distinguish superseded work. Results from a closed, reopened, or superseded dialog are rejected even if they refer to the same PID.
@@ -141,3 +142,7 @@ Metrics identifies paused and recorded snapshots in its value heading and timest
 Metrics keeps a stable order with general CPU, memory, GPU and I/O rows ahead of optional .NET runtime rows. Unavailable runtime values remain visible as `--`; temporary absence does not hide rows or imply that the process has no .NET runtime.
 
 Process context actions open the captured process lifetime, including Files and Network through the existing worker and activity boundaries. Endpoint context menus capture the displayed endpoint and owner metadata; opening Process Info still re-verifies the owning process's native creation time. Endpoint details and copy retain that captured row even if a later capture or selection changes.
+
+## Threads
+
+Threads captures TID, name, cumulative CPU time, base priority, and Ideal Processor for the fixed live target. A dedicated bounded-request worker holds a verified process handle throughout capture and checks process creation time and name. Thread handles are checked for owner, creation before capture, and exit before querying details, so a reused TID cannot supply another lifetime's values. Unavailable fields remain explicit and partial captures report their affected row count. Rows are ordered by TID; capture status and column headings stay above scrolling data. Refresh is manual, tab switches retain data, and new/closed sessions invalidate results by process identity and dialog generation. Log view performs no live collection. Thread data is not sampled, recorded, exported, or copied.

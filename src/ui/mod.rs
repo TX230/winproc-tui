@@ -26,6 +26,7 @@ pub(crate) mod recording_dialog;
 pub(crate) mod scheduling;
 pub(crate) mod system_panel;
 pub(crate) mod theme;
+pub(crate) mod threads;
 pub(crate) mod tracked_remove_confirm;
 pub(crate) mod widgets;
 

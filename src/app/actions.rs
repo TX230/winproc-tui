@@ -649,6 +649,7 @@ impl App {
                         crate::app::ProcessInfoTab::Metrics => {}
                         crate::app::ProcessInfoTab::Network => self.refresh_network(false),
                         crate::app::ProcessInfoTab::Scheduling => self.refresh_scheduling(),
+                        crate::app::ProcessInfoTab::Threads => self.refresh_threads(),
                     }
                 }
                 KeyCode::Char(ch)

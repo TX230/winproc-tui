@@ -768,6 +768,7 @@ fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
         app::ProcessInfoTab::Environment,
         app::ProcessInfoTab::Network,
         app::ProcessInfoTab::Scheduling,
+        app::ProcessInfoTab::Threads,
         app::ProcessInfoTab::Metrics,
     ] {
         app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
@@ -783,6 +784,9 @@ fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
             assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         }
     }
+    app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.process_info_tab, app::ProcessInfoTab::Threads);
     app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
         .unwrap();
     assert_eq!(app.process_info_tab, app::ProcessInfoTab::Scheduling);
@@ -808,6 +812,7 @@ fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
     for expected in [
         app::ProcessInfoTab::Network,
         app::ProcessInfoTab::Scheduling,
+        app::ProcessInfoTab::Threads,
         app::ProcessInfoTab::Metrics,
         app::ProcessInfoTab::Image,
         app::ProcessInfoTab::Files,
@@ -1130,4 +1135,74 @@ fn inspection_tables_pin_headers_and_keep_scrolled_rows_clickable() {
             assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
         }
     }
+}
+
+#[test]
+fn threads_reject_stale_results_and_do_not_collect_in_log_view() {
+    let mut app = make_test_app(1, 10);
+    let (worker, requests, results) = crate::samplers::threads::ThreadWorker::test_pair();
+    app.threads_worker = worker;
+    app.open_selected_process_info_dialog().unwrap();
+    app.activate_process_info_tab(app::ProcessInfoTab::Threads)
+        .unwrap();
+    let (generation, identity) = requests.try_recv().unwrap();
+    app.ensure_threads();
+    assert!(requests.try_recv().is_err());
+    results
+        .send(crate::samplers::threads::ThreadResult {
+            generation: generation.wrapping_sub(1),
+            identity: identity.clone(),
+            outcome: Err("stale".into()),
+        })
+        .unwrap();
+    assert!(!app.poll_threads());
+    assert!(app.threads.pending);
+    results
+        .send(crate::samplers::threads::ThreadResult {
+            generation,
+            identity,
+            outcome: Ok(crate::model::threads::ThreadReport {
+                rows: Vec::new(),
+                unavailable: 0,
+            }),
+        })
+        .unwrap();
+    assert!(app.poll_threads());
+    assert!(!app.threads.pending);
+    assert!(app.threads.report.is_some());
+    app.log_view_path = Some(std::path::PathBuf::from("recording.log"));
+    app.refresh_threads();
+    assert!(requests.try_recv().is_err());
+    assert!(
+        render_app_to_text(&app, 120, 40)
+            .contains("This information is not included in recording logs.")
+    );
+}
+
+#[test]
+fn threads_table_keeps_headers_pinned_while_scrolling() {
+    let mut app = make_test_app(1, 10);
+    app.open_selected_process_info_dialog().unwrap();
+    app.process_info_tab = app::ProcessInfoTab::Threads;
+    app.process_info_focus = app::ProcessInfoFocus::Content;
+    app.threads.report = Some(crate::model::threads::ThreadReport {
+        rows: (0..80)
+            .map(|tid| crate::model::threads::ThreadRow {
+                tid,
+                name: Some(format!("worker-{tid}")),
+                cpu_seconds: None,
+                base_priority: 8,
+                ideal_cpu: Some((1, 2)),
+            })
+            .collect(),
+        unavailable: 80,
+    });
+    let screen = Rect::new(0, 0, 100, 30);
+    app::sync_layout_state(&mut app, screen);
+    app.scroll_process_info_down(20);
+    let text = render_app_to_text(&app, 100, 30);
+    assert!(text.contains("CPU time (s)"));
+    assert!(text.contains("worker-20"));
+    assert!(!text.contains("worker-0 "));
+    assert!(ui::process_info_scrollbar_area_for_screen(screen, &app).is_some());
 }

@@ -625,3 +625,7 @@ Missing values are displayed as `--` in the UI and are not treated as 0 in Graph
 - [Well-known .NET EventCounters](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters)
 
 Exact byte values in Graph cursor labels, comparison captions, and Samples have explicit `B` or `B/s` unit context. Samples labels distinguish the retained-history maximum, the MA5 at the selected time, and statistics over the A-B interval. Compact axis units do not change those exact values or raw clipboard/recording formats.
+
+## Process Info Threads
+
+The on-demand thread table uses Toolhelp Thread32 enumeration for TID and base priority. GetThreadDescription supplies the optional name. GetThreadTimes supplies cumulative kernel plus user CPU time, displayed in seconds to three decimal places. GetThreadIdealProcessorEx supplies the preferred processor group and logical CPU number, displayed as group:CPU. This is neither the currently executing CPU nor hard affinity. Unavailable fields use `--`; a thread without a name also displays `--`. These fields belong to Process Info only, outside normal samples and recording schemas. No thread-level QoS or interval CPU utilization is collected.

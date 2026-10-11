@@ -129,6 +129,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
         .map(model::ProcessIdentity::from_row);
 
     App {
+        threads: crate::app::threads::ThreadsView::default(),
+        threads_worker: crate::samplers::threads::ThreadWorker::spawn(),
         runtime: RuntimeConfig {
             mouse: true,
             config_path: None,

@@ -271,6 +271,7 @@ pub(crate) enum ProcessInfoTab {
     Environment,
     Network,
     Scheduling,
+    Threads,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,7 +281,7 @@ pub(crate) enum ProcessInfoFocus {
 }
 
 impl ProcessInfoTab {
-    pub(crate) const ALL: [Self; 7] = [
+    pub(crate) const ALL: [Self; 8] = [
         Self::Metrics,
         Self::Image,
         Self::Files,
@@ -288,6 +289,7 @@ impl ProcessInfoTab {
         Self::Environment,
         Self::Network,
         Self::Scheduling,
+        Self::Threads,
     ];
 
     pub(crate) const fn label(self) -> &'static str {
@@ -299,13 +301,19 @@ impl ProcessInfoTab {
             Self::Environment => "Environment",
             Self::Network => "Network",
             Self::Scheduling => "Scheduling",
+            Self::Threads => "Threads",
         }
     }
 
     pub(crate) const fn content_is_focusable(self) -> bool {
         matches!(
             self,
-            Self::Files | Self::Dlls | Self::Environment | Self::Network | Self::Scheduling
+            Self::Files
+                | Self::Dlls
+                | Self::Environment
+                | Self::Network
+                | Self::Scheduling
+                | Self::Threads
         )
     }
 
@@ -326,6 +334,7 @@ impl ProcessInfoTab {
             Self::Environment => 4,
             Self::Network => 5,
             Self::Scheduling => 6,
+            Self::Threads => 7,
         }
     }
 }
@@ -1086,6 +1095,8 @@ pub(crate) struct App {
     pub(crate) file_users: super::file_users::FileUsersView,
     pub(crate) scheduling_worker: crate::samplers::scheduling::SchedulingWorker,
     pub(crate) scheduling: super::scheduling::SchedulingView,
+    pub(crate) threads: super::threads::ThreadsView,
+    pub(crate) threads_worker: crate::samplers::threads::ThreadWorker,
     pub(crate) file_users_next_id: u64,
     pub(crate) sampling_in_progress: bool,
     pub(crate) snapshot: Snapshot,
@@ -1364,6 +1375,8 @@ impl App {
             file_users: super::file_users::FileUsersView::default(),
             scheduling_worker: crate::samplers::scheduling::SchedulingWorker::spawn(),
             scheduling: super::scheduling::SchedulingView::default(),
+            threads: super::threads::ThreadsView::default(),
+            threads_worker: crate::samplers::threads::ThreadWorker::spawn(),
             file_users_next_id: 0,
             sampling_in_progress: false,
             snapshot: initial.snapshot,
@@ -5071,6 +5084,7 @@ impl App {
             ProcessInfoTab::Environment => self.ensure_process_environment_for_target()?,
             ProcessInfoTab::Network => self.ensure_process_network(),
             ProcessInfoTab::Scheduling => self.ensure_scheduling(),
+            ProcessInfoTab::Threads => self.ensure_threads(),
             ProcessInfoTab::Metrics => {}
         }
         Ok(())
@@ -5165,6 +5179,7 @@ impl App {
             ProcessInfoTab::Environment => &self.process_info_environment_scroll,
             ProcessInfoTab::Network => &self.process_network.scroll,
             ProcessInfoTab::Scheduling => &self.scheduling.scroll,
+            ProcessInfoTab::Threads => &self.threads.scroll,
         }
     }
 
@@ -5177,6 +5192,7 @@ impl App {
             ProcessInfoTab::Environment => &mut self.process_info_environment_scroll,
             ProcessInfoTab::Network => &mut self.process_network.scroll,
             ProcessInfoTab::Scheduling => &mut self.scheduling.scroll,
+            ProcessInfoTab::Threads => &mut self.threads.scroll,
         }
     }
 
@@ -5470,6 +5486,7 @@ impl App {
         self.process_info_target = Some(target);
         self.reset_process_network();
         self.reset_scheduling();
+        self.threads = super::threads::ThreadsView::default();
         self.process_info_tab = initial_tab;
         self.process_info_focus = ProcessInfoFocus::Tabs;
         self.show_process_info_dialog = true;
@@ -5521,6 +5538,8 @@ impl App {
             self.ensure_process_environment_for_target()?;
         } else if initial_tab == ProcessInfoTab::Network {
             self.ensure_process_network();
+        } else if initial_tab == ProcessInfoTab::Threads {
+            self.ensure_threads();
         } else if initial_tab == ProcessInfoTab::Scheduling {
             self.ensure_scheduling();
         }
@@ -5530,6 +5549,7 @@ impl App {
     pub(crate) fn close_process_info_dialog(&mut self) {
         self.process_info_filter_editing = false;
         self.reset_scheduling();
+        self.threads = super::threads::ThreadsView::default();
         self.open_files_refresh = super::open_files::OpenFilesRefresh::default();
         self.process_info_verified_snapshot_at = None;
         self.process_network = super::network::NetworkView::default();
@@ -5821,7 +5841,10 @@ impl App {
             ProcessInfoTab::Environment => self.process_environment_show_detail,
             ProcessInfoTab::Network => self.process_network.detail,
             ProcessInfoTab::Files => self.open_files_show_detail,
-            ProcessInfoTab::Metrics | ProcessInfoTab::Image | ProcessInfoTab::Scheduling => false,
+            ProcessInfoTab::Metrics
+            | ProcessInfoTab::Image
+            | ProcessInfoTab::Scheduling
+            | ProcessInfoTab::Threads => false,
         }
     }
 

@@ -80,6 +80,24 @@ pub(crate) fn draw_process_info_dialog(
             app.process_info_focus == ProcessInfoFocus::Content,
             theme,
         ),
+        ProcessInfoTab::Threads => {
+            let mut lines = super::threads::lines(app);
+            let count = inspection_header_rows(app).min(lines.len());
+            let body_lines = lines.split_off(count);
+            let (header, body) = inspection_table_areas(layout.content, count);
+            frame.render_widget(
+                Paragraph::new(lines).style(Style::default().fg(theme.text).bg(theme.panel_alt)),
+                header,
+            );
+            render_scrollable_lines(
+                frame,
+                body,
+                body_lines,
+                app.threads.scroll.offset,
+                app.process_info_focus == ProcessInfoFocus::Content,
+                theme,
+            );
+        }
         ProcessInfoTab::Files => draw_open_files_tab(frame, layout.content, app, theme),
         ProcessInfoTab::Scheduling => render_scrollable_lines(
             frame,
@@ -142,6 +160,13 @@ pub(crate) fn inspection_table_areas(area: Rect, header_rows: usize) -> (Rect, R
 
 pub(crate) fn inspection_header_rows(app: &App) -> usize {
     match app.process_info_tab {
+        ProcessInfoTab::Threads => {
+            if app.activity() == crate::app::AppActivity::LogView {
+                0
+            } else {
+                3
+            }
+        }
         ProcessInfoTab::Files => super::open_files::fixed_header_rows(app),
         ProcessInfoTab::Dlls => super::process_modules::fixed_header_rows(app),
         ProcessInfoTab::Environment => super::process_environment::fixed_header_rows(app),
@@ -183,6 +208,9 @@ pub(crate) fn process_info_total_rows(app: &App) -> usize {
     match app.process_info_tab {
         ProcessInfoTab::Metrics => process_info_metrics_lines(app, width, app.theme()).len(),
         ProcessInfoTab::Image => process_info_image_lines(app, width, app.theme()).len(),
+        ProcessInfoTab::Threads => super::threads::lines(app)
+            .len()
+            .saturating_sub(inspection_header_rows(app)),
         ProcessInfoTab::Files => open_files_total_rows(app),
         ProcessInfoTab::Scheduling => super::scheduling::lines(app, width, app.theme()).len(),
         ProcessInfoTab::Dlls => process_modules_total_rows(app, width),
@@ -206,6 +234,10 @@ pub(crate) fn process_info_scrollbar_area_for_screen(screen: Rect, app: &App) ->
     let content = process_info_content_area_for_screen(screen);
     if app.process_info_tab == ProcessInfoTab::Network {
         return super::network::scrollbar_area(content, &app.process_network);
+    }
+    if app.process_info_tab == ProcessInfoTab::Threads {
+        let (_, body) = inspection_table_areas(content, inspection_header_rows(app));
+        return generic_scrollbar_area(body, process_info_total_rows(app), body.height as usize);
     }
     if app.process_info_tab == ProcessInfoTab::Files {
         return open_files_scrollbar_area(content, app);
@@ -657,6 +689,13 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("Ctrl+←/→", "tabs"),
                 ("Tab", "next"),
                 ("Esc/Enter", "close"),
+            ],
+            ProcessInfoTab::Threads => vec![
+                ("↑/↓", "scroll"),
+                ("Ctrl+U", "refresh"),
+                ("Ctrl+←/→", "tabs"),
+                ("Tab", "next"),
+                ("Esc", "tabs"),
             ],
             ProcessInfoTab::Files => vec![
                 ("Enter", "details"),

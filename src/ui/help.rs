@@ -309,6 +309,10 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Return to handle list; Esc then focuses tabs",
     },
     HelpItem {
+        key: "Ctrl+U (Threads)",
+        label: "Refresh thread CPU time, base priority, and Ideal CPU",
+    },
+    HelpItem {
         key: "Ctrl+C (Files)",
         label: "Copy TSV rows; detail copies one handle",
     },

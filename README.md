@@ -88,7 +88,7 @@ Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows
 - **Graphs and A/B comparison**: Keeps up to 16 metrics in an ordered workspace with synchronized Samples, then compares metric values at two selected sample times.
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
 - **.NET metrics**: Automatically detects live .NET 8/9/10 processes and shows managed-runtime metrics, with selected heap metrics for .NET Framework 4.8.
-- **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, and network endpoints together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
+- **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
 - **Network endpoints**: Open **Tools > Network endpoints** (**F3**) to inspect TCP/UDP addresses, ports, and owners across the system, then open Process Info for an owner. The workspace keeps its results and filter when switching views. Lists refresh on demand and are not recorded.
 - **Recording and Log view**: Records system metrics and matching processes as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
 

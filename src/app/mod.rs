@@ -16,6 +16,7 @@ pub(crate) mod scheduling;
 pub(crate) mod state;
 pub(crate) mod system_info;
 pub(crate) mod text_input;
+pub(crate) mod threads;
 
 use std::{
     fs::File,
@@ -117,6 +118,7 @@ pub(crate) fn run_tui(terminal: &mut AppTerminal, app: &mut App) -> Result<()> {
         dirty |= app.poll_network_results();
         dirty |= app.poll_file_users_results();
         dirty |= app.poll_scheduling_results();
+        dirty |= app.poll_threads();
         dirty |= app.poll_log_workers();
         dirty |= app.request_due_process_info()?;
         dirty |= app.request_due_open_files_at(Instant::now())?;

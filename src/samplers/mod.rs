@@ -12,6 +12,7 @@ pub(crate) mod process_environment;
 pub(crate) mod process_info;
 pub(crate) mod process_modules;
 pub(crate) mod scheduling;
+pub(crate) mod threads;
 
 use std::{
     collections::HashMap,

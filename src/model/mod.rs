@@ -10,6 +10,7 @@ pub(crate) mod process_tree;
 pub(crate) mod scheduling;
 pub(crate) mod snapshot;
 pub(crate) mod system;
+pub(crate) mod threads;
 
 pub(crate) use columns::{
     ColumnPreset, MetricColumn, ProcessColumnWidths, SortColumn, SortDirection, SortSpec,
