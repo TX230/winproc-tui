@@ -66,8 +66,9 @@ If the specifications and implementation conflict, inspect the implementation fi
 - When a coherent unit of AI work is complete, commit it promptly.
 - Do not commit ignored local-only files such as `notes/` or `logs/` unless the user explicitly asks to track them.
 - When committing implementation work, include updates to the affected canonical documentation in the same commit. Do not change design documents mechanically when their owned behavior is unaffected.
-- When work is covered by a GitHub Issue, reference that Issue in the commit message or maintainer-requested pull request.
-- Disambiguate GitHub item numbers in human-facing text and commit titles: write `Issue #n` for Issues and `PR #n` for pull requests. Avoid a bare `#n` except where GitHub syntax requires it, such as `Closes #n` or `Refs #n`.
+- For Issue-backed work, append `(Issue #n)` to the first line of every commit message, on both agent branches and the default branch. The body describes the changes and their reasons; do not repeat the Issue reference with `Refs #n`. Include the Issue relationship in a pull request when one is explicitly requested.
+- Do not use Issue auto-closing keywords in commit messages, such as `Close #n`, `Closes #n`, `Closed #n`, or equivalent `Fix` / `Resolve` forms. Issue closure is a separate action and requires an explicit request.
+- Disambiguate GitHub item numbers in human-facing text and commit titles: write `Issue #n` for Issues and `PR #n` for pull requests.
 
 ## Branch Workflow Rules
 
@@ -110,13 +111,13 @@ These rules apply when the user asks an AI agent to integrate a completed agent 
 - A shared branch, overlapping files, or a request to merge or push several Issues does not authorize combining them into one commit. Combining different Issues requires an explicit maintainer request.
 - Before integration, map the requested Issues to their commits and identify dependency order. For a branch containing multiple Issues, preserve separate Issue commits or reconstruct them by Issue before updating `main`; do not squash the whole branch. Verify that the final tree matches the intended combined result.
 - When an integration commit corresponds to a GitHub Issue, append the issue number to the commit title as `(Issue #n)`, for example `fix: place graph a/b labels on x-axis (Issue #3)`, so `git log --oneline` remains easy to scan without confusing the Issue number with a PR number.
-- If the work completes a GitHub Issue, include `Closes #n` in the commit body. Use `Refs #n` instead if the Issue should remain open.
+- Keep the Issue reference in the integration commit title only. Do not add `Refs #n` or an auto-closing reference to the body, even when the work completes the Issue.
 - For a branch containing only one Issue, a typical local integration sequence against the canonical `main` worktree is:
 
 ```powershell
 git -C <main-worktree> status --short --branch
 git -C <main-worktree> merge --squash agent/<short-topic>
-git -C <main-worktree> commit -m "<message> (Issue #n)" -m "<concise summary of the changes>" -m "Closes #n"
+git -C <main-worktree> commit -m "<message> (Issue #n)" -m "<concise summary of the changes and reasons>"
 ```
 
 - Pushing `main` is normally performed by the user. AI agents must not run `git push origin main` unless the user explicitly asks them to push.
@@ -127,11 +128,11 @@ git -C <main-worktree> commit -m "<message> (Issue #n)" -m "<concise summary of 
 - Follow the canonical [Development Issue Policy](CONTRIBUTING.md#development-issue-policy) in `CONTRIBUTING.md` when deciding whether work requires an Issue. Commit count, file count, and implementation size are not reasons to omit one.
 - Before implementing work that requires an Issue, search open and closed Issues for an existing match. If none exists, obtain maintainer approval to create one unless Issue creation was already explicitly requested.
 - If initially Issue-free work expands into a category that requires an Issue, stop before implementing the expanded scope and create or select the Issue first.
-- If the maintainer explicitly requests an Issue-free exception, do not create an Issue or add `Refs` or `Closes` references.
+- If the maintainer explicitly requests an Issue-free exception, do not create an Issue or add an Issue reference to the commit message.
 - Write GitHub Issue titles and bodies in English.
 - Use only two issue types: Bug report and Feature request.
 - Issue templates are intentionally light. At minimum, a goal or a description of what is broken is required. Background, scope, acceptance criteria, and test plan are optional and can be added when implementation actually starts or in related commits on the agent branch.
-- Use `Refs #n` in intermediate agent-branch commits. Use `Closes #n` only in the final commit that completes the Issue on the default branch.
+- Reference Issues in commit titles as specified in Commit Rules, without reference trailers in the body. Completing or integrating work does not by itself authorize closing the Issue; close it only when explicitly requested.
 - Keep complete controls and contextual behavior in Help, Footer, tests, and source. Keep the README focused on positioning, installation, first-use workflows, and major capabilities. Route durable design behavior to the owning document under `docs/`, and keep agent-facing invariants in this file.
 - Issue discussion, triage, labels, and status changes do not require repository commits by themselves.
 - Do not reintroduce `docs/backlog/index.md` or `docs/backlog/BL-xxx.md` unless the user explicitly reverses this policy.
