@@ -1532,8 +1532,7 @@ impl App {
                 self.open_log_list()?;
             }
             KeyCode::Char(ch)
-                if ch.eq_ignore_ascii_case(&'c')
-                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                if ch.eq_ignore_ascii_case(&'c') && key.modifiers == KeyModifiers::CONTROL =>
             {
                 self.copy_focused_cell_to_clipboard()?;
             }

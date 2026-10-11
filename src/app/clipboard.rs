@@ -104,24 +104,60 @@ impl App {
         Ok(())
     }
 
-    pub(crate) fn copy_selected_process_row_to_clipboard(&mut self) -> Result<()> {
-        let Some(process) = self.selected_visible_process() else {
-            self.status = "No process selected".to_string();
-            return Ok(());
-        };
-
-        let process_name = process.name.clone();
-        let value = selected_process_row_text(process, &self.process_columns);
-
-        match copy_text_to_clipboard(&value) {
-            Ok(()) => {
-                self.status = format!("Copied process row: {process_name}");
-            }
-            Err(error) => {
-                self.status = format!("Clipboard copy failed: {error}");
-            }
+    pub(crate) fn selected_process_rows_text(&self) -> String {
+        let rows = self.visible_process_row_window(0, self.visible_process_count());
+        if !self.selected_process_identities.is_empty() {
+            rows.iter()
+                .filter(|row| row.multi_selected)
+                .map(|row| process_clipboard_row(row, &self.process_columns, false))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            self.process_table_state
+                .selected()
+                .and_then(|index| rows.get(index))
+                .map(|row| process_clipboard_row(row, &self.process_columns, false))
+                .unwrap_or_default()
         }
+    }
 
+    pub(crate) fn process_table_clipboard_text(&self) -> String {
+        let mut headers = vec!["Tracked", "PID", "Process", "State", "Depth"];
+        headers.extend(self.process_columns.iter().map(|c| c.label()));
+        let mut lines = vec![headers.join("\t")];
+        lines.extend(
+            self.visible_process_row_window(0, self.visible_process_count())
+                .iter()
+                .map(|row| process_clipboard_row(row, &self.process_columns, true)),
+        );
+        if let Some(total) = self.tracked_total_visible_row() {
+            lines.push(process_clipboard_row(&total, &self.process_columns, true));
+        }
+        lines.join("\n")
+    }
+
+    pub(crate) fn copy_process_table_to_clipboard(&mut self) -> Result<()> {
+        let text = self.process_table_clipboard_text();
+        self.status = match copy_text_to_clipboard(&text) {
+            Ok(()) => format!(
+                "Copied process table ({} rows)",
+                self.visible_process_count() + usize::from(self.has_visible_tracked_total_row())
+            ),
+            Err(error) => format!("Clipboard copy failed: {error}"),
+        };
+        Ok(())
+    }
+
+    pub(crate) fn copy_selected_process_row_to_clipboard(&mut self) -> Result<()> {
+        let value = self.selected_process_rows_text();
+        if value.is_empty() {
+            self.status = "No process selected".into();
+            return Ok(());
+        }
+        self.status = match copy_text_to_clipboard(&value) {
+            Ok(()) => "Copied process rows".into(),
+            Err(error) => format!("Clipboard copy failed: {error}"),
+        };
         Ok(())
     }
 
@@ -271,7 +307,11 @@ pub(super) fn selected_process_row_text(process: &ProcessRow, columns: &[MetricC
             .iter()
             .map(|column| format_process_metric_column(process, *column)),
     );
-    fields.join("\t")
+    fields
+        .iter()
+        .map(|field| tsv_field(field))
+        .collect::<Vec<_>>()
+        .join("\t")
 }
 
 fn selected_system_row_text(app: &App, metric: SystemMetric) -> String {
@@ -515,4 +555,65 @@ pub(super) fn copy_text_to_clipboard(value: &str) -> Result<()> {
         *last.borrow_mut() = Some(value.to_string());
     });
     Ok(())
+}
+
+fn tsv_field(value: &str) -> String {
+    if value.contains(['\t', '\r', '\n', '"']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.into()
+    }
+}
+
+fn process_clipboard_row(
+    row: &crate::app::state::VisibleProcessRow<'_>,
+    columns: &[MetricColumn],
+    table: bool,
+) -> String {
+    use crate::app::state::ProcessLifecycle;
+    if !table {
+        let mut process = row.process.clone();
+        process.name = format!(
+            "{}{}",
+            process.name,
+            if matches!(row.lifecycle, ProcessLifecycle::Exited { .. }) {
+                " [exited]"
+            } else {
+                ""
+            }
+        );
+        return selected_process_row_text(&process, columns);
+    }
+    let state = if row.is_tracked_total {
+        "total"
+    } else if matches!(row.lifecycle, ProcessLifecycle::Exited { .. }) {
+        "exited"
+    } else {
+        "live"
+    };
+    let mut fields = vec![
+        if row.is_tracked_total {
+            String::new()
+        } else {
+            row.tracked.to_string()
+        },
+        if row.is_tracked_total {
+            String::new()
+        } else {
+            row.process.pid.to_string()
+        },
+        row.process.name.clone(),
+        state.into(),
+        row.tree_depth.to_string(),
+    ];
+    fields.extend(
+        columns
+            .iter()
+            .map(|c| format_process_metric_column(row.process, *c)),
+    );
+    fields
+        .iter()
+        .map(|s| tsv_field(s))
+        .collect::<Vec<_>>()
+        .join("\t")
 }

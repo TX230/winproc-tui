@@ -179,7 +179,11 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+C",
-        label: "Copy the focused row",
+        label: "Copy selected process rows, or the focused row",
+    },
+    HelpItem {
+        key: "Copy table (context menu)",
+        label: "Copy the full table with headings; also in View > Copy process table",
     },
     HelpItem {
         key: "d/Delete",

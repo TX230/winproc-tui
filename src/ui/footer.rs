@@ -108,7 +108,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                         "Kill selected"
                     },
                 ),
-                ("Ctrl+C", "Copy row"),
+                ("Ctrl+C", "Copy rows"),
                 ("Alt+↑/↓", "Focus"),
                 ("Ctrl+F", "Filter"),
             ]

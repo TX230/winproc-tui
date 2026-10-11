@@ -961,6 +961,7 @@ impl MainMenuSection {
                 ToggleDelta,
                 CycleGraphLayout,
                 ExportGraphsCsv,
+                CopyProcessTable,
             ],
             (Self::View, _) => &[
                 OpenColumns,
@@ -972,6 +973,7 @@ impl MainMenuSection {
                 ToggleDelta,
                 CycleGraphLayout,
                 ExportGraphsCsv,
+                CopyProcessTable,
             ],
             (Self::Settings, _) => &[
                 SetTheme(0),
@@ -1000,6 +1002,7 @@ pub(crate) enum MainMenuAction {
     ToggleDelta,
     CycleGraphLayout,
     ExportGraphsCsv,
+    CopyProcessTable,
     StartRecording,
     StopRecording,
     ReturnToLive,
@@ -1026,6 +1029,7 @@ impl MainMenuAction {
             Self::ToggleDelta => "Delta",
             Self::CycleGraphLayout => "Graph layout",
             Self::ExportGraphsCsv => "Export Graphs to CSV",
+            Self::CopyProcessTable => "Copy process table",
             Self::StartRecording => "Start Recording",
             Self::StopRecording => "Stop Recording",
             Self::ReturnToLive => "Return to Live",
@@ -6793,6 +6797,7 @@ impl App {
                 self.exit_log_view();
                 Ok(())
             }
+            MainMenuAction::CopyProcessTable => self.copy_process_table_to_clipboard(),
             MainMenuAction::OpenLog => self.open_log_list(),
             MainMenuAction::ExportGraphsCsv => {
                 self.open_graph_csv();

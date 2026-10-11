@@ -197,7 +197,7 @@ fn ctrl_c_copies_selected_process_row_text() {
         app::clipboard::last_copied_text().as_deref(),
         Some("0\tproc-0\t388,067,328\t--")
     );
-    assert_eq!(app.status, "Copied process row: proc-0");
+    assert_eq!(app.status, "Copied process rows");
 }
 
 #[test]
@@ -463,6 +463,76 @@ fn sample_range_copy_extends_shrinks_and_uses_exact_times() {
     app.clamp_details_sample_selection();
     assert!(app.sample_selection.is_none());
     assert!(app.status.contains("expired"));
+}
+
+#[test]
+fn process_copy_uses_selection_and_full_table_ignores_viewport_clipping() {
+    let mut app = make_test_app(20, 3);
+    app.process_columns = vec![MetricColumn::FullPath, MetricColumn::PrivateBytes];
+    app.snapshot.processes[0].executable_path = Some(r"C:\a very long folder\complete.exe".into());
+    app.process_metric_column_offset = 1;
+    for index in [0, 10] {
+        app.selected_process_identities
+            .insert(model::ProcessIdentity::from_row(
+                &app.snapshot.processes[index],
+            ));
+    }
+    let selected = app.selected_process_identities.clone();
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .unwrap();
+    let text = app::clipboard::last_copied_text().unwrap();
+    assert_eq!(text.lines().count(), 2);
+    assert!(text.contains(r"C:\a very long folder\complete.exe"));
+    assert!(text.contains("proc-10"));
+    assert!(!text.starts_with("Tracked"));
+    app.on_key(KeyEvent::new(
+        KeyCode::Char('C'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    ))
+    .unwrap();
+    assert_eq!(app::clipboard::last_copied_text().unwrap(), text);
+    app.open_main_menu_section(app::state::MainMenuSection::View);
+    app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+        .unwrap();
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    let table = app::clipboard::last_copied_text().unwrap();
+    assert_eq!(table.lines().count(), 21);
+    assert!(
+        table.starts_with("Tracked\tPID\tProcess\tState\tDepth\tPath\tPrivBytes")
+            || table.starts_with("Tracked\tPID\tProcess\tState\tDepth\tFull Path\tPrivBytes")
+    );
+    assert!(table.contains("proc-19"));
+    assert!(table.contains(r"C:\a very long folder\complete.exe"));
+    assert_eq!(app.selected_process_identities, selected);
+    app.toggle_display_pause();
+    let frozen = app.process_table_clipboard_text();
+    app.snapshot.processes[0].name = "replacement".into();
+    assert_eq!(app.process_table_clipboard_text(), frozen);
+}
+
+#[test]
+fn process_tsv_quotes_embedded_delimiters_and_context_captures_snapshot() {
+    let mut app = make_test_app(1, 3);
+    app.process_columns = vec![MetricColumn::FullPath];
+    app.snapshot.processes[0].name = "a\tb\"c\nd".into();
+    app.snapshot.processes[0].executable_path = Some("C:\\with\ttab".into());
+    app.rebuild_visible_process_cache();
+    let text = app.process_table_clipboard_text();
+    assert!(text.contains("\"a\tb\"\"c\nd\""));
+    assert!(
+        app.selected_process_rows_text()
+            .contains("\"a\tb\"\"c\nd\"")
+    );
+    assert!(text.contains("\"C:\\with\ttab\""));
+    app.on_key(KeyEvent::new(KeyCode::F(10), KeyModifiers::SHIFT))
+        .unwrap();
+    let menu = app.context_menu.as_ref().unwrap();
+    let item = menu.items.iter().find(|i| i.label == "Copy table").unwrap();
+    let app::context_menu::ContextAction::Copy(captured) = &item.action else {
+        panic!("copy action");
+    };
+    assert_eq!(*captured, text);
 }
 
 #[test]

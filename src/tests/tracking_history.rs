@@ -1214,3 +1214,34 @@ fn show_exited_mouse_matches_header_and_updates_paused_hover() {
     app.on_mouse(super::support::left_click(x, y), screen);
     assert!(!app.show_exited);
 }
+
+#[test]
+fn copy_table_includes_visible_ghost_and_total_then_respects_show_exited() {
+    let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
+    let mut app = make_test_app_with_worker(1, 3, sampling_worker);
+    app.add_selected_process_to_watch_list();
+    app.toggle_watch_list();
+    app.process_history.record_snapshot(
+        app.snapshot.captured_at,
+        &app.snapshot.processes,
+        &app.normalized_watch_names,
+    );
+    app.sampling_in_progress = true;
+    let mut next = test_snapshot(1);
+    next.processes[0].start_time = Some(9999);
+    next.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    result_tx
+        .send(CollectSnapshotResult {
+            snapshot: next,
+            warning: None,
+        })
+        .unwrap();
+    app.poll_sample_results().unwrap();
+    let table = app.process_table_clipboard_text();
+    assert!(table.contains("\texited\t0\t"));
+    assert!(table.contains("\ttotal\t0\t"));
+    app.toggle_show_exited();
+    let table = app.process_table_clipboard_text();
+    assert!(!table.contains("\texited\t"));
+    assert!(table.contains("\ttotal\t"));
+}

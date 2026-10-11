@@ -128,6 +128,15 @@ impl App {
             )),
             true,
         );
+        let selection = self.selected_process_rows_text();
+        if self.selected_process_identities.contains(&target.identity) && !selection.is_empty() {
+            menu.add("Copy selected rows", ContextAction::Copy(selection), true);
+        }
+        menu.add(
+            "Copy table",
+            ContextAction::Copy(self.process_table_clipboard_text()),
+            true,
+        );
         menu.add(
             "Copy PID",
             ContextAction::Copy(target.identity.pid.to_string()),

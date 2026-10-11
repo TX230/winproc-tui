@@ -630,3 +630,22 @@ fn tracked_only_ctrl_a_excludes_collapsed_descendants_and_ghost_rows() {
     assert!(rendered.contains("3 selected (*)"), "{rendered}");
     assert!(rendered.contains("Tracked Total"), "{rendered}");
 }
+
+#[test]
+fn copy_table_respects_tree_depth_collapse_and_filter() {
+    let mut app = make_tree_app();
+    let table = app.process_table_clipboard_text();
+    assert!(table.contains("\tgrandchild.exe\tlive\t2\t"));
+    let root = ProcessIdentity::from_row(&app.snapshot.processes[0]);
+    app.collapsed_process_identities.insert(root);
+    app.rebuild_visible_process_cache();
+    let table = app.process_table_clipboard_text();
+    assert!(!table.contains("grandchild.exe"));
+    assert!(!table.contains("\tchild.exe\t"));
+    assert!(table.contains("root.exe"));
+    app.filter_text = "other-child".into();
+    app.rebuild_visible_process_cache();
+    let table = app.process_table_clipboard_text();
+    assert!(table.contains("other-child.exe"));
+    assert!(!table.contains("\troot.exe\t"));
+}
