@@ -179,6 +179,10 @@ pub(crate) fn lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'static>> {
         };
         line.spans.push(Span::styled(cell.text, style));
     }
+    result.extend(wrap(&format!(
+        "Process EcoQoS policy: {}",
+        app.scheduling.qos.map_or("--", |qos| qos.label())
+    )));
     let priority = app.scheduling.report.as_ref();
     let affinity = app.scheduling.affinity.as_ref();
     if let Some(current) = priority.and_then(|r| r.current).filter(|c| !c.editable()) {

@@ -35,6 +35,7 @@ impl Fixture {
     fn deliver(&mut self, request: SchedulingRequest, report: PriorityReport) -> bool {
         self.results
             .send(SchedulingResult {
+                qos: None,
                 affinity: None,
                 generation: request.generation,
                 identity: request.identity,
@@ -87,6 +88,7 @@ impl Fixture {
         }
         self.results
             .send(SchedulingResult {
+                qos: None,
                 generation: request.generation,
                 identity: request.identity,
                 report: priority,
@@ -302,6 +304,7 @@ fn affinity_ready(f: &mut Fixture) {
     let request = f.requests.try_recv().unwrap();
     f.results
         .send(SchedulingResult {
+            qos: None,
             generation: request.generation,
             identity: request.identity,
             report: report(PriorityClass::Normal),
@@ -341,6 +344,7 @@ fn scheduling_affinity_toggle_applies_once_and_restore_and_pause_guards_remain()
     affinity.outcome = PriorityOutcome::Changed;
     f.results
         .send(SchedulingResult {
+            qos: None,
             generation: request.generation,
             identity: request.identity,
             report: report(PriorityClass::Normal),
@@ -468,6 +472,7 @@ fn scheduling_affinity_rejects_reopened_results_and_reveals_failed_application()
     f.app.open_selected_process_info_dialog().unwrap();
     f.results
         .send(SchedulingResult {
+            qos: None,
             generation: old.generation,
             identity: old.identity,
             report: report(PriorityClass::Normal),
@@ -489,6 +494,7 @@ fn scheduling_affinity_rejects_reopened_results_and_reveals_failed_application()
     );
     f.results
         .send(SchedulingResult {
+            qos: None,
             generation: request.generation,
             identity: request.identity,
             report: report(PriorityClass::Normal),
@@ -770,6 +776,7 @@ fn scheduling_checkbox_reflects_readback_and_keeps_the_last_cpu_enabled() {
     failed.outcome = PriorityOutcome::Failed("Access denied".into());
     f.results
         .send(SchedulingResult {
+            qos: None,
             generation: request.generation,
             identity: request.identity,
             report: report(PriorityClass::Normal),
@@ -800,4 +807,95 @@ fn scheduling_wrapped_radio_arrow_changes_apply_but_entering_the_group_does_not(
     let text = render_app_to_text(&f.app, 60, 18);
     assert!(text.contains("(*) Normal"));
     assert!(text.contains("Access denied"));
+}
+
+#[test]
+fn scheduling_displays_process_policy_and_unavailable_state() {
+    let mut app = make_test_app(1, 10);
+    for (policy, label) in [
+        (None, "--"),
+        (Some(crate::model::scheduling::ProcessQos::Eco), "Enabled"),
+        (
+            Some(crate::model::scheduling::ProcessQos::Disabled),
+            "Explicitly disabled",
+        ),
+        (
+            Some(crate::model::scheduling::ProcessQos::SystemManaged),
+            "System managed",
+        ),
+    ] {
+        app.scheduling.qos = policy;
+        let text = crate::ui::scheduling::lines(&app, 120, app.theme())
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains(&format!("Process EcoQoS policy: {label}")));
+    }
+}
+
+fn deliver_qos(f: &mut Fixture, request: SchedulingRequest) {
+    f.results
+        .send(SchedulingResult {
+            generation: request.generation,
+            identity: request.identity,
+            report: report(PriorityClass::Normal),
+            affinity: None,
+            qos: Some(crate::model::scheduling::ProcessQos::SystemManaged),
+        })
+        .unwrap();
+    assert!(f.app.poll_scheduling_results());
+}
+
+#[test]
+fn scheduling_exit_invalidates_qos_without_refresh_and_rejects_late_policy() {
+    for pending in [false, true] {
+        let mut f = Fixture::new();
+        let initial = f.requests.try_recv().unwrap();
+        deliver_qos(&mut f, initial);
+        assert!(f.app.scheduling.qos.is_some());
+        // An unrelated idle poll must keep the last successful live policy.
+        assert!(!f.app.poll_scheduling_results());
+        assert!(f.app.scheduling.qos.is_some());
+        if pending {
+            f.app.refresh_scheduling();
+        }
+        f.app.snapshot.processes.remove(0);
+        assert!(!f.app.process_info_target_is_currently_live());
+        assert_eq!(f.app.poll_scheduling_results(), !pending);
+        assert!(f.app.scheduling.qos.is_none());
+        if pending {
+            let late = f.requests.try_recv().unwrap();
+            deliver_qos(&mut f, late);
+            assert!(f.app.scheduling.qos.is_none());
+            assert!(!f.app.scheduling.pending);
+        }
+        f.app.refresh_scheduling();
+        assert!(f.requests.try_recv().is_err());
+        assert!(render_app_to_text(&f.app, 160, 35).contains("Process EcoQoS policy: --"));
+    }
+}
+
+#[test]
+fn scheduling_refresh_invalidates_qos_on_failed_read_or_request() {
+    for failed_request in [false, true] {
+        let mut f = Fixture::new();
+        let initial = f.requests.try_recv().unwrap();
+        deliver_qos(&mut f, initial);
+        assert!(f.app.scheduling.qos.is_some());
+        if failed_request {
+            drop(f.requests);
+            f.app.refresh_scheduling();
+            assert!(f.app.scheduling.notice.is_some());
+        } else {
+            f.app.refresh_scheduling();
+            assert!(f.app.scheduling.qos.is_none());
+            assert!(f.app.scheduling.pending);
+            let request = f.requests.try_recv().unwrap();
+            assert!(f.deliver(request, PriorityReport::unavailable("Access denied".into())));
+        }
+        assert!(f.app.scheduling.qos.is_none());
+        assert!(!f.app.scheduling.pending);
+        assert!(render_app_to_text(&f.app, 160, 35).contains("Process EcoQoS policy: --"));
+    }
 }

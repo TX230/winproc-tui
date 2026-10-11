@@ -11,6 +11,7 @@ use std::sync::mpsc::TryRecvError;
 
 pub(crate) struct SchedulingView {
     pub(crate) affinity: Option<AffinityReport>,
+    pub(crate) qos: Option<crate::model::scheduling::ProcessQos>,
     pub(crate) affinity_focused: bool,
     pub(crate) affinity_selected: usize,
     pub(crate) affinity_draft: usize,
@@ -26,6 +27,7 @@ impl Default for SchedulingView {
     fn default() -> Self {
         Self {
             affinity: None,
+            qos: None,
             affinity_focused: false,
             affinity_selected: 0,
             affinity_draft: 0,
@@ -98,6 +100,7 @@ impl App {
             return;
         }
         if !self.process_info_target_is_currently_live() {
+            self.scheduling.qos = None;
             self.scheduling.notice = Some("Process exited or no live process is selected.".into());
             return;
         }
@@ -113,6 +116,7 @@ impl App {
         let Some(target) = self.process_info_target.as_ref() else {
             return;
         };
+        self.scheduling.qos = None;
         match self.scheduling_worker.request(SchedulingRequest {
             generation: self.process_info_generation,
             identity: target.identity.clone(),
@@ -129,7 +133,10 @@ impl App {
     }
 
     pub(crate) fn poll_scheduling_results(&mut self) -> bool {
-        let mut changed = false;
+        let target_is_live = self.show_process_info_dialog
+            && self.activity() != AppActivity::LogView
+            && self.process_info_target_is_currently_live();
+        let mut changed = !target_is_live && self.scheduling.qos.take().is_some();
         loop {
             match self.scheduling_worker.try_recv() {
                 Ok(result) => {
@@ -163,6 +170,7 @@ impl App {
                         self.scheduling.affinity = Some(report);
                     }
 
+                    self.scheduling.qos = result.qos.filter(|_| target_is_live);
                     self.scheduling.report = Some(result.report);
                     self.scheduling.pending = false;
                     self.scheduling.applying = false;

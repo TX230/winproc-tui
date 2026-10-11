@@ -629,3 +629,7 @@ Exact byte values in Graph cursor labels, comparison captions, and Samples have 
 ## Process Info Threads
 
 The on-demand thread table uses Toolhelp Thread32 enumeration for TID and base priority. GetThreadDescription supplies the optional name. GetThreadTimes supplies cumulative kernel plus user CPU time, displayed in seconds to three decimal places. GetThreadIdealProcessorEx supplies the preferred processor group and logical CPU number, displayed as group:CPU. This is neither the currently executing CPU nor hard affinity. Unavailable fields use `--`; a thread without a name also displays `--`. These fields belong to Process Info only, outside normal samples and recording schemas. No thread-level QoS or interval CPU utilization is collected.
+
+## Process EcoQoS policy
+
+Scheduling reads `GetProcessInformation(ProcessPowerThrottling)` using `PROCESS_POWER_THROTTLING_STATE` version 1. The execution-speed bit in ControlMask determines whether the policy is explicit: absent means System managed; present with the StateMask bit set means Enabled; present with that bit clear means Explicitly disabled. Pending refreshes, failed policy reads or requests, and detected target exits display `--` instead of retaining an earlier policy. Other mask bits do not determine this value. This is the process policy, not the effective QoS or CPU placement of each thread. It remains outside sampling, recording, and exports. See [GetProcessInformation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocessinformation).

@@ -40,6 +40,7 @@ pub(crate) struct SchedulingResult {
     pub(crate) identity: ProcessIdentity,
     pub(crate) report: PriorityReport,
     pub(crate) affinity: Option<AffinityReport>,
+    pub(crate) qos: Option<crate::model::scheduling::ProcessQos>,
 }
 
 pub(crate) struct SchedulingWorker {
@@ -127,12 +128,19 @@ impl SchedulingWorker {
                 } else {
                     None
                 };
+                let qos = session
+                    .as_ref()
+                    .filter(|(generation, identity, _)| {
+                        *generation == request.generation && *identity == request.identity
+                    })
+                    .and_then(|(_, _, session)| session.process.qos());
                 if results
                     .send(SchedulingResult {
                         generation: request.generation,
                         identity: request.identity,
                         report,
                         affinity,
+                        qos,
                     })
                     .is_err()
                 {
@@ -363,6 +371,45 @@ impl NativeProcess {
         }
         process.creation_time = creation_time;
         Ok(process)
+    }
+
+    fn qos(&self) -> Option<crate::model::scheduling::ProcessQos> {
+        if self.live_creation_time().ok()? != self.creation_time {
+            return None;
+        }
+        // PROCESS_POWER_THROTTLING_STATE and ProcessPowerThrottling (4) are
+        // documented Windows SDK declarations missing from winapi 0.3.9.
+        #[repr(C)]
+        struct PowerThrottling {
+            version: u32,
+            control: u32,
+            state: u32,
+        }
+        let mut value = PowerThrottling {
+            version: 1,
+            control: 0,
+            state: 0,
+        };
+        // SAFETY: retained verified process handle, DWORD-aligned C structure,
+        // initialized version, and exact structure size for this information class.
+        if unsafe {
+            winapi::um::processthreadsapi::GetProcessInformation(
+                self.handle,
+                4,
+                (&mut value as *mut PowerThrottling).cast(),
+                std::mem::size_of::<PowerThrottling>() as u32,
+            )
+        } == 0
+        {
+            return None;
+        }
+        if self.live_creation_time().ok()? != self.creation_time {
+            return None;
+        }
+        Some(crate::model::scheduling::ProcessQos::from_masks(
+            value.control,
+            value.state,
+        ))
     }
 
     fn live_creation_time(&self) -> Result<u64, String> {
@@ -857,5 +904,28 @@ mod tests {
         assert!(
             matches!(report.outcome, PriorityOutcome::Failed(message) if message == "Process exited")
         );
+    }
+}
+
+#[cfg(test)]
+mod qos_native_tests {
+    use super::*;
+    #[test]
+    fn current_process_qos_can_be_queried_without_changing_it() {
+        let pid = std::process::id();
+        let mut system = sysinfo::System::new();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
+            true,
+            sysinfo::ProcessRefreshKind::nothing(),
+        );
+        let process = system.process(sysinfo::Pid::from_u32(pid)).unwrap();
+        let identity = ProcessIdentity {
+            pid,
+            name: process.name().to_string_lossy().into_owned(),
+            start_time: Some(process.start_time()),
+        };
+        let native = NativeProcess::open(&identity).unwrap();
+        assert!(native.qos().is_some());
     }
 }

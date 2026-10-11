@@ -89,3 +89,40 @@ impl PriorityReport {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessQos {
+    SystemManaged,
+    Eco,
+    Disabled,
+}
+impl ProcessQos {
+    pub(crate) fn from_masks(control: u32, state: u32) -> Self {
+        if control & 1 == 0 {
+            Self::SystemManaged
+        } else if state & 1 != 0 {
+            Self::Eco
+        } else {
+            Self::Disabled
+        }
+    }
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::SystemManaged => "System managed",
+            Self::Eco => "Enabled",
+            Self::Disabled => "Explicitly disabled",
+        }
+    }
+}
+#[cfg(test)]
+mod qos_tests {
+    use super::ProcessQos;
+    #[test]
+    fn execution_speed_policy_uses_control_and_state_masks() {
+        assert_eq!(ProcessQos::from_masks(0, 0), ProcessQos::SystemManaged);
+        assert_eq!(ProcessQos::from_masks(0, 1), ProcessQos::SystemManaged);
+        assert_eq!(ProcessQos::from_masks(1, 1), ProcessQos::Eco);
+        assert_eq!(ProcessQos::from_masks(1, 0), ProcessQos::Disabled);
+        assert_eq!(ProcessQos::from_masks(2, 2), ProcessQos::SystemManaged);
+    }
+}
