@@ -1232,6 +1232,7 @@ pub(crate) struct App {
     pub(crate) details_target: DetailsTarget,
     pub(crate) details_metric: DetailsMetric,
     pub(crate) details_sample_selected: usize,
+    pub(crate) sample_selection: Option<(GraphId, DateTime<Local>, DateTime<Local>)>,
     pub(crate) details_sample_offset: usize,
     pub(crate) details_sample_page_size: usize,
     pub(crate) samples_scrollbar_dragging: bool,
@@ -1538,6 +1539,7 @@ impl App {
             details_target: DetailsTarget::Process,
             details_metric: DetailsMetric::Private,
             details_sample_selected: 0,
+            sample_selection: None,
             details_sample_offset: 0,
             details_sample_page_size: 1,
             samples_scrollbar_dragging: false,
@@ -2571,6 +2573,7 @@ impl App {
         let Some(index) = self.graph_entries.iter().position(|entry| entry.id == id) else {
             return false;
         };
+        self.sample_selection = None;
         let selected_time = self.selected_details_sample_time();
         let description = self.graph_entries[index].source.description();
         let removed_active = self.active_graph_id == Some(id);
@@ -2955,6 +2958,7 @@ impl App {
             return true;
         }
         let selected_time = self.selected_details_sample_time();
+        self.sample_selection = None;
         self.active_graph_id = Some(id);
         if let Some(time) = selected_time {
             self.align_details_sample_selection_to_time(time);
@@ -3743,6 +3747,7 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_older(&mut self, amount: usize) {
+        self.sample_selection = None;
         self.details_sample_selected = self.details_sample_selected.saturating_sub(amount);
         self.ensure_details_sample_visible();
         self.details_live = false;
@@ -3751,6 +3756,7 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_newer(&mut self, amount: usize) {
+        self.sample_selection = None;
         self.details_sample_selected = self.details_sample_selected.saturating_add(amount);
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
@@ -3760,6 +3766,7 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_page_older(&mut self) {
+        self.sample_selection = None;
         let amount = self.details_sample_page_size.max(1);
         self.details_sample_selected = self.details_sample_selected.saturating_sub(amount);
         self.details_sample_offset = self.details_sample_offset.saturating_sub(amount);
@@ -3771,6 +3778,7 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_page_newer(&mut self) {
+        self.sample_selection = None;
         let amount = self.details_sample_page_size.max(1);
         self.details_sample_selected = self.details_sample_selected.saturating_add(amount);
         self.details_sample_offset = self.details_sample_offset.saturating_add(amount);
@@ -3782,6 +3790,7 @@ impl App {
     }
 
     pub(crate) fn set_details_sample_offset(&mut self, offset: usize) {
+        self.sample_selection = None;
         let sample_count = self.selected_sample_count();
         if sample_count == 0 {
             self.details_sample_offset = 0;
@@ -3803,6 +3812,7 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_oldest(&mut self) {
+        self.sample_selection = None;
         self.details_sample_selected = 0;
         self.details_sample_offset = 0;
         self.details_live = false;
@@ -3823,6 +3833,7 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_latest(&mut self) {
+        self.sample_selection = None;
         self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
         self.scroll_details_samples_to_latest();
         self.details_live = true;
@@ -3831,6 +3842,7 @@ impl App {
     }
 
     pub(crate) fn set_details_sample_selected(&mut self, index: usize) {
+        self.sample_selection = None;
         self.details_sample_selected = index;
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
@@ -3840,6 +3852,7 @@ impl App {
     }
 
     pub(crate) fn set_details_sample_selected_manual(&mut self, index: usize) {
+        self.sample_selection = None;
         self.details_sample_selected = index;
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
@@ -4236,6 +4249,22 @@ impl App {
     }
 
     pub(crate) fn clamp_details_sample_selection(&mut self) {
+        if let Some((id, anchor, end)) = self.sample_selection {
+            let samples = self
+                .active_graph_slot()
+                .map(|slot| self.graph_slot_samples(slot))
+                .unwrap_or_default();
+            if self.active_graph_id == Some(id)
+                && samples.iter().any(|sample| sample.captured_at == anchor)
+                && let Some(index) = samples.iter().position(|sample| sample.captured_at == end)
+            {
+                self.details_sample_selected = index;
+                self.details_live = false;
+            } else {
+                self.sample_selection = None;
+                self.status = "Sample selection expired with retained history".into();
+            }
+        }
         let sample_count = self.selected_sample_count();
         if sample_count == 0 {
             self.details_sample_selected = 0;

@@ -334,6 +334,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         details_target: DetailsTarget::Process,
         details_metric: DetailsMetric::Private,
         details_sample_selected: 0,
+        sample_selection: None,
         details_sample_offset: 0,
         details_sample_page_size: 1,
         samples_scrollbar_dragging: false,

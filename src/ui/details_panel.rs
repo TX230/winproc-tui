@@ -576,8 +576,9 @@ fn draw_samples_subpanel(
     let (start, end) = sample_viewport_bounds(samples.len(), view_state.offset, row_capacity);
     for (index, sample) in samples[start..end].iter().enumerate() {
         let sample_index = start + index;
-        let sample_selected =
-            view_state.selected_exact && sample_index == view_state.selected_index;
+        let sample_selected = (view_state.selected_exact
+            && sample_index == view_state.selected_index)
+            || app.sample_time_is_selected(sample.captured_at);
         let style = if sample_selected {
             Style::default()
                 .fg(theme.text)

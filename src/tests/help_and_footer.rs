@@ -525,7 +525,8 @@ fn footer_shortcuts_follow_the_focused_panel() {
     assert!(graph.contains("Shift+A/B Jump A/B"), "{graph}");
 
     app.focused_panel = FocusedPanel::DetailsSamples;
-    let samples = render_app_to_text(&app, 300, 45);
+    let samples = render_app_to_text(&app, 360, 45);
+    assert!(samples.contains("Shift+PgUp/PgDn Select page"), "{samples}");
     assert!(!samples.contains("↑/← Older"), "{samples}");
     assert!(!samples.contains("↓/→ Newer"), "{samples}");
     assert!(samples.contains("Del Remove"), "{samples}");

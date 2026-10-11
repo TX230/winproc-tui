@@ -936,11 +936,26 @@ impl App {
         ) && self.show_details
         {
             match key.code {
+                KeyCode::PageUp | KeyCode::PageDown
+                    if key.modifiers == KeyModifiers::SHIFT
+                        && self.focused_panel == FocusedPanel::DetailsSamples =>
+                {
+                    self.extend_sample_selection(key.code == KeyCode::PageUp, true);
+                    return Ok(());
+                }
                 KeyCode::Up if key.modifiers == KeyModifiers::SHIFT => {
+                    if self.focused_panel == FocusedPanel::DetailsSamples {
+                        self.extend_sample_selection(true, false);
+                        return Ok(());
+                    }
                     self.move_active_graph_earlier();
                     return Ok(());
                 }
                 KeyCode::Down if key.modifiers == KeyModifiers::SHIFT => {
+                    if self.focused_panel == FocusedPanel::DetailsSamples {
+                        self.extend_sample_selection(false, false);
+                        return Ok(());
+                    }
                     self.move_active_graph_later();
                     return Ok(());
                 }

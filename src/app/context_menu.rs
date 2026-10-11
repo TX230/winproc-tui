@@ -170,17 +170,32 @@ impl App {
                 ContextAction::SetPoint(id, sample.captured_at, 'B'),
                 sample.value.is_some(),
             );
+            let range = self.active_graph_id == Some(id)
+                && self.sample_time_is_selected(sample.captured_at);
+            let samples = self.graph_slot_samples(&entry.source);
+            let copy = if range {
+                self.samples_clipboard_text()
+            } else {
+                samples
+                    .iter()
+                    .position(|s| s.captured_at == sample.captured_at)
+                    .map(|index| {
+                        super::clipboard::sample_row_text(
+                            &samples,
+                            index,
+                            entry.source.value_format(),
+                            self.show_sample_delta,
+                        )
+                    })
+            };
             menu.add(
-                "Copy sample",
-                ContextAction::Copy(format!(
-                    "{}\t{}",
-                    sample.captured_at.format("%H:%M:%S"),
-                    super::clipboard::format_graph_sample_value(
-                        sample.value,
-                        entry.source.value_format()
-                    )
-                )),
-                true,
+                if range {
+                    "Copy selection"
+                } else {
+                    "Copy sample"
+                },
+                ContextAction::Copy(copy.clone().unwrap_or_default()),
+                copy.is_some(),
             );
         }
         menu.add(

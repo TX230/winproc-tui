@@ -592,7 +592,7 @@ fn shift_up_down_reorders_active_graph_without_changing_shared_state() {
     assert_eq!(app.graph_time_window_right_at, window_right);
     assert_eq!(app.ab_comparison, comparison);
 
-    app.focused_panel = FocusedPanel::DetailsSamples;
+    app.focused_panel = FocusedPanel::DetailsGraph;
     app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT))
         .unwrap();
     assert_eq!(
@@ -1977,5 +1977,44 @@ fn ctrl_arrows_follow_visible_panels_without_mutating_content() {
             .unwrap();
         assert_eq!(app.focused_panel, panel);
         assert_eq!(app.resource_panel, resource);
+    }
+}
+
+#[test]
+fn samples_click_selects_one_scrolled_row_and_clears_keyboard_range() {
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    for offset in 0..100 {
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+    }
+    let screen = Rect::new(0, 0, 160, 60);
+    app::sync_layout_state(&mut app, screen);
+    app.set_details_sample_selected_manual(80);
+    app.focused_panel = FocusedPanel::DetailsSamples;
+    let area = details_samples_area_for_app(screen, &app).unwrap();
+    // A forwarded modifier must not turn a click into mouse range selection.
+    for modifiers in [KeyModifiers::NONE, KeyModifiers::SHIFT] {
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+            .unwrap();
+        assert!(app.sample_selection.is_some());
+        assert!(app.details_sample_offset > 0);
+        let target = app.details_sample_offset + 2;
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: area.x + 3,
+                row: area.y + 3,
+                modifiers,
+            },
+            screen,
+        );
+        assert_eq!(app.details_sample_selected, target);
+        assert!(app.sample_selection.is_none());
+        assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 1);
+        assert!(!app.details_live);
     }
 }

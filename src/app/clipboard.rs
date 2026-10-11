@@ -177,68 +177,91 @@ impl App {
     }
 
     fn copy_selected_sample_row_to_clipboard(&mut self) -> Result<()> {
-        let Some(row) = self.selected_sample_clipboard_row() else {
-            self.status = "No sample selected".to_string();
+        let Some(text) = self.samples_clipboard_text() else {
+            self.status = "No retained sample selection to copy".into();
             return Ok(());
         };
-        let text = row.text();
-
-        match copy_text_to_clipboard(&text) {
-            Ok(()) => {
-                self.status = format!(
-                    "Copied row: {} {}={}",
-                    row.time, row.metric_label, row.value
-                );
-            }
-            Err(error) => {
-                self.status = format!("Clipboard copy failed: {error}");
-            }
-        }
-
+        self.status = match copy_text_to_clipboard(&text) {
+            Ok(()) => format!("Copied {} sample rows", text.lines().count()),
+            Err(error) => format!("Clipboard copy failed: {error}"),
+        };
         Ok(())
     }
 
-    fn selected_sample_clipboard_row(&self) -> Option<SampleClipboardRow> {
+    pub(crate) fn samples_clipboard_text(&self) -> Option<String> {
         let slot = self.active_graph_slot()?;
         let samples = self.graph_slot_samples(slot);
-        let sample = samples.get(self.details_sample_selected)?;
-        let value_format = slot.value_format();
-        let value = format_graph_sample_value(sample.value, value_format);
-        let current_value = sample.value;
-        let previous_value = self
-            .details_sample_selected
-            .checked_sub(1)
-            .and_then(|index| samples.get(index))
-            .and_then(|previous| previous.value);
-        Some(SampleClipboardRow {
-            marker: sample_ab_marker(self.active_ab_comparison(), sample.captured_at),
-            time: sample.captured_at.format("%H:%M:%S").to_string(),
-            metric_label: slot.metric_label(),
-            value,
-            delta: format_details_sample_delta(current_value, previous_value, value_format),
+        let (start, end) = if let Some((id, anchor, end)) = self.sample_selection {
+            if self.active_graph_id != Some(id) {
+                return None;
+            }
+            let a = samples.iter().position(|s| s.captured_at == anchor)?;
+            let b = samples.iter().position(|s| s.captured_at == end)?;
+            (a.min(b), a.max(b))
+        } else {
+            (self.details_sample_selected, self.details_sample_selected)
+        };
+        samples.get(start..=end)?;
+        Some(
+            (start..=end)
+                .map(|index| {
+                    sample_row_text(&samples, index, slot.value_format(), self.show_sample_delta)
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+    }
+
+    pub(crate) fn sample_time_is_selected(&self, time: chrono::DateTime<chrono::Local>) -> bool {
+        self.sample_selection.is_some_and(|(id, a, b)| {
+            self.active_graph_id == Some(id) && time >= a.min(b) && time <= a.max(b)
         })
     }
-}
 
-struct SampleClipboardRow {
-    marker: &'static str,
-    time: String,
-    metric_label: &'static str,
-    value: String,
-    delta: String,
-}
-
-impl SampleClipboardRow {
-    fn text(&self) -> String {
-        let mut fields = Vec::new();
-        if !self.marker.is_empty() {
-            fields.push(self.marker.to_string());
+    pub(crate) fn extend_sample_selection(&mut self, older: bool, by_page: bool) {
+        let Some(id) = self.active_graph_id else {
+            return;
+        };
+        self.clamp_details_sample_selection();
+        let Some(current) = self.selected_details_sample_time() else {
+            return;
+        };
+        let anchor = self
+            .sample_selection
+            .filter(|(graph, _, _)| *graph == id)
+            .map_or(current, |(_, a, _)| a);
+        match (older, by_page) {
+            (true, true) => self.select_details_sample_page_older(),
+            (false, true) => self.select_details_sample_page_newer(),
+            (true, false) => self.select_details_sample_older(1),
+            (false, false) => self.select_details_sample_newer(1),
         }
-        fields.push(self.time.clone());
-        fields.push(self.value.clone());
-        fields.push(self.delta.clone());
-        fields.join("\t")
+        if let Some(end) = self.selected_details_sample_time() {
+            self.sample_selection = Some((id, anchor, end));
+            self.details_live = false;
+        }
     }
+}
+
+pub(super) fn sample_row_text(
+    samples: &[super::GraphSample],
+    index: usize,
+    format: GraphValueFormat,
+    delta: bool,
+) -> String {
+    let sample = &samples[index];
+    let mut fields = vec![
+        sample.captured_at.format("%H:%M:%S").to_string(),
+        format_graph_sample_value(sample.value, format),
+    ];
+    if delta {
+        fields.push(format_details_sample_delta(
+            sample.value,
+            index.checked_sub(1).and_then(|i| samples[i].value),
+            format,
+        ));
+    }
+    fields.join("\t")
 }
 
 pub(super) fn selected_process_row_text(process: &ProcessRow, columns: &[MetricColumn]) -> String {
@@ -460,27 +483,6 @@ fn format_details_delta(delta: f64, value_format: GraphValueFormat) -> String {
         GraphValueFormat::Bytes | GraphValueFormat::Count => {
             format_signed_integer(delta.round() as i128)
         }
-    }
-}
-
-fn sample_ab_marker(
-    comparison: Option<&crate::app::AbComparison>,
-    captured_at: chrono::DateTime<chrono::Local>,
-) -> &'static str {
-    let Some(comparison) = comparison else {
-        return "";
-    };
-    let is_a = comparison
-        .a
-        .is_some_and(|point| point.captured_at == captured_at);
-    let is_b = comparison
-        .b
-        .is_some_and(|point| point.captured_at == captured_at);
-    match (is_a, is_b) {
-        (true, true) => "AB",
-        (true, false) => "A",
-        (false, true) => "B",
-        (false, false) => "",
     }
 }
 

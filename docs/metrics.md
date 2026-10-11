@@ -633,3 +633,5 @@ The on-demand thread table uses Toolhelp Thread32 enumeration for TID and base p
 ## Process EcoQoS policy
 
 Scheduling reads `GetProcessInformation(ProcessPowerThrottling)` using `PROCESS_POWER_THROTTLING_STATE` version 1. The execution-speed bit in ControlMask determines whether the policy is explicit: absent means System managed; present with the StateMask bit set means Enabled; present with that bit clear means Explicitly disabled. Pending refreshes, failed policy reads or requests, and detected target exits display `--` instead of retaining an earlier policy. Other mask bits do not determine this value. This is the process policy, not the effective QoS or CPU placement of each thread. It remains outside sampling, recording, and exports. See [GetProcessInformation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocessinformation).
+
+Samples clipboard rows contain tab-separated time and raw value, followed by the previous-sample delta only when Delta is visible. Multiple selected rows are newline-separated. Headings and A/B markers are omitted; unavailable values remain `--`.

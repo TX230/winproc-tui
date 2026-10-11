@@ -131,7 +131,9 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         }
         FocusedPanel::DetailsSamples => {
             vec![
-                ("Shift+↑/↓", "Move"),
+                ("Shift+↑/↓", "Select"),
+                ("Shift+PgUp/PgDn", "Select page"),
+                ("Ctrl+C", "Copy"),
                 ("s", "Reorder"),
                 ("m", "Raw/MA5"),
                 ("Del", "Remove"),

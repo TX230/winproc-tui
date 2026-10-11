@@ -554,8 +554,8 @@ const SAMPLES_ROWS: &[HelpItem] = &[
         label: "Browse past samples; press End to follow the latest sample.",
     },
     HelpItem {
-        key: "Shift+↑/↓",
-        label: "Move active Graph",
+        key: "Shift+↑/↓, Shift+PgUp/PgDn",
+        label: "Select by row/page; Ctrl+C copies selected samples",
     },
     HelpItem {
         key: "s",

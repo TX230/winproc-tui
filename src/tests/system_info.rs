@@ -267,7 +267,7 @@ fn ctrl_c_copies_selected_sample_row_text_when_samples_are_focused() {
         app::clipboard::last_copied_text().as_deref(),
         Some("10:00:01\t1,234\t+1,134")
     );
-    assert_eq!(app.status, "Copied row: 10:00:01 PrivBytes=1,234");
+    assert_eq!(app.status, "Copied 1 sample rows");
 }
 
 #[test]
@@ -407,4 +407,113 @@ fn system_info_uses_latest_host_snapshot_while_paused_and_in_log_view() {
     app.copy_system_info_to_clipboard().unwrap();
     let log_copy = app::clipboard::last_copied_text().unwrap();
     assert!(log_copy.contains("Physical memory: 34.0 GB"), "{log_copy}");
+}
+
+#[test]
+fn sample_range_copy_extends_shrinks_and_uses_exact_times() {
+    let mut app = make_test_app(1, 10);
+    let first = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    for i in 0..4 {
+        app.process_history.record_snapshot(
+            first + chrono::Duration::seconds(i),
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+    }
+    assign_private_graph(&mut app);
+    app.focused_panel = FocusedPanel::DetailsSamples;
+    app.select_details_sample_latest();
+    app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT))
+        .unwrap();
+    app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT))
+        .unwrap();
+    let text = app.samples_clipboard_text().unwrap();
+    assert_eq!(text.lines().count(), 3);
+    assert!(text.starts_with("10:00:01\t"));
+    assert_eq!(
+        app.sample_selection.unwrap().1,
+        first + chrono::Duration::seconds(3)
+    );
+    app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
+        .unwrap();
+    assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 2);
+    app.show_sample_delta = false;
+    assert!(
+        app.samples_clipboard_text()
+            .unwrap()
+            .lines()
+            .all(|line| line.split('\t').count() == 2)
+    );
+    app.process_history.record_snapshot(
+        first + chrono::Duration::seconds(4),
+        &app.snapshot.processes,
+        &app.normalized_watch_names,
+    );
+    app.clamp_details_sample_selection();
+    assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 2);
+    app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.sample_selection.is_none());
+    app.sample_selection = Some((
+        app.active_graph_id.unwrap(),
+        first - chrono::Duration::seconds(1),
+        first,
+    ));
+    assert!(app.samples_clipboard_text().is_none());
+    app.clamp_details_sample_selection();
+    assert!(app.sample_selection.is_none());
+    assert!(app.status.contains("expired"));
+}
+
+#[test]
+fn sample_page_selection_preserves_anchor_reverses_and_clamps() {
+    let mut app = make_test_app(1, 10);
+    let first = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    for i in 0..12 {
+        app.process_history.record_snapshot(
+            first + chrono::Duration::seconds(i),
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+    }
+    assign_private_graph(&mut app);
+    app.focused_panel = FocusedPanel::DetailsSamples;
+    app.details_sample_page_size = 3;
+    app.set_details_sample_selected_manual(5);
+    for (key, expected) in [
+        (KeyCode::PageUp, 2),
+        (KeyCode::PageUp, 0),
+        (KeyCode::PageDown, 3),
+        (KeyCode::PageDown, 6),
+        (KeyCode::Down, 7),
+        (KeyCode::PageDown, 10),
+        (KeyCode::PageDown, 11),
+    ] {
+        app.on_key(KeyEvent::new(key, KeyModifiers::SHIFT)).unwrap();
+        assert_eq!(app.details_sample_selected, expected);
+        assert_eq!(
+            app.sample_selection.unwrap().1,
+            first + chrono::Duration::seconds(5)
+        );
+        assert_eq!(
+            app.samples_clipboard_text().unwrap().lines().count(),
+            expected.abs_diff(5) + 1
+        );
+        assert!(!app.details_live);
+        assert!(app.details_sample_selected >= app.details_sample_offset);
+        assert!(
+            app.details_sample_selected < app.details_sample_offset + app.details_sample_page_size
+        );
+    }
+    app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.sample_selection.is_none());
+    assert_eq!(app.details_sample_selected, 8);
+    app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::SHIFT))
+        .unwrap();
+    assert_eq!(
+        app.sample_selection.unwrap().1,
+        first + chrono::Duration::seconds(8)
+    );
+    assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 4);
 }
