@@ -83,16 +83,22 @@ impl App {
             let available =
                 existing.is_some() || self.graph_entries.len() < super::state::GRAPH_LIMIT;
             menu.add(
-                if available {
-                    "Show graph"
+                if existing.is_some() {
+                    "Go to Graph Slot"
+                } else if available {
+                    "Add to Graph Slot"
                 } else {
-                    "Show graph (16 Graph limit)"
+                    "Add to Graph Slot (16 Graph limit)"
                 },
                 ContextAction::ShowGraph(source),
                 available,
             );
             if let Some(id) = existing {
-                menu.add("Remove graph", ContextAction::RemoveGraph(id), true);
+                menu.add(
+                    "Remove from Graph Slot",
+                    ContextAction::RemoveGraph(id),
+                    true,
+                );
             }
         }
         menu.add(
@@ -100,22 +106,11 @@ impl App {
             ContextAction::ProcessInfo(Box::new(target.clone()), ProcessInfoTab::Metrics),
             true,
         );
-        let live = self.activity() != AppActivity::LogView;
-        menu.add(
-            "Files",
-            ContextAction::ProcessInfo(Box::new(target.clone()), ProcessInfoTab::Files),
-            live,
-        );
-        menu.add(
-            "Network",
-            ContextAction::ProcessInfo(Box::new(target.clone()), ProcessInfoTab::Network),
-            live,
-        );
         menu.add(
             if self.is_tracked_process_name(&target.identity.name) {
-                "Untrack process name"
+                "Untrack process"
             } else {
-                "Track process name"
+                "Track process"
             },
             ContextAction::Track(target.identity.name.clone()),
             self.activity() == AppActivity::Live,
@@ -135,16 +130,6 @@ impl App {
         menu.add(
             "Copy table",
             ContextAction::Copy(self.process_table_clipboard_text()),
-            true,
-        );
-        menu.add(
-            "Copy PID",
-            ContextAction::Copy(target.identity.pid.to_string()),
-            true,
-        );
-        menu.add(
-            "Copy process name",
-            ContextAction::Copy(target.identity.name),
             true,
         );
         menu

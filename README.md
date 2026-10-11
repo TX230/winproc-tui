@@ -71,7 +71,7 @@ Move focus to a Graph or Samples and choose a sample with `Left` / `Right`. Pres
 
 ### Track and Record Processes
 
-1. Select a Process or PID cell and press `Space` or `t`, or choose **Track process name** from its right-click menu to add that process name to the working Tracking List.
+1. Select a Process or PID cell and press `Space` or `t`, or choose **Track process** from its right-click menu to add that process name to the working Tracking List.
 2. Use `Ctrl+T` to open a saved Investigation Profile. Press `Ctrl+S` to save the active Profile, or use `Profile > Save As` to save the working Tracking List under a new profile name.
 3. Press `Ctrl+R`, choose a log path and a `1s`, `2s`, `5s`, or `10s` recording interval, then start recording.
 4. Press `Ctrl+R` again and confirm with `y` to stop. `Enter`, `Esc`, or `n` continues recording.

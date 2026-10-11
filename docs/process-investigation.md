@@ -137,13 +137,13 @@ Passive tabs keep navigation on their content without creating a false focus sto
 
 Ctrl+F enters filter editing in Files, DLLs, Environment, and Network. Outside editing, `/` also starts the global Network or Environment filter, or returns file search from Mode/Results to Query. The activation key is consumed; subsequent slashes are literal input. Detail views retain their own input priority. Within the editor, arrows and Home/End move the text cursor, Backspace/Delete erase, Ctrl+U clears text, Enter applies, and Ctrl+Left/Right changes Process Info tabs without editing the text. In Process Info, Esc leaves editing and focuses the tab row while preserving the filter. In the Processes and global Network editors, Esc retains its clear-and-exit behavior. Tab leaves editing and resumes control navigation. Outside explicit editing, list navigation and refresh retain their contextual meanings; direct typing remains available. The Processes filter and global Network editor use the same editing keys.
 
-Process context menus expose Process Info and live Files for their captured target. These routes use the same fixed-target opening actions as the Processes shortcuts. The Find by file workspace identifies its results as processes using the queried file, without implying account ownership.
+Process context menus expose Process Info for their captured target using the same fixed-target opening action as the Processes shortcut. Files and Network remain Process Info tabs; neither is a separate Processes context-menu action. The Find by file workspace identifies its results as processes using the queried file, without implying account ownership.
 
 Metrics identifies paused and recorded snapshots in its value heading and timestamp range. Files remains a live capture during display pause and shows when its result was received; that timestamp does not imply an atomic filesystem snapshot.
 
 Metrics keeps a stable order with general CPU, memory, GPU and I/O rows ahead of optional .NET runtime rows. Unavailable runtime values remain visible as `--`; temporary absence does not hide rows or imply that the process has no .NET runtime.
 
-Process context actions open the captured process lifetime, including Files and Network through the existing worker and activity boundaries. Endpoint context menus capture the displayed endpoint and owner metadata; opening Process Info still re-verifies the owning process's native creation time. Endpoint details and copy retain that captured row even if a later capture or selection changes.
+Endpoint context menus capture the displayed endpoint and owner metadata; opening Process Info still re-verifies the owning process's native creation time. Endpoint details and copy retain that captured row even if a later capture or selection changes.
 
 ## Threads
 

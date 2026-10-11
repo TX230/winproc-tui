@@ -37,9 +37,14 @@ fn show_graph_captures_process_lifetime_and_reveals_existing_source() {
         screen,
     );
     let menu = app.context_menu.clone().expect("menu");
-    assert_eq!(menu.items[0].label, "Show graph");
+    assert_eq!(menu.items[0].label, "Add to Graph Slot");
     assert!(app.graph_entries.is_empty());
     assert!(app.watch_list.is_empty());
+    let target = app::state::ProcessInfoDialogTarget {
+        identity: identity.clone(),
+        process: app.snapshot.processes[0].clone(),
+        lifecycle: app::ProcessLifecycle::Live,
+    };
     app.snapshot.processes[0].start_time = Some(99999);
     enter(&mut app);
     assert_eq!(app.graph_entries.len(), 1);
@@ -47,6 +52,14 @@ fn show_graph_captures_process_lifetime_and_reveals_existing_source() {
         app.graph_entries[0].source.process_identity(),
         Some(&identity)
     );
+    let existing_menu = app.process_context_menu(
+        target,
+        Some(app.graph_entries[0].source.clone()),
+        Position::new(0, 0),
+    );
+    assert_eq!(existing_menu.items[0].label, "Go to Graph Slot");
+    assert!(existing_menu.items[0].enabled);
+    assert_eq!(existing_menu.items[1].label, "Remove from Graph Slot");
     let id = app.graph_entries[0].id;
     app.show_details = false;
     app.open_context_menu(menu);
@@ -76,6 +89,10 @@ fn context_menu_limits_and_process_info_keep_fixed_targets() {
     app.selected_process_column_index = 2;
     menu_key(&mut app);
     assert!(!app.context_menu.as_ref().unwrap().items[0].enabled);
+    assert_eq!(
+        app.context_menu.as_ref().unwrap().items[0].label,
+        "Add to Graph Slot (16 Graph limit)"
+    );
     enter(&mut app);
     assert_eq!(app.graph_entries.len(), 16);
     assert!(app.context_menu.is_some());
@@ -89,9 +106,11 @@ fn context_menu_limits_and_process_info_keep_fixed_targets() {
     assert!(
         menu.items
             .iter()
-            .any(|i| i.label == "Track process name" && !i.enabled)
+            .any(|i| i.label == "Track process" && !i.enabled)
     );
-    assert!(menu.items.iter().any(|i| i.label == "Files" && !i.enabled));
+    assert!(!menu.items.iter().any(|i| {
+        ["Files", "Network", "Copy PID", "Copy process name"].contains(&i.label.as_str())
+    }));
 }
 
 #[test]

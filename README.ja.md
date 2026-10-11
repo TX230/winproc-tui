@@ -71,7 +71,7 @@ Graph または Samples にフォーカスを移し、`Left` / `Right` でサン
 
 ### プロセスを追跡・記録する
 
-1. Process または PID セルを選び、`Space` または `t`、あるいは右クリックメニューの **Track process name** でプロセス名を作業中の Tracking List へ追加します。
+1. Process または PID セルを選び、`Space` または `t`、あるいは右クリックメニューの **Track process** でプロセス名を作業中の Tracking List へ追加します。
 2. `Ctrl+T` から保存済み Investigation Profile を開けます。`Ctrl+S` で現在の Profile を上書き保存し、作業中の Tracking List に新しい名前を付けるときは `Profile > Save As` を使います。
 3. `Ctrl+R` を押し、保存先と `1s` / `2s` / `5s` / `10s` の記録間隔を選んで開始します。
 4. もう一度 `Ctrl+R` を押し、`y` で記録を終了します。`Enter`、`Esc`、`n` では記録を継続します。
