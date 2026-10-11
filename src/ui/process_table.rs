@@ -34,6 +34,7 @@ enum ProcessTitleSegmentKind {
     VisibleCount,
     ViewMode,
     TrackedOnly,
+    ShowExited,
     Filter,
 }
 
@@ -986,6 +987,13 @@ fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
             kind: ProcessTitleSegmentKind::TrackedOnly,
             label: process_tracked_only_label(app).to_string(),
         },
+        ProcessTitleSegment {
+            kind: ProcessTitleSegmentKind::ShowExited,
+            label: format!(
+                "[{}] Show exited(Shift+E)",
+                if app.show_exited { 'x' } else { ' ' }
+            ),
+        },
     ];
     let filter = app.active_filter_text();
     if !filter.is_empty() {
@@ -1015,6 +1023,13 @@ fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: 
             .remove_modifier(Modifier::BOLD),
         ProcessTitleSegmentKind::TrackedOnly => Style::default()
             .fg(theme.muted)
+            .remove_modifier(Modifier::BOLD),
+        ProcessTitleSegmentKind::ShowExited if app.process_show_exited_hovered => Style::default()
+            .fg(theme.text)
+            .bg(theme.focus_surface)
+            .add_modifier(Modifier::BOLD),
+        ProcessTitleSegmentKind::ShowExited => Style::default()
+            .fg(theme.text)
             .remove_modifier(Modifier::BOLD),
         ProcessTitleSegmentKind::Filter => Style::default()
             .fg(theme.warning)
@@ -1139,6 +1154,10 @@ fn title_separator(theme: Theme) -> Span<'static> {
             .fg(theme.muted)
             .remove_modifier(Modifier::BOLD),
     )
+}
+
+pub(crate) fn process_show_exited_control_area(area: Rect, app: &App) -> Option<Rect> {
+    process_title_control_area(area, app, ProcessTitleSegmentKind::ShowExited)
 }
 
 pub(crate) fn process_tracked_only_control_area(area: Rect, app: &App) -> Option<Rect> {

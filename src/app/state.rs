@@ -946,6 +946,7 @@ impl MainMenuSection {
             (Self::View, AppActivity::LogView) => &[
                 OpenColumns,
                 ToggleTrackedOnly,
+                ToggleShowExited,
                 ToggleGraphs,
                 ToggleSamples,
                 ToggleDelta,
@@ -954,6 +955,7 @@ impl MainMenuSection {
             (Self::View, _) => &[
                 OpenColumns,
                 ToggleTrackedOnly,
+                ToggleShowExited,
                 ToggleTreeView,
                 ToggleGraphs,
                 ToggleSamples,
@@ -980,6 +982,7 @@ pub(crate) enum MainMenuAction {
     SaveProfileAs,
     OpenColumns,
     ToggleTrackedOnly,
+    ToggleShowExited,
     ToggleTreeView,
     ToggleGraphs,
     ToggleSamples,
@@ -1003,6 +1006,7 @@ impl MainMenuAction {
             Self::SaveProfile => "Save",
             Self::SaveProfileAs => "Save As",
             Self::OpenColumns => "Columns",
+            Self::ToggleShowExited => "Show exited",
             Self::ToggleTrackedOnly => "Tracked-only",
             Self::ToggleTreeView => "Tree view",
             Self::ToggleGraphs => "Graphs",
@@ -1244,6 +1248,7 @@ pub(crate) struct App {
     pub(crate) shortcut_map: std::cell::RefCell<crate::ui::footer::ShortcutMap>,
     pub(crate) shortcut_hovered: Option<Rect>,
     pub(crate) process_tracked_only_hovered: bool,
+    pub(crate) process_show_exited_hovered: bool,
     pub(crate) process_view_mode_hovered: bool,
     pub(crate) process_column_control_hovered: Option<crate::ui::process_table::ColumnControl>,
     pub(crate) process_disclosure_hovered: Option<ProcessIdentity>,
@@ -1259,6 +1264,7 @@ pub(crate) struct App {
     pub(crate) watch_list: Vec<String>,
     pub(crate) normalized_watch_names: HashSet<String>,
     pub(crate) watch_enabled: bool,
+    pub(crate) show_exited: bool,
     pub(crate) visible_process_entries: Vec<VisibleProcessEntry>,
     pub(crate) visible_process_match_count: usize,
     pub(crate) tracked_total_row: Option<ProcessRow>,
@@ -1294,6 +1300,7 @@ impl App {
         let watch_list = dedupe_process_names(runtime.process_filters.clone());
         let normalized_watch_names = normalized_process_names(&watch_list);
         let watch_enabled = runtime.initial_tracked_only;
+        let show_exited = runtime.initial_show_exited;
         let mut process_history = ProcessHistory::default();
         process_history.record_snapshot(
             initial.snapshot.captured_at,
@@ -1542,6 +1549,7 @@ impl App {
             shortcut_map: Default::default(),
             shortcut_hovered: None,
             process_tracked_only_hovered: false,
+            process_show_exited_hovered: false,
             process_view_mode_hovered: false,
             process_column_control_hovered: None,
             process_disclosure_hovered: None,
@@ -1557,6 +1565,7 @@ impl App {
             watch_list,
             normalized_watch_names,
             watch_enabled,
+            show_exited,
             visible_process_entries: Vec::new(),
             visible_process_match_count: 0,
             tracked_total_row: None,
@@ -2321,6 +2330,9 @@ impl App {
         filter: &str,
         filter_includes_path: bool,
     ) -> Vec<VisibleProcessEntry> {
+        if !self.show_exited {
+            return Vec::new();
+        }
         let mut latest_by_name: HashMap<String, (&ProcessIdentity, DateTime<Local>)> =
             HashMap::new();
         for (identity, row) in self.display_exited_tracked_rows() {
@@ -4509,6 +4521,18 @@ impl App {
         }
     }
 
+    pub(crate) fn toggle_show_exited(&mut self) {
+        self.show_exited = !self.show_exited;
+        self.rebuild_visible_process_cache();
+        self.clamp_process_table_state();
+        self.status = if self.show_exited {
+            "Exited rows shown"
+        } else {
+            "Exited rows hidden"
+        }
+        .into();
+    }
+
     pub(crate) fn toggle_watch_list(&mut self) {
         self.watch_enabled = !self.watch_enabled;
         self.rebuild_visible_process_cache();
@@ -6482,6 +6506,9 @@ impl App {
                 "[{}] High contrast",
                 if self.high_contrast { 'x' } else { ' ' }
             ),
+            MainMenuItem::Action(MainMenuAction::ToggleShowExited) => {
+                format!("[{}] Show exited", if self.show_exited { 'x' } else { ' ' })
+            }
             MainMenuItem::Action(MainMenuAction::ToggleTrackedOnly) => format!(
                 "[{}] {}",
                 if self.watch_enabled { 'x' } else { ' ' },
@@ -6601,6 +6628,7 @@ impl App {
     fn toggle_main_menu_checkbox(&mut self, action: MainMenuAction) -> bool {
         match action {
             MainMenuAction::ToggleTrackedOnly => self.toggle_watch_list(),
+            MainMenuAction::ToggleShowExited => self.toggle_show_exited(),
             MainMenuAction::ToggleTreeView => self.toggle_process_view_mode(),
             MainMenuAction::ToggleGraphs => self.toggle_details(),
             MainMenuAction::ToggleSamples => self.toggle_samples_panel(),
@@ -6682,7 +6710,8 @@ impl App {
                 self.open_column_picker();
                 Ok(())
             }
-            MainMenuAction::ToggleTrackedOnly
+            MainMenuAction::ToggleShowExited
+            | MainMenuAction::ToggleTrackedOnly
             | MainMenuAction::ToggleTreeView
             | MainMenuAction::ToggleGraphs
             | MainMenuAction::ToggleSamples

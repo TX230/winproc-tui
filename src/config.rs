@@ -86,6 +86,7 @@ pub(crate) struct ProcessTableConfig {
     pub(crate) sort_order: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tracked_only: Option<bool>,
+    pub(crate) show_exited: Option<bool>,
     pub(crate) body_rows: ProcessPanelHeightConfig,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) column_widths: BTreeMap<String, i64>,
@@ -267,6 +268,7 @@ pub(crate) struct RuntimeConfig {
     pub(crate) process_column_widths: ProcessColumnWidths,
     pub(crate) sort: SortSpec,
     pub(crate) initial_tracked_only: bool,
+    pub(crate) initial_show_exited: bool,
     pub(crate) initial_process_view_mode: ProcessViewMode,
     pub(crate) initial_process_panel_height: ProcessPanelHeight,
     pub(crate) process_filters: Vec<String>,
@@ -516,6 +518,7 @@ pub(crate) fn build_runtime_config(mut config: AppConfig) -> Result<RuntimeConfi
                 .unwrap_or(SortDirection::Desc),
         },
         initial_tracked_only: config.process_table.tracked_only.unwrap_or(false),
+        initial_show_exited: config.process_table.show_exited.unwrap_or(true),
         initial_process_view_mode: config
             .process_table
             .view
@@ -566,6 +569,7 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
             sort_by: Some(app.sort.column.label().to_string()),
             sort_order: Some(app.sort.direction.label().to_string()),
             tracked_only: Some(app.watch_enabled),
+            show_exited: Some(app.show_exited),
             body_rows: match app.process_panel_height {
                 ProcessPanelHeight::Auto => ProcessPanelHeightConfig::default(),
                 ProcessPanelHeight::Manual(rows) => {

@@ -107,6 +107,10 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Return to Live; Space on a metric adds a Graph",
     },
     HelpItem {
+        key: "Shift+E (Processes)",
+        label: "Show/hide retained exited processes",
+    },
+    HelpItem {
         key: "Shift+T",
         label: "Toggle Tracked-only (any main panel)",
     },

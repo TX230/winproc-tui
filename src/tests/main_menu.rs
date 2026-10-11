@@ -196,7 +196,7 @@ fn categories_contain_only_their_own_activity_specific_actions() {
     alt(&mut app, 'p');
     assert_eq!(menu_labels(&app), ["Open", "Save", "Save As"]);
     alt(&mut app, 'v');
-    assert_eq!(menu_labels(&app).len(), 7);
+    assert_eq!(menu_labels(&app).len(), 8);
     assert!(menu_labels(&app).contains(&"Columns".to_string()));
     assert!(!menu_labels(&app).contains(&"Quit".to_string()));
     alt(&mut app, 't');

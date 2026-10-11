@@ -897,6 +897,13 @@ impl App {
             self.open_investigation_profiles();
             return Ok(());
         }
+        if self.focused_panel == FocusedPanel::Processes
+            && matches!(key.code, KeyCode::Char('E' | 'e'))
+            && key.modifiers == KeyModifiers::SHIFT
+        {
+            self.toggle_show_exited();
+            return Ok(());
+        }
         if is_shift_t(key) {
             self.toggle_watch_list();
             return Ok(());
@@ -1642,6 +1649,7 @@ impl App {
             self.process_panel_resize_drag = None;
             self.process_view_mode_hovered = false;
             self.process_tracked_only_hovered = false;
+            self.process_show_exited_hovered = false;
             self.process_disclosure_hovered = None;
         } else {
             self.graph_hovered_target =
@@ -1654,6 +1662,9 @@ impl App {
                     .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
             self.process_view_mode_hovered =
                 process_view_mode_control_area_for_screen(screen_area, self)
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
+            self.process_show_exited_hovered =
+                process_show_exited_control_area_for_screen(screen_area, self)
                     .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
             self.process_tracked_only_hovered =
                 process_tracked_only_control_area_for_screen(screen_area, self)
@@ -2135,6 +2146,13 @@ impl App {
                 }
                 if let Some(id) = graph_remove_at(self, screen_area, mouse.column, mouse.row) {
                     self.remove_graph(id);
+                    return;
+                }
+                if process_show_exited_control_area_for_screen(screen_area, self)
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+                {
+                    self.focused_panel = FocusedPanel::Processes;
+                    self.toggle_show_exited();
                     return;
                 }
                 if process_tracked_only_control_area_for_screen(screen_area, self)
@@ -3275,6 +3293,11 @@ fn samples_area_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<(usiz
             vertical: 1,
         });
     contains_point(samples, x, y).then(|| app.active_graph_index().map(|index| (index, samples)))?
+}
+
+fn process_show_exited_control_area_for_screen(screen_area: Rect, app: &App) -> Option<Rect> {
+    let area = main_panel_areas_for_app(screen_area, app).processes.area;
+    crate::ui::process_table::process_show_exited_control_area(area, app)
 }
 
 fn process_tracked_only_control_area_for_screen(screen_area: Rect, app: &App) -> Option<Rect> {

@@ -387,7 +387,7 @@ fn process_table_title_shows_concise_active_view_state() {
 
     assert!(
         rendered.contains(
-            "PROCESSES  · 1 visible · Flat(v) · ☑ Tracked-only(Shift+T) · Filter \"target\""
+            "PROCESSES  · 1 visible · Flat(v) · ☑ Tracked-only(Shift+T) · [x] Show exited(Shift+E) · Filter \"target\""
         ),
         "{rendered}"
     );
@@ -396,7 +396,7 @@ fn process_table_title_shows_concise_active_view_state() {
         "{rendered}"
     );
     assert!(!rendered.contains("Max samples: normal"), "{rendered}");
-    assert!(!rendered.contains("[x]"), "{rendered}");
+    assert!(rendered.contains("[x] Show exited"), "{rendered}");
     assert!(!rendered.contains("Custom"), "{rendered}");
 
     let (state_x, state_y) = find_text_position(&buffer, "☑ Tracked-only(Shift+T)")
@@ -1170,4 +1170,47 @@ fn removing_tracked_name_hides_ghost_row() {
 
     assert_eq!(app.visible_process_count(), 0);
     assert!(app.watch_list.is_empty());
+}
+
+#[test]
+fn show_exited_filters_without_discarding_retained_rows() {
+    let (worker, _requests, results) = SamplingWorker::test_pair();
+    let mut app = make_test_app_with_worker(1, 10, worker);
+    app.add_selected_process_to_watch_list();
+    app.sampling_in_progress = true;
+    results
+        .send(CollectSnapshotResult {
+            snapshot: test_snapshot(0),
+            warning: None,
+        })
+        .unwrap();
+    app.poll_sample_results().unwrap();
+    assert_eq!(app.visible_process_count(), 1);
+    app.focused_panel = FocusedPanel::Processes;
+    app.on_key(KeyEvent::new(KeyCode::Char('E'), KeyModifiers::SHIFT))
+        .unwrap();
+    assert_eq!(app.visible_process_count(), 0);
+    assert_eq!(app.exited_tracked_rows.len(), 1);
+    assert!(!app.watch_enabled);
+    app.toggle_show_exited();
+    assert_eq!(app.visible_process_count(), 1);
+    app.process_view_mode = ProcessViewMode::Tree;
+    app.toggle_show_exited();
+    assert_eq!(app.visible_process_count(), 0);
+    app.toggle_show_exited();
+    assert_eq!(app.visible_process_count(), 1);
+}
+
+#[test]
+fn show_exited_mouse_matches_header_and_updates_paused_hover() {
+    let mut app = make_test_app(1, 10);
+    let screen = Rect::new(0, 0, 150, 40);
+    app.toggle_display_pause();
+    let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+    let (x, y) = find_text_position(&buffer, "[x] Show exited").unwrap();
+    let outcome = app::handle_mouse_event(&mut app, super::support::mouse_move(x, y), screen);
+    assert!(outcome.dirty);
+    assert!(app.process_show_exited_hovered);
+    app.on_mouse(super::support::left_click(x, y), screen);
+    assert!(!app.show_exited);
 }

@@ -149,6 +149,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
             process_column_widths: ProcessColumnWidths::default(),
             sort: SortSpec::default(),
             initial_tracked_only: false,
+            initial_show_exited: true,
             initial_process_view_mode: app::ProcessViewMode::Flat,
             initial_process_panel_height: ProcessPanelHeight::Auto,
             process_filters: Vec::new(),
@@ -360,6 +361,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         shortcut_map: Default::default(),
         shortcut_hovered: None,
         process_tracked_only_hovered: false,
+        process_show_exited_hovered: false,
         process_view_mode_hovered: false,
         process_column_control_hovered: None,
         process_disclosure_hovered: None,
@@ -375,6 +377,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         watch_list: Vec::new(),
         normalized_watch_names: std::collections::HashSet::new(),
         watch_enabled: false,
+        show_exited: true,
         visible_process_entries: (0..row_count)
             .map(|snapshot_index| VisibleProcessEntry::Live {
                 snapshot_index,

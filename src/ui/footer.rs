@@ -191,6 +191,9 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         items.push(("Ctrl+S", "Save Profile"));
     }
     items.push(("Shift+T", "Tracked-only"));
+    if app.focused_panel == FocusedPanel::Processes {
+        items.push(("Shift+E", "Show exited"));
+    }
     items.push(("Ctrl+T", "Profiles"));
     items.push(("F12", "Theme"));
     items.push(("F1/?", "Help"));

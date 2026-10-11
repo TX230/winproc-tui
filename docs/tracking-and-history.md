@@ -54,6 +54,10 @@ In Tree view, a text filter keeps direct live matches and the ancestor paths nee
 
 Selection follows full process identity across sampling refreshes and sibling reordering. Collapsing a subtree whose descendant has focus moves focus to the collapsed parent, and hidden descendants are removed from multi-selection. Display pause builds the tree from the frozen snapshot; Recording continues to use the current live snapshot and allows Tree view.
 
+## Exited-row visibility
+
+Show exited is an independent, persisted app preference, enabled by default. It filters retained Ghost Rows in Flat and Tree views without deleting histories, changing Graphs, or changing Recording scope. It also filters any retained exited rows available from the displayed paused or Log-view state; it never starts live collection. Hiding the selected row clamps focus to a remaining row. Existing individual Ghost Row hiding remains separate: re-enabling Show exited does not restore individually dismissed rows.
+
 ## Live History Retention
 
 Tracked process identities retain 7,200 samples, approximately two hours at the fixed one-second Live interval. General non-tracked identities retain 120 samples, approximately two minutes. System history retains 7,200 samples.

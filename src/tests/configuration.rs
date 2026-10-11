@@ -1103,3 +1103,25 @@ fn app_config_saves_recording_last_dir() {
     assert!(rendered.contains("[recording]"));
     assert!(rendered.contains("last_dir"));
 }
+
+#[test]
+fn show_exited_defaults_on_and_restores_false() {
+    assert!(
+        build_runtime_config(AppConfig::default())
+            .unwrap()
+            .initial_show_exited
+    );
+    let config: AppConfig = toml::from_str("[process_table]\nshow_exited = false\n").unwrap();
+    assert!(!build_runtime_config(config).unwrap().initial_show_exited);
+}
+
+#[test]
+fn show_exited_round_trips_with_session_state() {
+    let path = unique_config_path("show-exited");
+    let mut app = make_test_app(1, 10);
+    app.show_exited = false;
+    write_app_config(&path, &app).unwrap();
+    let runtime = build_runtime_config(load_config(&path).unwrap()).unwrap();
+    let _ = std::fs::remove_file(path);
+    assert!(!runtime.initial_show_exited);
+}
