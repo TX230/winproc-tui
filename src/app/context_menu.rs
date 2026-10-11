@@ -16,12 +16,10 @@ pub(crate) enum ContextAction {
     ProcessInfo(Box<ProcessInfoDialogTarget>, ProcessInfoTab),
     Track(String),
     Copy(String),
-    SetPoint(GraphId, DateTime<Local>, char),
+    SetPoint(GraphId, Option<DateTime<Local>>, char),
+    ReorderGraphs(GraphId),
     ClearPoints,
     Latest(GraphId),
-    DisplayMode(GraphId),
-    FitAll,
-    MinZero,
     Owner(Option<NetworkOwner>, bool),
     Endpoint(NetworkEndpoint, bool),
     Refresh(bool),
@@ -139,6 +137,7 @@ impl App {
         &self,
         id: GraphId,
         sample: Option<GraphSample>,
+        panel: FocusedPanel,
         anchor: Position,
     ) -> Option<ContextMenu> {
         let entry = self.graph_entry_by_id(id)?;
@@ -153,55 +152,24 @@ impl App {
             ),
             anchor,
         );
-        if let Some(sample) = sample {
+        menu.add("Jump to latest", ContextAction::Latest(id), true);
+        if panel == FocusedPanel::DetailsGraph {
+            menu.add("Reorder graphs", ContextAction::ReorderGraphs(id), true);
+        }
+        for (label, point) in [("Set A", 'A'), ("Set B", 'B')] {
             menu.add(
-                "Set A",
-                ContextAction::SetPoint(id, sample.captured_at, 'A'),
-                sample.value.is_some(),
-            );
-            menu.add(
-                "Set B",
-                ContextAction::SetPoint(id, sample.captured_at, 'B'),
-                sample.value.is_some(),
-            );
-            let range = self.active_graph_id == Some(id)
-                && self.sample_time_is_selected(sample.captured_at);
-            let samples = self.graph_slot_samples(&entry.source);
-            let copy = if range {
-                self.samples_clipboard_text()
-            } else {
-                samples
-                    .iter()
-                    .position(|s| s.captured_at == sample.captured_at)
-                    .map(|index| {
-                        super::clipboard::sample_row_text(
-                            &samples,
-                            index,
-                            entry.source.value_format(),
-                            self.show_sample_delta,
-                        )
-                    })
-            };
-            menu.add(
-                if range {
-                    "Copy selection"
-                } else {
-                    "Copy sample"
-                },
-                ContextAction::Copy(copy.clone().unwrap_or_default()),
-                copy.is_some(),
+                label,
+                ContextAction::SetPoint(id, sample.map(|s| s.captured_at), point),
+                sample.is_some_and(|s| s.value.is_some()),
             );
         }
         menu.add(
             "Clear A/B",
             ContextAction::ClearPoints,
-            self.ab_comparison.is_some(),
+            self.ab_comparison
+                .as_ref()
+                .is_some_and(|ab| ab.a.is_some() || ab.b.is_some()),
         );
-        menu.add("Latest", ContextAction::Latest(id), true);
-        menu.add("Raw / MA5", ContextAction::DisplayMode(id), true);
-        menu.add("Fit all", ContextAction::FitAll, true);
-        menu.add("Min 0", ContextAction::MinZero, true);
-        menu.add("Remove graph", ContextAction::RemoveGraph(id), true);
         Some(menu)
     }
 
@@ -329,7 +297,15 @@ impl App {
                     Err(error) => format!("Copy failed: {error}"),
                 }
             }
+            ContextAction::ReorderGraphs(id) => {
+                if self.select_graph(id) {
+                    self.open_graph_reorder_dialog();
+                }
+            }
             ContextAction::SetPoint(id, captured_at, label) => {
+                let Some(captured_at) = captured_at else {
+                    return Ok(());
+                };
                 if self.select_graph(id) {
                     let point = AbComparisonPoint { captured_at };
                     let comparison = self
@@ -349,11 +325,6 @@ impl App {
                     self.enter_details_live_mode();
                 }
             }
-            ContextAction::DisplayMode(id) => {
-                self.toggle_graph_display_mode(id);
-            }
-            ContextAction::FitAll => self.toggle_graph_all_samples(),
-            ContextAction::MinZero => self.toggle_graph_y_axis_zero_min(),
             ContextAction::Owner(owner, global) => {
                 if let Some(owner) = owner {
                     self.verify_network_owner(owner, global);

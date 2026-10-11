@@ -2411,6 +2411,7 @@ impl App {
                 self.active_graph_id?,
                 self.active_graph_slot()
                     .and_then(|slot| self.graph_slot_sample_at(slot, self.details_sample_selected)),
+                self.focused_panel,
                 anchor,
             ),
             _ => None,
@@ -2477,7 +2478,12 @@ impl App {
                 rows,
             )
             .and_then(|i| self.graph_slot_sample_at(slot, i));
-            return self.graph_context_menu(self.graph_entry(index)?.id, sample, anchor);
+            return self.graph_context_menu(
+                self.graph_entry(index)?.id,
+                sample,
+                FocusedPanel::DetailsSamples,
+                anchor,
+            );
         }
         if let Some((index, id)) = graph_card_at(self, screen, x, y) {
             let slot = self.graph_slot(index)?;
@@ -2502,7 +2508,7 @@ impl App {
             } else {
                 self.graph_slot_sample_at(slot, self.details_sample_selected)
             };
-            return self.graph_context_menu(id, sample, anchor);
+            return self.graph_context_menu(id, sample, FocusedPanel::DetailsGraph, anchor);
         }
         None
     }

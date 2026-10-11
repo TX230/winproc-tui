@@ -133,6 +133,7 @@ fn graph_menu_preserves_time_until_action_and_uses_captured_sample() {
     assert!(app.graph_show_all_samples);
     assert_eq!(app.selected_details_sample_time(), Some(time));
     app.set_details_sample_selected_manual(2);
+    app.context_menu.as_mut().unwrap().selected = 1;
     enter(&mut app);
     assert_eq!(
         app.ab_comparison.as_ref().unwrap().a.unwrap().captured_at,
@@ -140,7 +141,12 @@ fn graph_menu_preserves_time_until_action_and_uses_captured_sample() {
     );
     let sample = app.graph_slot_sample_at(app.active_graph_slot().unwrap(), 0);
     let mut menu = app
-        .graph_context_menu(app.active_graph_id.unwrap(), sample, Position::new(179, 59))
+        .graph_context_menu(
+            app.active_graph_id.unwrap(),
+            sample,
+            FocusedPanel::DetailsSamples,
+            Position::new(179, 59),
+        )
         .unwrap();
     menu.selected = menu.items.len() - 1;
     let screen = Rect::new(0, 0, 180, 60);
@@ -150,4 +156,96 @@ fn graph_menu_preserves_time_until_action_and_uses_captured_sample() {
     app.on_mouse(super::support::left_click(0, 0), screen);
     assert!(app.context_menu.is_none());
     assert_eq!(app.graph_entries.len(), 1);
+}
+
+#[test]
+fn jump_to_latest_is_direct_and_preserves_graph_state() {
+    for paused in [false, true] {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for offset in [0, 1, 2] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        if paused {
+            app.toggle_display_pause();
+        }
+        app.set_details_sample_selected_manual(0);
+        let id = app.active_graph_id.unwrap();
+        let sample = app.graph_slot_sample_at(app.active_graph_slot().unwrap(), 0);
+        let mut menu = app
+            .graph_context_menu(id, sample, FocusedPanel::DetailsGraph, Position::new(0, 0))
+            .unwrap();
+        assert_eq!(
+            menu.items
+                .iter()
+                .map(|i| i.label.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "Jump to latest",
+                "Reorder graphs",
+                "Set A",
+                "Set B",
+                "Clear A/B"
+            ]
+        );
+        menu.selected = 0;
+        app.open_context_menu(menu);
+        assert!(!app.details_live);
+        enter(&mut app);
+        assert!(app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert_eq!(app.details_sample_selected, 2);
+        assert_eq!(app.active_graph_id, Some(id));
+        assert_eq!(app.is_display_paused(), paused);
+    }
+}
+
+#[test]
+fn graph_and_samples_menus_keep_requested_order_without_samples() {
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    let id = app.active_graph_id.unwrap();
+    for panel in [FocusedPanel::DetailsGraph, FocusedPanel::DetailsSamples] {
+        app.focused_panel = panel;
+        menu_key(&mut app);
+        let menu = app.context_menu.as_ref().unwrap();
+        let expected = if panel == FocusedPanel::DetailsGraph {
+            vec![
+                "Jump to latest",
+                "Reorder graphs",
+                "Set A",
+                "Set B",
+                "Clear A/B",
+            ]
+        } else {
+            vec!["Jump to latest", "Set A", "Set B", "Clear A/B"]
+        };
+        assert_eq!(
+            menu.items
+                .iter()
+                .map(|i| i.label.as_str())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(
+            menu.items
+                .iter()
+                .filter(|i| i.label.starts_with("Set ") || i.label == "Clear A/B")
+                .all(|i| !i.enabled)
+        );
+        app.context_menu = None;
+    }
+    let menu = app
+        .graph_context_menu(id, None, FocusedPanel::DetailsGraph, Position::new(0, 0))
+        .unwrap();
+    app.open_context_menu(menu);
+    app.context_menu.as_mut().unwrap().selected = 1;
+    enter(&mut app);
+    assert!(app.context_menu.is_none());
+    assert!(app.graph_reorder_dialog.is_some());
+    assert_eq!(app.active_graph_id, Some(id));
 }

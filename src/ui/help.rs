@@ -624,6 +624,10 @@ const AB_ROWS: &[HelpItem] = &[
 
 const MOUSE_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "Right-click Graph / Samples",
+        label: "Jump to latest or set/clear A/B; Graph also offers Reorder graphs",
+    },
+    HelpItem {
         key: "Right-click column name",
         label: "Open Columns; click checkboxes to apply",
     },
