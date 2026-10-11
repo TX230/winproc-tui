@@ -364,7 +364,7 @@ fn tracked_only_count_reports_visible_rows_not_stored_names() {
     assert_eq!(app.visible_tracked_process_count(), 0);
     assert!(app.status.contains("0 visible"));
     assert!(
-        rendered.contains("PROCESSES  · 0 visible · Flat(v) · ☑ Tracked-only(Shift+T)"),
+        rendered.contains("PROCESSES  · 0 visible · Flat(v) · [x] Tracked-only(Shift+T)"),
         "{rendered}"
     );
 }
@@ -387,7 +387,7 @@ fn process_table_title_shows_concise_active_view_state() {
 
     assert!(
         rendered.contains(
-            "PROCESSES  · 1 visible · Flat(v) · ☑ Tracked-only(Shift+T) · [x] Show exited(Shift+E) · Filter \"target\""
+            "PROCESSES  · 1 visible · Flat(v) · [x] Tracked-only(Shift+T) · [x] Show exited(Shift+E) · Filter \"target\""
         ),
         "{rendered}"
     );
@@ -399,7 +399,7 @@ fn process_table_title_shows_concise_active_view_state() {
     assert!(rendered.contains("[x] Show exited"), "{rendered}");
     assert!(!rendered.contains("Custom"), "{rendered}");
 
-    let (state_x, state_y) = find_text_position(&buffer, "☑ Tracked-only(Shift+T)")
+    let (state_x, state_y) = find_text_position(&buffer, "[x] Tracked-only(Shift+T)")
         .expect("tracked-only state should be rendered");
     let state_cell = &buffer[(state_x, state_y)];
     assert_eq!(state_cell.fg, ui::THEMES[0].tracked);
@@ -450,7 +450,7 @@ fn process_table_title_omits_named_list_and_unsaved_marker() {
 
     let saved = render_app_to_text(&app, 120, 30);
     assert!(
-        saved.contains("PROCESSES  · 1 visible · Flat(v) · ☐ Tracked-only(Shift+T)"),
+        saved.contains("PROCESSES  · 1 visible · Flat(v) · [ ] Tracked-only(Shift+T)"),
         "{saved}"
     );
     assert!(!saved.contains("List \"API\""), "{saved}");
@@ -459,7 +459,7 @@ fn process_table_title_omits_named_list_and_unsaved_marker() {
     app.normalized_watch_names.insert("worker.exe".to_string());
     let dirty = render_app_to_text(&app, 120, 30);
     assert!(
-        dirty.contains("PROCESSES  · 1 visible · Flat(v) · ☐ Tracked-only(Shift+T)"),
+        dirty.contains("PROCESSES  · 1 visible · Flat(v) · [ ] Tracked-only(Shift+T)"),
         "{dirty}"
     );
     assert!(!dirty.contains("List \"API*\""), "{dirty}");

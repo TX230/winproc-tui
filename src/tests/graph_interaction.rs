@@ -1390,7 +1390,7 @@ fn graph_all_samples_checkbox_uses_full_sample_span() {
     assert_eq!(app.effective_graph_time_span_seconds(), 240);
 
     let rendered = render_app_to_text(&app, 120, 45);
-    assert!(rendered.contains("☑  f: Fit all"), "{rendered}");
+    assert!(rendered.contains("[x] f: Fit all"), "{rendered}");
 }
 
 #[test]
@@ -1524,7 +1524,7 @@ fn log_view_panel_titles_omit_history_counts() {
     assert!(!rendered.contains("[Samples:"), "{rendered}");
     assert!(
         rendered.contains(
-            "PROCESSES  · 1 visible · Flat (Tree unavailable in LOG) · ☐ Tracked-only(Shift+T)"
+            "PROCESSES  · 1 visible · Flat (Tree unavailable in LOG) · [ ] Tracked-only(Shift+T)"
         ),
         "{rendered}"
     );
@@ -1690,7 +1690,7 @@ fn graph_layout_shortcuts_preserve_explicit_samples_preference() {
     assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
     assert!(app.show_samples_panel);
     let rendered = render_app_to_text(&app, 120, 60);
-    assert!(rendered.contains("☑  v: Samples"), "{rendered}");
+    assert!(rendered.contains("[x] v: Samples"), "{rendered}");
     assert!(rendered.contains("l: 1/2 cols"), "{rendered}");
 
     app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))

@@ -1042,7 +1042,7 @@ fn process_table_tracked_only_title_checkbox_click_toggles_filter() {
 
     let screen = Rect::new(0, 0, 120, 45);
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let (x, y) = find_text_position(&buffer, "☐ Tracked-only(Shift+T)")
+    let (x, y) = find_text_position(&buffer, "[ ] Tracked-only(Shift+T)")
         .expect("unchecked tracked-only control should render in the process title");
     assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].muted);
     let (shortcut_x, shortcut_y) = find_text_position(&buffer, "(Shift+T)")
@@ -1069,7 +1069,7 @@ fn process_table_tracked_only_title_checkbox_click_toggles_filter() {
     );
 
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let (x, y) = find_text_position(&buffer, "☑ Tracked-only(Shift+T)")
+    let (x, y) = find_text_position(&buffer, "[x] Tracked-only(Shift+T)")
         .expect("checked tracked-only control should render in the process title");
 
     app.on_mouse(

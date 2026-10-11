@@ -36,7 +36,7 @@ pub(crate) fn layout(app: &App, width: u16) -> SchedulingLayout {
         let text = format!(
             "({}) {}",
             if app.scheduling.report.as_ref().and_then(|r| r.current) == Some(class) {
-                '●'
+                '*'
             } else {
                 ' '
             },

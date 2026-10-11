@@ -528,7 +528,7 @@ fn scheduling_combined_layout_uses_horizontal_radios_and_multiple_cpu_columns() 
     let priority_y = find_text_position(&buffer, "( ) Idle").unwrap().1;
     for label in [
         "( ) Below normal",
-        "(●) Normal",
+        "(*) Normal",
         "( ) Above normal",
         "( ) High",
     ] {
@@ -798,6 +798,6 @@ fn scheduling_wrapped_radio_arrow_changes_apply_but_entering_the_group_does_not(
     failed.outcome = PriorityOutcome::Failed("Access denied".into());
     assert!(f.deliver(request, failed));
     let text = render_app_to_text(&f.app, 60, 18);
-    assert!(text.contains("(●) Normal"));
+    assert!(text.contains("(*) Normal"));
     assert!(text.contains("Access denied"));
 }

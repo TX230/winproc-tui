@@ -1069,7 +1069,7 @@ fn process_tracked_only_title_spans(app: &App, theme: Theme) -> Vec<Span<'static
     if app.watch_enabled {
         let plain = |color| Style::default().fg(color).remove_modifier(Modifier::BOLD);
         return vec![
-            Span::styled("☑", plain(theme.tracked)),
+            Span::styled("[x]", plain(theme.tracked)),
             Span::styled(" Tracked-only", plain(theme.text)),
             Span::styled("(Shift+T)", plain(theme.muted)),
         ];
@@ -1217,9 +1217,9 @@ fn process_title_control_area(
 
 fn process_tracked_only_label(app: &App) -> &'static str {
     if app.watch_enabled {
-        "☑ Tracked-only(Shift+T)"
+        "[x] Tracked-only(Shift+T)"
     } else {
-        "☐ Tracked-only(Shift+T)"
+        "[ ] Tracked-only(Shift+T)"
     }
 }
 

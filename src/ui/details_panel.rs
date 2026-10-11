@@ -1083,11 +1083,11 @@ fn render_graph_toggle(
     let Some(toggle_area) = area else {
         return;
     };
-    let mark = if checked { "☑" } else { "☐" };
+    let mark = if checked { "[x]" } else { "[ ]" };
     let mark_color = if checked { theme.accent } else { theme.muted };
     let toggle = Paragraph::new(Line::from(vec![
         Span::styled(mark, Style::default().fg(mark_color).bg(theme.panel)),
-        Span::raw("  "),
+        Span::raw(" "),
         Span::styled(key, Style::default().fg(theme.key_hint).bg(theme.panel)),
         Span::styled(":", Style::default().fg(theme.muted).bg(theme.panel)),
         Span::styled(

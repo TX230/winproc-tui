@@ -12,11 +12,11 @@ use crate::{
 };
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
-pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 15;
-pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 13;
+pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 16;
+pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 14;
 pub(crate) const GRAPH_LAYOUT_TOGGLE_WIDTH: u16 = 15;
-pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 15;
-pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 13;
+pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 16;
+pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 14;
 pub(crate) const DETAILS_SHARED_CONTROLS_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_HEADER_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT: u16 = 1;

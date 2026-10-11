@@ -833,8 +833,8 @@ fn long_graph_target_keeps_remove_button_visible_at_narrow_width() {
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
     let rendered = buffer_to_text(&buffer);
     assert!(rendered.contains("[x]"), "{rendered}");
-    let (remove_x, remove_y) =
-        find_text_position(&buffer, "[x]").expect("remove control should render");
+    let remove_x = layout.graph_cards[0].remove.x + 1;
+    let remove_y = layout.graph_cards[0].remove.y;
     assert_eq!(buffer[(remove_x, remove_y)].fg, THEMES[0].muted);
     assert_ne!(buffer[(remove_x, remove_y)].fg, THEMES[0].warning);
 }
@@ -958,11 +958,11 @@ fn graph_y_axis_checkbox_uses_box_symbols() {
     );
 
     let rendered = render_app_to_text(&app, 120, 45);
-    assert!(rendered.contains("☑  z: Min 0"), "{rendered}");
+    assert!(rendered.contains("[x] z: Min 0"), "{rendered}");
 
     app.graph_y_axis_zero_min = false;
     let rendered = render_app_to_text(&app, 120, 45);
-    assert!(rendered.contains("☐  z: Min 0"), "{rendered}");
+    assert!(rendered.contains("[ ] z: Min 0"), "{rendered}");
 }
 
 #[test]
@@ -979,12 +979,12 @@ fn graph_shared_controls_follow_footer_shortcut_color_roles_in_all_color_schemes
 
         let buffer = render_app_to_buffer(&app, 140, 45);
 
-        let (checked_x, checked_y) = find_text_position(&buffer, "☑  v: Samples")
+        let (checked_x, checked_y) = find_text_position(&buffer, "[x] v: Samples")
             .expect("checked Graph option should render");
         assert_eq!(buffer[(checked_x, checked_y)].fg, theme.accent);
-        assert_eq!(buffer[(checked_x + 3, checked_y)].fg, theme.key_hint);
-        assert_eq!(buffer[(checked_x + 4, checked_y)].fg, theme.muted);
-        assert_eq!(buffer[(checked_x + 6, checked_y)].fg, theme.text);
+        assert_eq!(buffer[(checked_x + 4, checked_y)].fg, theme.key_hint);
+        assert_eq!(buffer[(checked_x + 5, checked_y)].fg, theme.muted);
+        assert_eq!(buffer[(checked_x + 7, checked_y)].fg, theme.text);
 
         let (layout_x, layout_y) =
             find_text_position(&buffer, "l: 1/3 cols").expect("layout option should render");
@@ -992,12 +992,12 @@ fn graph_shared_controls_follow_footer_shortcut_color_roles_in_all_color_schemes
         assert_eq!(buffer[(layout_x + 1, layout_y)].fg, theme.muted);
         assert_eq!(buffer[(layout_x + 3, layout_y)].fg, theme.text);
 
-        let (unchecked_x, unchecked_y) = find_text_position(&buffer, "☐  f: Fit all")
+        let (unchecked_x, unchecked_y) = find_text_position(&buffer, "[ ] f: Fit all")
             .expect("unchecked Graph option should render");
         assert_eq!(buffer[(unchecked_x, unchecked_y)].fg, theme.muted);
-        assert_eq!(buffer[(unchecked_x + 3, unchecked_y)].fg, theme.key_hint);
-        assert_eq!(buffer[(unchecked_x + 4, unchecked_y)].fg, theme.muted);
-        assert_eq!(buffer[(unchecked_x + 6, unchecked_y)].fg, theme.text);
+        assert_eq!(buffer[(unchecked_x + 4, unchecked_y)].fg, theme.key_hint);
+        assert_eq!(buffer[(unchecked_x + 5, unchecked_y)].fg, theme.muted);
+        assert_eq!(buffer[(unchecked_x + 7, unchecked_y)].fg, theme.text);
     }
 }
 
