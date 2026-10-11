@@ -612,6 +612,10 @@ const MOUSE_ROWS: &[HelpItem] = &[
         label: "Reveal earlier/later columns",
     },
     HelpItem {
+        key: "Drag underlined header right edge",
+        label: "Resize process column at the end of its underline",
+    },
+    HelpItem {
         key: "Click Width [-]/[+]",
         label: "Resize selected process column",
     },

@@ -140,7 +140,7 @@ impl ProcessColumnWidths {
 
     pub(crate) fn set(&mut self, column: SortColumn, width: u16) -> u16 {
         let width = column.clamp_width(width);
-        if width == column.default_width() {
+        if width == column.default_width() && column != SortColumn::Metric(MetricColumn::FullPath) {
             self.overrides.remove(&column);
         } else {
             self.overrides.insert(column, width);

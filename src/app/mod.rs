@@ -245,7 +245,10 @@ pub(crate) fn handle_mouse_event(
         app.process_disclosure_hovered.clone(),
         app.main_menu_hovered,
         app.header_action_hovered,
-        app.process_column_control_hovered,
+        (
+            app.process_column_control_hovered,
+            app.column_resize_hovered,
+        ),
         app.process_panel_resize_hovered,
     );
     app.on_mouse(mouse, screen_area);
@@ -262,7 +265,10 @@ pub(crate) fn handle_mouse_event(
                 app.process_disclosure_hovered.clone(),
                 app.main_menu_hovered,
                 app.header_action_hovered,
-                app.process_column_control_hovered,
+                (
+                    app.process_column_control_hovered,
+                    app.column_resize_hovered,
+                ),
                 app.process_panel_resize_hovered,
             );
     MouseEventOutcome {

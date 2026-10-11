@@ -364,6 +364,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
         process_show_exited_hovered: false,
         process_view_mode_hovered: false,
         process_column_control_hovered: None,
+        column_resize_hovered: None,
+        column_resize_drag: None,
         process_disclosure_hovered: None,
         paused_display: None,
         log_view_display: None,

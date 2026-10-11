@@ -51,6 +51,7 @@ impl App {
         self.shortcut_map.borrow_mut().regions.clear();
         self.shortcut_hovered = None;
         self.clear_source_cell_click();
+        self.column_resize_drag = None;
         self.process_panel_resize_drag = None;
         self.pending_context_menu = None;
 
@@ -1603,6 +1604,44 @@ impl App {
         }
         let has_modal_focus = self.has_modal_focus();
         let process_area = main_panel_areas_for_app(screen_area, self).processes.area;
+        self.column_resize_hovered = if has_modal_focus {
+            None
+        } else {
+            crate::ui::process_table::column_resize_at(process_area, self, mouse.column, mouse.row)
+        };
+        if has_modal_focus {
+            self.column_resize_drag = None;
+        } else if let Some((column, start_x, start_width)) = self.column_resize_drag {
+            match mouse.kind {
+                MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
+                    let width = (i32::from(start_width) + i32::from(mouse.column)
+                        - i32::from(start_x))
+                    .clamp(0, i32::from(u16::MAX)) as u16;
+                    self.process_column_widths.set(column, width);
+                    if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+                        self.column_resize_drag = None;
+                    }
+                    return;
+                }
+                MouseEventKind::Moved => return,
+                _ => {
+                    self.column_resize_drag = None;
+                }
+            }
+        }
+        if !has_modal_focus
+            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && let Some(column) = self.column_resize_hovered
+        {
+            self.clear_source_cell_click();
+            self.focused_panel = FocusedPanel::Processes;
+            self.column_resize_drag = Some((
+                column,
+                mouse.column,
+                crate::ui::process_table::column_rendered_width(process_area, self, column),
+            ));
+            return;
+        }
         self.process_column_control_hovered = if has_modal_focus {
             None
         } else {

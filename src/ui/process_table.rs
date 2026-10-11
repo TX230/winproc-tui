@@ -154,6 +154,29 @@ pub(crate) fn draw_process_table(
         .filter(|selected| *selected < visible_processes.len());
     state.select(selected);
     frame.render_stateful_widget(table, table_area, &mut state);
+    // Underline the full header cell, including alignment padding, so every
+    // column has the same visible extent regardless of label alignment.
+    for rect in column_rects.iter().skip(1).filter(|rect| rect.width > 0) {
+        frame.buffer_mut().set_style(
+            Rect::new(rect.x, area.y + 1, rect.width, 1),
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        );
+    }
+    for (column, edge) in column_resize_areas(area, app) {
+        let active = app.column_resize_hovered == Some(column)
+            || app
+                .column_resize_drag
+                .is_some_and(|(target, _, _)| target == column);
+        let style = if active {
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.focus_surface)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.accent)
+        };
+        frame.buffer_mut().set_style(edge, style);
+    }
     draw_process_resize_handle(frame, layout, app, theme);
 }
 
@@ -309,7 +332,11 @@ fn process_table_constraints(
     ];
     for (_, column) in visible_columns {
         let width = metric_column_render_width(*column, widths);
-        let constraint = if *column == MetricColumn::FullPath {
+        let constraint = if *column == MetricColumn::FullPath
+            && !widths
+                .overrides()
+                .any(|(key, _)| key == SortColumn::Metric(*column))
+        {
             Constraint::Min(width)
         } else {
             Constraint::Length(width)
@@ -435,12 +462,12 @@ fn header_cell<'a>(
 ) -> Cell<'a> {
     let style = if selected {
         Style::default()
-            .fg(theme.text)
+            .fg(theme.accent)
             .bg(theme.table_column_surface)
     } else {
-        Style::default().fg(theme.text).bg(theme.panel)
+        Style::default().fg(theme.accent).bg(theme.panel)
     };
-    Cell::from(content.into().alignment(alignment)).style(style)
+    Cell::from(content.into().alignment(alignment)).style(style.add_modifier(Modifier::BOLD))
 }
 
 fn header_label(label: &str, direction: Option<SortDirection>) -> Line<'static> {
@@ -1496,9 +1523,11 @@ mod tests {
         assert_eq!(ordinary_style.bg, Some(theme.panel));
         assert_eq!(focused_style.bg, Some(theme.table_column_surface));
         assert!(!ordinary_style.add_modifier.contains(Modifier::UNDERLINED));
-        assert!(!ordinary_style.add_modifier.contains(Modifier::BOLD));
+        assert!(ordinary_style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(ordinary_style.fg, Some(theme.accent));
         assert!(!focused_style.add_modifier.contains(Modifier::UNDERLINED));
-        assert!(!focused_style.add_modifier.contains(Modifier::BOLD));
+        assert!(focused_style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(focused_style.fg, Some(theme.accent));
     }
 
     #[test]
@@ -1782,7 +1811,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_process_width_is_fixed_while_full_path_keeps_flexible_extra_space() {
+    fn explicitly_sized_full_path_keeps_its_requested_width() {
         let visible = vec![(0, MetricColumn::PrivateBytes), (1, MetricColumn::FullPath)];
         let mut widths = ProcessColumnWidths::default();
         widths.set(SortColumn::ProcessName, 28);
@@ -1796,10 +1825,10 @@ mod tests {
                 Constraint::Length(SortColumn::Pid.default_width()),
                 Constraint::Length(28),
                 Constraint::Length(MetricColumn::PrivateBytes.width()),
-                Constraint::Min(60),
+                Constraint::Length(60),
             ]
         );
-        assert_eq!(full_path_column_render_width(&visible, &rects), Some(128));
+        assert_eq!(full_path_column_render_width(&visible, &rects), Some(60));
 
         let without_full_path = vec![(0, MetricColumn::PrivateBytes)];
         assert_eq!(
@@ -1900,4 +1929,52 @@ fn column_control_style(control: ColumnControl, app: &App, theme: Theme) -> Styl
     } else {
         Style::default().fg(theme.key_hint)
     }
+}
+
+pub(crate) fn column_resize_areas(area: Rect, app: &App) -> Vec<(SortColumn, Rect)> {
+    if area.height < 3 || area.width < 3 {
+        return Vec::new();
+    }
+    let visible = visible_metric_columns(
+        area.width,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    );
+    let rects = process_table_column_rects(area, &visible, &app.process_column_widths);
+    let columns = [SortColumn::Pid, SortColumn::ProcessName]
+        .into_iter()
+        .chain(
+            visible
+                .iter()
+                .map(|(_, column)| SortColumn::Metric(*column)),
+        );
+    columns
+        .zip(rects.iter().skip(1))
+        .filter(|(_, rect)| rect.width > 0)
+        .map(|(column, rect)| (column, Rect::new(rect.right() - 1, area.y + 1, 1, 1)))
+        .collect()
+}
+
+pub(crate) fn column_resize_at(area: Rect, app: &App, x: u16, y: u16) -> Option<SortColumn> {
+    column_resize_areas(area, app)
+        .into_iter()
+        .find(|(_, rect)| rect.contains(ratatui::layout::Position::new(x, y)))
+        .map(|(column, _)| column)
+}
+
+pub(crate) fn column_rendered_width(area: Rect, app: &App, column: SortColumn) -> u16 {
+    let visible = visible_metric_columns(
+        area.width,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    );
+    let rects = process_table_column_rects(area, &visible, &app.process_column_widths);
+    [SortColumn::Pid, SortColumn::ProcessName]
+        .into_iter()
+        .chain(visible.iter().map(|(_, c)| SortColumn::Metric(*c)))
+        .zip(rects.iter().skip(1))
+        .find(|(c, _)| *c == column)
+        .map_or(app.process_column_widths.resolved(column), |(_, r)| r.width)
 }

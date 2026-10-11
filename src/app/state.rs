@@ -1242,6 +1242,8 @@ pub(crate) struct App {
     pub(crate) column_preset: ColumnPreset,
     pub(crate) process_columns: Vec<MetricColumn>,
     pub(crate) process_column_widths: ProcessColumnWidths,
+    pub(crate) column_resize_hovered: Option<SortColumn>,
+    pub(crate) column_resize_drag: Option<(SortColumn, u16, u16)>,
     pub(crate) sort: SortSpec,
     pub(crate) process_view_mode: ProcessViewMode,
     pub(crate) collapsed_process_identities: HashSet<ProcessIdentity>,
@@ -1543,6 +1545,8 @@ impl App {
             column_preset,
             process_columns,
             process_column_widths,
+            column_resize_hovered: None,
+            column_resize_drag: None,
             sort,
             process_view_mode,
             collapsed_process_identities: HashSet::new(),
@@ -1662,6 +1666,8 @@ impl App {
 
     pub(crate) fn set_screen_area(&mut self, area: Rect) {
         if self.last_screen_area != area {
+            self.column_resize_drag = None;
+            self.column_resize_hovered = None;
             self.process_panel_resize_drag = None;
         }
         self.last_screen_area = area;

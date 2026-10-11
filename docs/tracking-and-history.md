@@ -54,6 +54,10 @@ In Tree view, a text filter keeps direct live matches and the ancestor paths nee
 
 Selection follows full process identity across sampling refreshes and sibling reordering. Collapsing a subtree whose descendant has focus moves focus to the collapsed parent, and hidden descendants are removed from multi-selection. Display pause builds the tree from the frozen snapshot; Recording continues to use the current live snapshot and allows Tree view.
 
+## Process column sizing
+
+Dragging a column header boundary edits the same persisted width preference as keyboard sizing. Shared column geometry owns both the visible grip and hit target, including reordered and horizontally scrolled columns. Dragging captures the column identity until release; it does not sort or select rows. Modal input and terminal resize cancel an active drag.
+
 ## Exited-row visibility
 
 Show exited is an independent, persisted app preference, enabled by default. It filters retained Ghost Rows in Flat and Tree views without deleting histories, changing Graphs, or changing Recording scope. It also filters any retained exited rows available from the displayed paused or Log-view state; it never starts live collection. Hiding the selected row clamps focus to a remaining row. Existing individual Ghost Row hiding remains separate: re-enabling Show exited does not restore individually dismissed rows.
@@ -106,3 +110,5 @@ In Tracked-only mode, select-all selects eligible process identities in the curr
 Tree indentation is bounded to preserve readable process names. A compressed-depth marker retains the indication of deeper ancestry; disclosure geometry uses the same bound as rendering. Process Info remains the full-name inspection route. Parentage, filtering and collapse semantics do not depend on the displayed indentation.
 
 Process context menus capture the full process identity and displayed row when opened, and retain that identity while visible. Reordering and PID reuse cannot retarget their actions. Double-clicking a process name or PID opens Process Info; tracking by process name is an explicit context action and retains Live-only and retained-history confirmation rules.
+
+Full Path uses available extra width until a width is explicitly set. A manually sized Full Path column keeps that exact width, including across restart; dragging starts from its rendered width.

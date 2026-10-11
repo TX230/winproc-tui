@@ -513,7 +513,7 @@ fn process_table_multi_selection_shares_cursor_surface_and_keeps_cursor_cell_dis
 }
 
 #[test]
-fn process_table_underlines_header_name_without_underlining_sort_arrow() {
+fn process_table_underlines_full_header_including_sort_arrow() {
     for (theme_index, theme) in ui::THEMES.iter().copied().enumerate() {
         let mut app = make_test_app(1, 10);
         app.theme_index = theme_index;
@@ -529,6 +529,10 @@ fn process_table_underlines_header_name_without_underlining_sort_arrow() {
 
         assert_eq!(buffer[(pid_x, pid_y)].bg, theme.panel);
         assert_eq!(buffer[(x, y)].bg, theme.table_column_surface);
+        for position in [(x, y), (pid_x, pid_y)] {
+            assert_eq!(buffer[position].fg, theme.accent);
+            assert!(buffer[position].modifier.contains(Modifier::BOLD));
+        }
 
         for offset in 0.."PrivBytes".len() as u16 {
             assert!(
@@ -538,7 +542,7 @@ fn process_table_underlines_header_name_without_underlining_sort_arrow() {
             );
         }
         assert!(
-            !buffer[(x + "PrivBytes ".len() as u16, y)]
+            buffer[(x + "PrivBytes ".len() as u16, y)]
                 .modifier
                 .contains(ratatui::style::Modifier::UNDERLINED)
         );
@@ -1158,5 +1162,125 @@ fn process_columns_mouse_workflow_covers_picker_range_and_width() {
             app.process_column_widths.resolved(SortColumn::ProcessName),
             expected
         );
+    }
+}
+
+#[test]
+fn column_boundary_drag_resizes_without_sorting_and_stops_on_resize() {
+    let mut app = make_test_app(3, 10);
+    let screen = Rect::new(0, 0, 160, 40);
+    app.set_screen_area(screen);
+    app.process_columns = vec![MetricColumn::CpuPercent, MetricColumn::PrivateBytes];
+    app.process_metric_column_offset = 1;
+    app.toggle_display_pause();
+    let area = main_panel_areas_for_app(screen, &app).processes.area;
+    let column = SortColumn::Metric(MetricColumn::PrivateBytes);
+    let (_, edge) = ui::process_table::column_resize_areas(area, &app)
+        .into_iter()
+        .find(|(c, _)| *c == column)
+        .unwrap();
+    let width = app.process_column_widths.resolved(column);
+    let sort = app.sort;
+    let selected = app.selected_process_identity.clone();
+    let outcome =
+        app::handle_mouse_event(&mut app, super::support::mouse_move(edge.x, edge.y), screen);
+    assert!(outcome.dirty);
+    assert_eq!(app.column_resize_hovered, Some(column));
+    app.on_mouse(left_click(edge.x, edge.y), screen);
+    app.on_mouse(
+        MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column: edge.x + 5,
+            row: edge.y + 4,
+            modifiers: KeyModifiers::NONE,
+        },
+        screen,
+    );
+    assert_eq!(app.process_column_widths.resolved(column), width + 5);
+    assert_eq!(app.sort, sort);
+    assert_eq!(app.selected_process_identity, selected);
+    app.on_mouse(
+        MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: 0,
+            row: edge.y,
+            modifiers: KeyModifiers::NONE,
+        },
+        screen,
+    );
+    assert_eq!(
+        app.process_column_widths.resolved(column),
+        column.min_width()
+    );
+    assert!(app.column_resize_drag.is_none());
+    let edge = ui::process_table::column_resize_areas(area, &app)[0].1;
+    app.on_mouse(left_click(edge.x, edge.y), screen);
+    assert!(app.column_resize_drag.is_some());
+    app.set_screen_area(Rect::new(0, 0, 140, 40));
+    assert!(app.column_resize_drag.is_none());
+}
+
+#[test]
+fn full_path_drag_uses_rendered_width_then_keeps_manual_width() {
+    let mut app = make_test_app(1, 10);
+    app.process_columns = vec![MetricColumn::FullPath];
+    let area = Rect::new(0, 0, 140, 10);
+    let column = SortColumn::Metric(MetricColumn::FullPath);
+    let initial = crate::ui::process_table::column_rendered_width(area, &app, column);
+    assert!(initial > MetricColumn::FullPath.width());
+    app.process_column_widths.set(column, 50);
+    assert_eq!(
+        crate::ui::process_table::column_rendered_width(area, &app, column),
+        50
+    );
+    app.process_column_widths
+        .set(column, MetricColumn::FullPath.width());
+    assert_eq!(
+        crate::ui::process_table::column_rendered_width(area, &app, column),
+        MetricColumn::FullPath.width()
+    );
+}
+
+#[test]
+fn header_underlines_include_padding_without_an_idle_edge_background() {
+    let mut app = make_test_app(1, 10);
+    app.process_columns = vec![MetricColumn::GpuPercent, MetricColumn::IoReadBytesPerSec];
+    app.selected_process_column_index = 1;
+    for width in [80, 140] {
+        let screen = Rect::new(0, 0, width, 40);
+        app::sync_layout_state(&mut app, screen);
+        let area = main_panel_areas_for_app(screen, &app).processes.area;
+        let buffer = render_app_to_buffer(&app, width, 40);
+        for (column, edge) in ui::process_table::column_resize_areas(area, &app) {
+            let cell_width = ui::process_table::column_rendered_width(area, &app, column);
+            let start = edge.x + 1 - cell_width;
+            for x in start..=edge.x {
+                assert!(buffer[(x, edge.y)].modifier.contains(Modifier::UNDERLINED));
+            }
+            assert_eq!(buffer[(edge.x, edge.y)].bg, buffer[(start, edge.y)].bg);
+            if column == SortColumn::ProcessName {
+                assert_eq!(buffer[(edge.x, edge.y)].symbol(), " ");
+            }
+            if edge.x + 1 < area.right() - 1 {
+                assert!(
+                    !buffer[(edge.x + 1, edge.y)]
+                        .modifier
+                        .contains(Modifier::UNDERLINED)
+                );
+            }
+        }
+        app.column_resize_hovered = Some(SortColumn::ProcessName);
+        let hovered = render_app_to_buffer(&app, width, 40);
+        let (_, edge) = ui::process_table::column_resize_areas(area, &app)
+            .into_iter()
+            .find(|(c, _)| *c == SortColumn::ProcessName)
+            .unwrap();
+        assert_eq!(hovered[(edge.x, edge.y)].bg, app.theme().focus_surface);
+        assert!(
+            hovered[(edge.x, edge.y)]
+                .modifier
+                .contains(Modifier::UNDERLINED)
+        );
+        app.column_resize_hovered = None;
     }
 }
