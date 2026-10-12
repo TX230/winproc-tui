@@ -19,6 +19,7 @@ pub(crate) enum ContextAction {
     SetPoint(GraphId, Option<DateTime<Local>>, char),
     ReorderGraphs(GraphId),
     ClearPoints,
+    ExportGraphsCsv,
     Latest(GraphId),
     Owner(Option<NetworkOwner>, bool),
     Endpoint(NetworkEndpoint, bool),
@@ -155,6 +156,7 @@ impl App {
         menu.add("Jump to latest", ContextAction::Latest(id), true);
         if panel == FocusedPanel::DetailsGraph {
             menu.add("Reorder graphs", ContextAction::ReorderGraphs(id), true);
+            menu.add("Export Graphs to CSV", ContextAction::ExportGraphsCsv, true);
         }
         for (label, point) in [("Set A", 'A'), ("Set B", 'B')] {
             menu.add(
@@ -171,6 +173,12 @@ impl App {
                 .is_some_and(|ab| ab.a.is_some() || ab.b.is_some()),
         );
         Some(menu)
+    }
+
+    pub(crate) fn graph_export_context_menu(&self, anchor: Position) -> ContextMenu {
+        let mut menu = ContextMenu::new("GRAPHS".into(), anchor);
+        menu.add("Export Graphs to CSV", ContextAction::ExportGraphsCsv, true);
+        menu
     }
 
     pub(crate) fn endpoint_context_menu(
@@ -276,6 +284,7 @@ impl App {
         }
         self.context_menu = None;
         match item.action {
+            ContextAction::ExportGraphsCsv => self.open_graph_csv(),
             ContextAction::ShowGraph(source) => {
                 if self.add_or_reveal_graph_source(source.clone(), FocusedPanel::Processes)
                     && let Some(id) = self.graph_id_for_source(&source)

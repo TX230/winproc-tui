@@ -187,6 +187,7 @@ fn jump_to_latest_is_direct_and_preserves_graph_state() {
             vec![
                 "Jump to latest",
                 "Reorder graphs",
+                "Export Graphs to CSV",
                 "Set A",
                 "Set B",
                 "Clear A/B"
@@ -217,6 +218,7 @@ fn graph_and_samples_menus_keep_requested_order_without_samples() {
             vec![
                 "Jump to latest",
                 "Reorder graphs",
+                "Export Graphs to CSV",
                 "Set A",
                 "Set B",
                 "Clear A/B",
@@ -248,4 +250,49 @@ fn graph_and_samples_menus_keep_requested_order_without_samples() {
     assert!(app.context_menu.is_none());
     assert!(app.graph_reorder_dialog.is_some());
     assert_eq!(app.active_graph_id, Some(id));
+}
+
+#[test]
+fn graph_right_click_csv_opens_workspace_export_without_changing_selection() {
+    for background in [false, true] {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        let screen = Rect::new(0, 0, 180, 60);
+        app::sync_layout_state(&mut app, screen);
+        let layout = ui::layout::graph_workspace_layout(
+            ui::main_panel_areas_for_app(screen, &app).details.unwrap(),
+            &app,
+        );
+        let area = if background {
+            layout.controls
+        } else {
+            layout.graph_cards[0].area
+        };
+        let id = app.active_graph_id;
+        for kind in [
+            MouseEventKind::Down(MouseButton::Right),
+            MouseEventKind::Up(MouseButton::Right),
+        ] {
+            app.on_mouse(
+                MouseEvent {
+                    kind,
+                    column: area.x,
+                    row: area.y,
+                    modifiers: KeyModifiers::NONE,
+                },
+                screen,
+            );
+        }
+        let menu = app.context_menu.as_mut().expect("Graph context menu");
+        menu.selected = menu
+            .items
+            .iter()
+            .position(|item| item.label == "Export Graphs to CSV")
+            .unwrap();
+        enter(&mut app);
+        assert!(app.context_menu.is_none());
+        assert!(app.graph_csv_dialog.is_some());
+        assert_eq!(app.active_graph_id, id);
+        assert_eq!(app.graph_entries.len(), 1);
+    }
 }

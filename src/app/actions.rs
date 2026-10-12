@@ -895,13 +895,7 @@ impl App {
             return Ok(());
         }
 
-        if matches!(key.code, KeyCode::Char('e' | 'E'))
-            && key.modifiers == KeyModifiers::CONTROL
-            && matches!(
-                self.focused_panel,
-                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-            )
-        {
+        if matches!(key.code, KeyCode::Char('e' | 'E')) && key.modifiers == KeyModifiers::CONTROL {
             self.open_graph_csv();
             return Ok(());
         }
@@ -2509,6 +2503,11 @@ impl App {
                 self.graph_slot_sample_at(slot, self.details_sample_selected)
             };
             return self.graph_context_menu(id, sample, FocusedPanel::DetailsGraph, anchor);
+        }
+        if graph_workspace_layout_for_app(self, screen).is_some_and(|layout| {
+            layout.graph_slots.contains(anchor) || layout.controls.contains(anchor)
+        }) {
+            return Some(self.graph_export_context_menu(anchor));
         }
         None
     }

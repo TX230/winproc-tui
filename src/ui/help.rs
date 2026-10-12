@@ -79,6 +79,10 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
 
 const GLOBAL_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "Ctrl+E",
+        label: "Export all Graphs to CSV from any main panel",
+    },
+    HelpItem {
         key: "Alt+S/P/V/O/T",
         label: "Session / Profile / View / Tools / Settings menus",
     },
@@ -508,7 +512,7 @@ const GRAPH_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+E",
-        label: "Export all registered Graphs to CSV",
+        label: "Export all Graphs to CSV; ←/→ cursor, Ctrl+Space path completion",
     },
     HelpItem {
         key: "s",
@@ -567,7 +571,7 @@ const SAMPLES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+E",
-        label: "Export all registered Graphs to CSV",
+        label: "Export all Graphs to CSV; ←/→ cursor, Ctrl+Space path completion",
     },
     HelpItem {
         key: "s",
@@ -625,7 +629,7 @@ const AB_ROWS: &[HelpItem] = &[
 const MOUSE_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Right-click Graph / Samples",
-        label: "Jump to latest or set/clear A/B; Graph also offers Reorder graphs",
+        label: "Graph/Samples: latest and A/B; Graph: reorder and CSV export",
     },
     HelpItem {
         key: "Right-click column name",

@@ -149,6 +149,9 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
             ]
         }
     };
+    if !items.iter().any(|(key, _)| *key == "Ctrl+E") {
+        items.push(("Ctrl+E", "CSV"));
+    }
     if app.focused_panel == FocusedPanel::Processes && app.watch_enabled {
         items.push(("Ctrl+A", "Select all"));
     }

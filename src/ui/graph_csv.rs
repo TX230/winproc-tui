@@ -10,24 +10,36 @@ use ratatui::{
     widgets::Paragraph,
 };
 fn modal() -> ScrollableModal {
-    ScrollableModal::new("Export Graphs to CSV", 72, 7, 1)
+    ScrollableModal::new("Export Graphs to CSV", 87, 8, 2)
 }
 pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let Some(d) = app.graph_csv_dialog.as_ref() else {
         return;
     };
+    if app.graph_entries.is_empty() {
+        ScrollableModal::new("Export Graphs to CSV", 87, 1, 0).render(
+            frame,
+            area,
+            Text::from(Span::styled(
+                "Please add metrics to Graph slots.",
+                Style::default().fg(theme.danger),
+            )),
+            0,
+            false,
+            theme,
+        );
+        return;
+    }
     let layout = modal().layout(area);
     let (before, after) =
         crate::app::text_input::window(&d.path, d.cursor, layout.content.width as usize);
-    let path = if d.range_focused {
-        d.path.clone()
-    } else {
-        format!("{before}_{after}")
-    };
+    let path = format!("{before}{after}");
     let active = Style::default().fg(theme.text).bg(theme.highlight);
     let normal = Style::default().fg(theme.text);
     let lines = vec![
-        Line::from("Destination (new file):"),
+        Line::from("Export time series from all Graph slots to one CSV file."),
+        Line::from(""),
+        Line::from("Destination file (full path):"),
         Line::from(Span::styled(
             path,
             if d.range_focused { normal } else { active },
@@ -59,16 +71,36 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
             },
         ]
     };
-    let footer = Line::from(shortcut_spans(&items, theme));
+    let mut footer = Text::from(Line::from(shortcut_spans(&items, theme)));
+    if !d.busy() && !d.range_focused {
+        footer.lines.push(Line::from(shortcut_spans(
+            &[("←/→", "Cursor"), ("Ctrl+Space", "Complete path")],
+            theme,
+        )));
+    }
     crate::ui::footer::register_shortcut_text(
         app,
         layout.footer,
-        &Text::from(footer.clone()),
+        &footer,
         ratatui::layout::Alignment::Left,
     );
     frame.render_widget(Paragraph::new(footer), layout.footer);
+    let cursor_y = layout.content.y.saturating_add(3);
+    if !d.range_focused
+        && !d.busy()
+        && layout.content.width > 0
+        && cursor_y < layout.content.bottom()
+    {
+        frame.set_cursor_position((
+            layout.content.x + Line::from(before).width() as u16,
+            cursor_y,
+        ));
+    }
 }
 pub(crate) fn mouse(app: &mut App, event: MouseEvent, area: Rect) {
+    if app.graph_entries.is_empty() {
+        return;
+    }
     let content = modal().layout(area).content;
     if event.kind != MouseEventKind::Down(MouseButton::Left)
         || !content.contains((event.column, event.row).into())
@@ -82,11 +114,11 @@ pub(crate) fn mouse(app: &mut App, event: MouseEvent, area: Rect) {
         return;
     }
     match event.row.saturating_sub(content.y) {
-        1 => {
+        3 => {
             d.range_focused = false;
             d.cursor = d.path.len();
         }
-        3 => {
+        5 => {
             d.range_focused = true;
             app.cycle_csv_range(true);
         }

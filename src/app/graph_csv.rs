@@ -1,3 +1,4 @@
+use super::path_completion::{PathCompletion, PathCompletionState};
 use crate::{
     App,
     app::{DetailsMetric, GraphSlot, GraphValueFormat},
@@ -36,6 +37,7 @@ pub(crate) struct CsvDialog {
     pub(crate) range: CsvRange,
     pub(crate) range_focused: bool,
     pub(crate) error: String,
+    completion: PathCompletionState,
     result: Option<Receiver<Result<(PathBuf, usize), String>>>,
 }
 impl CsvDialog {
@@ -51,12 +53,16 @@ pub(crate) struct CsvSnapshot {
 }
 impl App {
     pub(crate) fn open_graph_csv(&mut self) {
-        if self.graph_entries.is_empty() {
-            self.status = "No Graphs to export".into();
-            return;
-        }
-        let path = format!("graphs-{}.csv", Local::now().format("%Y%m%d-%H%M%S"));
+        let filename = format!("graphs-{}.csv", Local::now().format("%Y%m%d-%H%M%S"));
+        let (path, error) = match std::env::current_dir() {
+            Ok(dir) => (dir.join(filename).display().to_string(), String::new()),
+            Err(error) => (
+                filename,
+                format!("Could not resolve current directory: {error}"),
+            ),
+        };
         self.graph_csv_dialog = Some(CsvDialog {
+            error,
             cursor: path.len(),
             path,
             ..Default::default()
@@ -81,10 +87,47 @@ impl App {
         }
     }
     pub(crate) fn graph_csv_key(&mut self, key: KeyEvent) {
+        if self.graph_entries.is_empty() {
+            if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                self.graph_csv_dialog = None;
+            }
+            return;
+        }
         let Some(d) = self.graph_csv_dialog.as_mut() else {
             return;
         };
         if d.busy() {
+            return;
+        }
+        if key.code == KeyCode::Char(' ')
+            && key
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL)
+        {
+            if !d.range_focused {
+                match d.completion.complete_directory_path(&d.path, d.cursor) {
+                    PathCompletion::None => {
+                        self.status = "No directory completion match".into();
+                    }
+                    PathCompletion::Replaced {
+                        value,
+                        cursor,
+                        match_count,
+                        candidate_index,
+                    } => {
+                        d.path = value;
+                        d.cursor = cursor;
+                        self.status = if match_count == 1 {
+                            "Completed directory".into()
+                        } else {
+                            format!(
+                                "Completed directory ({}/{match_count})",
+                                candidate_index + 1
+                            )
+                        };
+                    }
+                }
+            }
             return;
         }
         if !d.range_focused
@@ -105,10 +148,8 @@ impl App {
             KeyCode::Esc => self.graph_csv_dialog = None,
             KeyCode::Enter => self.start_graph_csv(),
             KeyCode::Tab | KeyCode::BackTab => d.range_focused = !d.range_focused,
-            KeyCode::Left | KeyCode::Up if d.range_focused => self.cycle_csv_range(false),
-            KeyCode::Right | KeyCode::Down | KeyCode::Char(' ') if d.range_focused => {
-                self.cycle_csv_range(true)
-            }
+            KeyCode::Left if d.range_focused => self.cycle_csv_range(false),
+            KeyCode::Right | KeyCode::Char(' ') if d.range_focused => self.cycle_csv_range(true),
             _ if !d.range_focused => {
                 super::text_input::edit(&mut d.path, &mut d.cursor, key);
             }
@@ -153,6 +194,9 @@ impl App {
         })
     }
     fn start_graph_csv(&mut self) {
+        if self.graph_entries.is_empty() {
+            return;
+        }
         let Some(d) = self.graph_csv_dialog.as_ref() else {
             return;
         };
@@ -160,7 +204,7 @@ impl App {
             self.graph_csv_dialog.as_mut().unwrap().error = "Enter a destination path".into();
             return;
         }
-        let path = PathBuf::from(&d.path);
+        let path = PathBuf::from(d.path.trim());
         let snapshot = match self.csv_snapshot(d.range) {
             Ok(s) => s,
             Err(e) => {
@@ -265,6 +309,13 @@ impl CsvSnapshot {
         Ok(rows.len())
     }
     pub(crate) fn write_file(&self, path: &Path) -> Result<usize, String> {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Could not create destination directory: {e}"))?;
+        }
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
