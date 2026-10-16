@@ -1860,7 +1860,7 @@ fn graph_stats_for_values(
         window_min,
         window_max,
         max,
-        scale_max: nice_axis_max(window_max.unwrap_or(0.0).round() as u64) as f64,
+        scale_max: nice_axis_max(window_max.unwrap_or(0.0).ceil() as u64) as f64,
     }
 }
 
@@ -2467,6 +2467,63 @@ mod tests {
                 scale_max: 30.0,
             }
         );
+    }
+
+    #[test]
+    fn graph_y_bounds_include_fractional_maxima() {
+        for (maximum, expected_upper) in [
+            (0.0, 1.0),
+            (0.2, 1.0),
+            (4.0, 4.0),
+            (4.2, 5.0),
+            (4.0_f64.next_up(), 5.0),
+            (10.2, 11.0),
+            (100.2, 110.0),
+        ] {
+            let stats = graph_stats_for_values(&[], None, [maximum].into_iter());
+            assert_eq!(graph_y_bounds(&stats, true), (0.0, expected_upper));
+            for zero_min in [true, false] {
+                let (lower, upper) = graph_y_bounds(&stats, zero_min);
+                assert!(lower <= maximum && maximum <= upper);
+            }
+        }
+    }
+
+    #[test]
+    fn graph_y_bounds_include_raw_and_ma_fractional_points() {
+        let base = chrono::Local::now();
+        let samples = [4.0, 4.0, 4.0, 4.0, 5.0, 4.0]
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| GraphSample {
+                captured_at: base + chrono::Duration::seconds(index as i64),
+                value: Some(value),
+            })
+            .collect::<Vec<_>>();
+        let averaged = moving_average_samples(&samples, None);
+        assert_eq!(averaged[4].value, Some(4.2));
+        assert_eq!(averaged[5].value, Some(4.2));
+
+        let reference = samples.last().map(|s| s.captured_at);
+        for segments in [
+            chart_segments(&samples, (-60, 0), reference, None),
+            chart_segments_preserving_sample_gaps(&averaged, (-60, 0), reference, None),
+        ] {
+            assert!(!segments.is_empty());
+            let stats = graph_stats_for_values(
+                &samples,
+                None,
+                segments.iter().flatten().map(|(_, value)| *value),
+            );
+            let (lower, upper) = graph_y_bounds(&stats, true);
+            assert_eq!((lower, upper), (0.0, 5.0));
+            assert!(
+                segments
+                    .iter()
+                    .flatten()
+                    .all(|(_, y)| *y >= lower && *y <= upper)
+            );
+        }
     }
 
     #[test]

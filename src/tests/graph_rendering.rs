@@ -1451,6 +1451,90 @@ fn graph_current_line_label_draws_selected_value_in_accent() {
 }
 
 #[test]
+fn fractional_ma_line_survives_keyboard_and_mouse_mode_switches() {
+    for (width, height) in [(80, 35), (120, 45), (180, 55)] {
+        for use_mouse in [false, true] {
+            let mut app = make_test_app(1, 10);
+            let identity = ProcessIdentity::from_row(&app.snapshot.processes[0]);
+            assert!(app.add_or_reveal_graph_source(
+                GraphSlot::process(identity, DetailsMetric::CpuPercent),
+                FocusedPanel::Processes,
+            ));
+            app.focused_panel = FocusedPanel::DetailsGraph;
+            app.show_samples_panel = false;
+            app.graph_y_axis_zero_min = true;
+            app.graph_show_all_samples = true;
+            let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+            // Every complete five-sample window averages to 4.2%, above the old 4% bound.
+            for seconds in 0..60 {
+                app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+                app.snapshot.processes[0].cpu_percent =
+                    Some(if seconds % 5 == 4 { 5.0 } else { 4.0 });
+                app.process_history.record_snapshot(
+                    app.snapshot.captured_at,
+                    &app.snapshot.processes,
+                    &app.normalized_watch_names,
+                );
+                app.system_history.record_snapshot(&app.snapshot);
+            }
+            app.select_details_sample_latest();
+            let screen = Rect::new(0, 0, width, height);
+            app::sync_layout_state(&mut app, screen);
+            let details = main_panel_areas_for_app(screen, &app).details.unwrap();
+            let layout = ui::layout::graph_workspace_layout(details, &app);
+            let card = &layout.graph_cards[0];
+
+            for expected_mode in [
+                GraphDisplayMode::Raw,
+                GraphDisplayMode::MovingAverage5,
+                GraphDisplayMode::Raw,
+            ] {
+                let buffer = render_app_to_buffer(&app, width, height);
+                assert_eq!(app.graph_entries[0].display_mode, expected_mode);
+                let mode_label = if expected_mode == GraphDisplayMode::Raw {
+                    "[RAW]"
+                } else {
+                    "[MA]"
+                };
+                assert!(find_text_position_in_area(&buffer, card.area, mode_label).is_some());
+                // Inspect actual Braille series cells, not the numeric bounds or cursor label.
+                // The flat MA line must span most of the plot's columns in its upper half.
+                let covered_columns = (card.plot.x..card.plot.right())
+                    .filter(|&x| {
+                        (card.plot.y..card.plot.y + card.plot.height / 2).any(|y| {
+                            let cell = &buffer[(x, y)];
+                            cell.fg == app.theme().active_series
+                                && cell
+                                    .symbol()
+                                    .chars()
+                                    .any(|c| ('\u{2801}'..='\u{28ff}').contains(&c))
+                        })
+                    })
+                    .count();
+                assert!(
+                    covered_columns > usize::from(card.plot.width / 2),
+                    "series clipped: {width}x{height}, mouse={use_mouse}, mode={expected_mode:?}, columns={covered_columns}\n{}",
+                    buffer_to_text(&buffer)
+                );
+                assert!(find_text_position_in_area(&buffer, card.plot, "5.0%").is_some());
+                if expected_mode == GraphDisplayMode::MovingAverage5 {
+                    assert!(find_text_position_in_area(&buffer, card.plot, "MA5: 4.2%").is_some());
+                }
+                if use_mouse {
+                    app.on_mouse(
+                        left_click(card.display_mode.x + 2, card.display_mode.y),
+                        screen,
+                    );
+                } else {
+                    app.on_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+                        .unwrap();
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn moving_average_graph_labels_smoothed_cursor_but_keeps_raw_ab_and_samples() {
     let mut app = make_test_app(1, 10);
     assign_private_graph(&mut app);
