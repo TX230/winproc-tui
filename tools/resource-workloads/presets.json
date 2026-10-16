@@ -1,0 +1,14 @@
+{
+  "verify": {
+    "seconds": 120,
+    "scale": 1.0,
+    "forceGc": true,
+    "workloads": ["cpu", "memory", "threads", "handles", "files", "io-read", "io-write", "dotnet-short", "dotnet-gen2", "dotnet-loh", "dotnet-poh", "dotnet-frag", "gpu", "gpu-active", "user", "gdi"]
+  },
+  "screenshot": {
+    "seconds": 600,
+    "scale": 0.5,
+    "forceGc": true,
+    "workloads": ["cpu", "memory", "dotnet", "gpu", "io-write", "objects"]
+  }
+}
