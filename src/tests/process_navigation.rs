@@ -95,7 +95,7 @@ fn process_page_size_uses_full_height_without_graphs_and_caps_with_graphs() {
         main_panel_areas(Rect::new(0, 0, 120, 40), false, 30, false)
             .processes
             .page_size,
-        26
+        27
     );
     assert_eq!(
         main_panel_areas(Rect::new(0, 0, 120, 60), true, 30, false)

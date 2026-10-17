@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-pub(crate) const HEADER_HEIGHT: u16 = 2;
+pub(crate) const HEADER_HEIGHT: u16 = 1;
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
 pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 16;

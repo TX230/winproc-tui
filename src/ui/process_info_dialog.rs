@@ -813,7 +813,7 @@ mod tests {
 
         assert_eq!(layout.area.width, 142);
         assert_eq!(layout.area.height, 24);
-        assert!(layout.area.y >= 2);
+        assert!(layout.area.y >= 1);
         assert_eq!(layout.area.x, 29);
     }
 
@@ -823,7 +823,7 @@ mod tests {
         assert_eq!((narrow.area.width, narrow.area.height), (100, 24));
 
         let short = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 24));
-        assert_eq!((short.area.width, short.area.height), (142, 20));
+        assert_eq!((short.area.width, short.area.height), (142, 21));
     }
 
     #[test]

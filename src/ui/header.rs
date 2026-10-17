@@ -13,12 +13,6 @@ use ratatui::{
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
 pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    if area.height > 1 {
-        frame.render_widget(
-            Paragraph::new("").style(Style::default().bg(theme.background)),
-            Rect::new(area.x, area.y + 1, area.width, 1),
-        );
-    }
     let area = Rect {
         height: area.height.min(1),
         ..area

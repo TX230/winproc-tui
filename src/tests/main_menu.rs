@@ -958,7 +958,7 @@ fn view_separates_column_selection_visibility_graphs_and_layout() {
 }
 
 #[test]
-fn header_spacer_separates_all_workspaces_and_has_no_hit_target() {
+fn workspaces_and_dropdowns_start_directly_below_the_single_row_menu() {
     for width in [80, 120, 180] {
         for theme_index in 0..ui::THEMES.len() {
             for high_contrast in [false, true] {
@@ -966,24 +966,29 @@ fn header_spacer_separates_all_workspaces_and_has_no_hit_target() {
                 app.theme_index = theme_index;
                 app.high_contrast = high_contrast;
                 let screen = Rect::new(0, 0, width, 30);
-                for workspace in 0..3 {
+                for (workspace, title) in ["MEM", "NETWORK ENDPOINTS", "PROCESSES USING FILE"]
+                    .into_iter()
+                    .enumerate()
+                {
                     app.network_browser.visible = workspace == 1;
                     app.file_users.visible = workspace == 2;
                     let buffer = render_app_to_buffer(&app, width, 30);
+                    let (menu_x, menu_y) = find_text_position(&buffer, "File").unwrap();
+                    assert_eq!(menu_y, 0);
+                    assert_eq!(
+                        ui::header::header_action_at(screen, &app, menu_x, menu_y),
+                        Some(ui::header::HeaderAction::File)
+                    );
+                    assert_eq!(find_text_position(&buffer, title).unwrap().1, 1);
                     for x in 0..width {
-                        assert_eq!(buffer[(x, 1)].symbol(), " ");
-                        assert_eq!(buffer[(x, 1)].bg, app.theme().background);
                         assert_eq!(ui::header::header_action_at(screen, &app, x, 1), None);
-                    }
-                    if workspace == 0 {
-                        assert_eq!(find_text_position(&buffer, "MEM").unwrap().1, 2);
                     }
                     app.open_main_menu_section(MainMenuSection::File);
                     let buffer = render_app_to_buffer(&app, width, 30);
-                    assert_eq!(main_menu_area(screen, &app).y, 2);
-                    for x in 0..width {
-                        assert_eq!(buffer[(x, 1)].symbol(), " ");
-                    }
+                    let dropdown = main_menu_area(screen, &app);
+                    assert_eq!(dropdown.y, 1);
+                    assert_ne!(buffer[(dropdown.x, dropdown.y)].symbol(), " ");
+                    assert_eq!(find_text_position(&buffer, "File").unwrap().1, 0);
                     app.close_main_menu();
                 }
             }
