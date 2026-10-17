@@ -502,7 +502,7 @@ fn log_view_header_shows_log_badge_and_path_without_freshness() {
     let (_, log_y) = find_text_position(&buffer, "LOG").expect("log badge should be rendered");
 
     assert!(rendered.contains("LOG"), "{rendered}");
-    assert!(rendered.contains("File ▾"), "{rendered}");
+    assert!(rendered.contains("File▾"), "{rendered}");
     assert!(rendered.contains("PF: --"), "{rendered}");
     let (profile_x, profile_y) =
         find_text_position(&buffer, "PF: --").expect("profile badge should render");
@@ -516,13 +516,13 @@ fn log_view_header_shows_log_badge_and_path_without_freshness() {
         "{rendered}"
     );
     assert!(
-        !rendered.contains(&format!("winproc-tui {}", env!("CARGO_PKG_VERSION"))),
+        rendered.contains(&format!("winproc-tui {}", env!("CARGO_PKG_VERSION"))),
         "{rendered}"
     );
 }
 
 #[test]
-fn log_view_header_keeps_the_filename_suffix_and_hides_product_at_narrow_width() {
+fn log_view_header_keeps_the_filename_suffix_and_product_at_narrow_width() {
     let mut app = make_test_app(1, 10);
     let path = "C:/logs/winproc-tui-demo.log";
     let product_and_version = format!("winproc-tui {}", env!("CARGO_PKG_VERSION"));
@@ -535,7 +535,7 @@ fn log_view_header_keeps_the_filename_suffix_and_hides_product_at_narrow_width()
     assert!(rendered.contains("File▾"), "{rendered}");
     assert!(!rendered.contains(path), "{rendered}");
     assert!(header.contains(".log"), "{header}");
-    assert!(!rendered.contains(&product_and_version), "{rendered}");
+    assert!(rendered.contains(&product_and_version), "{rendered}");
 }
 
 #[test]

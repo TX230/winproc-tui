@@ -10,6 +10,8 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+const PRODUCT_LABEL: &str = concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ");
+
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
 pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
@@ -21,6 +23,22 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         Paragraph::new("").style(Style::default().bg(theme.menu_bar)),
         area,
     );
+    let product_width = product_width(area);
+    if product_width > 0 {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::raw(" "),
+                Span::styled("winproc-tui", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(concat!(" ", env!("CARGO_PKG_VERSION"), " ")),
+            ]))
+            .style(
+                Style::default()
+                    .fg(theme.background)
+                    .bg(theme.active_series),
+            ),
+            Rect::new(area.x, area.y, product_width - 1, area.height),
+        );
+    }
     let actions = header_actions(area, app);
     for (action, rect) in &actions {
         let active = action
@@ -56,7 +74,7 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
             } else {
                 Modifier::empty()
             });
-        let compact = compact_menu(area);
+        let compact = compact_menu(menu_area(area));
         let spans = action
             .label(compact)
             .chars()
@@ -393,8 +411,21 @@ const CATEGORIES: [HeaderAction; 5] = [
 ];
 
 // Reserve critical state independently of names and current freshness/pause state.
-// Compact headings fit alongside this budget at the supported 80-column width.
+// Product branding yields to essential controls below the supported 80-column width.
 const IMPORTANT_STATUS_WIDTH: u16 = 38;
+
+fn product_width(area: Rect) -> u16 {
+    if area.width >= 80 {
+        PRODUCT_LABEL.len() as u16 + 1
+    } else {
+        0
+    }
+}
+
+fn menu_area(area: Rect) -> Rect {
+    let width = product_width(area);
+    Rect::new(area.x + width, area.y, area.width - width, area.height)
+}
 
 fn menu_budget(area: Rect) -> u16 {
     area.width
@@ -425,6 +456,7 @@ pub(crate) fn header_actions(area: Rect, _app: &App) -> Vec<(HeaderAction, Rect)
     if area.is_empty() {
         return Vec::new();
     }
+    let area = menu_area(area);
     let compact = compact_menu(area);
     let budget = menu_budget(area);
     let total = CATEGORIES

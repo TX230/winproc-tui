@@ -938,9 +938,27 @@ fn menus_toggle_and_shortcut_hover_redraws_without_click_through() {
     use ratatui::style::Modifier;
     let mut app = make_test_app(3, 10);
     let screen = Rect::new(0, 0, 180, 60);
-    app.on_mouse(super::support::left_click(2, 0), screen);
+    app.on_mouse(
+        super::support::left_click(
+            ui::header::header_actions(ui::screen_layout(screen)[0], &app)[0]
+                .1
+                .x
+                + 2,
+            0,
+        ),
+        screen,
+    );
     assert!(app.is_main_menu_open());
-    app.on_mouse(super::support::left_click(2, 0), screen);
+    app.on_mouse(
+        super::support::left_click(
+            ui::header::header_actions(ui::screen_layout(screen)[0], &app)[0]
+                .1
+                .x
+                + 2,
+            0,
+        ),
+        screen,
+    );
     assert!(!app.is_main_menu_open());
     app.open_main_menu();
     app.on_mouse(super::support::left_click(179, 30), screen);

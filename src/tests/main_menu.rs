@@ -397,8 +397,15 @@ fn header_geometry_is_stable_and_categories_switch_with_one_click() {
         let text = render_app_to_text(&app, width, 60);
         assert!(!text.lines().next().unwrap().contains("MENU"));
         assert_eq!(original[0].0, HeaderAction::File);
-        assert_eq!(original[0].1.x, 0);
-        for action in [HeaderAction::File, HeaderAction::Investigation] {
+        assert_eq!(
+            original[0].1.x,
+            concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ").len() as u16 + 1
+        );
+        for action in original
+            .iter()
+            .map(|(action, _)| *action)
+            .filter(|action| action.section().is_some() && *action != HeaderAction::Help)
+        {
             let rect = original.iter().find(|(item, _)| *item == action).unwrap().1;
             app.on_mouse(left_click(rect.x + 1, rect.y), screen);
             assert!(app.is_main_menu_open());
@@ -410,7 +417,8 @@ fn header_geometry_is_stable_and_categories_switch_with_one_click() {
         }
         let view = original
             .iter()
-            .find(|(item, _)| *item == HeaderAction::Investigation)
+            .rev()
+            .find(|(item, _)| item.section().is_some() && *item != HeaderAction::Help)
             .unwrap()
             .1;
         app.on_mouse(left_click(view.x, view.y), screen);
@@ -556,7 +564,7 @@ fn narrow_header_keeps_pause_and_stale_status_after_menu_controls() {
     assert!(header.contains("LIVE"), "{header}");
     assert!(header.contains("STALE"), "{header}");
     assert!(header.contains("DISPLAY PAUSED"), "{header}");
-    assert!(header.find("Help").unwrap() < header.find("LIVE").unwrap());
+    assert!(header.find("More").unwrap() < header.find("LIVE").unwrap());
 }
 
 #[test]
@@ -568,10 +576,21 @@ fn investigation_exposes_keyboard_routes_and_no_workspace_buttons_remain_in_head
         for removed in ["[Processes]", "[Network]", "[Find by file]"] {
             assert!(!header.contains(removed));
         }
-        for label in ["File", "Investigation", "View", "Settings", "Help"] {
+        for label in if width == 80 {
+            vec!["winproc-tui", "File", "More"]
+        } else {
+            vec![
+                "winproc-tui",
+                "File",
+                "Investigation",
+                "View",
+                "Settings",
+                "Help",
+            ]
+        } {
             assert!(header.contains(label), "{header}");
         }
-        assert!(!header.contains("More"), "{header}");
+        assert_eq!(header.contains("More"), width == 80, "{header}");
         alt(&mut app, 'i');
         let labels = menu_labels(&app);
         assert!(labels.contains(&"Network endpoints".to_string()));
@@ -654,7 +673,14 @@ fn header_arrows_reach_help_in_every_activity_and_terminal_width() {
             let buffer = render_app_to_buffer(&app, width, 60);
             let heading = ui::header::header_actions(ui::screen_layout(screen)[0], &app)
                 .into_iter()
-                .find(|(action, _)| *action == HeaderAction::Help)
+                .find(|(action, _)| {
+                    *action
+                        == if width == 80 {
+                            HeaderAction::More
+                        } else {
+                            HeaderAction::Help
+                        }
+                })
                 .unwrap()
                 .1;
             assert_eq!(
@@ -664,9 +690,17 @@ fn header_arrows_reach_help_in_every_activity_and_terminal_width() {
             assert!(render_app_to_text(&app, width, 60).contains("Enter Help"));
             assert!(main_menu_area(screen, &app).is_empty());
             assert!(main_menu_item_area(screen, &app, 0).is_none());
+            if width == 80 {
+                press(&mut app, KeyCode::Right);
+                assert_eq!(app.main_menu_section, MainMenuSection::More);
+            }
             press(&mut app, KeyCode::Right);
             assert_eq!(app.main_menu_section, MainMenuSection::File);
             press(&mut app, KeyCode::Left);
+            if width == 80 {
+                assert_eq!(app.main_menu_section, MainMenuSection::More);
+                press(&mut app, KeyCode::Left);
+            }
             assert_eq!(app.main_menu_section, MainMenuSection::Help);
             press(&mut app, KeyCode::Left);
             assert_eq!(app.main_menu_section, MainMenuSection::Settings);
@@ -817,10 +851,8 @@ fn compact_header_keeps_recording_pause_stale_and_stable_geometry() {
         "STALE",
         "DISPLAY PAUSED",
         "File",
-        "Investigation",
-        "View",
-        "Settings",
-        "Help",
+        "More",
+        "winproc-tui",
     ] {
         assert!(header.contains(label), "{header}");
     }
@@ -991,6 +1023,36 @@ fn workspaces_and_dropdowns_start_directly_below_the_single_row_menu() {
                     assert_eq!(find_text_position(&buffer, "File").unwrap().1, 0);
                     app.close_main_menu();
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn header_product_matches_live_color_and_is_not_a_menu_target() {
+    for width in [80, 120, 180] {
+        for high_contrast in [false, true] {
+            for theme_index in 0..ui::THEMES.len() {
+                let mut app = make_test_app(1, 10);
+                app.theme_index = theme_index;
+                app.high_contrast = high_contrast;
+                let screen = Rect::new(0, 0, width, 30);
+                let buffer = render_app_to_buffer(&app, width, 30);
+                let label = concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ");
+                assert_eq!(find_text_position(&buffer, label), Some((0, 0)));
+                for x in 0..label.len() as u16 {
+                    assert_eq!(buffer[(x, 0)].bg, app.theme().active_series);
+                    if (1..12).contains(&x) {
+                        assert_eq!(buffer[(x, 0)].fg, app.theme().background);
+                        assert!(buffer[(x, 0)].modifier.contains(Modifier::BOLD));
+                    } else if (13..13 + env!("CARGO_PKG_VERSION").len() as u16).contains(&x) {
+                        assert_eq!(buffer[(x, 0)].fg, app.theme().background);
+                        assert!(!buffer[(x, 0)].modifier.contains(Modifier::BOLD));
+                    }
+                    assert_eq!(ui::header::header_action_at(screen, &app, x, 0), None);
+                }
+                app.on_mouse(left_click(1, 0), screen);
+                assert!(!app.is_main_menu_open());
             }
         }
     }

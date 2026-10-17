@@ -732,7 +732,16 @@ fn investigation_views_preserve_results_and_expose_tools_menu() {
     assert!(app.show_help);
     press(&mut app, KeyCode::Esc);
     assert!(app.network_browser.visible);
-    app.on_mouse(left_click(1, 0), screen);
+    app.on_mouse(
+        left_click(
+            ui::header::header_actions(ui::screen_layout(screen)[0], &app)[0]
+                .1
+                .x
+                + 1,
+            0,
+        ),
+        screen,
+    );
     assert!(app.is_main_menu_open());
     press(&mut app, KeyCode::Esc);
     app.activate_header_action(ui::header::HeaderAction::View);

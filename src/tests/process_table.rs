@@ -572,7 +572,10 @@ fn header_and_footer_roles_apply_to_all_color_schemes() {
         let buffer = render_app_to_buffer(&app, 100, 30);
 
         let (session_x, session_y) = find_text_position(&buffer, "File").expect("leftmost menu");
-        assert_eq!(session_x, 1);
+        assert_eq!(
+            session_x,
+            concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ").len() as u16 + 1
+        );
         assert_eq!(session_y, 0);
         assert_eq!(buffer[(session_x, session_y)].fg, theme.key_hint);
         assert!(
