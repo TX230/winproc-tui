@@ -13,8 +13,18 @@ use ratatui::{
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
 pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    if area.height > 1 {
+        frame.render_widget(
+            Paragraph::new("").style(Style::default().bg(theme.background)),
+            Rect::new(area.x, area.y + 1, area.width, 1),
+        );
+    }
+    let area = Rect {
+        height: area.height.min(1),
+        ..area
+    };
     frame.render_widget(
-        Paragraph::new("").style(Style::default().bg(theme.panel)),
+        Paragraph::new("").style(Style::default().bg(theme.menu_bar)),
         area,
     );
     let actions = header_actions(area, app);
@@ -43,24 +53,27 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
             .bg(if hovered {
                 theme.focus_surface
             } else if active {
-                theme.table_selection_surface
+                theme.menu_active
             } else {
-                theme.panel
+                theme.menu_bar
             })
             .add_modifier(if active || hovered || selected {
                 Modifier::BOLD
             } else {
                 Modifier::empty()
             });
+        let compact = compact_menu(area);
         let spans = action
-            .label()
+            .label(compact)
             .chars()
             .enumerate()
             .map(|(index, ch)| {
                 Span::styled(
                     ch.to_string(),
-                    if action.access_index() == Some(index) {
+                    if action.access_index(compact) == Some(index) {
                         style.fg(theme.key_hint).add_modifier(Modifier::UNDERLINED)
+                    } else if ch == '▾' && !active && !hovered {
+                        style.fg(theme.muted)
                     } else {
                         style
                     },
@@ -71,7 +84,7 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
     }
     let status_x = actions
         .last()
-        .map_or(area.x, |(_, rect)| rect.right().saturating_add(2))
+        .map_or(area.x, |(_, rect)| rect.right().saturating_add(1))
         .min(area.right());
     let status_area = Rect::new(
         status_x,
@@ -79,7 +92,7 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         area.right().saturating_sub(status_x),
         area.height,
     );
-    let mut spans = header_status_spans(app, theme);
+    let mut spans = header_status_spans(app, theme, usize::from(status_area.width));
     let budget = usize::from(status_area.width);
     let profile = if app.activity() == AppActivity::LogView {
         "PF: --".to_string()
@@ -104,9 +117,7 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             format!(" {} ", truncate_name(&profile, remaining - 4)),
-            Style::default()
-                .fg(ratatui::style::Color::Black)
-                .bg(theme.muted),
+            Style::default().fg(theme.muted).bg(theme.menu_bar),
         ));
     }
     if let Some(path) = app.active_log_path() {
@@ -133,7 +144,7 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
     frame.render_widget(
         Paragraph::new(Line::from(spans))
             .alignment(Alignment::Right)
-            .style(Style::default().bg(theme.panel)),
+            .style(Style::default().bg(theme.menu_bar)),
         status_area,
     );
 }
@@ -154,7 +165,7 @@ fn append_fitting_label(
     }
 }
 
-fn truncate_name(text: &str, width: usize) -> String {
+pub(super) fn truncate_name(text: &str, width: usize) -> String {
     if Span::raw(text).width() <= width {
         return text.to_string();
     }
@@ -196,11 +207,9 @@ fn truncate_cells(text: &str, width: usize) -> String {
     out
 }
 
-fn header_status_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-
+fn header_status_spans(app: &App, theme: Theme, budget: usize) -> Vec<Span<'static>> {
     let activity = app.activity();
-    spans.push(mode_span(
+    let mut spans = vec![mode_span(
         activity_label(activity),
         match activity {
             AppActivity::Live => theme.active_series,
@@ -208,39 +217,57 @@ fn header_status_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
             AppActivity::LogView => theme.warning,
         },
         theme,
-    ));
-    match activity {
-        AppActivity::Live => {}
-        AppActivity::Recording => {
-            if let Some(interval_seconds) = app
-                .active_recording_interval_seconds()
-                .filter(|interval| *interval > 1)
-            {
-                append_recording_interval(&mut spans, interval_seconds, theme);
-            }
-            {
-                spans.push(Span::raw(" "));
-                spans.push(Span::styled(
-                    SPINNER[app.recording_spinner_index % SPINNER.len()].to_string(),
-                    Style::default()
-                        .fg(theme.danger)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-        }
-        AppActivity::LogView => {
-            if let Some(interval_seconds) = app.log_view_interval_seconds {
-                append_recording_interval(&mut spans, interval_seconds, theme);
-            }
-        }
-    }
-
+    )];
     if let Some(SampleFreshness::Stale { age_seconds }) = app.sample_freshness() {
         spans.push(stale_span(age_seconds, theme));
     }
     if app.is_display_paused() && activity != AppActivity::LogView {
         spans.push(Span::raw("  "));
         spans.push(mode_span("DISPLAY PAUSED", theme.warning, theme));
+    }
+    // Long stale durations can consume the reserved width. Drop badge padding and
+    // redundant spacing before allowing any critical label to be clipped.
+    if spans.iter().map(Span::width).sum::<usize>() > budget {
+        for span in &mut spans {
+            if span.content.trim().is_empty() {
+                span.content = " ".into();
+            } else if span.style.bg.is_some() {
+                span.content = span.content.trim().to_owned().into();
+            }
+        }
+    }
+    let mut optional = Vec::new();
+    match activity {
+        AppActivity::Live => {}
+        AppActivity::Recording => {
+            if let Some(seconds) = app
+                .active_recording_interval_seconds()
+                .filter(|seconds| *seconds > 1)
+            {
+                append_recording_interval(&mut optional, seconds, theme);
+            }
+            optional.push(Span::styled(
+                format!(" {}", SPINNER[app.recording_spinner_index % SPINNER.len()]),
+                Style::default()
+                    .fg(theme.danger)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+        AppActivity::LogView => {
+            if let Some(seconds) = app.log_view_interval_seconds {
+                append_recording_interval(&mut optional, seconds, theme);
+            }
+        }
+    }
+    // Activity, stale and pause labels take priority over interval/spinner and names.
+    if spans
+        .iter()
+        .chain(optional.iter())
+        .map(Span::width)
+        .sum::<usize>()
+        <= budget
+    {
+        spans.extend(optional);
     }
     spans
 }
@@ -269,7 +296,7 @@ fn append_recording_interval(spans: &mut Vec<Span<'static>>, seconds: u64, theme
 
 fn stale_span(age_seconds: u64, theme: Theme) -> Span<'static> {
     Span::styled(
-        format!(" · STALE {age_seconds}s"),
+        format!(" STALE {age_seconds}s"),
         Style::default()
             .fg(theme.warning)
             .add_modifier(Modifier::BOLD),
@@ -288,10 +315,9 @@ fn mode_span(label: &'static str, color: ratatui::prelude::Color, theme: Theme) 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HeaderAction {
-    Session,
-    Profile,
+    File,
+    Investigation,
     View,
-    Tools,
     Settings,
     Help,
     Processes,
@@ -300,27 +326,29 @@ pub(crate) enum HeaderAction {
     More,
 }
 impl HeaderAction {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Session => " Session ▾ ",
-            Self::Profile => " Profile ▾ ",
-            Self::View => " View ▾ ",
-            Self::Tools => " Tools ▾ ",
-            Self::Settings => " Settings ▾ ",
-            Self::Help => " Help ",
-            Self::Processes => "[Processes]",
-            Self::Network => "[Network]",
-            Self::FileUsers => "[Find by file]",
-            Self::More => " More ▾ ",
+    pub(crate) fn label(self, compact: bool) -> &'static str {
+        match (self, compact) {
+            (Self::File, false) => " File ▾ ",
+            (Self::Investigation, false) => " Investigation ▾ ",
+            (Self::View, false) => " View ▾ ",
+            (Self::Settings, false) => " Settings ▾ ",
+            (Self::Help, false) => " Help ",
+            (Self::More, false) => " More ▾ ",
+            (Self::File, true) => "File▾",
+            (Self::Investigation, true) => "Investigation▾",
+            (Self::View, true) => "View▾",
+            (Self::Settings, true) => "Settings▾",
+            (Self::Help, true) => "Help",
+            (Self::More, true) => "More▾",
+            _ => "",
         }
     }
     pub(crate) fn menu_label(self) -> &'static str {
         match self {
             Self::FileUsers => "Find processes by file",
-            Self::Session => "Session",
-            Self::Profile => "Profile",
+            Self::File => "File",
+            Self::Investigation => "Investigation",
             Self::View => "View",
-            Self::Tools => "Tools",
             Self::Settings => "Settings",
             Self::Help => "Help",
             Self::Processes => "Processes",
@@ -330,30 +358,28 @@ impl HeaderAction {
     }
     pub(crate) fn section(self) -> Option<MainMenuSection> {
         match self {
-            Self::Session => Some(MainMenuSection::Session),
-            Self::Profile => Some(MainMenuSection::Profile),
+            Self::File => Some(MainMenuSection::File),
+            Self::Investigation => Some(MainMenuSection::Investigation),
             Self::View => Some(MainMenuSection::View),
-            Self::Tools => Some(MainMenuSection::Tools),
             Self::Settings => Some(MainMenuSection::Settings),
             Self::Help => Some(MainMenuSection::Help),
             Self::More => Some(MainMenuSection::More),
             _ => None,
         }
     }
-    fn access_index(self) -> Option<usize> {
+    fn access_index(self, compact: bool) -> Option<usize> {
+        let offset = usize::from(!compact);
         match self {
-            Self::Session | Self::Profile | Self::View => Some(1),
-            Self::Tools => Some(2),
-            Self::Settings => Some(3),
+            Self::File | Self::Investigation | Self::View => Some(offset),
+            Self::Settings => Some(offset + 2),
             _ => None,
         }
     }
     pub(crate) fn shortcut(self) -> &'static str {
         match self {
-            Self::Session => "Alt+S",
-            Self::Profile => "Alt+P",
+            Self::File => "Alt+F",
+            Self::Investigation => "Alt+I",
             Self::View => "Alt+V",
-            Self::Tools => "Alt+O",
             Self::Settings => "Alt+T",
             Self::Help => "F1",
             Self::Processes => "F2",
@@ -364,16 +390,34 @@ impl HeaderAction {
     }
 }
 
-fn available_actions(app: &App) -> Vec<HeaderAction> {
-    use HeaderAction::*;
-    [Session, Profile, View, Tools, Settings, Help]
-        .into_iter()
-        .filter(|action| app.activity() != AppActivity::LogView || *action != Tools)
-        .collect()
+const CATEGORIES: [HeaderAction; 5] = [
+    HeaderAction::File,
+    HeaderAction::Investigation,
+    HeaderAction::View,
+    HeaderAction::Settings,
+    HeaderAction::Help,
+];
+
+// Reserve critical state independently of names and current freshness/pause state.
+// Compact headings fit alongside this budget at the supported 80-column width.
+const IMPORTANT_STATUS_WIDTH: u16 = 38;
+
+fn menu_budget(area: Rect) -> u16 {
+    area.width
+        .saturating_sub(IMPORTANT_STATUS_WIDTH.min(area.width.saturating_sub(12)) + 1)
+}
+
+fn compact_menu(area: Rect) -> bool {
+    let regular_width = CATEGORIES
+        .iter()
+        .map(|action| Span::raw(action.label(false)).width() as u16)
+        .sum::<u16>()
+        + 4;
+    regular_width > menu_budget(area)
 }
 
 pub(crate) fn menu_sections(screen: Rect, app: &App) -> Vec<MainMenuSection> {
-    let mut sections = available_actions(app)
+    let mut sections = CATEGORIES
         .into_iter()
         .filter_map(HeaderAction::section)
         .collect::<Vec<_>>();
@@ -383,39 +427,36 @@ pub(crate) fn menu_sections(screen: Rect, app: &App) -> Vec<MainMenuSection> {
     sections
 }
 
-pub(crate) fn header_actions(area: Rect, app: &App) -> Vec<(HeaderAction, Rect)> {
+pub(crate) fn header_actions(area: Rect, _app: &App) -> Vec<(HeaderAction, Rect)> {
     if area.is_empty() {
         return Vec::new();
     }
-    // Width depends only on terminal geometry, never profile names or activity badges.
-    let reserved = (area.width / 3)
-        .clamp(40, 48)
-        .min(area.width.saturating_sub(12));
-    let end = area.right().saturating_sub(reserved);
-    let available = available_actions(app);
-    let total = available
+    let compact = compact_menu(area);
+    let budget = menu_budget(area);
+    let total = CATEGORIES
         .iter()
-        .map(|action| Span::raw(action.label()).width() as u16 + 1)
-        .sum::<u16>();
-    let overflow = total > end.saturating_sub(area.x);
-    let more_width = Span::raw(HeaderAction::More.label()).width() as u16;
+        .map(|action| Span::raw(action.label(compact)).width() as u16)
+        .sum::<u16>()
+        + 4;
+    let overflow = total > budget;
+    let more_width = Span::raw(HeaderAction::More.label(compact)).width() as u16;
     let limit = if overflow {
-        end.saturating_sub(more_width + 1)
+        budget.saturating_sub(more_width + 1)
     } else {
-        end
+        budget
     };
     let mut x = area.x;
     let mut actions = Vec::new();
-    for action in available {
-        let width = Span::raw(action.label()).width() as u16;
-        if x.saturating_add(width) > limit && action != HeaderAction::Session {
+    for action in CATEGORIES {
+        let width = Span::raw(action.label(compact)).width() as u16;
+        if x.saturating_sub(area.x) + width > limit && action != HeaderAction::File {
             break;
         }
-        let width = width.min(area.right().saturating_sub(x));
+        let width = width.min(area.width);
         actions.push((action, Rect::new(x, area.y, width, 1)));
         x = x.saturating_add(width + 1);
     }
-    if overflow && x + more_width + 8 <= area.right() {
+    if overflow && x.saturating_sub(area.x) + more_width <= budget {
         actions.push((HeaderAction::More, Rect::new(x, area.y, more_width, 1)));
     }
     actions
@@ -423,7 +464,7 @@ pub(crate) fn header_actions(area: Rect, app: &App) -> Vec<(HeaderAction, Rect)>
 
 pub(crate) fn overflow_actions(screen: Rect, app: &App) -> Vec<HeaderAction> {
     let visible = header_actions(crate::ui::screen_layout(screen)[0], app);
-    available_actions(app)
+    CATEGORIES
         .into_iter()
         .filter(|action| !visible.iter().any(|(shown, _)| shown == action))
         .collect()

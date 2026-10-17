@@ -11,6 +11,8 @@ use crate::{
     },
 };
 
+pub(crate) const HEADER_HEIGHT: u16 = 2;
+
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
 pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 16;
 pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 14;
@@ -94,7 +96,7 @@ pub(crate) fn screen_layout(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
+            Constraint::Length(HEADER_HEIGHT),
             Constraint::Min(18),
             Constraint::Length(2),
         ])

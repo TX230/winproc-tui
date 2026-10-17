@@ -72,7 +72,7 @@ Move focus to a Graph or Samples and choose a sample with `Left` / `Right`. Pres
 ### Track and Record Processes
 
 1. Select a Process or PID cell and press `Space` or `t`, or choose **Track process** from its right-click menu to add that process name to the working Tracking List.
-2. Use `Ctrl+T` to open a saved Investigation Profile. Press `Ctrl+S` to save the active Profile, or use `Profile > Save As` to save the working Tracking List under a new profile name.
+2. Use `Ctrl+T` to open a saved Investigation Profile. Press `Ctrl+S` to save the active Profile, or use `Investigation > Save profile as…` to save the working Tracking List under a new profile name.
 3. Press `Ctrl+R`, choose a log path and a `1s`, `2s`, `5s`, or `10s` recording interval, then start recording.
 4. Press `Ctrl+R` again and confirm with `y` to stop. `Enter`, `Esc`, or `n` continues recording.
 5. Press `Ctrl+L` to reopen a saved log for inspection.
@@ -83,7 +83,7 @@ Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows
 
 ## Capabilities
 
-Export all registered Graphs to one CSV from **View > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
+Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
 
 - **Live monitoring**: Shows system memory pressure, per-adapter GPU load and memory, network and disk activity, CPU activity, and detailed per-process metrics.
 - **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
@@ -91,7 +91,7 @@ Export all registered Graphs to one CSV from **View > Export Graphs to CSV**, us
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
 - **.NET metrics**: Automatically detects live .NET 8/9/10 processes and shows managed-runtime metrics, with selected heap metrics for .NET Framework 4.8.
 - **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
-- **Network endpoints**: Open **Tools > Network endpoints** (**F3**) to inspect TCP/UDP addresses, ports, and owners across the system, then open Process Info for an owner. The workspace keeps its results and filter when switching views. Lists refresh on demand and are not recorded.
+- **Network endpoints**: Open **Investigation > Network endpoints** (**F3**) to inspect TCP/UDP addresses, ports, and owners across the system, then open Process Info for an owner. The workspace keeps its results and filter when switching views. Lists refresh on demand and are not recorded.
 - **Recording and Log view**: Records system metrics and matching processes as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
 
 The last working Tracking List and app settings are restored on the next launch, or startup can choose a saved Investigation Profile or an empty Tracking List. Graphs start empty each time the app starts; filter input and runtime process identities are not saved.
@@ -105,7 +105,7 @@ The last working Tracking List and app settings are restored on the next launch,
 - Compare `Private Bytes` with `Working Set - Private` to investigate whether a large allocated buffer may be going unused.
 - Review handle-count trends and the Files tab in Process Info to find files that may not have been closed. Inspect each file handle's cache mode, write-through setting, I/O mode, and access rights.
 - Inspect the paths and versions of DLLs loaded by a process.
-- Find processes using a file by name or path through **Tools > Find processes by file** (**F4**), then open the owner's Files tab. Search reports include partial-coverage information.
+- Find processes using a file by name or path through **Investigation > Find processes by file** (**F4**), then open the owner's Files tab. Search reports include partial-coverage information.
 - Compare resource usage before and after a specific operation or code change.
 - Record a target process and later inspect history around the time an issue occurred.
 

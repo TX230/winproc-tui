@@ -491,8 +491,13 @@ fn process_copy_uses_selection_and_full_table_ignores_viewport_clipping() {
     ))
     .unwrap();
     assert_eq!(app::clipboard::last_copied_text().unwrap(), text);
-    app.open_main_menu_section(app::state::MainMenuSection::View);
-    app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+    app.on_key(KeyEvent::new(KeyCode::F(10), KeyModifiers::SHIFT))
+        .unwrap();
+    let menu = app.context_menu.as_mut().expect("Processes context menu");
+    menu.selected = menu
+        .items
+        .iter()
+        .position(|item| item.label == "Copy table")
         .unwrap();
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();

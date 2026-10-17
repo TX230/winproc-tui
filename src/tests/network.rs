@@ -701,7 +701,13 @@ fn investigation_views_preserve_results_and_expose_tools_menu() {
             > 40
     );
     let text = render_app_to_text(&app, 180, 60);
-    for label in ["Tools ▾", "View ▾", "Session ▾", "Settings ▾", " Help "] {
+    for label in [
+        "Investigation ▾",
+        "View ▾",
+        "File ▾",
+        "Settings ▾",
+        " Help ",
+    ] {
         assert!(text.lines().next().unwrap().contains(label), "{text}");
     }
     press(&mut app, KeyCode::F(4));
@@ -874,8 +880,10 @@ fn network_counts_distinguish_displayed_and_captured_endpoint_rows() {
 #[test]
 fn network_opens_and_reopens_in_filter_editor_and_slash_stays_literal_in_editor() {
     let (mut app, requests, results) = setup();
-    app.on_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::ALT))
+    app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::ALT))
         .unwrap();
+    press(&mut app, KeyCode::End);
+    press(&mut app, KeyCode::Up);
     press(&mut app, KeyCode::Enter);
     assert!(app.network_browser.editing);
     let snapshot = report(&app);

@@ -14,7 +14,7 @@ This document defines how `winproc-tui` represents investigation state, tracking
 | Tracked-only | A global display preference; it is not inferred from whether the working Tracking List is empty. |
 | Ghost Row | The newest exited process identity retained for a tracked process name so its last sampled values and history remain inspectable. |
 
-Tracking List edits are available only in Live. Recording and Log view reject direct edits and pending list changes before they can modify the working list or prune Live history. Tracked-only remains a display preference available from every main panel in all three activities; modal dialogs and text editing retain their own input handling.
+Tracking List edits are available only in Live. The Investigation menu exposes an add/remove action for the process name captured when the menu opens from Processes; sampling or selection changes cannot retarget it. Existing retained-history confirmation applies to removals. Recording and Log view reject direct edits and pending list changes before they can modify the working list or prune Live history. Tracked-only remains a display preference available from every main panel in all three activities; modal dialogs and text editing retain their own input handling.
 
 Tracking intent uses process names because PIDs change across restarts and one process name can have several live instances. Histories, selections, Process Info targets, and process Graphs use full `ProcessIdentity` values so a reused PID or restarted process never inherits another lifetime's samples.
 
@@ -111,6 +111,6 @@ Tree indentation is bounded to preserve readable process names. A compressed-dep
 
 Process context menus capture the full process identity and displayed row when opened, and retain that identity while visible. Reordering and PID reuse cannot retarget their actions. Double-clicking a process name or PID opens Process Info; tracking by process name is an explicit context action and retains Live-only and retained-history confirmation rules.
 
-Full-table copy is available through the Processes context menu and View menu, including keyboard menu navigation; it has no dedicated shortcut. Process table copy respects visible-entry order, filters, Tracked-only, Show exited, and Tree collapse, including rows beyond the viewport. Selected-row copy intersects the current visible entries with the selected process identities; copying never expands selection or changes kill eligibility. Both operations read the displayed snapshot, including frozen and Log-view data.
+Full-table copy is available through the Processes context menu, including keyboard context-menu navigation; it has no dedicated shortcut. Process table copy respects visible-entry order, filters, Tracked-only, Show exited, and Tree collapse, including rows beyond the viewport. Selected-row copy intersects the current visible entries with the selected process identities; copying never expands selection or changes kill eligibility. Both operations read the displayed snapshot, including frozen and Log-view data.
 
 Full Path uses available extra width until a width is explicitly set. A manually sized Full Path column keeps that exact width, including across restart; dragging starts from its rendered width.

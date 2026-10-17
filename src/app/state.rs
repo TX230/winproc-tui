@@ -934,10 +934,9 @@ pub(crate) enum AppActivity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MainMenuSection {
-    Session,
-    Profile,
+    File,
+    Investigation,
     View,
-    Tools,
     Settings,
     Help,
     More,
@@ -947,11 +946,17 @@ impl MainMenuSection {
     pub(crate) const fn actions(self, activity: AppActivity) -> &'static [MainMenuAction] {
         use MainMenuAction::*;
         match (self, activity) {
-            (Self::Session, AppActivity::Live) => &[StartRecording, OpenLog, QuitImmediately],
-            (Self::Session, AppActivity::Recording) => &[StopRecording, QuitWithConfirmation],
-            (Self::Session, AppActivity::LogView) => &[OpenLog, ReturnToLive, QuitImmediately],
-            (Self::Profile, AppActivity::Live) => &[OpenProfiles, SaveProfile, SaveProfileAs],
-            (Self::Profile, _) => &[OpenProfiles],
+            (Self::File, AppActivity::Live) => {
+                &[StartRecording, OpenLog, ExportGraphsCsv, QuitImmediately]
+            }
+            (Self::File, AppActivity::Recording) => {
+                &[StopRecording, ExportGraphsCsv, QuitWithConfirmation]
+            }
+            (Self::File, AppActivity::LogView) => {
+                &[OpenLog, ReturnToLive, ExportGraphsCsv, QuitImmediately]
+            }
+            (Self::Investigation, AppActivity::Live) => &[OpenProfiles, SaveProfile, SaveProfileAs],
+            (Self::Investigation, _) => &[OpenProfiles],
             (Self::View, AppActivity::LogView) => &[
                 OpenColumns,
                 ToggleTrackedOnly,
@@ -960,8 +965,6 @@ impl MainMenuSection {
                 ToggleSamples,
                 ToggleDelta,
                 CycleGraphLayout,
-                ExportGraphsCsv,
-                CopyProcessTable,
             ],
             (Self::View, _) => &[
                 OpenColumns,
@@ -972,8 +975,6 @@ impl MainMenuSection {
                 ToggleSamples,
                 ToggleDelta,
                 CycleGraphLayout,
-                ExportGraphsCsv,
-                CopyProcessTable,
             ],
             (Self::Settings, _) => &[
                 SetTheme(0),
@@ -983,7 +984,7 @@ impl MainMenuSection {
                 ToggleContrast,
                 OpenStartupBehavior,
             ],
-            (Self::Tools | Self::Help | Self::More, _) => &[],
+            (Self::Help | Self::More, _) => &[],
         }
     }
 }
@@ -1002,7 +1003,7 @@ pub(crate) enum MainMenuAction {
     ToggleDelta,
     CycleGraphLayout,
     ExportGraphsCsv,
-    CopyProcessTable,
+    ToggleProcessTracking,
     StartRecording,
     StopRecording,
     ReturnToLive,
@@ -1017,10 +1018,10 @@ pub(crate) enum MainMenuAction {
 impl MainMenuAction {
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::OpenProfiles => "Open",
-            Self::SaveProfile => "Save",
-            Self::SaveProfileAs => "Save As",
-            Self::OpenColumns => "Columns",
+            Self::OpenProfiles => "Open profile…",
+            Self::SaveProfile => "Save profile",
+            Self::SaveProfileAs => "Save profile as…",
+            Self::OpenColumns => "Select columns…",
             Self::ToggleShowExited => "Show exited",
             Self::ToggleTrackedOnly => "Tracked-only",
             Self::ToggleTreeView => "Tree view",
@@ -1029,7 +1030,7 @@ impl MainMenuAction {
             Self::ToggleDelta => "Delta",
             Self::CycleGraphLayout => "Graph layout",
             Self::ExportGraphsCsv => "Export Graphs to CSV",
-            Self::CopyProcessTable => "Copy process table",
+            Self::ToggleProcessTracking => "Tracking List",
             Self::StartRecording => "Start Recording",
             Self::StopRecording => "Stop Recording",
             Self::ReturnToLive => "Return to Live",
@@ -1124,6 +1125,7 @@ pub(crate) struct App {
     pub(crate) main_menu_activity: Option<AppActivity>,
     pub(crate) main_menu_section: MainMenuSection,
     pub(crate) main_menu_selected: usize,
+    pub(crate) main_menu_tracking_target: Option<String>,
     pub(crate) main_menu_hovered: Option<usize>,
     pub(crate) header_action_hovered: Option<crate::ui::header::HeaderAction>,
     pub(crate) show_help: bool,
@@ -1404,8 +1406,9 @@ impl App {
             process_metric_column_offset: 0,
             process_order_hold_until: None,
             main_menu_activity: None,
-            main_menu_section: MainMenuSection::Session,
+            main_menu_section: MainMenuSection::File,
             main_menu_selected: 0,
+            main_menu_tracking_target: None,
             main_menu_hovered: None,
             header_action_hovered: None,
             show_help: false,
@@ -6533,18 +6536,6 @@ impl App {
     }
 
     pub(crate) fn main_menu_rows(&self) -> Vec<MainMenuRow> {
-        if self.main_menu_section == MainMenuSection::Tools {
-            return [
-                crate::ui::header::HeaderAction::Network,
-                crate::ui::header::HeaderAction::FileUsers,
-            ]
-            .into_iter()
-            .filter(|_| self.main_menu_activity() != AppActivity::LogView)
-            .map(|action| MainMenuRow {
-                item: MainMenuItem::Header(action),
-            })
-            .collect();
-        }
         if self.main_menu_section == MainMenuSection::More {
             return crate::ui::header::overflow_actions(self.shortcut_map.borrow().screen, self)
                 .into_iter()
@@ -6553,14 +6544,39 @@ impl App {
                 })
                 .collect();
         }
-        self.main_menu_section
-            .actions(self.main_menu_activity())
-            .iter()
-            .copied()
-            .map(|action| MainMenuRow {
-                item: MainMenuItem::Action(action),
-            })
-            .collect()
+        let mut rows = Vec::new();
+        if self.main_menu_section == MainMenuSection::Investigation
+            && self.main_menu_activity() == AppActivity::Live
+            && self.main_menu_tracking_target.is_some()
+        {
+            rows.push(MainMenuRow {
+                item: MainMenuItem::Action(MainMenuAction::ToggleProcessTracking),
+            });
+        }
+        rows.extend(
+            self.main_menu_section
+                .actions(self.main_menu_activity())
+                .iter()
+                .copied()
+                .map(|action| MainMenuRow {
+                    item: MainMenuItem::Action(action),
+                }),
+        );
+        if self.main_menu_section == MainMenuSection::Investigation
+            && self.main_menu_activity() != AppActivity::LogView
+        {
+            rows.extend(
+                [
+                    crate::ui::header::HeaderAction::Network,
+                    crate::ui::header::HeaderAction::FileUsers,
+                ]
+                .into_iter()
+                .map(|action| MainMenuRow {
+                    item: MainMenuItem::Header(action),
+                }),
+            );
+        }
+        rows
     }
 
     pub(crate) fn main_menu_row_label(&self, row: MainMenuRow) -> String {
@@ -6605,13 +6621,41 @@ impl App {
             MainMenuItem::Action(MainMenuAction::CycleGraphLayout) => {
                 format!("Graph layout: {}", self.graph_slot_layout.label())
             }
+            MainMenuItem::Action(MainMenuAction::ToggleProcessTracking) => {
+                let name = self.main_menu_tracking_target.as_deref().unwrap_or("");
+                format!(
+                    "{} \"{name}\" {} Tracking List",
+                    if self.is_tracked_process_name(name) {
+                        "Remove"
+                    } else {
+                        "Add"
+                    },
+                    if self.is_tracked_process_name(name) {
+                        "from"
+                    } else {
+                        "to"
+                    }
+                )
+            }
             MainMenuItem::Action(action) => action.label().to_string(),
         }
     }
 
+    fn capture_main_menu_target(&mut self) {
+        if !self.is_main_menu_open() {
+            self.main_menu_tracking_target =
+                if self.network_browser.visible || self.file_users.visible {
+                    None
+                } else {
+                    self.selected_visible_process_name()
+                };
+        }
+    }
+
     pub(crate) fn open_main_menu(&mut self) {
+        self.capture_main_menu_target();
         self.main_menu_activity = Some(self.activity());
-        self.main_menu_section = MainMenuSection::Session;
+        self.main_menu_section = MainMenuSection::File;
         self.main_menu_selected = 0;
         self.main_menu_hovered = None;
         self.status.clear();
@@ -6625,7 +6669,8 @@ impl App {
 
     pub(crate) fn dismiss_main_menu(&mut self) {
         self.main_menu_activity = None;
-        self.main_menu_section = MainMenuSection::Session;
+        self.main_menu_tracking_target = None;
+        self.main_menu_section = MainMenuSection::File;
         self.main_menu_selected = 0;
         self.main_menu_hovered = None;
     }
@@ -6713,9 +6758,7 @@ impl App {
     }
 
     pub(crate) fn open_main_menu_section(&mut self, section: MainMenuSection) {
-        if section == MainMenuSection::Tools && self.activity() == AppActivity::LogView {
-            return;
-        }
+        self.capture_main_menu_target();
         self.main_menu_activity = Some(self.activity());
         self.main_menu_section = section;
         self.main_menu_selected = 0;
@@ -6750,8 +6793,14 @@ impl App {
 
         let action = match row.item {
             MainMenuItem::Header(action) => {
-                self.dismiss_main_menu();
-                self.activate_header_action(action);
+                if action != crate::ui::header::HeaderAction::Help
+                    && let Some(section) = action.section()
+                {
+                    self.open_main_menu_section(section);
+                } else {
+                    self.dismiss_main_menu();
+                    self.activate_header_action(action);
+                }
                 return Ok(());
             }
             MainMenuItem::Action(action) => action,
@@ -6761,6 +6810,7 @@ impl App {
             return Ok(());
         }
 
+        let tracking_target = self.main_menu_tracking_target.clone();
         self.dismiss_main_menu();
         match action {
             MainMenuAction::OpenProfiles => {
@@ -6797,7 +6847,12 @@ impl App {
                 self.exit_log_view();
                 Ok(())
             }
-            MainMenuAction::CopyProcessTable => self.copy_process_table_to_clipboard(),
+            MainMenuAction::ToggleProcessTracking => {
+                if let Some(name) = tracking_target {
+                    self.toggle_process_name_tracking(name);
+                }
+                Ok(())
+            }
             MainMenuAction::OpenLog => self.open_log_list(),
             MainMenuAction::ExportGraphsCsv => {
                 self.open_graph_csv();

@@ -17,7 +17,7 @@ use crossterm::event::{
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Modifier};
+use ratatui::style::Modifier;
 
 #[test]
 fn ctrl_r_requires_tracked_processes_before_opening_recording_dialog() {
@@ -862,7 +862,7 @@ fn live_header_omits_freshness_when_current() {
     let rendered = render_app_to_text(&app, 120, 45);
 
     assert!(rendered.contains("LIVE"), "{rendered}");
-    assert!(rendered.contains("Session ▾"), "{rendered}");
+    assert!(rendered.contains("File ▾"), "{rendered}");
     assert!(rendered.contains("PF: none"), "{rendered}");
     assert!(!rendered.contains("fresh"), "{rendered}");
     assert!(!rendered.contains("STALE"), "{rendered}");
@@ -876,7 +876,7 @@ fn live_header_hides_product_and_version_when_the_row_is_too_narrow() {
     let rendered = render_app_to_text(&app, 24, 20);
 
     assert!(rendered.contains("LIVE"), "{rendered}");
-    assert!(rendered.contains("Session ▾"), "{rendered}");
+    assert!(rendered.contains("File▾"), "{rendered}");
     assert!(!rendered.contains(&product_and_version), "{rendered}");
 }
 
@@ -916,12 +916,12 @@ fn recording_header_shows_rec_spinner_and_path() {
     );
     assert!(!header.contains(&path.display().to_string()), "{header}");
     assert!(header.contains("PF: none"), "{header}");
-    assert!(rendered.contains("Session ▾"), "{rendered}");
+    assert!(rendered.contains("File ▾"), "{rendered}");
     let buffer = render_app_to_buffer(&app, 120, 45);
     let (profile_x, profile_y) =
         find_text_position(&buffer, "PF: none").expect("profile badge should render");
-    assert_eq!(buffer[(profile_x, profile_y)].fg, Color::Black);
-    assert_eq!(buffer[(profile_x, profile_y)].bg, app.theme().muted);
+    assert_eq!(buffer[(profile_x, profile_y)].fg, app.theme().muted);
+    assert_eq!(buffer[(profile_x, profile_y)].bg, app.theme().menu_bar);
 
     app.toggle_display_pause();
     let paused = render_app_to_text(&app, 120, 45);

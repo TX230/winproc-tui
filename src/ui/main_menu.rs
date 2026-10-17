@@ -10,7 +10,6 @@ use crate::{
     ui::{Theme, widgets::scrollable_modal::ScrollableModal},
 };
 
-const HEADER_HEIGHT: u16 = 1;
 const MENU_KEYS: &[(&str, &str)] = &[
     ("↑/↓", "Select"),
     ("←/→", "Menu"),
@@ -43,12 +42,23 @@ pub(crate) fn draw_main_menu(frame: &mut ratatui::Frame<'_>, area: Rect, app: &A
         );
         return;
     }
-    let content_width = usize::from(main_menu_content_width(app));
-    let lines = app
-        .main_menu_rows()
-        .iter()
-        .enumerate()
-        .map(|(index, row)| {
+    let content_width = usize::from(
+        main_menu_modal(app)
+            .layout(anchored_area(area, app))
+            .content
+            .width,
+    );
+    let items = app.main_menu_rows();
+    let lines = display_rows(app)
+        .into_iter()
+        .map(|index| {
+            let Some(index) = index else {
+                return Line::from(Span::styled(
+                    "─".repeat(content_width),
+                    Style::default().fg(theme.muted),
+                ));
+            };
+            let row = &items[index];
             let cursor = if index == app.main_menu_selected {
                 "> "
             } else {
@@ -105,8 +115,8 @@ pub(crate) fn main_menu_index_at(area: Rect, app: &App, x: u16, y: u16) -> Optio
     if x < content.x || x >= content.right() || y < content.y || y >= content.bottom() {
         return None;
     }
-    let index = menu_offset(area, app) + usize::from(y - content.y);
-    (index < app.main_menu_rows().len()).then_some(index)
+    let row = menu_offset(area, app) + usize::from(y - content.y);
+    display_rows(app).get(row).copied().flatten()
 }
 
 pub(crate) fn main_menu_area(area: Rect, app: &App) -> Rect {
@@ -121,9 +131,12 @@ pub(crate) fn main_menu_item_area(area: Rect, app: &App, index: usize) -> Option
     let content = main_menu_modal(app)
         .layout(anchored_area(area, app))
         .content;
+    let index = display_rows(app)
+        .iter()
+        .position(|row| *row == Some(index))?;
     let offset = menu_offset(area, app);
     (index >= offset
-        && index < app.main_menu_rows().len()
+        && index < display_rows(app).len()
         && index - offset < usize::from(content.height))
     .then(|| {
         Rect::new(
@@ -139,10 +152,10 @@ fn main_menu_modal(app: &App) -> ScrollableModal {
     ScrollableModal::new(
         "",
         main_menu_content_width(app),
-        app.main_menu_rows().len().min(usize::from(u16::MAX)) as u16,
+        display_rows(app).len().min(usize::from(u16::MAX)) as u16,
         1,
     )
-    .with_top_left_placement(HEADER_HEIGHT)
+    .with_top_left_placement(super::layout::HEADER_HEIGHT)
 }
 
 fn anchored_area(area: Rect, app: &App) -> Rect {
@@ -167,17 +180,52 @@ fn menu_offset(area: Rect, app: &App) -> usize {
         .content
         .height
         .max(1) as usize;
-    app.main_menu_selected.saturating_sub(height - 1)
+    display_rows(app)
+        .iter()
+        .position(|row| *row == Some(app.main_menu_selected))
+        .unwrap_or(0)
+        .saturating_sub(height - 1)
 }
 
 fn main_menu_content_width(app: &App) -> u16 {
     app.main_menu_rows()
         .iter()
-        .map(|row| 2 + app.main_menu_row_label(*row).len() + 2 + shortcut(*row).len())
+        .map(|row| 2 + Span::raw(app.main_menu_row_label(*row)).width() + 2 + shortcut(*row).len())
         .max()
         .unwrap_or(0)
         .max(43)
         .min(usize::from(u16::MAX)) as u16
+}
+
+fn display_rows(app: &App) -> Vec<Option<usize>> {
+    let mut rows = Vec::new();
+    let mut previous_group = None;
+    for (index, row) in app.main_menu_rows().into_iter().enumerate() {
+        use MainMenuAction::*;
+        let group = match row.item {
+            MainMenuItem::Header(_) => 2,
+            MainMenuItem::Action(action) => match action {
+                ToggleProcessTracking
+                | StartRecording
+                | StopRecording
+                | OpenLog
+                | ReturnToLive
+                | OpenColumns
+                | SetTheme(_) => 0,
+                OpenProfiles | SaveProfile | SaveProfileAs | ExportGraphsCsv
+                | ToggleTrackedOnly | ToggleShowExited | ToggleTreeView | ToggleContrast => 1,
+                ToggleGraphs | ToggleSamples | ToggleDelta | QuitImmediately
+                | QuitWithConfirmation | OpenStartupBehavior => 2,
+                CycleGraphLayout => 3,
+            },
+        };
+        if previous_group.is_some_and(|previous| previous != group) {
+            rows.push(None);
+        }
+        rows.push(Some(index));
+        previous_group = Some(group);
+    }
+    rows
 }
 
 fn shortcut(row: MainMenuRow) -> &'static str {
@@ -188,6 +236,8 @@ fn shortcut(row: MainMenuRow) -> &'static str {
         return action.shortcut();
     };
     match action {
+        MainMenuAction::ToggleProcessTracking => "t (Processes)",
+        MainMenuAction::ExportGraphsCsv => "Ctrl+E",
         MainMenuAction::OpenProfiles => "Ctrl+T",
         MainMenuAction::SaveProfile => "Ctrl+S",
         MainMenuAction::SaveProfileAs => "Ctrl+Shift+S",
@@ -207,8 +257,9 @@ fn shortcut(row: MainMenuRow) -> &'static str {
 }
 
 fn display_label(app: &App, row: MainMenuRow, theme: Theme, width: usize) -> Line<'static> {
-    let label = app.main_menu_row_label(row);
     let key = shortcut(row);
+    let label_budget = width.saturating_sub(if key.is_empty() { 0 } else { key.len() + 2 });
+    let label = super::header::truncate_name(&app.main_menu_row_label(row), label_budget);
     let padding = width
         .saturating_sub(Span::raw(&label).width() + key.len())
         .max(2);

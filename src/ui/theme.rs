@@ -6,6 +6,8 @@ pub(crate) struct Theme {
     pub(crate) background: Color,
     pub(crate) panel: Color,
     pub(crate) panel_alt: Color,
+    pub(crate) menu_bar: Color,
+    pub(crate) menu_active: Color,
     pub(crate) border: Color,
     pub(crate) text: Color,
     pub(crate) muted: Color,
@@ -34,6 +36,8 @@ impl Theme {
             self.muted = Color::Rgb(195, 198, 202);
             self.border = Color::Rgb(132, 140, 150);
             self.key_hint = self.focus_border;
+            self.menu_bar = Color::Rgb(48, 51, 56);
+            self.menu_active = Color::Rgb(82, 87, 94);
             self.graph_line = Color::Rgb(195, 198, 202);
             self.cursor_guide = Color::Rgb(169, 176, 184);
             self.exited = Color::Rgb(174, 182, 190);
@@ -61,6 +65,8 @@ const fn dark_theme(
         background: Color::Rgb(12, 13, 14),
         panel: Color::Rgb(17, 19, 21),
         panel_alt: Color::Rgb(26, 29, 32),
+        menu_bar: Color::Rgb(38, 41, 46),
+        menu_active: Color::Rgb(67, 72, 80),
         border: Color::Rgb(53, 58, 64),
         text: Color::Rgb(230, 226, 218),
         muted: Color::Rgb(154, 152, 146),

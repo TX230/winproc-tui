@@ -136,18 +136,6 @@ impl App {
         lines.join("\n")
     }
 
-    pub(crate) fn copy_process_table_to_clipboard(&mut self) -> Result<()> {
-        let text = self.process_table_clipboard_text();
-        self.status = match copy_text_to_clipboard(&text) {
-            Ok(()) => format!(
-                "Copied process table ({} rows)",
-                self.visible_process_count() + usize::from(self.has_visible_tracked_total_row())
-            ),
-            Err(error) => format!("Clipboard copy failed: {error}"),
-        };
-        Ok(())
-    }
-
     pub(crate) fn copy_selected_process_row_to_clipboard(&mut self) -> Result<()> {
         let value = self.selected_process_rows_text();
         if value.is_empty() {

@@ -137,7 +137,7 @@ fn help_dialog_buffer_shows_two_column_layout() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("Open Session menu (Quit is last)"),
+        rendered.contains("Open File menu (Quit is last)"),
         "{rendered}"
     );
     assert!(

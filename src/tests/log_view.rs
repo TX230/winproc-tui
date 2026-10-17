@@ -9,7 +9,6 @@ use crate::ui;
 use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
-use ratatui::style::Color;
 
 #[test]
 fn ctrl_l_opens_log_list() {
@@ -503,12 +502,12 @@ fn log_view_header_shows_log_badge_and_path_without_freshness() {
     let (_, log_y) = find_text_position(&buffer, "LOG").expect("log badge should be rendered");
 
     assert!(rendered.contains("LOG"), "{rendered}");
-    assert!(rendered.contains("Session ▾"), "{rendered}");
+    assert!(rendered.contains("File ▾"), "{rendered}");
     assert!(rendered.contains("PF: --"), "{rendered}");
     let (profile_x, profile_y) =
         find_text_position(&buffer, "PF: --").expect("profile badge should render");
-    assert_eq!(buffer[(profile_x, profile_y)].fg, Color::Black);
-    assert_eq!(buffer[(profile_x, profile_y)].bg, app.theme().muted);
+    assert_eq!(buffer[(profile_x, profile_y)].fg, app.theme().muted);
+    assert_eq!(buffer[(profile_x, profile_y)].bg, app.theme().menu_bar);
     assert_eq!(log_y, 0);
     assert!(!rendered.contains("fresh"), "{rendered}");
     assert!(!rendered.contains("STALE"), "{rendered}");
@@ -533,7 +532,7 @@ fn log_view_header_keeps_the_filename_suffix_and_hides_product_at_narrow_width()
     let header = rendered.lines().next().expect("header row");
 
     assert!(rendered.contains("LOG"), "{rendered}");
-    assert!(rendered.contains("Session ▾"), "{rendered}");
+    assert!(rendered.contains("File▾"), "{rendered}");
     assert!(!rendered.contains(path), "{rendered}");
     assert!(header.contains(".log"), "{header}");
     assert!(!rendered.contains(&product_and_version), "{rendered}");

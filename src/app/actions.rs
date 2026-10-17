@@ -687,10 +687,9 @@ impl App {
             && let KeyCode::Char(ch) = key.code
         {
             let section = match ch.to_ascii_lowercase() {
-                's' => Some(super::state::MainMenuSection::Session),
-                'p' => Some(super::state::MainMenuSection::Profile),
+                'f' => Some(super::state::MainMenuSection::File),
+                'i' => Some(super::state::MainMenuSection::Investigation),
                 'v' => Some(super::state::MainMenuSection::View),
-                'o' => Some(super::state::MainMenuSection::Tools),
                 't' => Some(super::state::MainMenuSection::Settings),
                 _ => None,
             };
@@ -712,7 +711,7 @@ impl App {
                 KeyCode::Enter => self.activate_main_menu_selection()?,
                 KeyCode::Esc => self.close_main_menu(),
                 KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'q') && key.modifiers.is_empty() => {
-                    self.open_main_menu_section(super::state::MainMenuSection::Session);
+                    self.open_main_menu_section(super::state::MainMenuSection::File);
                     self.move_main_menu_selection_end();
                     self.activate_main_menu_selection()?;
                 }

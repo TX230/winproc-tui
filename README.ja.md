@@ -72,7 +72,7 @@ Graph または Samples にフォーカスを移し、`Left` / `Right` でサン
 ### プロセスを追跡・記録する
 
 1. Process または PID セルを選び、`Space` または `t`、あるいは右クリックメニューの **Track process** でプロセス名を作業中の Tracking List へ追加します。
-2. `Ctrl+T` から保存済み Investigation Profile を開けます。`Ctrl+S` で現在の Profile を上書き保存し、作業中の Tracking List に新しい名前を付けるときは `Profile > Save As` を使います。
+2. `Ctrl+T` から保存済み Investigation Profile を開けます。`Ctrl+S` で現在の Profile を上書き保存し、作業中の Tracking List に新しい名前を付けるときは `Investigation > Save profile as…` を使います。
 3. `Ctrl+R` を押し、保存先と `1s` / `2s` / `5s` / `10s` の記録間隔を選んで開始します。
 4. もう一度 `Ctrl+R` を押し、`y` で記録を終了します。`Enter`、`Esc`、`n` では記録を継続します。
 5. `Ctrl+L` から保存済みログを開き、あとから調査します。
@@ -83,7 +83,7 @@ Graph または Samples にフォーカスを移し、`Left` / `Right` でサン
 
 ## 主な機能
 
-**View > Export Graphs to CSV** から、登録したすべての Graph を 1 つの CSV に出力できます。保持している履歴全体、表示中の時間範囲、A/B 間から出力範囲を選べます。
+**File > Export Graphs to CSV** から、登録したすべての Graph を 1 つの CSV に出力できます。保持している履歴全体、表示中の時間範囲、A/B 間から出力範囲を選べます。
 
 - **ライブモニタリング**: システムのメモリ負荷、GPU アダプター別の負荷とメモリ、ネットワーク / ディスク、CPU、プロセス別の詳細メトリクスを表示します。
 - **プロセスツリー**: Processes をソート可能なフラット一覧と、各ライブスナップショットで取得した親子関係のツリーに切り替え、フィルターやサブツリーの折りたたみを利用できます。
@@ -91,7 +91,7 @@ Graph または Samples にフォーカスを移し、`Left` / `Right` でサン
 - **Investigation Profiles**: あとから起動するプロセスも調査できるよう、Tracking List に名前を付けて保存します。追跡対象のプロセスが終了したあとも、最後に取得したメトリクス値を保持します。
 - **.NET メトリクス**: 実行中の .NET 8 / 9 / 10 プロセスを自動検出してマネージドランタイムのメトリクスを表示し、.NET Framework 4.8 の一部ヒープメトリクスにも対応します。
 - **Process Info**: 選択したプロセスのメトリクス、イメージとランタイム、開いているファイル、DLL、環境変数、ネットワークのアドレスとポート、スレッド一覧と優先割り当て先 CPU を 1 つのダイアログから調査できます。Scheduling タブでは CPU の優先度と、プロセッサグループが 1 つの環境での CPU アフィニティを確認・変更し、その場で適用したり直前の値に戻したりできます。
-- **ネットワークの調査**: **Tools > Network endpoints**（**F3**）からシステム全体の TCP/UDP のアドレス、ポート、所有プロセスを確認し、Process Info に移動できます。ビューを切り替えても一覧とフィルターを保持します。一覧は操作時に取得し、レコーディングには含めません。
+- **ネットワークの調査**: **Investigation > Network endpoints**（**F3**）からシステム全体の TCP/UDP のアドレス、ポート、所有プロセスを確認し、Process Info に移動できます。ビューを切り替えても一覧とフィルターを保持します。一覧は操作時に取得し、レコーディングには含めません。
 - **記録と Log view**: システムメトリクスに加え、Tracking List の登録名に一致するプロセスを JSON Lines 形式で記録し、Log view の Processes、Graph、Samples、A/B 比較を使ってあとから調査できます。
 
 前回の Tracking List とアプリ全体の設定は次回起動時に復元されます。起動時に保存済み Investigation Profile または空の Tracking List を選ぶこともできます。Graph は次回起動時に復元されず、フィルター入力と実行時のプロセス識別子も保存しません。
@@ -105,7 +105,7 @@ Graph または Samples にフォーカスを移し、`Left` / `Right` でサン
 - `Private Bytes` と `Working Set - Private` の差から、大きなバッファを確保したまま使っていない可能性を調べる。
 - ハンドル数の推移と Process Info の Files を確認し、ファイルの閉じ忘れがないか調べる。各ファイルハンドルのキャッシュ設定、Write-through、同期・非同期対応、アクセス権も確認できます。
 - プロセスが読み込んでいる DLL のパスやバージョンを調べる。
-- **Tools > Find processes by file**（**F4**）からファイル名やパスで使用中のプロセスを検索し、そのプロセスの Files タブで詳しく調べる。検索できなかった範囲も確認できます。
+- **Investigation > Find processes by file**（**F4**）からファイル名やパスで使用中のプロセスを検索し、そのプロセスの Files タブで詳しく調べる。検索できなかった範囲も確認できます。
 - 特定の処理やコード変更の前後でリソース使用量を比較する。
 - 対象プロセスを記録し、現象が発生した時点付近の履歴をあとから調べる。
 

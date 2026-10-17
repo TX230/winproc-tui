@@ -10,7 +10,7 @@ use crate::{
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier};
+use ratatui::style::Modifier;
 
 fn profile(name: &str) -> SavedInvestigationProfile {
     SavedInvestigationProfile {
@@ -150,8 +150,8 @@ fn header_shows_profile_binding_and_modified_marker() {
         let buffer = render_app_to_buffer(app, 120, 45);
         let (x, y) = find_text_position(&buffer, label).expect("profile badge should render");
         for offset in 0..label.chars().count() as u16 {
-            assert_eq!(buffer[(x + offset, y)].fg, Color::Black);
-            assert_eq!(buffer[(x + offset, y)].bg, app.theme().muted);
+            assert_eq!(buffer[(x + offset, y)].fg, app.theme().muted);
+            assert_eq!(buffer[(x + offset, y)].bg, app.theme().menu_bar);
         }
     }
 

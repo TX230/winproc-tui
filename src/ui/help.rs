@@ -44,7 +44,7 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
         label: "Edit Query; opening file search focuses Query",
     },
     HelpItem {
-        key: "F3 / F4 or Tools",
+        key: "F3 / F4 or Investigation",
         label: "Network / Find processes by file (Live/REC)",
     },
     HelpItem {
@@ -83,8 +83,8 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Export all Graphs to CSV from any main panel",
     },
     HelpItem {
-        key: "Alt+S/P/V/O/T",
-        label: "Session / Profile / View / Tools / Settings menus",
+        key: "Alt+F/I/V/T",
+        label: "File / Investigation / View / Settings menus",
     },
     HelpItem {
         key: "Menu / Shift+F10",
@@ -124,7 +124,7 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Esc",
-        label: "Open Session menu (Quit is last)",
+        label: "Open File menu (Quit is last)",
     },
     HelpItem {
         key: "↑/↓, ←/→, Enter",
@@ -187,7 +187,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Copy table (context menu)",
-        label: "Copy the full table with headings; also in View > Copy process table",
+        label: "Copy the full table with headings from the Processes context menu",
     },
     HelpItem {
         key: "d/Delete",
@@ -485,7 +485,7 @@ const TRACKING_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "t",
-        label: "Track/untrack the focused process name (Live only)",
+        label: "Track/untrack the focused name; also in Investigation (Live only)",
     },
     HelpItem {
         key: "Ctrl+T",
@@ -633,7 +633,7 @@ const MOUSE_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Right-click column name",
-        label: "Open Columns; click checkboxes to apply",
+        label: "Select process columns; click checkboxes to apply",
     },
     HelpItem {
         key: "Click column range arrows",
@@ -718,7 +718,7 @@ const PROCESS_GRAPH_SPLIT_ROWS: &[HelpItem] = &[
 
 const NETWORK_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "F3 / Tools > Network",
+        key: "F3 / Investigation > Network",
         label: "Open Network endpoints (Live / Recording)",
     },
     HelpItem {
