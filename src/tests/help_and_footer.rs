@@ -1320,14 +1320,14 @@ fn resource_titles_use_readable_panel_colors_at_every_width() {
                             (" GPU ", ResourcePanel::Gpu),
                         ] {
                             let (x, y) = find_text_position(&buffer, label).unwrap();
-                            let bg = if focused && active == resource {
+                            let fg = if focused && active == resource {
                                 theme.focus_border
                             } else {
                                 theme.muted
                             };
                             for offset in 0..5 {
                                 let cell = &buffer[(x + offset, y)];
-                                assert_eq!((cell.fg, cell.bg), (theme.panel, bg));
+                                assert_eq!((cell.fg, cell.bg), (fg, theme.panel));
                             }
                         }
                     }

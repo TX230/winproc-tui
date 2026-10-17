@@ -278,74 +278,77 @@ fn tab_moves_focus_chrome_from_mem_to_gpu() {
 }
 
 #[test]
-fn top_level_panel_names_reverse_colors_and_retain_focus_in_all_color_schemes() {
+fn top_level_panel_names_use_panel_background_and_retain_focus_in_all_color_schemes() {
     let screen = Rect::new(0, 0, 180, 60);
     for theme_index in 0..ui::THEMES.len() {
-        let mut app = make_test_app(3, 10);
-        app.theme_index = theme_index;
-        assign_private_graph(&mut app);
-        app.show_samples_panel = true;
-        app::sync_layout_state(&mut app, screen);
+        for high_contrast in [false, true] {
+            let mut app = make_test_app(3, 10);
+            app.high_contrast = high_contrast;
+            app.theme_index = theme_index;
+            assign_private_graph(&mut app);
+            app.show_samples_panel = true;
+            app::sync_layout_state(&mut app, screen);
 
-        let main_panels = main_panel_areas_for_app(screen, &app);
-        let graph_layout = ui::layout::graph_workspace_layout(
-            main_panels.details.expect("Graph Workspace should render"),
-            &app,
-        );
-        let titled_panels = [
-            (
-                FocusedPanel::System,
-                ui::ram_vram_panel_area_for_screen(screen, &app),
-                "MEM",
-            ),
-            (
-                FocusedPanel::SystemActivity,
-                ui::system_activity_panel_area_for_screen(screen, &app),
-                "NW/DISK",
-            ),
-            (
-                FocusedPanel::Cpu,
-                ui::cpu_panel_area_for_screen(screen, &app),
-                "CPU",
-            ),
-            (
-                FocusedPanel::Processes,
-                main_panels.processes.area,
-                "PROCESSES",
-            ),
-            (
-                FocusedPanel::DetailsGraph,
-                graph_layout.graph_slots,
-                "GRAPHS",
-            ),
-            (
-                FocusedPanel::DetailsSamples,
-                graph_layout.samples.expect("Samples should render"),
-                "SAMPLES",
-            ),
-        ];
+            let main_panels = main_panel_areas_for_app(screen, &app);
+            let graph_layout = ui::layout::graph_workspace_layout(
+                main_panels.details.expect("Graph Workspace should render"),
+                &app,
+            );
+            let titled_panels = [
+                (
+                    FocusedPanel::System,
+                    ui::ram_vram_panel_area_for_screen(screen, &app),
+                    "MEM",
+                ),
+                (
+                    FocusedPanel::SystemActivity,
+                    ui::system_activity_panel_area_for_screen(screen, &app),
+                    "NW/DISK",
+                ),
+                (
+                    FocusedPanel::Cpu,
+                    ui::cpu_panel_area_for_screen(screen, &app),
+                    "CPU",
+                ),
+                (
+                    FocusedPanel::Processes,
+                    main_panels.processes.area,
+                    "PROCESSES",
+                ),
+                (
+                    FocusedPanel::DetailsGraph,
+                    graph_layout.graph_slots,
+                    "GRAPHS",
+                ),
+                (
+                    FocusedPanel::DetailsSamples,
+                    graph_layout.samples.expect("Samples should render"),
+                    "SAMPLES",
+                ),
+            ];
 
-        for (focused_panel, _, _) in titled_panels {
-            app.focused_panel = focused_panel;
-            let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-            for (panel, area, title) in titled_panels {
-                let (x, y) = find_text_position_in_area(&buffer, area, title)
-                    .unwrap_or_else(|| panic!("missing title {title}"));
-                let expected = if panel == focused_panel {
-                    app.theme().focus_border
-                } else {
-                    app.theme().muted
-                };
-                assert_eq!(
-                    buffer[(x, y)].bg,
-                    expected,
-                    "theme={theme_index}, focus={focused_panel:?}, title={title}"
-                );
-                assert_eq!(buffer[(x, y)].fg, app.theme().panel);
-                assert!(
-                    buffer[(x, y)].modifier.contains(Modifier::BOLD),
-                    "unexpected title weight: theme={theme_index}, focus={focused_panel:?}, title={title}"
-                );
+            for (focused_panel, _, _) in titled_panels {
+                app.focused_panel = focused_panel;
+                let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+                for (panel, area, title) in titled_panels {
+                    let (x, y) = find_text_position_in_area(&buffer, area, title)
+                        .unwrap_or_else(|| panic!("missing title {title}"));
+                    let expected = if panel == focused_panel {
+                        app.theme().focus_border
+                    } else {
+                        app.theme().muted
+                    };
+                    assert_eq!(
+                        buffer[(x, y)].fg,
+                        expected,
+                        "theme={theme_index}, focus={focused_panel:?}, title={title}"
+                    );
+                    assert_eq!(buffer[(x, y)].bg, app.theme().panel);
+                    assert!(
+                        buffer[(x, y)].modifier.contains(Modifier::BOLD),
+                        "unexpected title weight: theme={theme_index}, focus={focused_panel:?}, title={title}"
+                    );
+                }
             }
         }
     }

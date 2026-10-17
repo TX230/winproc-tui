@@ -29,7 +29,7 @@ pub(crate) fn panel_block_focused<'a>(
     theme: Theme,
     focused: bool,
 ) -> Block<'a> {
-    let block = panel_block(reversed_panel_name(title.into(), theme, focused), theme);
+    let block = panel_block(styled_panel_name(title.into(), theme, focused), theme);
     if focused {
         block
             .border_type(BorderType::Thick)
@@ -39,9 +39,9 @@ pub(crate) fn panel_block_focused<'a>(
     }
 }
 
-fn reversed_panel_name<'a>(mut title: Line<'a>, theme: Theme, focused: bool) -> Line<'a> {
+fn styled_panel_name<'a>(mut title: Line<'a>, theme: Theme, focused: bool) -> Line<'a> {
     if let Some(first) = title.spans.first_mut() {
-        // Only the leading panel name is reversed; counts and controls retain their styles.
+        // Only the leading panel name gets focus emphasis; counts and controls retain their styles.
         let name_len = first.content.find(' ').unwrap_or(first.content.len());
         if name_len == 0 {
             return title;
@@ -49,12 +49,12 @@ fn reversed_panel_name<'a>(mut title: Line<'a>, theme: Theme, focused: bool) -> 
         let suffix = Span::styled(first.content[name_len..].to_string(), first.style);
         first.content = format!(" {} ", &first.content[..name_len]).into();
         first.style = Style::default()
-            .fg(theme.panel)
-            .bg(if focused {
+            .fg(if focused {
                 theme.focus_border
             } else {
                 theme.muted
             })
+            .bg(theme.panel)
             .add_modifier(Modifier::BOLD);
         if !suffix.content.is_empty() {
             title.spans.insert(1, suffix);
@@ -189,20 +189,20 @@ mod tests {
     }
 
     #[test]
-    fn panel_names_are_reversed_without_recoloring_metadata_or_content() {
+    fn panel_names_use_panel_background_without_recoloring_metadata_or_content() {
         for theme in crate::ui::THEMES {
             for focused in [false, true] {
                 let area = Rect::new(0, 0, 32, 4);
                 let mut buffer = Buffer::empty(area);
                 panel_block_focused("GPU 1/2", theme, focused).render(area, &mut buffer);
-                let name_bg = if focused {
+                let name_fg = if focused {
                     theme.focus_border
                 } else {
                     theme.muted
                 };
                 for x in 1..=5 {
-                    assert_eq!(buffer[(x, 0)].fg, theme.panel);
-                    assert_eq!(buffer[(x, 0)].bg, name_bg);
+                    assert_eq!(buffer[(x, 0)].fg, name_fg);
+                    assert_eq!(buffer[(x, 0)].bg, theme.panel);
                     assert!(buffer[(x, 0)].modifier.contains(Modifier::BOLD));
                 }
                 assert_eq!(buffer[(1, 0)].symbol(), " ");
@@ -216,11 +216,11 @@ mod tests {
                     Span::styled(" [-]", Style::default().fg(theme.key_hint)),
                 ]);
                 graph_workspace_block(title, theme, focused).render(area, &mut buffer);
-                assert_eq!(buffer[(1, 0)].fg, theme.panel);
-                assert_eq!(buffer[(1, 0)].bg, name_bg);
+                assert_eq!(buffer[(1, 0)].fg, name_fg);
+                assert_eq!(buffer[(1, 0)].bg, theme.panel);
                 assert_eq!(buffer[(1, 0)].symbol(), " ");
                 assert_eq!(buffer[(8, 0)].symbol(), " ");
-                assert_eq!(buffer[(8, 0)].bg, name_bg);
+                assert_eq!(buffer[(8, 0)].bg, theme.panel);
                 assert_eq!(buffer[(10, 0)].bg, theme.panel);
                 assert_eq!(buffer[(20, 0)].fg, theme.key_hint);
             }
