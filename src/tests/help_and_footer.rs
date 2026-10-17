@@ -60,17 +60,19 @@ fn help_dialog_buffer_shows_two_column_layout() {
     let rendered = render_app_to_text(&app, 240, 120);
     let rendered_lower = rendered.to_ascii_lowercase();
 
-    assert!(
-        rendered.contains(&format!(
-            "winproc-tui {} · Keyboard shortcuts",
-            env!("CARGO_PKG_VERSION")
-        )),
-        "{rendered}"
-    );
     assert!(rendered.contains("Keyboard shortcuts"), "{rendered}");
+    assert!(!rendered.contains(env!("CARGO_PKG_REPOSITORY")));
+    assert!(!rendered.contains("Footer: fits width."));
+    let title_row = rendered
+        .lines()
+        .position(|line| line.contains("Keyboard shortcuts"))
+        .unwrap();
     assert!(
-        rendered.contains("History: 120/7,200 normal/tracked"),
-        "{rendered}"
+        rendered
+            .lines()
+            .nth(title_row + 1)
+            .unwrap()
+            .contains("Global  (any focus)")
     );
     assert!(rendered.contains("Global  (any focus)"), "{rendered}");
     assert!(
@@ -224,9 +226,9 @@ fn help_dialog_buffer_shows_two_column_layout() {
         "{rendered}"
     );
     assert!(rendered.contains("Esc/Enter/F1/? Close"), "{rendered}");
-    assert!(rendered.contains("Footer: fits width."), "{rendered}");
+    assert!(!rendered.contains("Footer: fits width."), "{rendered}");
     assert!(
-        rendered.contains("Scheme colors mark active items; T marks tracked."),
+        !rendered.contains("Scheme colors mark active items; T marks tracked."),
         "{rendered}"
     );
     assert!(!rendered_lower.contains("baseline"), "{rendered}");
@@ -240,18 +242,7 @@ fn help_dialog_header_and_shortcuts_use_footer_like_styles() {
     let buffer = render_app_to_buffer(&app, 100, 45);
     let theme = ui::THEMES[0];
 
-    let title = format!(
-        "winproc-tui {} · Keyboard shortcuts",
-        env!("CARGO_PKG_VERSION")
-    );
-    let (title_x, title_y) =
-        find_text_position(&buffer, &title).expect("help dialog title should be rendered");
-    assert_eq!(title_x, help_area(Rect::new(0, 0, 100, 45)).x + 2);
-    let title_cell = &buffer[(title_x, title_y)];
-    assert_eq!(title_cell.fg, theme.text);
-    assert_ne!(title_cell.fg, theme.accent);
-    assert!(title_cell.modifier.contains(ratatui::style::Modifier::BOLD));
-
+    super::support::assert_dialog_title_style(&buffer, "Keyboard shortcuts", theme);
     let (group_x, group_y) =
         find_text_position(&buffer, "Global").expect("group title should be rendered");
     let group_cell = &buffer[(group_x, group_y)];

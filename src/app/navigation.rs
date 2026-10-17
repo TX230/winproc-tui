@@ -325,11 +325,6 @@ use crate::ui::header::HeaderAction;
 
 impl App {
     pub(crate) fn activate_header_action(&mut self, action: HeaderAction) {
-        if action == HeaderAction::Help {
-            self.dismiss_main_menu();
-            self.open_help();
-            return;
-        }
         if let Some(section) = action.section() {
             if self.is_main_menu_open() && self.main_menu_section == section {
                 self.close_main_menu();

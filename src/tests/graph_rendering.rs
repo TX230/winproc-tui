@@ -363,7 +363,7 @@ fn panel_and_dialog_title_names_are_uppercase_and_bold_in_all_color_schemes() {
 
         app.show_help = true;
         let help = render_app_to_buffer(&app, screen.width, screen.height);
-        assert_dialog_title_style(&help, "HELP", theme);
+        assert_dialog_title_style(&help, "Keyboard shortcuts", theme);
         app.show_help = false;
 
         app.show_column_picker = true;

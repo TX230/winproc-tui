@@ -905,7 +905,7 @@ fn recording_header_shows_rec_spinner_and_path() {
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
 
-    let rendered = render_app_to_text(&app, 120, 45);
+    let rendered = render_app_to_text(&app, 140, 45);
     let header = rendered.lines().next().expect("header row");
     assert!(rendered.contains("REC"), "{rendered}");
     assert!(!rendered.contains("fresh"), "{rendered}");
@@ -917,17 +917,17 @@ fn recording_header_shows_rec_spinner_and_path() {
     assert!(!header.contains(&path.display().to_string()), "{header}");
     assert!(header.contains("PF: none"), "{header}");
     assert!(rendered.contains("File ▾"), "{rendered}");
-    let buffer = render_app_to_buffer(&app, 120, 45);
+    let buffer = render_app_to_buffer(&app, 140, 45);
     let (profile_x, profile_y) =
         find_text_position(&buffer, "PF: none").expect("profile badge should render");
     assert_eq!(buffer[(profile_x, profile_y)].fg, app.theme().muted);
     assert_eq!(buffer[(profile_x, profile_y)].bg, app.theme().menu_bar);
 
     app.toggle_display_pause();
-    let paused = render_app_to_text(&app, 120, 45);
+    let paused = render_app_to_text(&app, 140, 45);
     let paused_header = paused.lines().next().expect("paused header row");
     app.recording_spinner_index += 1;
-    let advanced = render_app_to_text(&app, 120, 45);
+    let advanced = render_app_to_text(&app, 140, 45);
     assert_ne!(paused_header, advanced.lines().next().unwrap());
     assert!(paused.contains("REC"), "{paused}");
     assert!(paused.contains("DISPLAY PAUSED"), "{paused}");

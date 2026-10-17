@@ -397,10 +397,7 @@ fn header_geometry_is_stable_and_categories_switch_with_one_click() {
         let text = render_app_to_text(&app, width, 60);
         assert!(!text.lines().next().unwrap().contains("MENU"));
         assert_eq!(original[0].0, HeaderAction::File);
-        assert_eq!(
-            original[0].1.x,
-            concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ").len() as u16 + 1
-        );
+        assert_eq!(original[0].1.x, 14);
         for action in original
             .iter()
             .map(|(action, _)| *action)
@@ -410,7 +407,11 @@ fn header_geometry_is_stable_and_categories_switch_with_one_click() {
             app.on_mouse(left_click(rect.x + 1, rect.y), screen);
             assert!(app.is_main_menu_open());
             assert_eq!(Some(app.main_menu_section), action.section());
-            assert_eq!(main_menu_area(screen, &app).x, rect.x);
+            let popup = main_menu_area(screen, &app);
+            assert_eq!(
+                popup.x,
+                rect.x.min(screen.right().saturating_sub(popup.width))
+            );
             app.on_mouse(mouse_move(width - 1, 40), screen);
             let buffer = render_app_to_buffer(&app, width, 60);
             assert_eq!(buffer[(rect.x + 1, rect.y)].bg, app.theme().menu_active);
@@ -577,16 +578,9 @@ fn investigation_exposes_keyboard_routes_and_no_workspace_buttons_remain_in_head
             assert!(!header.contains(removed));
         }
         for label in if width == 80 {
-            vec!["winproc-tui", "File", "More"]
+            vec!["File", "More"]
         } else {
-            vec![
-                "winproc-tui",
-                "File",
-                "Investigation",
-                "View",
-                "Settings",
-                "Help",
-            ]
+            vec!["File", "Investigation", "View", "Settings", "Help"]
         } {
             assert!(header.contains(label), "{header}");
         }
@@ -687,9 +681,9 @@ fn header_arrows_reach_help_in_every_activity_and_terminal_width() {
                 buffer[(heading.x + 1, heading.y)].bg,
                 app.theme().menu_active
             );
-            assert!(render_app_to_text(&app, width, 60).contains("Enter Help"));
-            assert!(main_menu_area(screen, &app).is_empty());
-            assert!(main_menu_item_area(screen, &app, 0).is_none());
+            assert!(render_app_to_text(&app, width, 60).contains("Version Info"));
+            assert!(!main_menu_area(screen, &app).is_empty());
+            assert!(main_menu_item_area(screen, &app, 0).is_some());
             if width == 80 {
                 press(&mut app, KeyCode::Right);
                 assert_eq!(app.main_menu_section, MainMenuSection::More);
@@ -705,10 +699,11 @@ fn header_arrows_reach_help_in_every_activity_and_terminal_width() {
             press(&mut app, KeyCode::Left);
             assert_eq!(app.main_menu_section, MainMenuSection::Settings);
             press(&mut app, KeyCode::Right);
+            press(&mut app, KeyCode::Down);
             press(&mut app, KeyCode::Enter);
             assert!(app.show_help);
             assert!(!app.is_main_menu_open());
-            assert_eq!(ui::help::section_titles()[app.help_section], "Processes");
+            assert_eq!(ui::help::section_titles()[app.help_section], "Global");
             press(&mut app, KeyCode::Esc);
             assert_eq!(app.focused_panel, focus);
             assert_eq!(app.activity(), activity);
@@ -737,7 +732,7 @@ fn focused_help_cancels_or_opens_from_header_and_footer_without_click_through() 
     assert!(!app.is_main_menu_open());
     assert_eq!(app.focused_panel, focus);
 
-    for label in ["Enter Help", " Help "] {
+    for label in ["Version Info", "Keyboard shortcuts"] {
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Left);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
@@ -846,14 +841,7 @@ fn compact_header_keeps_recording_pause_stale_and_stable_geometry() {
     app.active_investigation_profile = Some("調査プロファイル".repeat(20));
     let text = render_app_to_text(&app, 80, 24);
     let header = text.lines().next().unwrap();
-    for label in [
-        "REC",
-        "STALE",
-        "DISPLAY PAUSED",
-        "File",
-        "More",
-        "winproc-tui",
-    ] {
+    for label in ["REC", "STALE", "DISPLAY PAUSED", "File", "More"] {
         assert!(header.contains(label), "{header}");
     }
     assert!(!header.contains("AVG"), "{header}");
@@ -1029,30 +1017,101 @@ fn workspaces_and_dropdowns_start_directly_below_the_single_row_menu() {
 }
 
 #[test]
-fn header_product_matches_live_color_and_is_not_a_menu_target() {
+fn header_keeps_product_name_without_version() {
     for width in [80, 120, 180] {
-        for high_contrast in [false, true] {
-            for theme_index in 0..ui::THEMES.len() {
-                let mut app = make_test_app(1, 10);
-                app.theme_index = theme_index;
-                app.high_contrast = high_contrast;
-                let screen = Rect::new(0, 0, width, 30);
-                let buffer = render_app_to_buffer(&app, width, 30);
-                let label = concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ");
-                assert_eq!(find_text_position(&buffer, label), Some((0, 0)));
-                for x in 0..label.len() as u16 {
-                    assert_eq!(buffer[(x, 0)].bg, app.theme().active_series);
-                    if (1..12).contains(&x) {
-                        assert_eq!(buffer[(x, 0)].fg, app.theme().background);
-                        assert!(buffer[(x, 0)].modifier.contains(Modifier::BOLD));
-                    } else if (13..13 + env!("CARGO_PKG_VERSION").len() as u16).contains(&x) {
-                        assert_eq!(buffer[(x, 0)].fg, app.theme().background);
-                        assert!(!buffer[(x, 0)].modifier.contains(Modifier::BOLD));
-                    }
-                    assert_eq!(ui::header::header_action_at(screen, &app, x, 0), None);
-                }
-                app.on_mouse(left_click(1, 0), screen);
-                assert!(!app.is_main_menu_open());
+        let mut app = make_test_app(1, 10);
+        let screen = Rect::new(0, 0, width, 30);
+        let text = render_app_to_text(&app, width, 30);
+        assert!(text.lines().next().unwrap().starts_with(" winproc-tui "));
+        assert_eq!(ui::header::header_action_at(screen, &app, 1, 0), None);
+        app.on_mouse(left_click(1, 0), screen);
+        assert!(!app.is_main_menu_open());
+        assert!(
+            !text
+                .lines()
+                .next()
+                .unwrap()
+                .contains(env!("CARGO_PKG_VERSION"))
+        );
+        let actions = ui::header::header_actions(ui::screen_layout(screen)[0], &app);
+        assert_eq!(actions[0].1.x, 14);
+        assert_eq!(
+            ui::header::header_action_at(screen, &app, 15, 0),
+            Some(HeaderAction::File)
+        );
+        app.on_mouse(left_click(15, 0), screen);
+        assert!(app.is_main_menu_open());
+        assert_eq!(app.main_menu_section, MainMenuSection::File);
+    }
+}
+
+#[test]
+fn version_info_contains_metadata_and_blocks_workspace_input() {
+    for width in [80, 120, 180] {
+        for activity in [
+            AppActivity::Live,
+            AppActivity::Recording,
+            AppActivity::LogView,
+        ] {
+            let mut app = make_test_app(2, 10);
+            let path = if activity == AppActivity::Recording {
+                Some(start_recording(&mut app, "version-info"))
+            } else {
+                None
+            };
+            if activity == AppActivity::LogView {
+                app.log_view_path = Some(PathBuf::from("example.log"));
+            }
+            let screen = Rect::new(0, 0, width, 30);
+            render_app_to_buffer(&app, width, 30);
+            let focus = app.focused_panel;
+            app.open_main_menu_section(MainMenuSection::Help);
+            assert_eq!(menu_labels(&app), ["Version Info", "Keyboard shortcuts"]);
+            choose(&mut app, MainMenuAction::OpenVersionInfo);
+            assert!(app.show_help && app.help_version_info);
+            assert!(!app.is_main_menu_open());
+            let buffer = render_app_to_buffer(&app, width, 30);
+            let text = render_app_to_text(&app, width, 30);
+            assert!(text.contains("Version Info"));
+            let (x, y) =
+                find_text_position(&buffer, concat!("winproc-tui v", env!("CARGO_PKG_VERSION")))
+                    .unwrap();
+            let (url_x, url_y) = find_text_position(&buffer, env!("CARGO_PKG_REPOSITORY")).unwrap();
+            assert_eq!((url_x, url_y), (x, y + 1));
+            let (footer_x, footer_y) = find_text_position(&buffer, "Enter/Esc Close").unwrap();
+            assert!(footer_y >= url_y + 2);
+            for key in [
+                KeyCode::Char('q'),
+                KeyCode::Char('s'),
+                KeyCode::Down,
+                KeyCode::Tab,
+            ] {
+                press(&mut app, key);
+                assert!(app.show_help && app.help_version_info);
+                assert!(app.help_section_picker.is_none());
+                assert!(!app.should_quit);
+                assert_eq!(app.focused_panel, focus);
+            }
+            render_app_to_buffer(&app, width, 30);
+            app.on_mouse(left_click(footer_x, footer_y), screen);
+            assert!(!app.show_help && !app.help_version_info);
+            assert_eq!(app.activity(), activity);
+            app.open_main_menu_section(MainMenuSection::Help);
+            choose(&mut app, MainMenuAction::OpenKeyboardShortcuts);
+            assert!(app.show_help && !app.help_version_info);
+            assert_eq!(app.help_scroll.offset, 0);
+            assert_eq!(app.help_section, 0);
+            let text = render_app_to_text(&app, width, 30);
+            let title_row = text
+                .lines()
+                .position(|line| line.contains("Keyboard shortcuts"))
+                .unwrap();
+            assert!(text.lines().nth(title_row + 1).unwrap().contains("Global"));
+            assert!(!text.contains(env!("CARGO_PKG_REPOSITORY")));
+            press(&mut app, KeyCode::Esc);
+            if let Some(path) = path {
+                app.stop_recording().unwrap();
+                std::fs::remove_file(path).unwrap();
             }
         }
     }

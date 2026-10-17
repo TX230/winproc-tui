@@ -60,6 +60,14 @@ impl App {
     }
 
     pub(crate) fn help_key(&mut self, key: KeyEvent) {
+        if self.help_version_info {
+            if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                self.close_help();
+            } else if matches!(key.code, KeyCode::F(1) | KeyCode::Char('?')) {
+                self.open_help();
+            }
+            return;
+        }
         if let Some(selected) = self.help_section_picker {
             let last = help::section_titles().len().saturating_sub(1);
             match key.code {

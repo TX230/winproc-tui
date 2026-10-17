@@ -10,7 +10,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-const PRODUCT_LABEL: &str = concat!(" winproc-tui ", env!("CARGO_PKG_VERSION"), " ");
+const PRODUCT_LABEL: &str = " winproc-tui ";
 
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
@@ -26,15 +26,11 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
     let product_width = product_width(area);
     if product_width > 0 {
         frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::raw(" "),
-                Span::styled("winproc-tui", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(concat!(" ", env!("CARGO_PKG_VERSION"), " ")),
-            ]))
-            .style(
+            Paragraph::new(PRODUCT_LABEL).style(
                 Style::default()
                     .fg(theme.background)
-                    .bg(theme.active_series),
+                    .bg(theme.active_series)
+                    .add_modifier(Modifier::BOLD),
             ),
             Rect::new(area.x, area.y, product_width - 1, area.height),
         );
@@ -344,13 +340,13 @@ impl HeaderAction {
             (Self::Investigation, false) => " Investigation ▾ ",
             (Self::View, false) => " View ▾ ",
             (Self::Settings, false) => " Settings ▾ ",
-            (Self::Help, false) => " Help ",
+            (Self::Help, false) => " Help ▾ ",
             (Self::More, false) => " More ▾ ",
             (Self::File, true) => "File▾",
             (Self::Investigation, true) => "Investigation▾",
             (Self::View, true) => "View▾",
             (Self::Settings, true) => "Settings▾",
-            (Self::Help, true) => "Help",
+            (Self::Help, true) => "Help▾",
             (Self::More, true) => "More▾",
             _ => "",
         }
@@ -393,7 +389,7 @@ impl HeaderAction {
             Self::Investigation => "Alt+I",
             Self::View => "Alt+V",
             Self::Settings => "Alt+T",
-            Self::Help => "F1",
+            Self::Help => "",
             Self::Processes => "F2",
             Self::Network => "F3",
             Self::FileUsers => "F4",
@@ -411,7 +407,6 @@ const CATEGORIES: [HeaderAction; 5] = [
 ];
 
 // Reserve critical state independently of names and current freshness/pause state.
-// Product branding yields to essential controls below the supported 80-column width.
 const IMPORTANT_STATUS_WIDTH: u16 = 38;
 
 fn product_width(area: Rect) -> u16 {
@@ -421,12 +416,10 @@ fn product_width(area: Rect) -> u16 {
         0
     }
 }
-
 fn menu_area(area: Rect) -> Rect {
     let width = product_width(area);
     Rect::new(area.x + width, area.y, area.width - width, area.height)
 }
-
 fn menu_budget(area: Rect) -> u16 {
     area.width
         .saturating_sub(IMPORTANT_STATUS_WIDTH.min(area.width.saturating_sub(12)) + 1)

@@ -729,6 +729,9 @@ fn investigation_views_preserve_results_and_expose_tools_menu() {
         .unwrap()
         .1;
     app.on_mouse(left_click(help.x, help.y), screen);
+    assert!(app.is_main_menu_open());
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Enter);
     assert!(app.show_help);
     press(&mut app, KeyCode::Esc);
     assert!(app.network_browser.visible);

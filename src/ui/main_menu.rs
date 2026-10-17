@@ -6,7 +6,7 @@ use ratatui::{
 
 use crate::{
     App,
-    app::state::{MainMenuAction, MainMenuItem, MainMenuRow, MainMenuSection},
+    app::state::{MainMenuAction, MainMenuItem, MainMenuRow},
     ui::{Theme, widgets::scrollable_modal::ScrollableModal},
 };
 
@@ -18,30 +18,6 @@ const MENU_KEYS: &[(&str, &str)] = &[
 ];
 
 pub(crate) fn draw_main_menu(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    if app.main_menu_section == MainMenuSection::Help {
-        // Help is a direct action: focus the heading without creating an empty dropdown.
-        let footer = Rect::new(
-            area.x,
-            area.bottom().saturating_sub(1),
-            area.width,
-            area.height.min(1),
-        );
-        let line = Line::from(super::footer::shortcut_spans(
-            &[("←/→", "Menu"), ("Enter", "Help"), ("Esc", "Close")],
-            theme,
-        ));
-        super::footer::register_shortcut_text(
-            app,
-            footer,
-            &Text::from(line.clone()),
-            ratatui::layout::Alignment::Left,
-        );
-        frame.render_widget(
-            ratatui::widgets::Paragraph::new(line).style(Style::default().bg(theme.panel)),
-            footer,
-        );
-        return;
-    }
     let content_width = usize::from(
         main_menu_modal(app)
             .layout(anchored_area(area, app))
@@ -120,9 +96,6 @@ pub(crate) fn main_menu_index_at(area: Rect, app: &App, x: u16, y: u16) -> Optio
 }
 
 pub(crate) fn main_menu_area(area: Rect, app: &App) -> Rect {
-    if app.main_menu_section == MainMenuSection::Help {
-        return Rect::default();
-    }
     main_menu_modal(app).layout(anchored_area(area, app)).area
 }
 
@@ -216,6 +189,7 @@ fn display_rows(app: &App) -> Vec<Option<usize>> {
                 | ToggleTrackedOnly | ToggleShowExited | ToggleTreeView | ToggleContrast => 1,
                 ToggleGraphs | ToggleSamples | ToggleDelta | QuitImmediately
                 | QuitWithConfirmation | OpenStartupBehavior => 2,
+                OpenVersionInfo | OpenKeyboardShortcuts => 0,
                 CycleGraphLayout => 3,
             },
         };
@@ -236,6 +210,7 @@ fn shortcut(row: MainMenuRow) -> &'static str {
         return action.shortcut();
     };
     match action {
+        MainMenuAction::OpenKeyboardShortcuts => "F1/?",
         MainMenuAction::ToggleProcessTracking => "t (Processes)",
         MainMenuAction::ExportGraphsCsv => "Ctrl+E",
         MainMenuAction::OpenProfiles => "Ctrl+T",

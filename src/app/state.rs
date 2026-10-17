@@ -984,13 +984,16 @@ impl MainMenuSection {
                 ToggleContrast,
                 OpenStartupBehavior,
             ],
-            (Self::Help | Self::More, _) => &[],
+            (Self::Help, _) => &[OpenVersionInfo, OpenKeyboardShortcuts],
+            (Self::More, _) => &[],
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MainMenuAction {
+    OpenVersionInfo,
+    OpenKeyboardShortcuts,
     OpenProfiles,
     SaveProfile,
     SaveProfileAs,
@@ -1018,6 +1021,8 @@ pub(crate) enum MainMenuAction {
 impl MainMenuAction {
     pub(crate) const fn label(self) -> &'static str {
         match self {
+            Self::OpenVersionInfo => "Version Info",
+            Self::OpenKeyboardShortcuts => "Keyboard shortcuts",
             Self::OpenProfiles => "Open profile…",
             Self::SaveProfile => "Save profile",
             Self::SaveProfileAs => "Save profile as…",
@@ -1129,6 +1134,7 @@ pub(crate) struct App {
     pub(crate) main_menu_hovered: Option<usize>,
     pub(crate) header_action_hovered: Option<crate::ui::header::HeaderAction>,
     pub(crate) show_help: bool,
+    pub(crate) help_version_info: bool,
     pub(crate) help_section: usize,
     pub(crate) help_section_picker: Option<usize>,
     pub(crate) help_scroll: ScrollableModalState,
@@ -1412,6 +1418,7 @@ impl App {
             main_menu_hovered: None,
             header_action_hovered: None,
             show_help: false,
+            help_version_info: false,
             help_section: 0,
             help_section_picker: None,
             help_scroll: ScrollableModalState {
@@ -6782,10 +6789,7 @@ impl App {
             self.status = "Menu closed because the activity changed".to_string();
             return Ok(());
         }
-        if self.main_menu_section == MainMenuSection::Help {
-            self.activate_header_action(crate::ui::header::HeaderAction::Help);
-            return Ok(());
-        }
+
         let Some(row) = self.main_menu_rows().get(self.main_menu_selected).copied() else {
             self.close_main_menu();
             return Ok(());
@@ -6793,9 +6797,7 @@ impl App {
 
         let action = match row.item {
             MainMenuItem::Header(action) => {
-                if action != crate::ui::header::HeaderAction::Help
-                    && let Some(section) = action.section()
-                {
+                if let Some(section) = action.section() {
                     self.open_main_menu_section(section);
                 } else {
                     self.dismiss_main_menu();
@@ -6813,6 +6815,18 @@ impl App {
         let tracking_target = self.main_menu_tracking_target.clone();
         self.dismiss_main_menu();
         match action {
+            MainMenuAction::OpenVersionInfo => {
+                self.open_help();
+                self.help_version_info = true;
+                self.help_scroll.reset();
+                Ok(())
+            }
+            MainMenuAction::OpenKeyboardShortcuts => {
+                self.open_help();
+                self.help_section = 0;
+                self.help_scroll.reset();
+                Ok(())
+            }
             MainMenuAction::OpenProfiles => {
                 self.open_investigation_profiles();
                 Ok(())
@@ -6896,6 +6910,7 @@ impl App {
     }
 
     pub(crate) fn open_help(&mut self) {
+        self.help_version_info = false;
         self.help_section = crate::ui::help::section_index(self.contextual_help_title());
         self.show_help = true;
         self.help_section_picker = None;
@@ -6904,6 +6919,7 @@ impl App {
 
     pub(crate) fn close_help(&mut self) {
         self.show_help = false;
+        self.help_version_info = false;
         self.help_section_picker = None;
         self.help_scroll.reset();
         self.shortcut_hovered = None;

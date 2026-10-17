@@ -1569,6 +1569,9 @@ impl App {
             self.shortcut_map.borrow_mut().regions.clear();
         }
         if self.show_help {
+            if self.help_version_info {
+                return;
+            }
             if self.help_section_picker.is_some() {
                 self.help_section_mouse(mouse, screen_area);
                 return;

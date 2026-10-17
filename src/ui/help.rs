@@ -7,11 +7,7 @@ use ratatui::{
 
 use crate::{
     App,
-    model::{GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY},
-    ui::{
-        Theme, footer::shortcut_spans, format::format_integer,
-        widgets::scrollable_modal::ScrollableModal,
-    },
+    ui::{Theme, footer::shortcut_spans, widgets::scrollable_modal::ScrollableModal},
 };
 
 const COLUMN_SEPARATOR: &str = "  │  ";
@@ -877,6 +873,10 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
 ];
 
 pub(crate) fn draw_help(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    if app.help_version_info {
+        draw_version_info(frame, area, app, theme);
+        return;
+    }
     if app.help_section_picker.is_some() {
         draw_section_picker(frame, area, app, theme);
         return;
@@ -1046,15 +1046,7 @@ impl ColumnRow {
 }
 
 fn help_lines(theme: Theme, width: usize) -> Vec<Line<'static>> {
-    let title = help_title();
-    let mut lines = vec![
-        Line::from(Span::styled(
-            title,
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(help_hint(), Style::default().fg(theme.muted))),
-        Line::from(""),
-    ];
+    let mut lines = Vec::new();
 
     let left = render_column(LEFT_SECTIONS, theme);
     let right = render_column(RIGHT_SECTIONS, theme);
@@ -1084,21 +1076,6 @@ fn help_lines(theme: Theme, width: usize) -> Vec<Line<'static>> {
     }
 
     wrap_lines(lines, width)
-}
-
-fn help_hint() -> String {
-    format!(
-        "Footer: fits width. History: {}/{} normal/tracked. Scheme colors mark active items; T marks tracked.",
-        format_integer(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as u64),
-        format_integer(TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u64)
-    )
-}
-
-fn help_title() -> String {
-    format!(
-        "winproc-tui {} · Keyboard shortcuts",
-        env!("CARGO_PKG_VERSION")
-    )
 }
 
 fn render_column(sections: &[HelpSection], theme: Theme) -> Vec<ColumnRow> {
@@ -1163,11 +1140,7 @@ fn column_max_width(rows: &[ColumnRow]) -> usize {
 fn help_content_width() -> u16 {
     let left = render_column_widths(LEFT_SECTIONS);
     let right = render_column_widths(RIGHT_SECTIONS);
-    let title_width = help_title()
-        .chars()
-        .count()
-        .max(help_hint().chars().count())
-        .max(shortcut_width(&HELP_SHORTCUT_ITEMS));
+    let title_width = shortcut_width(&HELP_SHORTCUT_ITEMS);
     let body_width = left + COLUMN_SEPARATOR.chars().count() + right;
     body_width.max(title_width) as u16
 }
@@ -1236,10 +1209,37 @@ fn wrap_lines(lines: Vec<Line<'static>>, width: usize) -> Vec<Line<'static>> {
     wrapped
 }
 
+fn draw_version_info(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    let lines = wrap_lines(
+        vec![
+            Line::from(Span::styled(
+                concat!("winproc-tui v", env!("CARGO_PKG_VERSION")),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                env!("CARGO_PKG_REPOSITORY"),
+                Style::default().fg(theme.text),
+            )),
+        ],
+        usize::from(area.width.saturating_sub(4)),
+    );
+    let width = lines.iter().map(Line::width).max().unwrap_or(0) as u16;
+    let modal = ScrollableModal::new("Version Info", width.max(20), lines.len() as u16, 1);
+    let layout = modal.render(frame, area, Text::from(lines), 0, false, theme);
+    let footer = Line::from(shortcut_spans(&[("Enter/Esc", "Close")], theme));
+    crate::ui::footer::register_shortcut_text(
+        app,
+        layout.footer,
+        &Text::from(footer.clone()),
+        ratatui::layout::Alignment::Left,
+    );
+    frame.render_widget(Paragraph::new(footer), layout.footer);
+}
+
 fn help_modal(area: Rect) -> ScrollableModal {
     let width = help_content_width().min(area.width.saturating_sub(4));
     ScrollableModal::new(
-        "HELP",
+        "Keyboard shortcuts",
         width,
         help_lines(crate::ui::THEMES[0], width as usize).len() as u16,
         FOOTER_HEIGHT,
