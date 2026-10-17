@@ -115,6 +115,7 @@ pub(crate) fn draw_details_panel(
                     bounds,
                     time_reference_at,
                     frame_times,
+                    details_graph_rows(card.plot)[1].height,
                 ),
             ))
         })
@@ -181,31 +182,36 @@ pub(crate) fn draw_details_panel(
 }
 
 pub(crate) fn graph_y_axis_label_width(app: &App) -> usize {
-    let indices = crate::ui::main_panel_areas_for_app(app.last_screen_area, app)
+    let plots = crate::ui::main_panel_areas_for_app(app.last_screen_area, app)
         .details
         .map(|area| graph_workspace_layout(area, app))
         .map(|layout| {
             layout
                 .graph_cards
                 .into_iter()
-                .map(|card| card.ordinal)
+                .map(|card| (card.ordinal, details_graph_rows(card.plot)[1].height))
                 .collect::<Vec<_>>()
         })
-        .unwrap_or_else(|| app.active_graph_index().into_iter().collect());
-    graph_y_axis_label_width_for_indices(app, &indices)
+        .unwrap_or_else(|| {
+            app.active_graph_index()
+                .map(|index| (index, 8))
+                .into_iter()
+                .collect()
+        });
+    graph_y_axis_label_width_for_plots(app, &plots)
 }
 
-fn graph_y_axis_label_width_for_indices(app: &App, indices: &[usize]) -> usize {
+fn graph_y_axis_label_width_for_plots(app: &App, plots: &[(usize, u16)]) -> usize {
     let bounds = graph_bounds(
         app.effective_graph_time_span_seconds(),
         app.effective_graph_time_offset_seconds(),
     );
     let frame_times = graph_frame_times(app);
     let frame_times = (!frame_times.is_empty()).then_some(frame_times.as_ref());
-    indices
+    plots
         .iter()
-        .filter_map(|index| app.graph_entry(*index))
-        .map(|entry| {
+        .filter_map(|(index, height)| app.graph_entry(*index).map(|entry| (entry, *height)))
+        .map(|(entry, plot_height)| {
             let data = prepare_graph_card_render_data(
                 app,
                 &entry.source,
@@ -213,6 +219,7 @@ fn graph_y_axis_label_width_for_indices(app: &App, indices: &[usize]) -> usize {
                 bounds,
                 app.graph_time_reference_at(),
                 frame_times,
+                plot_height,
             );
             y_axis_label_width(&y_axis_labels(data.y_min, data.y_max, data.metric))
         })
@@ -227,6 +234,7 @@ fn prepare_graph_card_render_data(
     bounds: (i64, i64),
     time_reference_at: Option<DateTime<Local>>,
     frame_times: Option<&[DateTime<Local>]>,
+    plot_height: u16,
 ) -> GraphCardRenderData {
     let samples = app.graph_slot_samples(slot);
     let metric = slot.value_format();
@@ -259,7 +267,7 @@ fn prepare_graph_card_render_data(
         app.graph_slot_peak(slot),
         segments.iter().flatten().map(|(_, value)| *value),
     );
-    let (y_min, y_max) = graph_y_bounds(&stats, app.graph_y_axis_zero_min);
+    let (y_min, y_max) = graph_y_bounds(&stats, app.graph_y_axis_zero_min, metric, plot_height);
     GraphCardRenderData {
         samples,
         display_samples,
@@ -837,7 +845,7 @@ fn draw_graph_content(
     let (y_min, y_max) = y_bounds;
     let plot_segments = segments
         .iter()
-        .map(|segment| lift_floor_points_for_plot(segment, y_min, y_max))
+        .map(|segment| lift_floor_points_for_plot(segment, y_min, y_max, layout[1].height))
         .collect::<Vec<_>>();
     let selected_age_seconds =
         selected_sample_time.and_then(|time| sample_age_seconds_at_time(time_reference_at, time));
@@ -1864,21 +1872,35 @@ fn graph_stats_for_values(
     }
 }
 
-fn graph_y_bounds(stats: &GraphStats, zero_min: bool) -> (f64, f64) {
-    if zero_min {
-        return (0.0, stats.scale_max.max(1.0));
+fn graph_y_bounds(
+    stats: &GraphStats,
+    zero_min: bool,
+    metric: GraphValueFormat,
+    plot_height: u16,
+) -> (f64, f64) {
+    let (lower, upper) = if zero_min {
+        (0.0, stats.scale_max.max(1.0))
+    } else if let (Some(min), Some(max)) = (stats.window_min, stats.window_max) {
+        nice_auto_y_bounds(min.max(0.0), max.max(0.0), plot_height)
+    } else {
+        (0.0, 1.0)
+    };
+    // Rate series are stored in bytes/s. Keep a zero-based axis readable as at
+    // least 0..1 in its displayed unit, rather than rounding both ends to zero.
+    let unit_upper = match metric {
+        GraphValueFormat::AdaptiveBitsPerSec => 125.0,
+        GraphValueFormat::MegabitsPerSec => 125_000.0,
+        GraphValueFormat::MegabytesPerSec => 1_000_000.0,
+        _ => 1.0,
+    };
+    if lower == 0.0 || upper < unit_upper {
+        (0.0, upper.max(unit_upper))
+    } else {
+        (lower, upper)
     }
-
-    let Some(window_min) = stats.window_min else {
-        return (0.0, 1.0);
-    };
-    let Some(window_max) = stats.window_max else {
-        return (0.0, 1.0);
-    };
-    nice_auto_y_bounds(window_min.max(0.0), window_max.max(0.0))
 }
 
-fn nice_auto_y_bounds(window_min: f64, window_max: f64) -> (f64, f64) {
+fn nice_auto_y_bounds(window_min: f64, window_max: f64, plot_height: u16) -> (f64, f64) {
     let window_min = window_min.min(window_max);
     let window_max = window_max.max(window_min);
     let raw_range = (window_max - window_min).max((window_max.abs() * 0.01).max(1.0));
@@ -1886,7 +1908,8 @@ fn nice_auto_y_bounds(window_min: f64, window_max: f64) -> (f64, f64) {
 
     loop {
         let mut y_min = floor_to_multiple_f64(window_min, step).max(0.0);
-        if y_min >= window_min && y_min > 0.0 {
+        let clearance = graph_guide_bottom_value(0.0, step * 2.0, plot_height);
+        if y_min > 0.0 && window_min - y_min < clearance {
             y_min = (y_min - step).max(0.0);
         }
         let y_max = y_min + step * 2.0;
@@ -2308,14 +2331,19 @@ fn chart_segments_preserving_sample_gaps(
     chart_segments(samples, bounds, time_reference_at, Some(&sample_times))
 }
 
-fn lift_floor_points_for_plot(points: &[(f64, f64)], y_min: f64, y_max: f64) -> Vec<(f64, f64)> {
-    let floor_y = floor_plot_value(y_min, y_max);
+fn lift_floor_points_for_plot(
+    points: &[(f64, f64)],
+    y_min: f64,
+    y_max: f64,
+    plot_height: u16,
+) -> Vec<(f64, f64)> {
+    let floor_y = graph_guide_bottom_value(y_min, y_max, plot_height);
     points
         .iter()
         .map(|(x, y)| {
             (
                 *x,
-                if (*y - y_min).abs() <= f64::EPSILON {
+                if *y >= y_min && *y < floor_y {
                     floor_y
                 } else {
                     *y
@@ -2323,11 +2351,6 @@ fn lift_floor_points_for_plot(points: &[(f64, f64)], y_min: f64, y_max: f64) -> 
             )
         })
         .collect()
-}
-
-fn floor_plot_value(y_min: f64, y_max: f64) -> f64 {
-    let span = (y_max - y_min).max(1.0);
-    y_min + (span * 0.05).max(f64::EPSILON)
 }
 
 #[cfg(test)]
@@ -2481,9 +2504,13 @@ mod tests {
             (100.2, 110.0),
         ] {
             let stats = graph_stats_for_values(&[], None, [maximum].into_iter());
-            assert_eq!(graph_y_bounds(&stats, true), (0.0, expected_upper));
+            assert_eq!(
+                graph_y_bounds(&stats, true, GraphValueFormat::Percent, 24),
+                (0.0, expected_upper)
+            );
             for zero_min in [true, false] {
-                let (lower, upper) = graph_y_bounds(&stats, zero_min);
+                let (lower, upper) =
+                    graph_y_bounds(&stats, zero_min, GraphValueFormat::Percent, 24);
                 assert!(lower <= maximum && maximum <= upper);
             }
         }
@@ -2515,7 +2542,7 @@ mod tests {
                 None,
                 segments.iter().flatten().map(|(_, value)| *value),
             );
-            let (lower, upper) = graph_y_bounds(&stats, true);
+            let (lower, upper) = graph_y_bounds(&stats, true, GraphValueFormat::Percent, 24);
             assert_eq!((lower, upper), (0.0, 5.0));
             assert!(
                 segments
@@ -2536,8 +2563,14 @@ mod tests {
             scale_max: 30.0,
         };
 
-        assert_eq!(graph_y_bounds(&stats, true), (0.0, 30.0));
-        assert_eq!(graph_y_bounds(&stats, false), (10.0, 30.0));
+        assert_eq!(
+            graph_y_bounds(&stats, true, GraphValueFormat::Percent, 24),
+            (0.0, 30.0)
+        );
+        assert_eq!(
+            graph_y_bounds(&stats, false, GraphValueFormat::Percent, 24),
+            (10.0, 30.0)
+        );
     }
 
     #[test]
@@ -2551,7 +2584,7 @@ mod tests {
         };
 
         assert_eq!(
-            graph_y_bounds(&stats, false),
+            graph_y_bounds(&stats, false, GraphValueFormat::Percent, 24),
             (2_860_000_000.0, 2_900_000_000.0)
         );
         assert_eq!(
@@ -2860,7 +2893,10 @@ mod tests {
         assert_eq!(raw_stats.window_max, Some(100.0));
         assert_eq!(averaged_stats.window_min, Some(40.0));
         assert_eq!(averaged_stats.window_max, Some(40.0));
-        assert!(graph_y_bounds(&averaged_stats, false).1 < graph_y_bounds(&raw_stats, false).1);
+        assert!(
+            graph_y_bounds(&averaged_stats, false, GraphValueFormat::Percent, 24).1
+                < graph_y_bounds(&raw_stats, false, GraphValueFormat::Percent, 24).1
+        );
     }
 
     #[test]
@@ -3649,18 +3685,143 @@ mod tests {
     }
 
     #[test]
+    fn zero_graph_axes_have_a_visible_zero_to_one_range() {
+        for (metric, upper, label) in [
+            (GraphValueFormat::Bytes, 1.0, "1"),
+            (GraphValueFormat::Count, 1.0, "1"),
+            (GraphValueFormat::BytesPerSec, 1.0, "1 B/s"),
+            (GraphValueFormat::Percent, 1.0, "1.0%"),
+            (GraphValueFormat::QueueLength, 1.0, "1.0"),
+            (GraphValueFormat::AdaptiveBitsPerSec, 125.0, "1 Kbps"),
+            (GraphValueFormat::MegabitsPerSec, 125_000.0, "1 Mbps"),
+            (GraphValueFormat::MegabytesPerSec, 1_000_000.0, "1.0 MB/s"),
+        ] {
+            for zero_min in [false, true] {
+                for values in [vec![], vec![0.0], vec![0.0, 0.001], vec![0.001]] {
+                    let stats = graph_stats_for_values(&[], None, values.into_iter());
+                    let bounds = graph_y_bounds(&stats, zero_min, metric, 8);
+                    assert_eq!(bounds, (0.0, upper), "{metric:?}, {zero_min}");
+                    let labels = y_axis_labels(bounds.0, bounds.1, metric);
+                    assert_eq!(labels[0], "0");
+                    assert_eq!(labels[2], label);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_graph_bounds_leave_room_above_axis_at_actual_height() {
+        let stats = graph_stats_for_values(&[], None, [306_053_120.0, 306_057_216.0].into_iter());
+        for height in [6, 8, 9, 10, 16, 24] {
+            let (lower, upper) = graph_y_bounds(&stats, false, GraphValueFormat::Bytes, height);
+            assert_eq!((lower, upper), (304_000_000.0, 308_000_000.0));
+            assert!(stats.window_min.unwrap() >= graph_guide_bottom_value(lower, upper, height));
+            assert!(stats.window_max.unwrap() <= upper);
+        }
+    }
+
+    #[test]
+    fn rendered_graph_lines_clear_axis_for_zero_and_near_floor_values() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let theme = THEMES[0];
+        let base = chrono::Local::now();
+        for height in [6, 8, 9, 10, 16, 24] {
+            for (lower, upper, values, metric) in [
+                (0.0, 1.0, [0.0, 0.001, 0.5, 1.0], GraphValueFormat::Percent),
+                (0.0, 1.0, [0.0; 4], GraphValueFormat::Count),
+                (0.0, 1.0, [0.001; 4], GraphValueFormat::Percent),
+                (
+                    306_000_000.0,
+                    310_000_000.0,
+                    [306_053_120.0, 306_057_216.0, 306_053_120.0, 306_057_216.0],
+                    GraphValueFormat::Bytes,
+                ),
+                (
+                    20.0,
+                    40.0,
+                    [20.0, 20.01, 30.0, 40.0],
+                    GraphValueFormat::Count,
+                ),
+            ] {
+                let samples = (0..20)
+                    .map(|index| GraphSample {
+                        captured_at: base + chrono::Duration::seconds(index),
+                        value: Some(values[index as usize % values.len()]),
+                    })
+                    .collect::<Vec<_>>();
+                for mode in [GraphDisplayMode::Raw, GraphDisplayMode::MovingAverage5] {
+                    let display = match mode {
+                        GraphDisplayMode::Raw => samples.clone(),
+                        GraphDisplayMode::MovingAverage5 => moving_average_samples(&samples, None),
+                    };
+                    let latest = samples.last().unwrap().captured_at;
+                    let segments = chart_segments_preserving_sample_gaps(
+                        &display,
+                        (-20, 0),
+                        Some(latest),
+                        None,
+                    );
+                    let width = y_axis_label_width(&y_axis_labels(lower, upper, metric));
+                    let mut terminal = Terminal::new(TestBackend::new(64, height + 2)).unwrap();
+                    terminal
+                        .draw(|frame| {
+                            draw_graph_content(
+                                frame,
+                                frame.area(),
+                                &samples,
+                                metric,
+                                mode,
+                                None,
+                                Some(samples[5].captured_at),
+                                Some(latest),
+                                (-20, 0),
+                                &segments,
+                                (lower, upper),
+                                None,
+                                false,
+                                theme,
+                                width,
+                            )
+                        })
+                        .unwrap();
+                    let buffer = terminal.backend().buffer();
+                    let chart = details_graph_rows(buffer.area)[1];
+                    let axis_y = chart.bottom() - 1;
+                    let is_braille = |symbol: &str| {
+                        symbol
+                            .chars()
+                            .any(|c| ('\u{2801}'..='\u{28ff}').contains(&c))
+                    };
+                    for x in width as u16..buffer.area.right() {
+                        assert!(
+                            !is_braille(buffer[(x, axis_y)].symbol()),
+                            "{height}, {mode:?}, {metric:?}: line overlaps axis at {x}"
+                        );
+                    }
+                    assert!((chart.y..axis_y).any(|y| {
+                        (width as u16..buffer.area.right())
+                            .any(|x| is_braille(buffer[(x, y)].symbol()))
+                    }));
+                    assert_eq!(buffer[(width as u16 - 1, axis_y)].symbol(), "┼");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn floor_chart_points_are_lifted_only_for_plotting() {
         let raw_points = vec![(-2.0, 0.0), (-1.0, 10.0), (0.0, 0.0)];
 
         assert_eq!(
-            lift_floor_points_for_plot(&raw_points, 0.0, 100.0),
-            vec![(-2.0, 5.0), (-1.0, 10.0), (0.0, 5.0)]
+            lift_floor_points_for_plot(&raw_points, 0.0, 100.0, 24),
+            vec![(-2.0, 400.0 / 95.0), (-1.0, 10.0), (0.0, 400.0 / 95.0)]
         );
 
         let auto_floor_points = vec![(-2.0, 20.0), (-1.0, 30.0)];
         assert_eq!(
-            lift_floor_points_for_plot(&auto_floor_points, 20.0, 40.0),
-            vec![(-2.0, 21.0), (-1.0, 30.0)]
+            lift_floor_points_for_plot(&auto_floor_points, 20.0, 40.0, 24),
+            vec![(-2.0, 20.0 + 80.0 / 95.0), (-1.0, 30.0)]
         );
     }
 
