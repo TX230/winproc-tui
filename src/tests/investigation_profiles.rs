@@ -543,8 +543,8 @@ fn profile_open_dialog_is_direct_and_has_no_management_shortcuts() {
         .expect("selected profile heading should render");
     assert_eq!(
         selected_heading_row,
-        profile_row + 2,
-        "selected profile details should follow a one-row profile list without a fixed empty gap"
+        profile_row + 7,
+        "selected profile details follow the fixed six-row saved-profile list"
     );
 }
 
@@ -834,6 +834,84 @@ fn long_profile_names_keep_process_name_counts_visible() {
             let text = render_app_to_text(&app, width, 24);
             assert!(text.contains("1 process name  [current]"), "{text}");
             assert!(text.contains("..."));
+        }
+    }
+}
+
+#[test]
+fn profile_browser_geometry_stays_fixed_across_selection_and_profile_counts() {
+    for (width, height) in [(80, 24), (120, 30), (180, 60)] {
+        let mut app = make_test_app(1, 10);
+        app.runtime.saved_investigation_profiles = [0, 1, 3, 50]
+            .into_iter()
+            .enumerate()
+            .map(|(i, count)| {
+                let mut entry = profile(&format!("Review profile {i}"));
+                entry.tracked_names = (0..count).map(|n| format!("worker-{n}.exe")).collect();
+                entry
+            })
+            .collect();
+        app.open_investigation_profiles();
+        let mut original = None;
+        for selected in 0..4 {
+            app.select_investigation_profile_index(selected);
+            let buffer = render_app_to_buffer(&app, width, height);
+            let geometry = (
+                find_text_position(&buffer, "OPEN INVESTIGATION PROFILE").unwrap(),
+                find_text_position(&buffer, "SAVED PROFILES").unwrap(),
+                find_text_position(&buffer, "SELECTED PROFILE").unwrap(),
+                find_text_position(&buffer, "Esc Close").unwrap(),
+            );
+            if let Some(original) = original {
+                assert_eq!(geometry, original);
+            } else {
+                original = Some(geometry);
+            }
+        }
+        assert!(render_app_to_text(&app, width, height).contains("more process names"));
+        app.close_investigation_profiles();
+        app.runtime.saved_investigation_profiles.clear();
+        app.open_investigation_profiles();
+        let buffer = render_app_to_buffer(&app, width, height);
+        assert_eq!(
+            find_text_position(&buffer, "OPEN INVESTIGATION PROFILE").unwrap(),
+            original.unwrap().0
+        );
+        assert_eq!(
+            find_text_position(&buffer, "SAVED PROFILES").unwrap(),
+            original.unwrap().1
+        );
+        assert_eq!(
+            find_text_position(&buffer, "Esc Close").unwrap().1,
+            original.unwrap().3.1
+        );
+    }
+}
+
+#[test]
+fn profile_browser_selection_uses_process_theme_surface_across_all_themes() {
+    for theme_index in 0..crate::ui::THEMES.len() {
+        for high_contrast in [false, true] {
+            let mut app = make_test_app(1, 10);
+            app.theme_index = theme_index;
+            app.high_contrast = high_contrast;
+            app.runtime.saved_investigation_profiles =
+                vec![profile("First review"), profile("Second review")];
+            app.open_investigation_profiles();
+            for (index, label) in ["> First review", "> Second review"]
+                .into_iter()
+                .enumerate()
+            {
+                app.select_investigation_profile_index(index);
+                let buffer = render_app_to_buffer(&app, 120, 30);
+                let (x, y) = find_text_position(&buffer, label).unwrap();
+                assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
+                assert_eq!(buffer[(x + 30, y)].bg, app.theme().table_selection_surface);
+                assert!(buffer[(x, y)].modifier.contains(Modifier::BOLD));
+                let screen = Rect::new(0, 0, 120, 30);
+                let hit = crate::ui::investigation_profile_index_at(screen, x, y, 0, 2);
+                assert_eq!(hit, Some(index));
+            }
         }
     }
 }

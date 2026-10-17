@@ -21,6 +21,7 @@ use crate::{
 };
 
 const DIALOG_WIDTH: u16 = 88;
+const BROWSE_DIALOG_HEIGHT: u16 = 24;
 const INTRO_ROW: u16 = 0;
 const LIST_LABEL_ROW: u16 = 2;
 const LIST_ROW: u16 = 3;
@@ -68,11 +69,7 @@ pub(crate) fn draw_investigation_profiles(
 
 fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let count = app.investigation_profiles_entry_count();
-    let selected_tracked_count = app
-        .selected_investigation_profile()
-        .map(|profile| profile.tracked_names.len())
-        .unwrap_or(0);
-    let layout = browse_layout(area, count, selected_tracked_count);
+    let layout = browse_layout(area);
     let popup = layout.popup;
     let block = modal_block_focused(modal_title("OPEN INVESTIGATION PROFILE", theme), theme);
     let content = layout.content;
@@ -115,7 +112,7 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
                 let style = if is_selected {
                     Style::default()
                         .fg(theme.text)
-                        .bg(theme.highlight)
+                        .bg(theme.table_selection_surface)
                         .add_modifier(Modifier::BOLD)
                 } else if active {
                     Style::default()
@@ -154,15 +151,26 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
                 row(content, layout.summary_row),
             );
         } else {
-            for (offset, name) in profile
-                .tracked_names
-                .iter()
-                .take(layout.summary_height as usize)
-                .enumerate()
-            {
+            let available = usize::from(layout.summary_height);
+            let visible = if profile.tracked_names.len() > available {
+                available.saturating_sub(1)
+            } else {
+                available
+            };
+            for (offset, name) in profile.tracked_names.iter().take(visible).enumerate() {
                 frame.render_widget(
                     Paragraph::new(name.as_str()).style(Style::default().fg(theme.text)),
                     row(content, layout.summary_row + offset as u16),
+                );
+            }
+            if profile.tracked_names.len() > available && available > 0 {
+                frame.render_widget(
+                    Paragraph::new(format!(
+                        "... {} more process names",
+                        profile.tracked_names.len() - visible
+                    ))
+                    .style(Style::default().fg(theme.muted)),
+                    row(content, layout.summary_row + visible as u16),
                 );
             }
         }
@@ -225,7 +233,7 @@ fn draw_startup(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Th
         let style = if is_selected {
             Style::default()
                 .fg(theme.text)
-                .bg(theme.highlight)
+                .bg(theme.table_selection_surface)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme.text)
@@ -462,17 +470,8 @@ fn draw_confirm(
     );
 }
 
-pub(crate) fn investigation_profiles_page_size_for_screen(area: Rect, app: &App) -> usize {
-    browse_layout(
-        area,
-        app.investigation_profiles_entry_count(),
-        app.selected_investigation_profile()
-            .map(|profile| profile.tracked_names.len())
-            .unwrap_or(0),
-    )
-    .list
-    .height
-    .max(1) as usize
+pub(crate) fn investigation_profiles_page_size_for_screen(area: Rect, _app: &App) -> usize {
+    browse_layout(area).list.height.max(1) as usize
 }
 
 pub(crate) fn investigation_profile_index_at(
@@ -481,9 +480,8 @@ pub(crate) fn investigation_profile_index_at(
     y: u16,
     scroll_offset: usize,
     profile_count: usize,
-    selected_tracked_count: usize,
 ) -> Option<usize> {
-    let list = browse_layout(area, profile_count, selected_tracked_count).list;
+    let list = browse_layout(area).list;
     if !contains(list, x, y) {
         return None;
     }
@@ -586,23 +584,22 @@ struct BrowseLayout {
     shortcut_row: u16,
 }
 
-fn browse_layout(area: Rect, profile_count: usize, selected_tracked_count: usize) -> BrowseLayout {
-    let list_height = (profile_count as u16).clamp(1, MAX_LIST_HEIGHT);
-    let summary_label_row = LIST_ROW.saturating_add(list_height).saturating_add(1);
-    let summary_row = summary_label_row.saturating_add(1);
-    let max_summary_height = area
-        .height
-        .saturating_sub(summary_row.saturating_add(4))
-        .max(1);
-    let summary_height = (selected_tracked_count as u16)
-        .max(1)
-        .min(max_summary_height);
-    let shortcut_row = summary_row.saturating_add(summary_height).saturating_add(1);
-    let popup = centered_dialog_rect(area, DIALOG_WIDTH, shortcut_row.saturating_add(3));
+fn browse_layout(area: Rect) -> BrowseLayout {
+    // Geometry depends on the viewport alone, never the selected profile or its
+    // name count. Keep the list, summary, footer and mouse targets stationary.
+    let height = BROWSE_DIALOG_HEIGHT.min(area.height.saturating_sub(2));
+    let popup = centered_dialog_rect(area, DIALOG_WIDTH, height);
     let content = popup.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
     });
+    let list_height = MAX_LIST_HEIGHT
+        .min(content.height.saturating_sub(LIST_ROW + 6))
+        .max(1);
+    let summary_label_row = LIST_ROW + list_height + 1;
+    let summary_row = summary_label_row + 1;
+    let shortcut_row = content.height.saturating_sub(1);
+    let summary_height = shortcut_row.saturating_sub(summary_row + 1);
     let list = Rect::new(
         content.x,
         content.y.saturating_add(LIST_ROW),

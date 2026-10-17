@@ -1844,9 +1844,6 @@ impl App {
                         mouse.row,
                         self.investigation_profiles_scroll_offset(),
                         self.investigation_profiles_entry_count(),
-                        self.selected_investigation_profile()
-                            .map(|profile| profile.tracked_names.len())
-                            .unwrap_or(0),
                     ) {
                         self.select_investigation_profile_index(index);
                     }

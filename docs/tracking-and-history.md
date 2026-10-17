@@ -28,6 +28,8 @@ Changing a process's tracked state edits the working Tracking List in the Curren
 
 Opening a profile is available only in Live and replaces only the working Tracking List and active-profile binding. It does not change Tracked-only, Processes Flat/Tree mode, visible columns and order, process sort, Graphs, Graph layout or time span, Samples or Delta visibility, Y-axis mode, or the Recording interval. It can remove process names whose older retained samples are no longer needed. When that operation would discard history beyond general Live retention, the application asks for confirmation before pruning it. Profile deletion remains available in Recording and Log view because it does not change the active investigation.
 
+The Open Profile browser keeps its geometry stable for a given viewport, regardless of the selected profile or the number of saved profiles and process names. Saved profiles scroll within a bounded list; the selected-profile preview uses a fixed region and reports omitted process names when necessary. Selection uses the shared theme selection surface.
+
 The active profile is the explicit target for Save. A saved profile becomes active only when it is selected at startup, opened in Live, or created with Save As during the current run. `Resume last` and `Start empty` begin with no active profile, so Save follows the Save As flow until a profile is explicitly opened or created. The header shows that binding and a non-color modified marker; Log view has no Current Investigation binding.
 
 Profiles express tracking intent with case-insensitive process names. They never store a PID, start time, `ProcessIdentity`, Graphs, current selection, text filter, retained history, A/B points, or app settings.
