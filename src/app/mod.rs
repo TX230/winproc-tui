@@ -1,6 +1,7 @@
 pub(crate) mod actions;
 pub(crate) mod clipboard;
 pub(crate) mod context_menu;
+pub(crate) mod executable_location;
 pub(crate) mod export;
 pub(crate) mod feedback;
 pub(crate) mod file_actions;
@@ -117,6 +118,7 @@ pub(crate) fn run_tui(terminal: &mut AppTerminal, app: &mut App) -> Result<()> {
         dirty |= app.poll_process_info_results()?;
         dirty |= app.poll_open_files_results()?;
         dirty |= app.poll_file_action();
+        dirty |= app.poll_executable_location();
         dirty |= app.poll_process_modules_results()?;
         dirty |= app.poll_process_environment_results()?;
         dirty |= app.poll_network_results();

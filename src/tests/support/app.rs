@@ -349,6 +349,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
         details_sample_page_size: 1,
         samples_scrollbar_dragging: false,
         samples_scrollbar_grab_offset: 0,
+        executable_location: None,
+        executable_location_worker: None,
         context_menu: None,
         pending_context_menu: None,
         graph_pan_drag: None,

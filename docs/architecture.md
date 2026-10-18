@@ -72,7 +72,7 @@ Scheduling has an independent worker for priority reads and explicit confirmed c
 
 Process termination runs on a batch worker independent of sampling. The UI owns the frozen target set and per-target outcomes, polls typed results without waiting, and permits only one batch until its results are dismissed. A worker holds the verified process handle through termination and a bounded exit wait. Shutdown signals it to skip unstarted targets without joining it on the UI thread.
 
-Explicit pathname actions use reusable Windows shell helpers on a dedicated COM-initialized background thread. The action view owns an immutable path; the application retains one pending result receiver across dismissed views. Generation matching prevents late replies from updating a replacement view, and collection refresh cannot retarget a request. Native errors remain visible in that view, and successful API return means request acceptance only.
+Explicit pathname actions use reusable Windows shell helpers on a dedicated COM-initialized background thread. The action view owns an immutable path; the application retains one pending result receiver across dismissed views. Generation matching prevents late replies from updating a replacement view, and collection refresh cannot retarget a request. Native errors remain visible in that view, and successful API return means request acceptance only. Executable-location actions share the single pending shell-request limit, resolve and verify a menu-captured process identity on a background thread, and use only Explorer Reveal. Their result dialog cannot be replaced while the request is pending; dismissal leaves the receiver owned by the application.
 
 ### 3.2 Keep state ownership centralized
 

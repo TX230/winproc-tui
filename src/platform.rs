@@ -28,6 +28,7 @@ use winapi::{
     },
 };
 
+pub(crate) mod executable_location;
 pub(crate) mod shell;
 
 static TERMINATION_REQUESTED: AtomicBool = AtomicBool::new(false);

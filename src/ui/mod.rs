@@ -3,6 +3,7 @@ pub(crate) mod context_menu;
 mod cpu_core_dialog;
 mod cpu_panel;
 pub(crate) mod details_panel;
+pub(crate) mod executable_location;
 pub(crate) mod file_actions;
 pub(crate) mod file_users;
 pub(crate) mod footer;
@@ -247,6 +248,10 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     if app.show_no_graph_metrics_warning {
         app.shortcut_map.borrow_mut().regions.clear();
         draw_no_graph_metrics_warning(frame, area, app, theme);
+    }
+    if app.executable_location.is_some() {
+        app.shortcut_map.borrow_mut().regions.clear();
+        executable_location::draw(frame, app);
     }
     if app.context_menu.is_some() {
         app.shortcut_map.borrow_mut().regions.clear();

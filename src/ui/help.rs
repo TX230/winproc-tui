@@ -182,6 +182,10 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Copy selected process rows, or the focused row",
     },
     HelpItem {
+        key: "Context menu: location",
+        label: "Reveal live executable in Explorer (unavailable for Ghost Rows / Log view)",
+    },
+    HelpItem {
         key: "Copy table (context menu)",
         label: "Copy the full table with headings from the Processes context menu",
     },

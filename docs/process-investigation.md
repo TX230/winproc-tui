@@ -16,6 +16,14 @@ The active tab is retained between ordinary opens. A direct investigation action
 
 All live collectors verify that the process still has the expected identity. A PID that exits or is reused must never deliver information to the open dialog.
 
+## Executable Location
+
+The Processes context menu offers Open executable location through keyboard and mouse access. The menu captures the full process identity and lifecycle when opened; later sorting, filtering, sampling, selection changes, and PID reuse cannot redirect the action. Ghost Rows and Log view disable it and never perform live inspection or recover a path from a reused PID.
+
+An explicit request starts a dedicated background thread. It requires a known creation time, opens a query-only process handle, checks the live creation time and executable filename against the captured identity, resolves the executable path from that same handle, validates that it is an accessible file, and checks the held process again before requesting Explorer selection. Exited, inaccessible, mismatched, and unavailable targets fail visibly. The action always uses the shared Reveal shell primitive and never launches the executable. Like other pathname operations, selection applies to the current file at the resolved path; process exit or filesystem changes after verification remain possible.
+
+The result dialog retains full native errors and the resolved path, with scrolling for narrow terminals. Success means Windows accepted the Explorer selection request, not proof of a visible Explorer window. Closing the dialog is immediate and does not cancel a request already in progress. Only one shell request may be pending across Files and executable-location actions, including after dismissal; late completion reports as an earlier action without opening a new dialog. Native calls have no guaranteed completion deadline, but neither UI polling nor application shutdown joins this worker. No work enters ordinary sampling, history, Recording, exports, or configuration.
+
 ## Navigation and Scrolling
 
 Process Info handles tab switching before filter editing: Ctrl+Left/Right changes tabs while retaining filter text. Escape returns from a row detail to its list, from tab content or filter editing to the tab row without clearing the filter, and from the tab row closes Process Info. Pending Scheduling changes retain their existing input lock until completion.

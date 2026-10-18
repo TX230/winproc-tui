@@ -125,6 +125,10 @@ impl App {
             return Ok(());
         }
 
+        if self.executable_location.is_some() {
+            self.executable_location_key(key);
+            return Ok(());
+        }
         if self.context_menu.is_some() {
             return self.context_menu_key(key);
         }
@@ -1634,6 +1638,10 @@ impl App {
             return;
         }
 
+        if self.executable_location.is_some() && self.recording_error.is_none() {
+            self.executable_location_mouse(mouse);
+            return;
+        }
         if self.context_menu.is_some() && self.recording_error.is_none() {
             self.context_menu_mouse(mouse, screen_area);
             return;

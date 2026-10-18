@@ -14,6 +14,7 @@ pub(crate) enum ContextAction {
     ShowGraph(GraphSlot),
     RemoveGraph(GraphId),
     ProcessInfo(Box<ProcessInfoDialogTarget>, ProcessInfoTab),
+    RevealExecutable(Box<ProcessInfoDialogTarget>),
     Track(String),
     Copy(String),
     SetPoint(GraphId, Option<DateTime<Local>>, char),
@@ -104,6 +105,12 @@ impl App {
             "Process Info",
             ContextAction::ProcessInfo(Box::new(target.clone()), ProcessInfoTab::Metrics),
             true,
+        );
+        menu.add(
+            "Open executable location",
+            ContextAction::RevealExecutable(Box::new(target.clone())),
+            self.activity() != AppActivity::LogView
+                && target.lifecycle == super::ProcessLifecycle::Live,
         );
         menu.add(
             if self.is_tracked_process_name(&target.identity.name) {
@@ -299,6 +306,7 @@ impl App {
             ContextAction::ProcessInfo(target, tab) => {
                 self.open_process_info_dialog(*target, tab)?
             }
+            ContextAction::RevealExecutable(target) => self.open_executable_location(*target),
             ContextAction::Track(name) => self.toggle_process_name_tracking(name),
             ContextAction::Copy(text) => {
                 self.status = match super::clipboard::copy_text_to_clipboard(&text) {

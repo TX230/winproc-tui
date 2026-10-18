@@ -1260,6 +1260,9 @@ pub(crate) struct App {
     pub(crate) details_sample_page_size: usize,
     pub(crate) samples_scrollbar_dragging: bool,
     pub(crate) samples_scrollbar_grab_offset: usize,
+    pub(crate) executable_location: Option<super::executable_location::LocationView>,
+    pub(crate) executable_location_worker:
+        Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     pub(crate) context_menu: Option<super::context_menu::ContextMenu>,
     pub(crate) pending_context_menu: Option<super::context_menu::ContextMenu>,
     pub(crate) graph_pan_drag: Option<GraphPanDrag>,
@@ -1577,6 +1580,8 @@ impl App {
             details_sample_page_size: 1,
             samples_scrollbar_dragging: false,
             samples_scrollbar_grab_offset: 0,
+            executable_location: None,
+            executable_location_worker: None,
             context_menu: None,
             pending_context_menu: None,
             graph_pan_drag: None,
@@ -1769,7 +1774,8 @@ impl App {
     }
 
     pub(crate) fn has_workspace_overlay(&self) -> bool {
-        self.context_menu.is_some()
+        self.executable_location.is_some()
+            || self.context_menu.is_some()
             || self.main_menu_activity.is_some()
             || self.show_help
             || self.show_column_picker

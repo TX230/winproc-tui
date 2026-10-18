@@ -296,3 +296,149 @@ fn graph_right_click_csv_opens_workspace_export_without_changing_selection() {
         assert_eq!(app.graph_entries.len(), 1);
     }
 }
+
+#[test]
+fn executable_location_menu_captures_identity_and_disables_historical_targets() {
+    let mut app = make_test_app(2, 10);
+    app.focused_panel = FocusedPanel::Processes;
+    app.selected_process_column_index = 1;
+    let expected = ProcessIdentity::from_row(app.selected_visible_process().unwrap());
+    menu_key(&mut app);
+    let menu = app.context_menu.as_ref().unwrap();
+    let item = menu
+        .items
+        .iter()
+        .find(|i| i.label == "Open executable location")
+        .unwrap();
+    assert!(item.enabled);
+    let app::context_menu::ContextAction::RevealExecutable(target) = &item.action else {
+        panic!()
+    };
+    let captured = (**target).clone();
+    app.snapshot.processes.reverse();
+    app.process_table_state.select(Some(1));
+    app.snapshot.processes[0].start_time = Some(9999);
+    assert_eq!(captured.identity, expected);
+    let mut ghost = captured.clone();
+    ghost.lifecycle = app::ProcessLifecycle::Exited {
+        exited_at: app.snapshot.captured_at,
+    };
+    for historical in [false, true] {
+        if historical {
+            app.log_view_path = Some("fixture.jsonl".into());
+        }
+        let target = if historical {
+            captured.clone()
+        } else {
+            ghost.clone()
+        };
+        let menu = app.process_context_menu(target.clone(), None, Position::new(0, 0));
+        assert!(
+            !menu
+                .items
+                .iter()
+                .find(|i| i.label == "Open executable location")
+                .unwrap()
+                .enabled
+        );
+        app.open_executable_location(target);
+        assert!(app.executable_location_worker.is_none());
+        assert!(app.executable_location.is_none());
+    }
+}
+
+#[test]
+fn executable_location_pending_dismissal_failure_and_scrolling_are_responsive() {
+    let mut app = make_test_app(1, 10);
+    let target = ProcessIdentity::from_row(app.selected_visible_process().unwrap());
+    app.executable_location = Some(app::executable_location::LocationView {
+        target: target.clone(),
+        message: "pending".into(),
+        failed: false,
+        offset: 0,
+    });
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.executable_location_worker = Some(rx);
+    assert!(!app.poll_executable_location());
+    let screen = Rect::new(0, 0, 60, 24);
+    app::sync_layout_state(&mut app, screen);
+    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.executable_location.is_none());
+    assert!(app.executable_location_worker.is_some());
+    let target = app::state::ProcessInfoDialogTarget {
+        identity: target.clone(),
+        process: app.snapshot.processes[0].clone(),
+        lifecycle: app::ProcessLifecycle::Live,
+    };
+    app.open_executable_location(target.clone());
+    assert!(app.executable_location.is_none());
+    tx.send(Err("native failure HRESULT 0x80070005".into()))
+        .unwrap();
+    assert!(app.poll_executable_location());
+    assert!(app.status.contains("Earlier executable location action"));
+    assert!(app.status.contains("0x80070005"));
+    app.executable_location = Some(app::executable_location::LocationView {
+        target: target.identity,
+        message: "long path / ".repeat(300) + " native error 5",
+        failed: true,
+        offset: 0,
+    });
+    let buffer = render_app_to_buffer(&app, 60, 24);
+    assert!(find_text_position(&buffer, "Open executable location").is_some());
+    assert!(find_text_position(&buffer, "Enter/Esc").is_some());
+    app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+        .unwrap();
+    let end = app.executable_location.as_ref().unwrap().offset;
+    assert!(end > 0);
+    app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.executable_location.as_ref().unwrap().offset, end - 1);
+}
+
+#[test]
+fn executable_location_mouse_uses_rendered_bounds_and_clickable_footer() {
+    let mut app = make_test_app(1, 10);
+    app.executable_location = Some(app::executable_location::LocationView {
+        target: ProcessIdentity::from_row(&app.snapshot.processes[0]),
+        message: "line\n".repeat(60),
+        failed: true,
+        offset: 0,
+    });
+    for (width, height) in [(180, 42), (60, 24), (30, 12)] {
+        let screen = Rect::new(0, 0, width, height);
+        app::sync_layout_state(&mut app, screen);
+        app.executable_location.as_mut().unwrap().offset = 0;
+        let _ = render_app_to_buffer(&app, width, height);
+        let layout =
+            ui::executable_location::layout(screen, app.executable_location.as_ref().unwrap());
+        let wheel = |x, y| MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        };
+        if !layout.area.contains((0, 0).into()) {
+            app.on_mouse(wheel(0, 0), screen);
+            assert_eq!(app.executable_location.as_ref().unwrap().offset, 0);
+        }
+        app.on_mouse(wheel(layout.content.x, layout.content.y), screen);
+        assert_eq!(app.executable_location.as_ref().unwrap().offset, 1);
+    }
+    let screen = Rect::new(0, 0, 60, 24);
+    app::sync_layout_state(&mut app, screen);
+    let _ = render_app_to_buffer(&app, 60, 24);
+    let close = app
+        .shortcut_map
+        .borrow()
+        .regions
+        .iter()
+        .find(|r| r.key.code == KeyCode::Enter)
+        .copied()
+        .unwrap();
+    app.on_mouse(
+        super::support::left_click(close.area.x, close.area.y),
+        screen,
+    );
+    assert!(app.executable_location.is_none());
+}

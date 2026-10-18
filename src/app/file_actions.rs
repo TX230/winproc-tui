@@ -50,7 +50,7 @@ impl App {
         let Some(view) = self.file_action.as_mut() else {
             return;
         };
-        if self.file_action_worker.is_some() {
+        if self.file_action_worker.is_some() || self.executable_location_worker.is_some() {
             if !view.pending {
                 view.message =
                     "A previous file action is still pending. Try again after it completes.".into();
