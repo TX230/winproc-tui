@@ -90,6 +90,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
     );
     draw_content(
         frame,
+        app,
         layout.content,
         &app.network_browser,
         false,
@@ -155,6 +156,7 @@ pub(crate) fn draw_process_tab(
 ) {
     draw_content(
         frame,
+        app,
         area,
         &app.process_network,
         app.activity() == AppActivity::LogView,
@@ -163,8 +165,9 @@ pub(crate) fn draw_process_tab(
     );
 }
 
-pub(crate) fn draw_content(
+fn draw_content(
     frame: &mut ratatui::Frame<'_>,
+    app: &App,
     area: Rect,
     view: &NetworkView,
     not_recorded: bool,
@@ -229,10 +232,10 @@ pub(crate) fn draw_content(
         layout.filter,
     );
     if filter_active && filter_width > 0 && layout.filter.height > 0 {
-        frame.set_cursor_position(Position::new(
-            layout.filter.x + 8 + cursor_column as u16,
-            layout.filter.y,
-        ));
+        crate::ui::request_cursor(
+            app,
+            Position::new(layout.filter.x + 8 + cursor_column as u16, layout.filter.y),
+        );
     }
     frame.render_widget(
         Paragraph::new(match (view.target.is_some(), view.all) {

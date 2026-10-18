@@ -9,7 +9,7 @@ use crate::{
 };
 use chrono::Local;
 use chrono::TimeZone;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::io::Write;
 fn fixture() -> App {
     let mut app = make_test_app(1, 10);
@@ -558,4 +558,24 @@ fn csv_range_ignores_vertical_arrows_but_keeps_horizontal_navigation() {
             .unwrap();
         assert_eq!(app.graph_csv_dialog.as_ref().unwrap().range, range);
     }
+}
+
+#[test]
+fn help_hides_csv_path_caret_and_restores_position() {
+    use ratatui::{Terminal, backend::TestBackend};
+    let mut app = fixture();
+    app.open_graph_csv();
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| crate::ui::draw(frame, &app)).unwrap();
+    let caret = app.draw_cursor.get().unwrap();
+    assert!(terminal.backend().cursor_visible());
+    app.on_key(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE))
+        .unwrap();
+    terminal.draw(|frame| crate::ui::draw(frame, &app)).unwrap();
+    assert!(!terminal.backend().cursor_visible());
+    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .unwrap();
+    terminal.draw(|frame| crate::ui::draw(frame, &app)).unwrap();
+    assert!(terminal.backend().cursor_visible());
+    terminal.backend_mut().assert_cursor_position(caret);
 }

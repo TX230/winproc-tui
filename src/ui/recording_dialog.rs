@@ -182,10 +182,10 @@ pub(crate) fn draw_recording_path_dialog(
         ),
     );
     if app.recording_path_focused() {
-        frame.set_cursor_position(Position::new(
-            input_area.x.saturating_add(cursor_x as u16),
-            input_area.y,
-        ));
+        crate::ui::request_cursor(
+            app,
+            Position::new(input_area.x.saturating_add(cursor_x as u16), input_area.y),
+        );
     }
 }
 

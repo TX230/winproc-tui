@@ -323,10 +323,10 @@ fn draw_name_input(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
         ))),
         row(content, 5),
     );
-    frame.set_cursor_position(Position::new(
-        input_area.x.saturating_add(cursor_x as u16),
-        input_area.y,
-    ));
+    crate::ui::request_cursor(
+        app,
+        Position::new(input_area.x.saturating_add(cursor_x as u16), input_area.y),
+    );
 }
 
 fn draw_delete_confirm(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, _theme: Theme) {

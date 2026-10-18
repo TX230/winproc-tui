@@ -131,6 +131,7 @@ pub(crate) use tracked_remove_confirm::tracked_remove_dialog_area;
 use widgets::modal_scrim::{ModalScrim, ModalScrimStrength};
 
 pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
+    app.draw_cursor.set(None);
     let area = frame.area();
     *app.shortcut_map.borrow_mut() = footer::ShortcutMap {
         screen: area,
@@ -164,116 +165,130 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
 
     if app.is_main_menu_open() {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_main_menu(frame, area, app, theme);
     }
     if app.show_column_picker {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_column_picker(frame, area, app, theme);
     }
     if app.show_log_list {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_log_list(frame, area, app, theme);
     }
     if app.show_log_dir_dialog {
         if app.show_log_list {
             frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
         }
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_log_dir_dialog(frame, area, app, theme);
     }
     if app.show_process_info_dialog {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_process_info_dialog(frame, area, app, theme);
     }
     if app.show_cpu_core_dialog {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_cpu_core_dialog(frame, area, app, theme);
     }
     if app.show_system_info_dialog {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_system_info_dialog(frame, area, app, theme);
     }
     if app.graph_csv_dialog.is_some() {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         graph_csv::draw(frame, area, app, theme);
     }
     if app.graph_reorder_dialog.is_some() {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_graph_reorder_dialog(frame, area, app, theme);
     }
     if app.show_recording_no_tracked_warning {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_recording_no_tracked_warning(frame, area, app, theme);
     }
     if app.show_recording_path_dialog {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_recording_path_dialog(frame, area, app, theme);
     }
     if app.show_recording_overwrite_confirmation {
         if app.show_recording_path_dialog {
             frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
         }
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_recording_overwrite_confirm(frame, area, app, theme);
     }
     if app.show_recording_tracking_fixed {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_recording_tracking_fixed(frame, area, app, theme);
     }
     if app.show_recording_stop_confirmation {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_recording_stop_confirm(frame, area, app, theme);
     }
     if app.show_tracked_remove_confirmation {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_tracked_remove_confirm(frame, area, app, theme);
     }
     if app.show_process_kill_confirmation {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_process_kill_confirm(frame, area, app, theme);
     }
     if app.investigation_profiles_dialog.is_some() {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_investigation_profiles(frame, area, app, theme);
     }
     if app.show_display_area_warning {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_display_area_warning(frame, area, app, theme);
     }
     if app.show_metric_column_warning {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_metric_column_warning(frame, area, app, theme);
     }
     if app.show_no_graph_metrics_warning {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_no_graph_metrics_warning(frame, area, app, theme);
     }
     if app.executable_location.is_some() {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         executable_location::draw(frame, app);
     }
     if app.context_menu.is_some() {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         context_menu::draw(frame, app);
     }
     if app.show_quit_confirmation {
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_quit_confirm(frame, area, app, theme);
     }
     if app.recording_error.is_some() {
         if app.show_recording_path_dialog {
             frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
         }
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_recording_error(frame, area, app, theme);
     }
     if app.show_help {
         frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
-        app.shortcut_map.borrow_mut().regions.clear();
+        begin_input_layer(app);
         draw_help(frame, area, app, theme);
     }
     footer::draw_shortcut_hover(frame, app);
+    if let Some(position) = app.draw_cursor.get() {
+        frame.set_cursor_position(position);
+    }
+}
+
+// Defer the terminal cursor until composition finishes: a later overlay owns both
+// pointer shortcuts and the caret, even when it has no editable control.
+fn begin_input_layer(app: &App) {
+    app.shortcut_map.borrow_mut().regions.clear();
+    app.draw_cursor.set(None);
+}
+
+fn request_cursor(app: &App, position: impl Into<ratatui::layout::Position>) {
+    app.draw_cursor.set(Some(position.into()));
 }
 
 fn modal_scrim_strength(app: &App) -> Option<ModalScrimStrength> {

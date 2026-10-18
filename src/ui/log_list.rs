@@ -213,10 +213,10 @@ pub(crate) fn draw_log_dir_dialog(
             1,
         ),
     );
-    frame.set_cursor_position(Position::new(
-        input_area.x.saturating_add(cursor_x as u16),
-        input_area.y,
-    ));
+    crate::ui::request_cursor(
+        app,
+        Position::new(input_area.x.saturating_add(cursor_x as u16), input_area.y),
+    );
 }
 
 pub(crate) fn log_list_page_size_for_screen(area: Rect) -> usize {

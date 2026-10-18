@@ -948,3 +948,98 @@ fn recording_header_shows_rec_spinner_and_path() {
     app.stop_recording().unwrap();
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn recording_overlays_own_cursor_and_restore_editor_after_dismissal() {
+    for (width, height) in [(80, 24), (140, 45)] {
+        let root = unique_recording_dir("overlay-cursor");
+        std::fs::create_dir_all(&root).unwrap();
+        let blocked = root.join("blocked");
+        std::fs::write(&blocked, "disposable blocker").unwrap();
+        let mut app = make_test_app(1, 10);
+        track_process_name(&mut app, "proc-0");
+        app.show_recording_path_dialog = true;
+        app.recording_path_draft = blocked.join("capture.log").display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len() - 4;
+        let draft = app.recording_path_draft.clone();
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(terminal.backend().cursor_visible());
+        let caret = app.draw_cursor.get().unwrap();
+
+        app.confirm_recording_path().unwrap();
+        assert!(app.recording_error.is_some());
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(!terminal.backend().cursor_visible());
+        // Neither keyboard editing nor clicking the obscured path reaches the editor.
+        app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE))
+            .unwrap();
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: caret.x,
+                row: caret.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            Rect::new(0, 0, width, height),
+        );
+        assert_eq!(app.recording_path_draft, draft);
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(terminal.backend().cursor_visible());
+        terminal.backend_mut().assert_cursor_position(caret);
+
+        app.on_key(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE))
+            .unwrap();
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(app.show_help);
+        assert!(!terminal.backend().cursor_visible());
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(terminal.backend().cursor_visible());
+        terminal.backend_mut().assert_cursor_position(caret);
+
+        app.recording_path_draft = blocked.display().to_string();
+        app.recording_path_cursor = 2;
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        let caret = app.draw_cursor.get().unwrap();
+        app.confirm_recording_path().unwrap();
+        assert!(app.show_recording_overwrite_confirmation);
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(!terminal.backend().cursor_visible());
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+        assert!(terminal.backend().cursor_visible());
+        terminal.backend_mut().assert_cursor_position(caret);
+        assert_eq!(
+            std::fs::read_to_string(&blocked).unwrap(),
+            "disposable blocker"
+        );
+        std::fs::remove_file(blocked).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+}
+
+#[test]
+fn help_hides_log_directory_caret_and_restores_position() {
+    let mut app = make_test_app(1, 10);
+    app.show_log_dir_dialog = true;
+    app.log_dir_draft = "C:/logs".into();
+    app.log_dir_cursor = 3;
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+    let caret = app.draw_cursor.get().unwrap();
+    assert!(terminal.backend().cursor_visible());
+    app.on_key(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE))
+        .unwrap();
+    terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+    assert!(!terminal.backend().cursor_visible());
+    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .unwrap();
+    terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+    assert!(terminal.backend().cursor_visible());
+    terminal.backend_mut().assert_cursor_position(caret);
+}

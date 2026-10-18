@@ -278,10 +278,10 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
             && content.query.width > 7
             && content.query.height > 0
         {
-            frame.set_cursor_position(Position::new(
-                content.query.x + 7 + cursor as u16,
-                content.query.y,
-            ));
+            crate::ui::request_cursor(
+                app,
+                Position::new(content.query.x + 7 + cursor as u16, content.query.y),
+            );
         }
         frame.render_widget(Paragraph::new(status(view)).style(normal), content.status);
         let p = &view.report.progress;

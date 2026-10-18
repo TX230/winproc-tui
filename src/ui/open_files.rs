@@ -74,7 +74,7 @@ pub(crate) fn draw_open_files_tab(
         app.open_files_scroll.offset,
         theme,
     );
-    set_open_files_filter_cursor(frame, area, app);
+    set_open_files_filter_cursor(area, app);
     render_open_files_scrollbar(frame, area, app, theme);
 }
 
@@ -261,7 +261,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
     lines
 }
 
-fn set_open_files_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
+fn set_open_files_filter_cursor(area: Rect, app: &App) {
     if app.process_info_focus != ProcessInfoFocus::Content
         || app.open_files_show_detail
         || app.file_action.is_some()
@@ -287,12 +287,15 @@ fn set_open_files_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app:
         filter_input_width(area.width as usize),
     );
     let label_width = filter_label_width();
-    frame.set_cursor_position(Position::new(
-        area.x
-            .saturating_add((label_width + cursor_x) as u16)
-            .min(area.right().saturating_sub(1)),
-        area.y.saturating_add(filter_row as u16),
-    ));
+    crate::ui::request_cursor(
+        app,
+        Position::new(
+            area.x
+                .saturating_add((label_width + cursor_x) as u16)
+                .min(area.right().saturating_sub(1)),
+            area.y.saturating_add(filter_row as u16),
+        ),
+    );
 }
 
 fn render_open_files_scrollbar(

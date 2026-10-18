@@ -27,7 +27,7 @@ pub(crate) fn draw_process_modules_tab(
         app.process_info_dlls_scroll.offset,
         theme,
     );
-    set_filter_cursor(frame, area, app);
+    set_filter_cursor(area, app);
     render_scrollbar(frame, area, app, theme);
 }
 
@@ -360,7 +360,7 @@ fn filter_input_view(value: &str, cursor: usize, width: usize) -> (String, usize
     )
 }
 
-fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
+fn set_filter_cursor(area: Rect, app: &App) {
     if app.process_info_focus != ProcessInfoFocus::Content
         || app.process_modules_show_detail
         || app.process_modules_result.is_none()
@@ -381,12 +381,15 @@ fn set_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
         app.process_modules_filter_cursor,
         input_width,
     );
-    frame.set_cursor_position(Position::new(
-        area.x
-            .saturating_add(("Filter: ".len() + cursor_x) as u16)
-            .min(area.right().saturating_sub(1)),
-        area.y.saturating_add(filter_row as u16),
-    ));
+    crate::ui::request_cursor(
+        app,
+        Position::new(
+            area.x
+                .saturating_add(("Filter: ".len() + cursor_x) as u16)
+                .min(area.right().saturating_sub(1)),
+            area.y.saturating_add(filter_row as u16),
+        ),
+    );
 }
 
 fn render_scrollbar(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {

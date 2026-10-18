@@ -374,6 +374,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         sort: SortSpec::default(),
         process_view_mode: app::ProcessViewMode::Flat,
         collapsed_process_identities: std::collections::HashSet::new(),
+        draw_cursor: Default::default(),
         shortcut_map: Default::default(),
         shortcut_hovered: None,
         process_tracked_only_hovered: false,

@@ -91,10 +91,13 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme:
         && layout.content.width > 0
         && cursor_y < layout.content.bottom()
     {
-        frame.set_cursor_position((
-            layout.content.x + Line::from(before).width() as u16,
-            cursor_y,
-        ));
+        crate::ui::request_cursor(
+            app,
+            (
+                layout.content.x + Line::from(before).width() as u16,
+                cursor_y,
+            ),
+        );
     }
 }
 pub(crate) fn mouse(app: &mut App, event: MouseEvent, area: Rect) {

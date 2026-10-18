@@ -63,7 +63,7 @@ Each session lasts for at most 24 hours measured with a monotonic clock. At the 
 
 Recording lifecycle failures are visible application state, not transient status messages.
 
-- Create or open failure leaves the start dialog available behind the error.
+- Create or open failure leaves the start dialog available behind the error. The error owns input and hides the underlying path caret; dismissal restores the unchanged draft and insertion position. Overwrite confirmation follows the same cursor ownership.
 - Header, frame, end-record, newline, or flush failure ends the active session and preserves the partial file.
 - Cleanup failure during quit cancels the quit so the error remains visible.
 
