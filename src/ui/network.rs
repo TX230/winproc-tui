@@ -115,7 +115,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
         );
     }
     let secondary = if app.network_browser.editing {
-        vec![("Backspace/Delete", "edit"), ("Home/End", "first/last")]
+        vec![("←/→", "cursor"), ("Backspace/Delete", "edit")]
     } else if app.network_browser.detail {
         vec![("PgUp/PgDn", "page"), ("Home/End", "first/last")]
     } else {
@@ -557,9 +557,8 @@ pub(crate) fn shortcuts(
         vec![
             ("Enter", "Apply"),
             ("Esc", "Clear"),
-            ("Home/End", "Edge"),
+            ("Home/End", "cursor edge"),
             ("Ctrl+U", "clear"),
-            ("←/→", "cursor"),
         ]
     } else if view.detail {
         vec![("Esc/Enter", "back"), ("↑/↓", "scroll"), ("Ctrl+C", "copy")]

@@ -789,16 +789,16 @@ const NETWORK_ROWS: &[HelpItem] = &[
         label: "Move filter cursor / edit filter",
     },
     HelpItem {
-        key: "Home/End (global filter)",
-        label: "Move filter cursor to first / last",
+        key: "Home/End (filter editing)",
+        label: "Move text cursor to start / end (global and Info)",
     },
     HelpItem {
         key: "↑/↓, PgUp/PgDn",
         label: "Select row / page (wheel also selects)",
     },
     HelpItem {
-        key: "Home/End",
-        label: "First / last row",
+        key: "Home/End (list)",
+        label: "First / last row outside filter editing",
     },
     HelpItem {
         key: "Enter (global list)",

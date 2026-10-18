@@ -997,3 +997,138 @@ fn network_mode_labels_fit_and_click_at_compact_widths() {
         }
     }
 }
+
+#[test]
+fn network_footer_and_home_end_follow_editor_list_and_detail_context() {
+    for (width, height) in [(80, 24), (120, 36), (180, 60)] {
+        for global in [true, false] {
+            let (mut app, requests, results) = setup();
+            if global {
+                app.open_network_browser();
+                app.network_browser.all = true;
+            } else {
+                app.open_selected_process_info_dialog().unwrap();
+                app.activate_process_info_tab(ProcessInfoTab::Network)
+                    .unwrap();
+            }
+            let mut snapshot = report(&app);
+            for entry in &mut snapshot.endpoints {
+                entry.owner.as_mut().unwrap().identity.name = "fixture.exe".into();
+            }
+            deliver(&mut app, &results, capture(&requests), snapshot);
+            let screen = Rect::new(0, 0, width, height);
+            sync_layout_state(&mut app, screen);
+            if !global {
+                assert!(network_footer_text(&app, width, height, global).contains("Esc close"));
+                press(&mut app, KeyCode::Char('/'));
+            }
+            for ch in "fixture".chars() {
+                press(&mut app, KeyCode::Char(ch));
+            }
+            let footer = network_footer_text(&app, width, height, global);
+            assert!(!footer.contains("first/last"), "{footer}");
+            assert!(!footer.contains("select"), "{footer}");
+            assert!(!footer.contains("page"), "{footer}");
+            assert!(footer.matches("Home/End").count() <= 1, "{footer}");
+            if global {
+                for hint in [
+                    "Home/End cursor edge",
+                    "←/→ cursor",
+                    "Backspace/Delete edit",
+                    "Enter Apply",
+                    "Esc Clear",
+                ] {
+                    assert!(footer.contains(hint), "{width}: {footer}");
+                }
+            } else {
+                assert!(footer.contains("Esc tabs"), "{footer}");
+            }
+            press(&mut app, KeyCode::Home);
+            let view = if global {
+                &app.network_browser
+            } else {
+                &app.process_network
+            };
+            assert_eq!(view.cursor, 0);
+            press(&mut app, KeyCode::End);
+            let view = if global {
+                &app.network_browser
+            } else {
+                &app.process_network
+            };
+            assert_eq!(view.cursor, "fixture".len());
+            press(&mut app, KeyCode::Left);
+            press(&mut app, KeyCode::Right);
+            let view = if global {
+                &app.network_browser
+            } else {
+                &app.process_network
+            };
+            assert_eq!(view.cursor, "fixture".len());
+            press(&mut app, KeyCode::Enter);
+            let footer = network_footer_text(&app, width, height, global);
+            assert!(!footer.contains("cursor edge"), "{footer}");
+            if global {
+                assert_eq!(footer.matches("Home/End").count(), 1, "{footer}");
+                assert!(footer.contains("Home/End first/last"), "{footer}");
+            } else {
+                assert!(footer.contains("Esc tabs"), "{footer}");
+            }
+            press(&mut app, KeyCode::End);
+            let view = if global {
+                &app.network_browser
+            } else {
+                &app.process_network
+            };
+            assert_eq!(view.selected, 2);
+            assert_eq!(view.cursor, "fixture".len());
+            press(&mut app, KeyCode::Home);
+            let view = if global {
+                &app.network_browser
+            } else {
+                &app.process_network
+            };
+            assert_eq!(view.selected, 0);
+            assert_eq!(view.cursor, "fixture".len());
+            press(
+                &mut app,
+                if global {
+                    KeyCode::Char(' ')
+                } else {
+                    KeyCode::Enter
+                },
+            );
+            let footer = network_footer_text(&app, width, height, global);
+            assert!(footer.contains("Esc/Enter back"), "{footer}");
+            assert!(!footer.contains("cursor"), "{footer}");
+            press(&mut app, KeyCode::Esc);
+            if !global {
+                press(&mut app, KeyCode::Esc);
+                assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);
+                assert!(network_footer_text(&app, width, height, global).contains("Esc close"));
+            }
+        }
+    }
+}
+
+fn network_footer_text(app: &App, width: u16, height: u16, global: bool) -> String {
+    let screen = Rect::new(0, 0, width, height);
+    let area = if global {
+        ui::network::browser_layout(screen).footer
+    } else {
+        ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
+        )
+        .footer
+    };
+    let buffer = render_app_to_buffer(app, width, height);
+    let mut text = String::new();
+    for y in area.y..area.bottom() {
+        for x in area.x..area.right() {
+            text.push_str(buffer[(x, y)].symbol());
+        }
+        text.push('\n');
+    }
+    text
+}
