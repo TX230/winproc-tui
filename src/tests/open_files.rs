@@ -321,7 +321,7 @@ fn open_file_mode_fixture_child() {
         (0, 0x80),
         (0x40000000, 0),
     ];
-    let _directory_handle = OpenOptions::new()
+    let directory_handle = OpenOptions::new()
         .access_mode(0)
         .share_mode(7)
         .custom_flags(0x02000000)
@@ -341,7 +341,7 @@ fn open_file_mode_fixture_child() {
     }
     std::fs::write(
         directory.join("ready.json"),
-        serde_json::to_vec(&expected).unwrap(),
+        serde_json::to_vec(&(directory_handle.as_raw_handle() as usize, expected)).unwrap(),
     )
     .unwrap();
     let mut line = String::new();
@@ -391,7 +391,7 @@ fn open_file_modes_collect_original_handles_from_dedicated_process() {
     }
     let mut fixture = Fixture { child, directory };
     let started = Instant::now();
-    let expected: Vec<(usize, u32, u32)> = loop {
+    let (directory_handle, expected): (usize, Vec<(usize, u32, u32)>) = loop {
         if let Ok(bytes) = std::fs::read(fixture.directory.join("ready.json"))
             && let Ok(values) = serde_json::from_slice(&bytes)
         {
@@ -421,7 +421,7 @@ fn open_file_modes_collect_original_handles_from_dedicated_process() {
         report
             .entries
             .iter()
-            .any(|entry| entry.path == fixture.directory.to_string_lossy()
+            .any(|entry| entry.handle.value == directory_handle
                 && entry.handle.kind_label() == "D"),
         "directory handle missing: {:?}",
         report.entries
