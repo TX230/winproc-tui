@@ -3,6 +3,7 @@ pub(crate) mod context_menu;
 mod cpu_core_dialog;
 mod cpu_panel;
 pub(crate) mod details_panel;
+pub(crate) mod file_actions;
 pub(crate) mod file_users;
 pub(crate) mod footer;
 pub(crate) mod format;

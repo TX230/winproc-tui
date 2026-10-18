@@ -380,6 +380,12 @@ impl App {
         }
 
         if self.show_process_info_dialog {
+            if self.file_action.is_some()
+                && self.process_info_tab == crate::app::ProcessInfoTab::Files
+            {
+                self.file_action_key(key);
+                return Ok(());
+            }
             if !self.scheduling.applying {
                 if key.modifiers == KeyModifiers::CONTROL
                     && matches!(key.code, KeyCode::Left | KeyCode::Right)
@@ -2030,6 +2036,16 @@ impl App {
                     return;
                 }
                 _ => {}
+            }
+            if self.file_action.is_some()
+                && self.process_info_tab == crate::app::ProcessInfoTab::Files
+            {
+                let content = crate::ui::process_info_content_area_for_screen(
+                    screen_area,
+                    self.process_info_height(),
+                );
+                self.file_action_mouse(mouse, content);
+                return;
             }
             if self.process_info_tab == crate::app::ProcessInfoTab::Scheduling
                 && !tab_click

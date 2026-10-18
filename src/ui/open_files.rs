@@ -96,6 +96,7 @@ pub(crate) fn open_files_scrollbar_area(area: Rect, app: &App) -> Option<Rect> {
 pub(crate) fn fixed_header_rows(app: &App) -> usize {
     if app.activity() == AppActivity::LogView
         || app.open_files_show_detail
+        || app.file_action.is_some()
         || app.open_files_result.is_none()
         || app
             .open_files_result
@@ -127,6 +128,9 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
             Style::default().fg(theme.muted),
         )));
         return lines;
+    }
+    if app.file_action.is_some() {
+        return super::file_actions::lines(app, width, theme);
     }
     let Some(report) = &app.open_files_result else {
         lines.push(Line::from(Span::styled(
@@ -243,7 +247,10 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
 }
 
 fn set_open_files_filter_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
-    if app.process_info_focus != ProcessInfoFocus::Content || app.open_files_show_detail {
+    if app.process_info_focus != ProcessInfoFocus::Content
+        || app.open_files_show_detail
+        || app.file_action.is_some()
+    {
         return;
     }
     let Some(report) = &app.open_files_result else {

@@ -28,6 +28,8 @@ use winapi::{
     },
 };
 
+pub(crate) mod shell;
+
 static TERMINATION_REQUESTED: AtomicBool = AtomicBool::new(false);
 static SHUTDOWN_COMPLETE: AtomicBool = AtomicBool::new(false);
 const SINGLE_INSTANCE_MUTEX_NAME: &str = "Local\\TX230.winproc-tui.SingleInstance";

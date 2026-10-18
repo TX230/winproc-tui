@@ -75,7 +75,7 @@ impl App {
     }
 
     pub(crate) fn ensure_open_file_visible(&mut self) {
-        if self.open_files_show_detail {
+        if self.open_files_show_detail || self.file_action.is_some() {
             return;
         }
         let area = crate::ui::process_info_content_area_for_screen(
@@ -101,6 +101,7 @@ impl App {
             return Ok(());
         }
         match key.code {
+            KeyCode::F(4) => self.open_file_actions(),
             KeyCode::Esc if self.close_process_info_detail() => {}
             KeyCode::Esc => self.close_process_info_dialog(),
             KeyCode::Enter if self.open_files_show_detail => {
@@ -132,7 +133,7 @@ impl App {
                 } else {
                     1
                 };
-                if self.open_files_show_detail {
+                if self.open_files_show_detail || self.file_action.is_some() {
                     match key.code {
                         KeyCode::Up | KeyCode::PageUp => self.scroll_process_info_up(amount),
                         KeyCode::Down | KeyCode::PageDown => self.scroll_process_info_down(amount),
@@ -186,6 +187,10 @@ impl App {
         let area =
             crate::ui::process_info_content_area_for_screen(screen, self.process_info_height());
         if self.activity() == AppActivity::LogView {
+            return;
+        }
+        if self.file_action.is_some() {
+            self.file_action_mouse(mouse, area);
             return;
         }
         match mouse.kind {

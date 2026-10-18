@@ -1191,6 +1191,9 @@ pub(crate) struct App {
     pub(crate) open_files_filter_cursor: usize,
     pub(crate) open_files_selected: usize,
     pub(crate) open_files_show_detail: bool,
+    pub(crate) file_action: Option<super::file_actions::FileActionView>,
+    pub(crate) file_action_worker: Option<super::file_actions::PendingFileAction>,
+    pub(crate) file_action_generation: u64,
     pub(crate) process_modules_result: Option<ProcessModulesReport>,
     pub(crate) process_modules_result_identity: Option<ProcessIdentity>,
     pub(crate) process_modules_error: Option<ProcessModulesError>,
@@ -1490,6 +1493,9 @@ impl App {
             open_files_filter_cursor: 0,
             open_files_selected: 0,
             open_files_show_detail: false,
+            file_action: None,
+            file_action_worker: None,
+            file_action_generation: 0,
             process_modules_result: None,
             process_modules_result_identity: None,
             process_modules_error: None,
@@ -5564,6 +5570,7 @@ impl App {
         self.open_files_scroll.reset();
         self.open_files_selected = 0;
         self.open_files_show_detail = false;
+        self.file_action = None;
         self.open_files_filter.clear();
         self.open_files_filter_cursor = 0;
         self.open_files_result = None;

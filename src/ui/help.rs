@@ -321,6 +321,18 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Full path, I/O attributes, raw masks",
     },
     HelpItem {
+        key: "F4 (Files list/detail)",
+        label: "Current-path actions (outside filter editing; Live only)",
+    },
+    HelpItem {
+        key: "Ctrl+E / Ctrl+O (file actions)",
+        label: "Open containing folder / Open with default app",
+    },
+    HelpItem {
+        key: "Esc (file actions)",
+        label: "Back, including while pending; PgUp/PgDn scroll",
+    },
+    HelpItem {
         key: "Esc/Enter (file detail)",
         label: "Return to handle list; Esc then focuses tabs",
     },

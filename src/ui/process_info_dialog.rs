@@ -629,6 +629,23 @@ fn draw_footer(frame: &mut ratatui::Frame<'_>, footer: Rect, app: &App, theme: T
 }
 
 fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
+    if let Some(view) = &app.file_action
+        && app.process_info_tab == ProcessInfoTab::Files
+    {
+        return crate::ui::footer::shortcut_spans(
+            if view.busy() {
+                &[("Esc", "back"), ("PgUp/PgDn", "scroll")]
+            } else {
+                &[
+                    ("Enter", "open"),
+                    ("↑/↓", "select"),
+                    ("Esc", "back"),
+                    ("PgUp/PgDn", "scroll"),
+                ]
+            },
+            theme,
+        );
+    }
     if app.process_info_filter_editing {
         return crate::ui::footer::shortcut_spans(
             crate::app::text_input::INSPECTION_FILTER_SHORTCUTS,
@@ -755,6 +772,13 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             items.push(("h/Shift+H", "height"));
         }
         items.push(("Alt+H", "auto"));
+    }
+    if app.process_info_tab == ProcessInfoTab::Files
+        && app.process_info_focus == ProcessInfoFocus::Content
+        && app.activity() != crate::app::AppActivity::LogView
+        && super::open_files::selected_entry(app).is_some()
+    {
+        items.insert(0, ("F4", "actions"));
     }
     let mut spans = Vec::new();
     let mut used = 0usize;
