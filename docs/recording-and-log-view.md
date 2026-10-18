@@ -38,6 +38,8 @@ Recording and Log view are mutually exclusive at both user-action and asynchrono
 
 Starting Recording requires at least one process name in the working Tracking List. It does not require a currently matching process.
 
+The start dialog shows the fixed tracked names and the matching-process count from the latest Live sample, independently of display pause, filters, and Tracked-only. The names can be inspected with vertical and horizontal scrolling, including long names and lists. It explains that visible rows do not define scope and that zero matches still records system metrics and includes matching processes appearing later. Inspection and starting preserve display preferences.
+
 `RecordingSession` owns a copy of the working Tracking List and its normalized lookup set. Session metadata records that scope once, and every frame filters process samples through it. Tracking List edits are rejected until the session ends; Tracked-only remains available because it changes only the display.
 
 When no process name in the session's Tracking List matches a live process, frames still contain system metrics and an empty process array. A tracked process name, a currently matching process, and one `(PID, name, start_time)` identity must remain distinct.

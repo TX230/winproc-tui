@@ -893,6 +893,7 @@ pub(crate) enum RecordingDialogFocus {
     #[default]
     Path,
     Interval,
+    Scope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1147,6 +1148,7 @@ pub(crate) struct App {
     pub(crate) recording_path_draft: String,
     pub(crate) recording_path_cursor: usize,
     pub(crate) recording_path_completion: PathCompletionState,
+    pub(crate) recording_scope_scroll: (usize, usize),
     pub(crate) recording_dialog_focus: RecordingDialogFocus,
     pub(crate) recording_interval_index: usize,
     pub(crate) show_recording_overwrite_confirmation: bool,
@@ -1447,6 +1449,7 @@ impl App {
             recording_path_draft: String::new(),
             recording_path_cursor: 0,
             recording_path_completion: PathCompletionState::default(),
+            recording_scope_scroll: (0, 0),
             recording_dialog_focus: RecordingDialogFocus::default(),
             recording_interval_index,
             show_recording_overwrite_confirmation: false,

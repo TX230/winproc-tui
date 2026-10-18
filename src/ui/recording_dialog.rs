@@ -19,7 +19,7 @@ use crate::{
 };
 
 const RECORDING_PATH_WIDTH: u16 = 78;
-const RECORDING_PATH_HEIGHT: u16 = 13;
+const RECORDING_PATH_HEIGHT: u16 = 23;
 const RECORDING_PATH_INPUT_ROW: u16 = 3;
 const RECORDING_INTERVAL_ROW: u16 = 5;
 const RECORDING_INFO_LABEL_WIDTH: u16 = 15;
@@ -143,6 +143,73 @@ pub(crate) fn draw_recording_path_dialog(
         ])),
         Rect::new(content.x, content.y.saturating_add(8), content.width, 1),
     );
+    let count = app.recording_matching_process_count();
+    for (offset, text) in [
+        format!("Matching processes now: {count} (latest live sample)"),
+        "Visible rows / filters do not define recording scope.".to_string(),
+        if count == 0 {
+            "System metrics recorded; later matching processes included.".to_string()
+        } else {
+            "System metrics and all matching processes are recorded.".to_string()
+        },
+        format!(
+            "Names {}/{} (Tab to inspect; arrows scroll)",
+            if app.watch_list.is_empty() {
+                0
+            } else {
+                app.recording_scope_scroll.0 + 1
+            },
+            app.watch_list.len()
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        frame.render_widget(
+            Paragraph::new(text).style(Style::default().fg(theme.text)),
+            Rect::new(content.x, content.y + 9 + offset as u16, content.width, 1),
+        );
+    }
+    let names = app
+        .watch_list
+        .iter()
+        .skip(app.recording_scope_scroll.0)
+        .map(|name| {
+            Line::from(
+                name.chars()
+                    .skip(app.recording_scope_scroll.1)
+                    .collect::<String>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let scope_style = Style::default()
+        .fg(theme.text)
+        .bg(if app.recording_scope_focused() {
+            theme.focus_surface
+        } else {
+            theme.panel_alt
+        });
+    frame.render_widget(
+        Paragraph::new(names).style(scope_style),
+        recording_scope_area(area),
+    );
+    let shortcuts = if app.recording_scope_focused() {
+        vec![
+            ("Enter", "start"),
+            ("Esc", "cancel"),
+            ("Tab", "focus"),
+            ("↑/↓/←/→", "scroll"),
+            ("Home/End", "jump"),
+        ]
+    } else {
+        vec![
+            ("Enter", "start"),
+            ("Esc", "cancel"),
+            ("Tab", "focus"),
+            ("←/→", "value"),
+            ("Ctrl+Space", "Complete path"),
+        ]
+    };
     crate::ui::footer::register_shortcut_text(
         app,
         Rect::new(
@@ -151,29 +218,11 @@ pub(crate) fn draw_recording_path_dialog(
             content.width,
             1,
         ),
-        &ratatui::text::Text::from(shortcut_line(
-            &[
-                ("Enter", "start"),
-                ("Esc", "cancel"),
-                ("Tab", "focus"),
-                ("←/→", "value"),
-                ("Ctrl+Space", "Complete path"),
-            ],
-            theme,
-        )),
+        &ratatui::text::Text::from(shortcut_line(&shortcuts, theme)),
         ratatui::layout::Alignment::Left,
     );
     frame.render_widget(
-        Paragraph::new(shortcut_line(
-            &[
-                ("Enter", "start"),
-                ("Esc", "cancel"),
-                ("Tab", "focus"),
-                ("←/→", "value"),
-                ("Ctrl+Space", "Complete path"),
-            ],
-            theme,
-        )),
+        Paragraph::new(shortcut_line(&shortcuts, theme)),
         Rect::new(
             content.x,
             content.bottom().saturating_sub(1),
@@ -346,6 +395,17 @@ pub(crate) fn draw_recording_error(
             .alignment(Alignment::Center),
         popup,
     );
+}
+
+pub(crate) fn recording_scope_area(area: Rect) -> Rect {
+    let popup =
+        confirm_dialog::centered_dialog_rect(area, RECORDING_PATH_WIDTH, RECORDING_PATH_HEIGHT);
+    Rect::new(
+        popup.x + 1,
+        popup.y + 14,
+        popup.width.saturating_sub(2),
+        popup.height.saturating_sub(17),
+    )
 }
 
 pub(crate) fn recording_path_input_area(area: Rect) -> Rect {

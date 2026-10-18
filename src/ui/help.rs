@@ -158,6 +158,10 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Start recording / confirm stop",
     },
     HelpItem {
+        key: "Recording scope",
+        label: "Before start: Tab names; arrows scroll; PgUp/PgDn page; Home/End jump",
+    },
+    HelpItem {
         key: "Ctrl+P",
         label: "Pause / Resume display",
     },

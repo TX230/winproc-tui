@@ -257,13 +257,13 @@ fn help_dialog_header_and_shortcuts_use_footer_like_styles() {
     );
 
     let (key_x, key_y) =
-        find_text_position(&buffer, "Ctrl+F").expect("shortcut key should be rendered");
+        find_text_position(&buffer, "Ctrl+R").expect("shortcut key should be rendered");
     let key_cell = &buffer[(key_x, key_y)];
     assert_eq!(key_cell.fg, theme.key_hint);
     assert_eq!(key_cell.bg, theme.panel_alt);
     assert!(!key_cell.modifier.contains(ratatui::style::Modifier::BOLD));
 
-    let (label_x, label_y) = find_text_position(&buffer, "Edit filter").unwrap();
+    let (label_x, label_y) = find_text_position(&buffer, "Start recording").unwrap();
     let label_cell = &buffer[(label_x, label_y)];
     assert_eq!(label_cell.fg, theme.text);
 }

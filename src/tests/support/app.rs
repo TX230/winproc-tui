@@ -212,6 +212,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         recording_path_draft: String::new(),
         recording_path_cursor: 0,
         recording_path_completion: app::path_completion::PathCompletionState::default(),
+        recording_scope_scroll: (0, 0),
         recording_dialog_focus: app::state::RecordingDialogFocus::default(),
         recording_interval_index: 0,
         show_recording_overwrite_confirmation: false,

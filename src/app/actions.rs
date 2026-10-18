@@ -302,7 +302,39 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.cancel_recording_path_dialog(),
                 KeyCode::Enter => self.confirm_recording_path()?,
-                KeyCode::Tab | KeyCode::BackTab => self.focus_next_recording_control(),
+                KeyCode::Tab => self.focus_next_recording_control(),
+                KeyCode::BackTab => {
+                    self.focus_next_recording_control();
+                    self.focus_next_recording_control();
+                }
+                KeyCode::Up if self.recording_scope_focused() => self.scroll_recording_scope(-1, 0),
+                KeyCode::Down if self.recording_scope_focused() => {
+                    self.scroll_recording_scope(1, 0)
+                }
+                KeyCode::PageUp if self.recording_scope_focused() => self.scroll_recording_scope(
+                    -(crate::ui::recording_dialog::recording_scope_area(self.last_screen_area)
+                        .height
+                        .max(1) as isize),
+                    0,
+                ),
+                KeyCode::PageDown if self.recording_scope_focused() => self.scroll_recording_scope(
+                    crate::ui::recording_dialog::recording_scope_area(self.last_screen_area)
+                        .height
+                        .max(1) as isize,
+                    0,
+                ),
+                KeyCode::Home if self.recording_scope_focused() => {
+                    self.recording_scope_scroll = (0, 0)
+                }
+                KeyCode::End if self.recording_scope_focused() => {
+                    self.scroll_recording_scope(isize::MAX, 0)
+                }
+                KeyCode::Left if self.recording_scope_focused() => {
+                    self.scroll_recording_scope(0, -1)
+                }
+                KeyCode::Right if self.recording_scope_focused() => {
+                    self.scroll_recording_scope(0, 1)
+                }
                 KeyCode::Char(' ')
                     if key.modifiers.contains(KeyModifiers::CONTROL)
                         && self.recording_path_focused() =>
@@ -2335,6 +2367,21 @@ impl App {
         }
 
         if self.show_recording_path_dialog {
+            if contains_point(
+                crate::ui::recording_dialog::recording_scope_area(screen_area),
+                mouse.column,
+                mouse.row,
+            ) {
+                match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        self.recording_dialog_focus = super::state::RecordingDialogFocus::Scope
+                    }
+                    MouseEventKind::ScrollUp => self.scroll_recording_scope(-1, 0),
+                    MouseEventKind::ScrollDown => self.scroll_recording_scope(1, 0),
+                    _ => {}
+                }
+                return;
+            }
             if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
                 if contains_point(
                     recording_path_input_area(screen_area),

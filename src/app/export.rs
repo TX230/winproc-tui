@@ -487,6 +487,7 @@ impl App {
         self.recording_path_cursor = self.recording_path_draft.len();
         self.recording_path_completion.reset();
         self.recording_dialog_focus = RecordingDialogFocus::Path;
+        self.recording_scope_scroll = (0, 0);
         self.recording_interval_index = 0;
         self.show_recording_path_dialog = true;
         self.show_recording_overwrite_confirmation = false;
@@ -599,8 +600,41 @@ impl App {
     pub(crate) fn focus_next_recording_control(&mut self) {
         self.recording_dialog_focus = match self.recording_dialog_focus {
             RecordingDialogFocus::Path => RecordingDialogFocus::Interval,
-            RecordingDialogFocus::Interval => RecordingDialogFocus::Path,
+            RecordingDialogFocus::Interval => RecordingDialogFocus::Scope,
+            RecordingDialogFocus::Scope => RecordingDialogFocus::Path,
         };
+    }
+
+    pub(crate) fn recording_scope_focused(&self) -> bool {
+        self.recording_dialog_focus == RecordingDialogFocus::Scope
+    }
+
+    pub(crate) fn recording_matching_process_count(&self) -> usize {
+        self.snapshot
+            .processes
+            .iter()
+            .filter(|p| self.is_tracked_process_name(&p.name))
+            .count()
+    }
+
+    pub(crate) fn scroll_recording_scope(&mut self, vertical: isize, horizontal: isize) {
+        self.recording_scope_scroll.0 = self
+            .recording_scope_scroll
+            .0
+            .saturating_add_signed(vertical)
+            .min(self.watch_list.len().saturating_sub(1));
+        self.recording_scope_scroll.1 = self
+            .recording_scope_scroll
+            .1
+            .saturating_add_signed(horizontal)
+            .min(
+                self.watch_list
+                    .iter()
+                    .map(|n| n.chars().count())
+                    .max()
+                    .unwrap_or(0)
+                    .saturating_sub(1),
+            );
     }
 
     pub(crate) fn focus_recording_path(&mut self) {

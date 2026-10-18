@@ -1043,3 +1043,89 @@ fn help_hides_log_directory_caret_and_restores_position() {
     assert!(terminal.backend().cursor_visible());
     terminal.backend_mut().assert_cursor_position(caret);
 }
+
+#[test]
+fn recording_scope_uses_latest_live_matches_despite_pause_and_filters() {
+    let mut app = make_test_app(3, 10);
+    track_process_name(&mut app, "PROC-0");
+    app.filter_text = "no-visible-match".to_string();
+    app.toggle_display_pause();
+    app.open_recording_path_dialog().unwrap();
+    assert_eq!(app.recording_matching_process_count(), 1);
+    let mut later = app.snapshot.processes[0].clone();
+    later.pid = 9999;
+    app.snapshot.processes.push(later);
+    assert_eq!(app.recording_matching_process_count(), 2);
+    assert_eq!(app.display_snapshot().processes.len(), 3);
+    let text = render_app_to_text(&app, 80, 24);
+    assert!(text.contains("Matching processes now: 2"), "{text}");
+    assert!(text.contains("Visible rows / filters do not define recording scope."));
+    app.snapshot.processes.clear();
+    let text = render_app_to_text(&app, 80, 24);
+    assert!(text.contains("Matching processes now: 0"));
+    assert!(text.contains("System metrics recorded; later matching processes included."));
+    app.cancel_recording_path_dialog();
+    assert_eq!(app.filter_text, "no-visible-match");
+    assert!(app.watch_enabled);
+}
+
+#[test]
+fn recording_scope_scroll_focus_geometry_and_start_preserve_scope() {
+    for (width, height) in [(80, 24), (120, 40)] {
+        let mut app = make_test_app(1, 10);
+        app.watch_list = (0..30).map(|n| format!("tracked-{n:02}.exe")).collect();
+        app.watch_list[29] = format!("{}-tail.exe", "long-name".repeat(20));
+        app.open_recording_path_dialog().unwrap();
+        app.last_screen_area = Rect::new(0, 0, width, height);
+        let path = unique_recording_path("scope-inspection");
+        app.recording_path_draft = path.display().to_string();
+        app.recording_path_cursor = app.recording_path_draft.len();
+        let names = app.watch_list.clone();
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .unwrap();
+        assert!(app.recording_scope_focused());
+        app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.recording_scope_scroll.0,
+            ui::recording_dialog::recording_scope_area(app.last_screen_area).height as usize
+        );
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+        for _ in 0..150 {
+            app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+                .unwrap();
+        }
+        let text = render_app_to_text(&app, width, height);
+        assert!(text.contains("-tail.exe"), "{text}");
+        assert!(text.contains("Names 30/30"), "{text}");
+        assert_blank_row_above_text(&render_app_to_buffer(&app, width, height), "Enter start");
+        assert_eq!(app.selected_recording_interval_seconds(), 1);
+        app.on_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.recording_scope_scroll, (0, 0));
+        let scope = ui::recording_dialog::recording_scope_area(app.last_screen_area);
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: scope.x,
+                row: scope.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            app.last_screen_area,
+        );
+        assert_eq!(app.recording_scope_scroll.0, 1);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.activity(), AppActivity::Recording);
+        assert_eq!(app.watch_list, names);
+        app.request_recording_stop();
+        app.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE))
+            .unwrap();
+        let log = std::fs::read_to_string(&path).unwrap();
+        assert!(log.contains("tracked-00.exe"));
+        assert!(log.contains("-tail.exe"));
+        assert!(log.lines().last().unwrap().contains("stopped"));
+        std::fs::remove_file(path).unwrap();
+    }
+}
