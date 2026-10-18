@@ -57,7 +57,7 @@ Image collection may inspect loaded `coreclr.dll` or `clr.dll` to report the act
 
 ## Open Files and DLLs
 
-Open Files lists disk files currently open by the fixed live process. It is not a general handle browser for pipes, sockets, registry keys, synchronization objects, or every Windows handle type.
+Open Files lists disk-file and directory handles currently open by the fixed live process. Object kind is queried independently on the same duplicated handle; unavailable kind does not remove the row or discard other attributes. It is not a general handle browser for pipes, sockets, registry keys, synchronization objects, or every Windows handle type.
 
 Each named file handle occupies its own entry, even when several handles refer to the same path. Cache configuration, write-through, synchronous/asynchronous-capable mode, and data access rights are shown independently for that handle. There is no path-level aggregation or `Mixed` value. Details retain the full path, original process handle value, raw access/mode masks, and per-field query failures.
 

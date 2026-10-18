@@ -219,7 +219,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
     }
     if report.entries.iter().any(OpenFileEntry::has_unknown) {
         lines.push(Line::from(Span::styled(
-            "Some I/O attributes are unavailable; Enter shows details",
+            "Some attributes are unavailable; Space shows details",
             Style::default().fg(theme.warning),
         )));
     }
@@ -415,7 +415,7 @@ fn column_widths(width: usize) -> (usize, usize) {
     } else {
         0
     };
-    let remaining = width.saturating_sub(HANDLE_COLUMN_WIDTH + 2 + attributes);
+    let remaining = width.saturating_sub(HANDLE_COLUMN_WIDTH + 7 + attributes);
     let file = (remaining / 2).max(8).min(remaining);
     (file, remaining.saturating_sub(file))
 }
@@ -427,6 +427,8 @@ fn open_files_table_header(theme: Theme, width: usize) -> Line<'static> {
     let (file, directory) = column_widths(width);
     let mut spans = vec![
         Span::styled(fit_cell("Handle", HANDLE_COLUMN_WIDTH), header_style),
+        Span::raw(" "),
+        Span::styled(fit_cell("Type", 4), header_style),
         Span::raw(" "),
         Span::styled(fit_cell("File", file), header_style),
     ];
@@ -466,6 +468,8 @@ fn open_files_table_rows(
             fit_cell(&format!("0x{:X}", entry.handle.value), HANDLE_COLUMN_WIDTH),
             style.fg(theme.accent),
         ),
+        Span::raw(" "),
+        Span::styled(fit_cell(entry.handle.kind_label(), 4), style),
         Span::raw(" "),
         Span::styled(fit_cell_start(file_name(&entry.path), file), style),
     ];

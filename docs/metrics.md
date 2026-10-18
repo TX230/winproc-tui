@@ -238,13 +238,13 @@ CPU affinity uses [GetProcessAffinityMask](https://learn.microsoft.com/en-us/win
 
 ## Open Files
 
-The Process Info `Files` tab displays one entry per named disk-file handle of the fixed live process. Repeated paths remain separate entries, sorted by path and original process handle value.
+The Process Info `Files` tab displays one entry per named disk-file or directory handle of the fixed live process. Repeated paths remain separate entries, sorted by path and original process handle value.
 This is a supporting investigation tool after an increase in `Hndl` has been found, not a metric that is sampled continuously.
 
 The visible Files tab refreshes automatically when collection is inexpensive; slow or failed captures suspend automatic refresh until a successful manual retry. The displayed duration measures the worker's complete request, including identity checks and file attributes, rather than disk I/O latency. The interval is idle time after completion, not a fixed sampling cadence. Scheduling rules belong to [Process Investigation](process-investigation.md#open-files-and-dlls); neither the captures nor their timings enter Recording.
 
 Sources are `NtQuerySystemInformation(SystemExtendedHandleInformation)`, `DuplicateHandle`, `GetFileType(FILE_TYPE_DISK)`, and `GetFinalPathNameByHandleW`.
-On the same duplicated handle, `NtQueryInformationFile` queries `FileAccessInformation` and `FileModeInformation` independently. This avoids reopening the file or using access rights from an earlier handle-table entry that may have been reused. Each query failure leaves that field `--`; details show its NTSTATUS or incomplete-reply diagnostic. Duplication uses `DUPLICATE_SAME_ACCESS` and never changes the target's opening mode.
+On the same duplicated handle, `NtQueryInformationFile` queries `FileStandardInformation`, `FileAccessInformation`, and `FileModeInformation` independently. This avoids reopening the file or using access rights from an earlier handle-table entry that may have been reused. Each query failure leaves that field `--`; details show its NTSTATUS or incomplete-reply diagnostic. Duplication uses `DUPLICATE_SAME_ACCESS` and never changes the target's opening mode.
 The app displays what can be collected with normal user permissions. Permission failures and handles that cannot be duplicated are treated as uncollected counts or `<access denied>`.
 Running as administrator may reveal more handles, but administrator privileges are not a prerequisite.
 
@@ -252,21 +252,22 @@ The table shows the original handle value, file name, directory, and these indep
 
 | Field | Meaning |
 |---|---|
+| Type | `F` for a file and `D` for a directory, from the native `FileStandardInformation.Directory` flag; `--` when unavailable. No path or extension inference is used. |
 | Cached | `N` when `FILE_NO_INTERMEDIATE_BUFFERING` is set (the native mode corresponding to `CreateFile`'s `FILE_FLAG_NO_BUFFERING`); otherwise `Y`. This is the handle's caching configuration, not a cache-hit measurement. |
 | Async | `N` when `FILE_SYNCHRONOUS_IO_ALERT` or `FILE_SYNCHRONOUS_IO_NONALERT` is set; otherwise `Y` for an asynchronous-capable handle, corresponding to `FILE_FLAG_OVERLAPPED`. This describes the opening mode, not how individual requests completed. |
-| Access | The granted `FILE_READ_DATA`, `FILE_WRITE_DATA`, and `FILE_APPEND_DATA` bits, shown together as `R`, `W`, and `A` in that order (for example, `RW`, `WA`, or `RWA`). `-` means none of these bits is granted; metadata and other rights can still exist. These are granted rights, not the original `dwDesiredAccess` argument. |
+| Access | The granted `FILE_READ_DATA`, `FILE_WRITE_DATA`, and `FILE_APPEND_DATA` bits, shown together as `R`, `W`, and `A` in that order (for example, `RW`, `WA`, or `RWA`). `-` means none of these bits is granted; metadata and other rights can still exist. For directories these same bits represent list directory, add file, and add subdirectory respectively. These are granted rights, not the original `dwDesiredAccess` argument. |
 | W-Thru | `Y` when `FILE_WRITE_THROUGH` is set (corresponding to `FILE_FLAG_WRITE_THROUGH`); otherwise `N`. It is independent of caching. |
 
 Unavailable attributes use `--`, distinct from `N` and from an Access value of `-`.
 
 Details include the full access mask and mode flags in hexadecimal. The mode flags are only the subset exposed by [FILE_MODE_INFORMATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_mode_information); the query contract is documented under [NtQueryInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile). Share mode, the complete original `CreateFile` options, actual I/O completion behavior, and device-cache state are not reconstructed. Random access is not inferred from the absence of a sequential flag.
 
-Native tests cover local NTFS disk files with cached/non-cached, write-through, overlapped, read/write/append, metadata-only, and zero-access handles in a separate process. SMB, ReFS, FAT/exFAT, cloud placeholders, and third-party filesystem/filter drivers are not validated by those tests. These are best-effort queries; unsupported or failed queries remain unavailable. No universal filesystem compatibility is claimed.
+Native tests cover a zero-access directory handle and local NTFS disk files with cached/non-cached, write-through, overlapped, read/write/append, metadata-only, and zero-access handles in a separate process. SMB, ReFS, FAT/exFAT, cloud placeholders, and third-party filesystem/filter drivers are not validated by those tests. These are best-effort queries; unsupported or failed queries remain unavailable. No universal filesystem compatibility is claimed.
 
 It does not show a true file-open timestamp because the stable file metadata timestamps available through Windows are file timestamps, not the time when the target process opened that handle.
 
 When copying to the clipboard, use raw text without a header.
-Each TSV row contains the full path, original handle in hexadecimal, Cached, Async, Access, W-Thru, raw access mask, and raw mode flags, in that order. Attribute values use the same compact notation as the table. Query failures retain their diagnostic in the raw-field column. The list copies all filtered handle rows; details copy only the selected handle. These attributes are not recorded and do not alter recording schemas.
+Each TSV row contains the full path, original handle in hexadecimal, Type, Cached, Async, Access, W-Thru, raw access mask, and raw mode flags, in that order. Attribute values use the same compact notation as the table. Query failures retain their diagnostic in the raw-field column. The list copies all filtered handle rows; details copy only the selected handle. These attributes are not recorded and do not alter recording schemas.
 
 ## File User Search
 

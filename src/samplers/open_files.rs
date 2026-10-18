@@ -306,6 +306,7 @@ pub(crate) fn collect_open_files_for_process(process: &ProcessRow) -> OpenFilesR
                     paths.push((
                         path,
                         OpenFileHandle {
+                            kind: query_file_kind(handle.0),
                             value: entry.handle_value,
                             access: query_file_attribute(handle.0, 8),
                             mode: query_file_attribute(handle.0, 16),
@@ -490,6 +491,46 @@ fn normalize_final_path(wide: &[u16]) -> String {
     }
 }
 
+#[repr(C)]
+#[derive(Default)]
+struct FileStandardInformation {
+    allocation_size: i64,
+    end_of_file: i64,
+    number_of_links: u32,
+    delete_pending: u8,
+    directory: u8,
+}
+
+fn query_file_kind(
+    handle: HANDLE,
+) -> Result<crate::model::open_files::OpenFileKind, FileAttributeError> {
+    use crate::model::open_files::OpenFileKind;
+    let mut io_status = IoStatusBlock::default();
+    let mut value = FileStandardInformation::default();
+    // SAFETY: the caller owns the duplicated handle, and both aligned output buffers
+    // remain live throughout this FileStandardInformation query. No file data is read.
+    let status = unsafe {
+        NtQueryInformationFile(
+            handle,
+            &mut io_status,
+            &mut value as *mut FileStandardInformation as LPVOID,
+            size_of::<FileStandardInformation>() as ULONG,
+            5,
+        )
+    };
+    if status != 0 {
+        return Err(FileAttributeError::NtStatus(status));
+    }
+    if io_status.information != size_of::<FileStandardInformation>() {
+        return Err(FileAttributeError::ShortReply);
+    }
+    Ok(if value.directory != 0 {
+        OpenFileKind::Directory
+    } else {
+        OpenFileKind::File
+    })
+}
+
 fn query_file_attribute(
     handle: HANDLE,
     information_class: ULONG,
@@ -617,6 +658,10 @@ mod tests {
 
     #[test]
     fn file_attribute_queries_preserve_native_failure_codes() {
+        assert_eq!(
+            query_file_kind(null_mut()),
+            Err(FileAttributeError::NtStatus(0xc0000008u32 as i32))
+        );
         for class in [8, 16] {
             assert_eq!(
                 query_file_attribute(null_mut(), class),
@@ -651,6 +696,7 @@ mod tests {
                     (
                         path.to_string(),
                         OpenFileHandle {
+                            kind: Ok(crate::model::open_files::OpenFileKind::File),
                             value,
                             access: Ok(1),
                             mode: Ok(0),

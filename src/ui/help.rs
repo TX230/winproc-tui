@@ -344,7 +344,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Space (Files)",
-        label: "Full path, I/O attributes, raw masks",
+        label: "Full path, type (F file / D directory / -- unknown), I/O attributes",
     },
     HelpItem {
         key: "F4 (Files list/detail)",

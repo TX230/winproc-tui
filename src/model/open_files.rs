@@ -18,9 +18,16 @@ impl std::fmt::Display for FileAttributeError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OpenFileKind {
+    File,
+    Directory,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct OpenFileHandle {
     pub(crate) value: usize,
+    pub(crate) kind: Result<OpenFileKind, FileAttributeError>,
     pub(crate) access: Result<u32, FileAttributeError>,
     pub(crate) mode: Result<u32, FileAttributeError>,
 }
@@ -53,6 +60,14 @@ impl FileAttribute {
 }
 
 impl OpenFileHandle {
+    pub(crate) fn kind_label(&self) -> &'static str {
+        match self.kind {
+            Ok(OpenFileKind::File) => "F",
+            Ok(OpenFileKind::Directory) => "D",
+            Err(_) => "--",
+        }
+    }
+
     pub(crate) fn attribute(&self, attribute: FileAttribute) -> Option<String> {
         match attribute {
             FileAttribute::Cache => self.mode.as_ref().ok().map(|mode| {
@@ -94,7 +109,11 @@ impl OpenFileHandle {
     }
 
     pub(crate) fn plain_text(&self, path: &str) -> String {
-        let mut fields = vec![path.to_string(), format!("0x{:X}", self.value)];
+        let mut fields = vec![
+            path.to_string(),
+            format!("0x{:X}", self.value),
+            self.kind_label().to_string(),
+        ];
         fields.extend(
             FileAttribute::ALL.map(|attribute| self.attribute(attribute).unwrap_or("--".into())),
         );
@@ -117,13 +136,18 @@ impl OpenFileEntry {
     }
 
     pub(crate) fn has_unknown(&self) -> bool {
-        self.handle.access.is_err() || self.handle.mode.is_err()
+        self.handle.kind.is_err() || self.handle.access.is_err() || self.handle.mode.is_err()
     }
 
     pub(crate) fn detail_text(&self) -> Vec<String> {
         let mut lines = vec![
             self.path.clone(),
             format!("Handle: 0x{:X}", self.handle.value),
+            match &self.handle.kind {
+                Ok(OpenFileKind::File) => "Type: F (File)".into(),
+                Ok(OpenFileKind::Directory) => "Type: D (Directory)".into(),
+                Err(error) => format!("Type: -- ({error})"),
+            },
         ];
         for attribute in FileAttribute::ALL {
             lines.push(format!(

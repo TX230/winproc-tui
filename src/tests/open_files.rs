@@ -27,6 +27,7 @@ fn mode_entry(
     OpenFileEntry {
         path: path.into(),
         handle: OpenFileHandle {
+            kind: Ok(crate::model::open_files::OpenFileKind::File),
             value,
             access,
             mode,
@@ -92,7 +93,7 @@ fn open_file_modes_keep_each_handle_and_each_unknown_attribute_independent() {
     app.copy_open_files_to_clipboard().unwrap();
     let copy = crate::app::clipboard::last_copied_text().unwrap();
     assert_eq!(copy.lines().count(), 1);
-    assert!(copy.contains("\t0x48\t--\t--\t-\t--\t0x00000080\t-- (NTSTATUS 0xC0000022)"));
+    assert!(copy.contains("\t0x48\tF\t--\t--\t-\t--\t0x00000080\t-- (NTSTATUS 0xC0000022)"));
     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
         .unwrap();
     assert_eq!(app.open_files_selected, 2);
@@ -320,6 +321,12 @@ fn open_file_mode_fixture_child() {
         (0, 0x80),
         (0x40000000, 0),
     ];
+    let _directory_handle = OpenOptions::new()
+        .access_mode(0)
+        .share_mode(7)
+        .custom_flags(0x02000000)
+        .open(&directory)
+        .unwrap();
     let mut files = Vec::new();
     let mut expected = Vec::new();
     for (flags, access) in variants {
@@ -410,6 +417,15 @@ fn open_file_modes_collect_original_handles_from_dedicated_process() {
         .filter(|entry| entry.path.ends_with("same.bin"))
         .collect::<Vec<_>>();
     assert_eq!(entries.len(), expected.len(), "{entries:?}");
+    assert!(
+        report
+            .entries
+            .iter()
+            .any(|entry| entry.path == fixture.directory.to_string_lossy()
+                && entry.handle.kind_label() == "D"),
+        "directory handle missing: {:?}",
+        report.entries
+    );
     for (handle, flags, access) in expected {
         let entry = entries
             .iter()
@@ -446,11 +462,12 @@ fn open_file_modes_collect_original_handles_from_dedicated_process() {
         );
         let copied = entry.plain_text();
         let fields = copied.split('\t').collect::<Vec<_>>();
-        assert_eq!(fields.len(), 8);
-        assert_eq!(fields[2], if flags & 0x20000000 != 0 { "N" } else { "Y" });
-        assert_eq!(fields[3], if flags & 0x40000000 != 0 { "Y" } else { "N" });
-        assert_eq!(fields[4], expected_access);
-        assert_eq!(fields[5], if flags & 0x80000000 != 0 { "Y" } else { "N" });
+        assert_eq!(fields.len(), 9);
+        assert_eq!(fields[2], "F");
+        assert_eq!(fields[3], if flags & 0x20000000 != 0 { "N" } else { "Y" });
+        assert_eq!(fields[4], if flags & 0x40000000 != 0 { "Y" } else { "N" });
+        assert_eq!(fields[5], expected_access);
+        assert_eq!(fields[6], if flags & 0x80000000 != 0 { "Y" } else { "N" });
     }
 }
 
@@ -532,6 +549,7 @@ fn ctrl_u_refreshes_open_files_for_selected_process() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.log".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
                 mode: Ok(0x20),
@@ -594,6 +612,7 @@ fn open_files_result_updates_modal_state() {
                 entries: vec![OpenFileEntry {
                     path: r"C:\tmp\a.log".to_string(),
                     handle: crate::model::open_files::OpenFileHandle {
+                        kind: Ok(crate::model::open_files::OpenFileKind::File),
                         value: 2,
                         access: Ok(1),
                         mode: Ok(0x20),
@@ -624,6 +643,7 @@ fn open_files_clipboard_is_raw_handle_rows_without_header() {
             OpenFileEntry {
                 path: r"C:\tmp\a.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -632,6 +652,7 @@ fn open_files_clipboard_is_raw_handle_rows_without_header() {
             OpenFileEntry {
                 path: r"C:\tmp\b.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 2,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -645,7 +666,7 @@ fn open_files_clipboard_is_raw_handle_rows_without_header() {
 
     assert_eq!(
         crate::app::clipboard::last_copied_text().unwrap(),
-        "C:\\tmp\\a.log\t0x1\tY\tN\tR\tN\t0x00000001\t0x00000020\nC:\\tmp\\b.log\t0x2\tY\tN\tR\tN\t0x00000001\t0x00000020"
+        "C:\\tmp\\a.log\t0x1\tF\tY\tN\tR\tN\t0x00000001\t0x00000020\nC:\\tmp\\b.log\t0x2\tF\tY\tN\tR\tN\t0x00000001\t0x00000020"
     );
 }
 
@@ -664,6 +685,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
             OpenFileEntry {
                 path: r"C:\tmp\a.wav".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -672,6 +694,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
             OpenFileEntry {
                 path: r"C:\exports\b.MXF".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 2,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -680,6 +703,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
             OpenFileEntry {
                 path: r"C:\media\c.mp4".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -693,7 +717,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
 
     assert_eq!(
         crate::app::clipboard::last_copied_text().unwrap(),
-        "C:\\exports\\b.MXF\t0x2\tY\tN\tR\tN\t0x00000001\t0x00000020"
+        "C:\\exports\\b.MXF\t0x2\tF\tY\tN\tR\tN\t0x00000001\t0x00000020"
     );
 }
 
@@ -751,6 +775,7 @@ fn open_files_filter_shows_colon_and_terminal_cursor() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.mp4".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
                 mode: Ok(0x20),
@@ -790,6 +815,7 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
             OpenFileEntry {
                 path: r"C:\tmp\a.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -798,6 +824,7 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
             OpenFileEntry {
                 path: r"C:\tmp\b.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -806,6 +833,7 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
             OpenFileEntry {
                 path: r"C:\tmp\c.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -838,6 +866,7 @@ fn open_files_modal_renders_table_columns() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.log".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
                 mode: Ok(0x20),
@@ -880,6 +909,7 @@ fn open_files_filter_matches_directory_and_shows_filtered_total() {
             OpenFileEntry {
                 path: r"C:\Windows\Fonts\a.ttf".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -888,6 +918,7 @@ fn open_files_filter_matches_directory_and_shows_filtered_total() {
             OpenFileEntry {
                 path: r"C:\tmp\b.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -918,6 +949,7 @@ fn open_files_table_column_names_are_underlined() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.log".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
                 mode: Ok(0x20),
@@ -950,6 +982,7 @@ fn open_files_scroll_offset_changes_rendered_rows() {
             .map(|index| OpenFileEntry {
                 path: format!(r"C:\tmp\file-{index:02}.log"),
                 handle: crate::model::open_files::OpenFileHandle {
+                    kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
                     mode: Ok(0x20),
@@ -1232,4 +1265,43 @@ fn typing_after_leaving_files_filter_restores_editor_and_cursor() {
         .unwrap();
     terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
     assert!(app.draw_cursor.get().is_none());
+}
+
+#[test]
+fn files_type_column_preserves_unknown_rows_in_wide_and_compact_layouts() {
+    use crate::model::open_files::OpenFileKind;
+    for width in [65, 160] {
+        let mut app = make_test_app(1, 10);
+        show_process_info_files_tab(&mut app);
+        let mut report = test_open_files_report("proc-0", 0, "file.bin");
+        report.entries = vec![
+            mode_entry(r"C:\tmp\file.bin", 0x40, Ok(1), Ok(0x20)),
+            mode_entry(r"C:\tmp\folder", 0x44, Ok(1), Ok(0x20)),
+            mode_entry(r"C:\tmp\unknown", 0x48, Ok(1), Ok(0x20)),
+        ];
+        report.entries[1].handle.kind = Ok(OpenFileKind::Directory);
+        report.entries[2].handle.kind = Err(FileAttributeError::ShortReply);
+        assert!(report.entries[2].has_unknown());
+        assert!(
+            report.entries[2]
+                .detail_text()
+                .iter()
+                .any(|line| line == "Type: -- (Incomplete reply)")
+        );
+        app.open_files_result = Some(report);
+        let text = render_app_to_text(&app, width, 35);
+        let header = text
+            .lines()
+            .find(|line| line.contains("Handle") && line.contains("Type"))
+            .unwrap();
+        let type_col = header.find("Type").unwrap();
+        for (handle, kind) in [("0x40", "F"), ("0x44", "D"), ("0x48", "--")] {
+            let row = text.lines().find(|line| line.contains(handle)).unwrap();
+            assert_eq!(
+                row[type_col..].split_whitespace().next(),
+                Some(kind),
+                "{text}"
+            );
+        }
+    }
 }
