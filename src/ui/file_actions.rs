@@ -65,14 +65,9 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &App, them
     .render(frame, area.area, text, view.scroll.offset, false, theme);
     let shortcuts = super::footer::shortcut_spans(
         if view.busy() {
-            &[("Esc", "Back"), ("PgUp/PgDn", "Scroll")]
+            &[("Esc", "Back")]
         } else {
-            &[
-                ("Enter", "Open"),
-                ("↑/↓", "Select"),
-                ("Esc", "Back"),
-                ("PgUp/PgDn", "Scroll"),
-            ]
+            &[("Enter", "Open"), ("↑/↓", "Select"), ("Esc", "Back")]
         },
         theme,
     );

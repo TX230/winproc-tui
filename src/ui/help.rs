@@ -344,7 +344,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Esc (file actions)",
-        label: "Back, including while pending; PgUp/PgDn scroll",
+        label: "Back, including while pending; wheel/scrollbar scroll errors",
     },
     HelpItem {
         key: "Esc/Enter (file detail)",

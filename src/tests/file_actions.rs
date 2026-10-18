@@ -181,6 +181,14 @@ fn file_actions_modal_preserves_parent_scroll_and_blocks_background_mouse() {
         assert!(!app.open_files_show_detail);
         app.file_action.as_mut().unwrap().message =
             "Long failure details ".repeat(150) + "END OF ERROR";
+        let footer = crate::ui::file_actions::layout(screen).footer;
+        let buffer = render_app_to_buffer(&app, width, height);
+        assert!(super::support::find_text_position_in_area(&buffer, footer, "PgUp").is_none());
+        for code in [KeyCode::PageDown, KeyCode::PageUp] {
+            key(&mut app, code, KeyModifiers::NONE);
+            assert_eq!(app.file_action.as_ref().unwrap().scroll.offset, 0);
+            assert_eq!(app.file_action.as_ref().unwrap().selected, 0);
+        }
         key(&mut app, KeyCode::End, KeyModifiers::NONE);
         assert!(render_app_to_text(&app, width, height).contains("END OF ERROR"));
         assert_eq!(app.open_files_scroll.offset, offset);

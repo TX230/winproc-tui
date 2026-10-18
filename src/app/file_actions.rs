@@ -139,9 +139,7 @@ impl App {
             KeyCode::Char('o' | 'O') if key.modifiers == KeyModifiers::CONTROL => {
                 self.launch_file_action(1)
             }
-            KeyCode::PageDown | KeyCode::PageUp | KeyCode::Home | KeyCode::End => {
-                self.scroll_file_actions(key.code)
-            }
+            KeyCode::Home | KeyCode::End => self.scroll_file_actions(key.code),
             _ => {}
         }
     }
