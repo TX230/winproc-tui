@@ -984,7 +984,7 @@ impl MainMenuSection {
                 ToggleContrast,
                 OpenStartupBehavior,
             ],
-            (Self::Help, _) => &[OpenTaskGuides, OpenKeyboardShortcuts, OpenVersionInfo],
+            (Self::Help, _) => &[OpenKeyboardShortcuts, OpenVersionInfo],
             (Self::More, _) => &[],
         }
     }
@@ -992,7 +992,6 @@ impl MainMenuSection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MainMenuAction {
-    OpenTaskGuides,
     OpenVersionInfo,
     OpenKeyboardShortcuts,
     OpenProfiles,
@@ -1022,7 +1021,6 @@ pub(crate) enum MainMenuAction {
 impl MainMenuAction {
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::OpenTaskGuides => "Task guides",
             Self::OpenVersionInfo => "Version Info",
             Self::OpenKeyboardShortcuts => "Keyboard shortcuts",
             Self::OpenProfiles => "Open profile…",
@@ -6938,11 +6936,6 @@ impl App {
         let tracking_target = self.main_menu_tracking_target.clone();
         self.dismiss_main_menu();
         match action {
-            MainMenuAction::OpenTaskGuides => {
-                self.open_help();
-                self.open_task_guides();
-                Ok(())
-            }
             MainMenuAction::OpenVersionInfo => {
                 self.open_help();
                 self.help_version_info = true;

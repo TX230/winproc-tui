@@ -14,9 +14,8 @@ pub(crate) mod tasks;
 
 const COLUMN_SEPARATOR: &str = "  │  ";
 const KEY_LABEL_GAP: usize = 2;
-const HELP_SHORTCUT_ITEMS: [(&str, &str); 7] = [
+const HELP_SHORTCUT_ITEMS: [(&str, &str); 6] = [
     ("Esc/Enter/F1/?", "Close"),
-    ("t", "Task guides"),
     ("s", "Sections"),
     ("←/→", "Section"),
     ("↑/↓", "Scroll"),

@@ -1423,7 +1423,7 @@ fn task_guides_preserve_context_and_allow_all_pages_at_supported_sizes() {
         app.log_dir_cursor = 4;
         app.on_key(KeyCode::F(1).into()).unwrap();
         let reference = (app.help_section, app.help_scroll.offset);
-        app.on_key(KeyCode::Char('t').into()).unwrap();
+        app.open_task_guides();
         let text = render_app_to_text(&app, width, height);
         for title in ui::help::tasks::TITLES {
             assert!(text.contains(title));
@@ -1461,7 +1461,7 @@ fn task_guides_preserve_context_and_allow_all_pages_at_supported_sizes() {
         app.on_key(KeyCode::Char('r').into()).unwrap();
         assert!(app.task_guide.is_none());
         assert_eq!((app.help_section, app.help_scroll.offset), reference);
-        app.on_key(KeyCode::Char('t').into()).unwrap();
+        app.open_task_guides();
         app.on_key(KeyCode::Enter.into()).unwrap();
         for code in [KeyCode::Delete, KeyCode::Char('q'), KeyCode::Char('a')] {
             app.on_key(code.into()).unwrap();
@@ -1509,5 +1509,26 @@ fn task_guide_mouse_uses_rendered_rows_and_footer() {
             screen,
         );
         assert_eq!(app.task_guide, Some((2, false)));
+    }
+}
+
+#[test]
+fn task_guides_are_hidden_from_help_and_cannot_be_opened_by_t() {
+    for (width, height) in [(80, 24), (120, 36)] {
+        let mut app = make_test_app(1, 10);
+        app.open_main_menu_section(crate::app::state::MainMenuSection::Help);
+        let menu = render_app_to_text(&app, width, height);
+        assert!(!menu.contains("Task guides"));
+        assert!(menu.contains("Keyboard shortcuts"));
+        assert!(menu.contains("Version Info"));
+        app.on_key(KeyCode::Esc.into()).unwrap();
+        app.open_help();
+        let before = (app.help_section, app.help_scroll.offset);
+        for key in ['t', 'T'] {
+            app.on_key(KeyCode::Char(key).into()).unwrap();
+            assert!(app.task_guide.is_none());
+            assert_eq!((app.help_section, app.help_scroll.offset), before);
+            assert!(!render_app_to_text(&app, width, height).contains("Task guides"));
+        }
     }
 }

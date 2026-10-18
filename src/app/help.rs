@@ -91,7 +91,6 @@ impl App {
         }
         match key.code {
             KeyCode::Esc | KeyCode::Enter | KeyCode::F(1) | KeyCode::Char('?') => self.close_help(),
-            KeyCode::Char('t' | 'T') => self.open_task_guides(),
             KeyCode::Char('s' | 'S') => {
                 self.help_scroll.stop_drag();
                 self.help_section_picker = Some(self.help_section);
@@ -130,6 +129,7 @@ impl App {
 }
 
 impl App {
+    #[cfg(test)]
     pub(crate) fn open_task_guides(&mut self) {
         self.task_guide = Some((0, false));
         self.task_scroll.reset();
