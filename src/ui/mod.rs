@@ -157,6 +157,41 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
     draw_footer(frame, layout[2], app, theme);
 
+    // Investigation surfaces retain their workspace geometry, but the surrounding
+    // header/footer must not compete with the active bordered view.
+    let investigation_area = if app.network_browser.visible {
+        Some(network::browser_layout(area).area)
+    } else if app.file_users.visible {
+        Some(file_users::browser_layout(area).area)
+    } else {
+        None
+    };
+    if let Some(active) = investigation_area {
+        for outside in [
+            ratatui::layout::Rect::new(area.x, area.y, area.width, active.y.saturating_sub(area.y)),
+            ratatui::layout::Rect::new(
+                area.x,
+                active.bottom(),
+                area.width,
+                area.bottom().saturating_sub(active.bottom()),
+            ),
+            ratatui::layout::Rect::new(
+                area.x,
+                active.y,
+                active.x.saturating_sub(area.x),
+                active.height,
+            ),
+            ratatui::layout::Rect::new(
+                active.right(),
+                active.y,
+                area.right().saturating_sub(active.right()),
+                active.height,
+            ),
+        ] {
+            frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), outside);
+        }
+    }
+
     if let Some(strength) = modal_scrim_strength(app) {
         frame.render_widget(ModalScrim::new(theme, strength), area);
         if strength == ModalScrimStrength::Menu {

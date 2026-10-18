@@ -2349,3 +2349,32 @@ fn compact_manual_split_and_multiple_graph_navigation_preserve_time() {
     assert!(text.contains("No graph metrics selected"), "{text}");
     assert!(!text.contains("enlarge terminal"), "{text}");
 }
+
+#[test]
+fn investigation_views_dim_only_the_surrounding_screen() {
+    for (width, height) in [(80, 24), (120, 36), (180, 60)] {
+        for network in [true, false] {
+            let mut app = make_test_app(3, 10);
+            let base = render_app_to_buffer(&app, width, height);
+            app.network_browser.visible = network;
+            app.file_users.visible = !network;
+            let shown = render_app_to_buffer(&app, width, height);
+            let (x, y) = find_text_position(&base, "winproc-tui").unwrap();
+            assert_eq!(shown[(x, y)].symbol(), base[(x, y)].symbol());
+            assert_ne!(
+                (shown[(x, y)].fg, shown[(x, y)].bg),
+                (base[(x, y)].fg, base[(x, y)].bg)
+            );
+            let title = if network {
+                "NETWORK ENDPOINTS"
+            } else {
+                "PROCESSES USING FILE"
+            };
+            let (x, y) = find_text_position(&shown, title).unwrap();
+            assert_eq!(shown[(x, y)].bg, app.theme().focus_border);
+            app.network_browser.visible = false;
+            app.file_users.visible = false;
+            assert_eq!(render_app_to_buffer(&app, width, height), base);
+        }
+    }
+}
