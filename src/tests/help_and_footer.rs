@@ -1412,3 +1412,102 @@ fn help_footer_wraps_complete_groups_and_clicks_match_visible_rows() {
         assert!(!app.show_help && !app.show_quit_confirmation);
     }
 }
+
+#[test]
+fn task_guides_preserve_context_and_allow_all_pages_at_supported_sizes() {
+    for (width, height) in [(80, 24), (120, 36)] {
+        let mut app = make_test_app(1, 30);
+        app.last_screen_area = Rect::new(0, 0, width, height);
+        app.show_log_dir_dialog = true;
+        app.log_dir_draft = "unchanged path".into();
+        app.log_dir_cursor = 4;
+        app.on_key(KeyCode::F(1).into()).unwrap();
+        let reference = (app.help_section, app.help_scroll.offset);
+        app.on_key(KeyCode::Char('t').into()).unwrap();
+        let text = render_app_to_text(&app, width, height);
+        for title in ui::help::tasks::TITLES {
+            assert!(text.contains(title));
+        }
+        for index in 0..4 {
+            app.task_guide = Some((index, false));
+            app.on_key(KeyCode::Enter.into()).unwrap();
+            let text = render_app_to_text(&app, width, height);
+            assert!(text.contains(ui::help::tasks::TITLES[index]));
+            assert!(text.contains("Outcome:"));
+            assert!(text.contains("Esc Back"));
+            assert!(text.contains("F1 Close"));
+            let layout = ui::help::tasks::modal(app.last_screen_area, index, true)
+                .layout(app.last_screen_area);
+            assert!(layout.footer.y > layout.content.bottom());
+            app.on_key(KeyCode::End.into()).unwrap();
+            assert_eq!(
+                app.task_scroll.offset > 0,
+                ui::help::tasks::modal(app.last_screen_area, index, true).content_height as usize
+                    > layout.content.height as usize
+            );
+            assert!(render_app_to_text(&app, width, height).contains("Return:"));
+            app.on_key(KeyCode::Home.into()).unwrap();
+            assert_eq!(app.task_scroll.offset, 0);
+            app.on_key(KeyCode::PageDown.into()).unwrap();
+            assert_eq!(
+                app.task_scroll.offset > 0,
+                ui::help::tasks::modal(app.last_screen_area, index, true).content_height as usize
+                    > layout.content.height as usize
+            );
+            app.on_key(KeyCode::Esc.into()).unwrap();
+            assert_eq!(app.task_guide, Some((index, false)));
+            assert_eq!(app.task_scroll.offset, 0);
+        }
+        app.on_key(KeyCode::Char('r').into()).unwrap();
+        assert!(app.task_guide.is_none());
+        assert_eq!((app.help_section, app.help_scroll.offset), reference);
+        app.on_key(KeyCode::Char('t').into()).unwrap();
+        app.on_key(KeyCode::Enter.into()).unwrap();
+        for code in [KeyCode::Delete, KeyCode::Char('q'), KeyCode::Char('a')] {
+            app.on_key(code.into()).unwrap();
+            assert!(!app.should_quit);
+            assert!(!app.show_process_kill_confirmation);
+        }
+        app.on_key(KeyCode::F(1).into()).unwrap();
+        assert!(!app.show_help);
+        assert!(app.show_log_dir_dialog);
+        assert_eq!(app.log_dir_draft, "unchanged path");
+        assert_eq!(app.log_dir_cursor, 4);
+    }
+}
+
+#[test]
+fn task_guide_mouse_uses_rendered_rows_and_footer() {
+    for (width, height) in [(80, 24), (120, 36)] {
+        let mut app = make_test_app(1, 20);
+        let screen = Rect::new(0, 0, width, height);
+        app.last_screen_area = screen;
+        app.open_help();
+        app.open_task_guides();
+        let buffer = render_app_to_buffer(&app, width, height);
+        let (x, y) = find_text_position(&buffer, ui::help::tasks::TITLES[2]).unwrap();
+        assert_eq!(ui::help::tasks::row_at(screen, x, y), Some(2));
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(app.task_guide, Some((2, true)));
+        let buffer = render_app_to_buffer(&app, width, height);
+        let (x, y) = find_text_position(&buffer, "Esc Back").unwrap();
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(app.task_guide, Some((2, false)));
+    }
+}

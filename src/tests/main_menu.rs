@@ -733,7 +733,7 @@ fn focused_help_cancels_or_opens_from_header_and_footer_without_click_through() 
     assert!(!app.is_main_menu_open());
     assert_eq!(app.focused_panel, focus);
 
-    for label in ["Version Info", "Keyboard shortcuts"] {
+    for label in ["Task guides", "Keyboard shortcuts", "Version Info"] {
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Left);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
@@ -1068,7 +1068,10 @@ fn version_info_contains_metadata_and_blocks_workspace_input() {
             render_app_to_buffer(&app, width, 30);
             let focus = app.focused_panel;
             app.open_main_menu_section(MainMenuSection::Help);
-            assert_eq!(menu_labels(&app), ["Version Info", "Keyboard shortcuts"]);
+            assert_eq!(
+                menu_labels(&app),
+                ["Task guides", "Keyboard shortcuts", "Version Info"]
+            );
             choose(&mut app, MainMenuAction::OpenVersionInfo);
             assert!(app.show_help && app.help_version_info);
             assert!(!app.is_main_menu_open());

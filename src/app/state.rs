@@ -984,7 +984,7 @@ impl MainMenuSection {
                 ToggleContrast,
                 OpenStartupBehavior,
             ],
-            (Self::Help, _) => &[OpenVersionInfo, OpenKeyboardShortcuts],
+            (Self::Help, _) => &[OpenTaskGuides, OpenKeyboardShortcuts, OpenVersionInfo],
             (Self::More, _) => &[],
         }
     }
@@ -992,6 +992,7 @@ impl MainMenuSection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MainMenuAction {
+    OpenTaskGuides,
     OpenVersionInfo,
     OpenKeyboardShortcuts,
     OpenProfiles,
@@ -1021,6 +1022,7 @@ pub(crate) enum MainMenuAction {
 impl MainMenuAction {
     pub(crate) const fn label(self) -> &'static str {
         match self {
+            Self::OpenTaskGuides => "Task guides",
             Self::OpenVersionInfo => "Version Info",
             Self::OpenKeyboardShortcuts => "Keyboard shortcuts",
             Self::OpenProfiles => "Open profile…",
@@ -1135,6 +1137,8 @@ pub(crate) struct App {
     pub(crate) header_action_hovered: Option<crate::ui::header::HeaderAction>,
     pub(crate) show_help: bool,
     pub(crate) help_version_info: bool,
+    pub(crate) task_guide: Option<(usize, bool)>,
+    pub(crate) task_scroll: ScrollableModalState,
     pub(crate) help_section: usize,
     pub(crate) help_section_picker: Option<usize>,
     pub(crate) help_scroll: ScrollableModalState,
@@ -1434,6 +1438,8 @@ impl App {
             header_action_hovered: None,
             show_help: false,
             help_version_info: false,
+            task_guide: None,
+            task_scroll: ScrollableModalState::default(),
             help_section: 0,
             help_section_picker: None,
             help_scroll: ScrollableModalState {
@@ -6908,6 +6914,11 @@ impl App {
         let tracking_target = self.main_menu_tracking_target.clone();
         self.dismiss_main_menu();
         match action {
+            MainMenuAction::OpenTaskGuides => {
+                self.open_help();
+                self.open_task_guides();
+                Ok(())
+            }
             MainMenuAction::OpenVersionInfo => {
                 self.open_help();
                 self.help_version_info = true;
@@ -7003,6 +7014,7 @@ impl App {
     }
 
     pub(crate) fn open_help(&mut self) {
+        self.task_guide = None;
         self.help_version_info = false;
         self.help_section = crate::ui::help::section_index(self.contextual_help_title());
         self.show_help = true;
@@ -7011,6 +7023,7 @@ impl App {
     }
 
     pub(crate) fn close_help(&mut self) {
+        self.task_guide = None;
         self.show_help = false;
         self.help_version_info = false;
         self.help_section_picker = None;

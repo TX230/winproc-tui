@@ -197,6 +197,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
         header_action_hovered: None,
         show_help: false,
         help_version_info: false,
+        task_guide: None,
+        task_scroll: ui::widgets::scrollable_modal::ScrollableModalState::default(),
         help_section: 0,
         help_section_picker: None,
         help_scroll: ui::widgets::scrollable_modal::ScrollableModalState {

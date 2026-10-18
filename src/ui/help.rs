@@ -10,10 +10,13 @@ use crate::{
     ui::{Theme, footer::shortcut_spans, widgets::scrollable_modal::ScrollableModal},
 };
 
+pub(crate) mod tasks;
+
 const COLUMN_SEPARATOR: &str = "  │  ";
 const KEY_LABEL_GAP: usize = 2;
-const HELP_SHORTCUT_ITEMS: [(&str, &str); 6] = [
+const HELP_SHORTCUT_ITEMS: [(&str, &str); 7] = [
     ("Esc/Enter/F1/?", "Close"),
+    ("t", "Task guides"),
     ("s", "Sections"),
     ("←/→", "Section"),
     ("↑/↓", "Scroll"),
@@ -928,6 +931,10 @@ const RIGHT_SECTIONS: &[HelpSection] = &[
 ];
 
 pub(crate) fn draw_help(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    if app.task_guide.is_some() {
+        tasks::draw(frame, area, app, theme);
+        return;
+    }
     if app.help_version_info {
         draw_version_info(frame, area, app, theme);
         return;

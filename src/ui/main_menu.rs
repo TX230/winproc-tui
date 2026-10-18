@@ -189,7 +189,7 @@ fn display_rows(app: &App) -> Vec<Option<usize>> {
                 | ToggleTrackedOnly | ToggleShowExited | ToggleTreeView | ToggleContrast => 1,
                 ToggleGraphs | ToggleSamples | ToggleDelta | QuitImmediately
                 | QuitWithConfirmation | OpenStartupBehavior => 2,
-                OpenVersionInfo | OpenKeyboardShortcuts => 0,
+                OpenTaskGuides | OpenVersionInfo | OpenKeyboardShortcuts => 0,
                 CycleGraphLayout => 3,
             },
         };

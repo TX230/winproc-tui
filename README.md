@@ -81,6 +81,8 @@ Recording requires at least one process name in the Tracking List, but no matchi
 
 Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows, columns, and samples. Press `F1` or `?` at any time for the complete controls; the footer shows the main actions available in the current context.
 
+Open **Help > Task guides** for short in-app walkthroughs: investigate memory growth, find a process using a file, compare two times, or record and inspect later.
+
 ## Capabilities
 
 Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.

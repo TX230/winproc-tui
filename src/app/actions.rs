@@ -1667,6 +1667,10 @@ impl App {
             self.shortcut_map.borrow_mut().regions.clear();
         }
         if self.show_help {
+            if self.task_guide.is_some() {
+                self.task_guide_mouse(mouse, screen_area);
+                return;
+            }
             if self.help_version_info {
                 return;
             }

@@ -63,6 +63,10 @@ impl App {
     }
 
     pub(crate) fn help_key(&mut self, key: KeyEvent) {
+        if self.task_guide.is_some() {
+            self.task_guide_key(key);
+            return;
+        }
         if self.help_version_info {
             if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
                 self.close_help();
@@ -87,6 +91,7 @@ impl App {
         }
         match key.code {
             KeyCode::Esc | KeyCode::Enter | KeyCode::F(1) | KeyCode::Char('?') => self.close_help(),
+            KeyCode::Char('t' | 'T') => self.open_task_guides(),
             KeyCode::Char('s' | 'S') => {
                 self.help_scroll.stop_drag();
                 self.help_section_picker = Some(self.help_section);
@@ -119,6 +124,96 @@ impl App {
             }
             MouseEventKind::ScrollUp => self.help_key(KeyCode::Up.into()),
             MouseEventKind::ScrollDown => self.help_key(KeyCode::Down.into()),
+            _ => {}
+        }
+    }
+}
+
+impl App {
+    pub(crate) fn open_task_guides(&mut self) {
+        self.task_guide = Some((0, false));
+        self.task_scroll.reset();
+        self.shortcut_hovered = None;
+    }
+
+    fn task_guide_key(&mut self, key: KeyEvent) {
+        let (index, open) = self.task_guide.unwrap();
+        let modal = help::tasks::modal(self.last_screen_area, index, open);
+        self.task_scroll.set_page_size(
+            modal.page_size(self.last_screen_area),
+            modal.content_height as usize,
+        );
+        match key.code {
+            KeyCode::F(1) | KeyCode::Char('?') => self.close_help(),
+            KeyCode::Esc if open => {
+                self.task_guide = Some((index, false));
+                self.task_scroll.reset();
+            }
+            KeyCode::Esc => self.close_help(),
+            KeyCode::Char('r' | 'R') => {
+                self.task_guide = None;
+                self.shortcut_hovered = None;
+            }
+            KeyCode::Enter if !open => {
+                self.task_guide = Some((index, true));
+                self.task_scroll.reset();
+            }
+            KeyCode::Up if !open => self.task_guide = Some((index.saturating_sub(1), false)),
+            KeyCode::Down if !open => self.task_guide = Some(((index + 1).min(3), false)),
+            KeyCode::Home if !open => self.task_guide = Some((0, false)),
+            KeyCode::End if !open => self.task_guide = Some((3, false)),
+            KeyCode::Up => self.task_scroll.scroll_up(1),
+            KeyCode::Down => self
+                .task_scroll
+                .scroll_down(1, modal.content_height as usize),
+            KeyCode::PageUp => self.task_scroll.scroll_up(self.task_scroll.page_size),
+            KeyCode::PageDown => self
+                .task_scroll
+                .scroll_down(self.task_scroll.page_size, modal.content_height as usize),
+            KeyCode::Home => self.task_scroll.scroll_home(),
+            KeyCode::End => self.task_scroll.scroll_end(modal.content_height as usize),
+            _ => {}
+        }
+    }
+
+    pub(crate) fn task_guide_mouse(&mut self, mouse: MouseEvent, screen: Rect) {
+        let (index, open) = self.task_guide.unwrap();
+        let modal = help::tasks::modal(screen, index, open);
+        self.task_scroll
+            .set_page_size(modal.page_size(screen), modal.content_height as usize);
+        if !open {
+            self.shortcut_hovered =
+                help::tasks::row_at(screen, mouse.column, mouse.row).map(|_| {
+                    let content = modal.layout(screen).content;
+                    Rect::new(content.x, mouse.row, content.width, 1)
+                });
+        }
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) if !open => {
+                if let Some(row) = help::tasks::row_at(screen, mouse.column, mouse.row) {
+                    self.task_guide = Some((row, true));
+                    self.task_scroll.reset();
+                }
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(bar) = modal.scrollbar_area(screen, self.task_scroll.page_size)
+                    && bar.contains((mouse.column, mouse.row).into())
+                {
+                    self.task_scroll
+                        .start_drag(bar, mouse.row, modal.content_height as usize);
+                    self.task_scroll
+                        .drag_to(bar, mouse.row, modal.content_height as usize);
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) if self.task_scroll.dragging => {
+                if let Some(bar) = modal.scrollbar_area(screen, self.task_scroll.page_size) {
+                    self.task_scroll
+                        .drag_to(bar, mouse.row, modal.content_height as usize);
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) => self.task_scroll.stop_drag(),
+            MouseEventKind::ScrollUp => self.task_guide_key(KeyCode::Up.into()),
+            MouseEventKind::ScrollDown => self.task_guide_key(KeyCode::Down.into()),
             _ => {}
         }
     }
