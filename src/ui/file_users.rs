@@ -256,7 +256,10 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
         let content = content_layout(area);
         let control_style = |focus| {
             if view.focus == focus && !app.show_process_info_dialog {
-                normal.bg(theme.focus_surface).add_modifier(Modifier::BOLD)
+                normal
+                    .bg(theme.focus_surface)
+                    .fg(theme.focus_border)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 normal
             }
@@ -311,18 +314,20 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
         );
         let width = content.rows.width.saturating_sub(1) as usize;
         frame.render_widget(
-            Paragraph::new(table_line(
-                "PID",
-                "Process",
-                "Handles",
-                "Matched path",
-                width,
-            ))
-            .style(
-                normal
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            ),
+            Paragraph::new(super::process_info_dialog::table_header(
+                Line::raw(table_line(
+                    "PID",
+                    "Process",
+                    "Handles",
+                    "Matched path",
+                    width,
+                )),
+                view.focus == FileUsersFocus::Results
+                    && !app.show_process_info_dialog
+                    && !app.show_help
+                    && app.context_menu.is_none(),
+                theme,
+            )),
             content.header,
         );
         if view.report.matches.is_empty() {

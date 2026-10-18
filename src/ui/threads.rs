@@ -1,5 +1,5 @@
 use crate::{App, app::AppActivity};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 pub(crate) fn lines(app: &App) -> Vec<Line<'static>> {
     if app.activity() == AppActivity::LogView {
         return vec![Line::raw(
@@ -21,10 +21,17 @@ pub(crate) fn lines(app: &App) -> Vec<Line<'static>> {
             "No thread capture.".into()
         }),
         Line::raw("Ideal CPU is a preference, not current CPU or affinity."),
-        Line::raw(format!(
-            "{:>8} {:>12} {:>8} {:>10}  Name",
-            "TID", "CPU time (s)", "Base pri", "Ideal CPU"
-        )),
+        super::process_info_dialog::table_header(
+            Line::from(vec![
+                Span::raw("     TID"),
+                Span::raw(format!(
+                    " {:>12} {:>8} {:>10}  Name",
+                    "CPU time (s)", "Base pri", "Ideal CPU"
+                )),
+            ]),
+            super::process_info_dialog::table_has_focus(app),
+            app.theme(),
+        ),
     ];
     if let Some(report) = &app.threads.report {
         lines.extend(report.rows.iter().map(|row| {

@@ -196,7 +196,10 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         Style::default().fg(theme.text),
     )));
     lines.push(Line::from(vec![
-        Span::styled("Filter: ", Style::default().fg(theme.muted)),
+        Span::styled(
+            "Filter: ",
+            super::process_info_dialog::filter_label_style(app, theme),
+        ),
         Span::styled(
             filter_input_text(app, width),
             Style::default().fg(theme.text),
@@ -236,7 +239,11 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
             Style::default().fg(theme.muted),
         )));
     } else {
-        lines.push(open_files_table_header(theme, width));
+        lines.push(super::process_info_dialog::table_header(
+            open_files_table_header(theme, width),
+            super::process_info_dialog::table_has_focus(app),
+            theme,
+        ));
         for (index, entry) in entries.into_iter().enumerate() {
             lines.extend(open_files_table_rows(
                 entry,

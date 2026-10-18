@@ -42,6 +42,49 @@ pub(crate) struct ProcessInfoDialogLayout {
     pub(crate) footer: Rect,
 }
 
+pub(crate) fn table_has_focus(app: &App) -> bool {
+    app.process_info_focus == ProcessInfoFocus::Content
+        && !app.process_info_filter_editing
+        && !(app.process_info_tab == ProcessInfoTab::Network && app.process_network.editing)
+        && !app.show_help
+        && app.file_action.is_none()
+        && app.context_menu.is_none()
+}
+
+pub(crate) fn table_header(mut line: Line<'static>, focused: bool, theme: Theme) -> Line<'static> {
+    let style = Style::default()
+        .fg(if focused {
+            theme.focus_border
+        } else {
+            theme.text
+        })
+        .add_modifier(Modifier::UNDERLINED)
+        .add_modifier(if focused {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        });
+    for span in &mut line.spans {
+        span.style = style;
+    }
+    line.style = style;
+    line
+}
+
+pub(crate) fn filter_label_style(app: &App, theme: Theme) -> Style {
+    if app.process_info_focus == ProcessInfoFocus::Content
+        && app.process_info_filter_editing
+        && app.file_action.is_none()
+        && app.context_menu.is_none()
+    {
+        Style::default()
+            .fg(theme.focus_border)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted)
+    }
+}
+
 pub(crate) fn draw_process_info_dialog(
     frame: &mut ratatui::Frame<'_>,
     screen: Rect,

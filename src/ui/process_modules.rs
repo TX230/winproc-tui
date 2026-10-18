@@ -166,7 +166,10 @@ fn process_module_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'stat
         Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
     ))];
     lines.push(Line::from(vec![
-        Span::styled("Filter: ", Style::default().fg(theme.muted)),
+        Span::styled(
+            "Filter: ",
+            super::process_info_dialog::filter_label_style(app, theme),
+        ),
         Span::styled(
             filter_input_text(app, width),
             Style::default().fg(theme.text),
@@ -191,7 +194,11 @@ fn process_module_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'stat
         return lines;
     }
 
-    lines.push(path_header(width, theme));
+    lines.push(super::process_info_dialog::table_header(
+        path_header(width, theme),
+        super::process_info_dialog::table_has_focus(app),
+        theme,
+    ));
     for (index, entry) in entries.iter().enumerate() {
         lines.push(path_row(
             entry,

@@ -504,3 +504,32 @@ fn file_users_has_only_query_and_results_controls() {
     assert!(super::support::find_text_position(&buffer, "Mode:").is_none());
     assert!(requests.try_recv().is_err());
 }
+
+#[test]
+fn file_user_query_and_results_use_matching_focus_colors() {
+    use ratatui::style::Modifier;
+    for width in [65, 140] {
+        let mut app = make_test_app(1, 10);
+        app.open_file_users();
+        for focus in [FileUsersFocus::Query, FileUsersFocus::Results] {
+            app.file_users.focus = focus;
+            let buffer = render_app_to_buffer(&app, width, 40);
+            for (label, active) in [
+                ("Query:", focus == FileUsersFocus::Query),
+                ("PID", focus == FileUsersFocus::Results),
+            ] {
+                let xy = super::support::find_text_position(&buffer, label).unwrap();
+                let cell = &buffer[xy];
+                assert_eq!(
+                    cell.fg,
+                    if active {
+                        app.theme().focus_border
+                    } else {
+                        app.theme().text
+                    }
+                );
+                assert_eq!(cell.modifier.contains(Modifier::BOLD), active);
+            }
+        }
+    }
+}

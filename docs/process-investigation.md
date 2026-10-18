@@ -141,7 +141,7 @@ One previous mask is retained independently of priority restoration. Explicit re
 
 The dialog's tab, content, detail, and scrollbar hit regions are derived from the same responsive layout used for drawing. Clicking outside the modal neither dismisses it nor operates underlying panels.
 
-Passive tabs keep navigation on their content without creating a false focus stop. Interactive tabs separate tab selection from selectable or filterable content. Exact keys and footer guidance remain owned by the in-app Help, dialog implementation, and rendering tests.
+Passive tabs keep navigation on their content without creating a false focus stop. Interactive tabs separate tab selection from selectable or filterable content. Process Info and the global file-user search use the same focus convention. Selectable and scrollable tables distinguish keyboard focus from retained row selection using a shared heading indicator. Filter editing and overlaid actions remove the table focus indication without changing selection; passive Metrics and Image content does not acquire a table focus indicator. Exact keys and footer guidance remain owned by the in-app Help, dialog implementation, and rendering tests.
 
 ## Invariants
 

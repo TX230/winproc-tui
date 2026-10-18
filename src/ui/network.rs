@@ -225,7 +225,14 @@ fn draw_content(
     let filter_active = focused && view.editing;
     frame.render_widget(
         Paragraph::new(format!("Filter: {filter_text}")).style(if filter_active {
-            normal.bg(theme.focus_surface)
+            if std::ptr::eq(view, &app.process_network) {
+                normal
+                    .bg(theme.focus_surface)
+                    .fg(theme.focus_border)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                normal.bg(theme.focus_surface)
+            }
         } else {
             normal
         }),
@@ -281,20 +288,31 @@ fn draw_content(
     );
     let width = layout.rows.width.saturating_sub(1);
     let columns = table_columns(&entries, width);
+    let process_tab = std::ptr::eq(view, &app.process_network);
     frame.render_widget(
-        Paragraph::new(table_line(
-            &[
-                "Proto",
-                "Local address:port",
-                "Remote address:port",
-                "State",
-                "PID",
-                "Process",
-            ],
-            &columns,
-            width,
-        ))
-        .style(normal.fg(theme.muted).add_modifier(Modifier::BOLD)),
+        Paragraph::new({
+            let text = table_line(
+                &[
+                    "Proto",
+                    "Local address:port",
+                    "Remote address:port",
+                    "State",
+                    "PID",
+                    "Process",
+                ],
+                &columns,
+                width,
+            );
+            if process_tab {
+                super::process_info_dialog::table_header(
+                    Line::raw(text),
+                    super::process_info_dialog::table_has_focus(app),
+                    theme,
+                )
+            } else {
+                Line::raw(text).style(normal.fg(theme.muted).add_modifier(Modifier::BOLD))
+            }
+        }),
         layout.header,
     );
     let offset = view.scroll.offset.min(

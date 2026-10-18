@@ -1762,3 +1762,77 @@ fn inspection_filter_and_table_are_distinct_focus_stops() {
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
     }
 }
+
+#[test]
+fn inspection_table_focus_headings_are_consistent_without_moving_columns() {
+    use super::support::{test_open_files_report, test_process_environment_report};
+    for width in [65, 140] {
+        for theme in 0..crate::ui::theme::THEMES.len() {
+            for (tab, heading) in [
+                (app::ProcessInfoTab::Files, "Handle"),
+                (app::ProcessInfoTab::Dlls, "DLL path"),
+                (app::ProcessInfoTab::Environment, "Name"),
+                (app::ProcessInfoTab::Network, "Proto"),
+                (app::ProcessInfoTab::Threads, "TID"),
+            ] {
+                let mut app = make_test_app(1, 10);
+                app.open_selected_process_info_dialog().unwrap();
+                app.theme_index = theme;
+                app.process_info_tab = tab;
+                app.open_files_result = Some(test_open_files_report("proc-0", 0, "focus.bin"));
+                app.process_modules_result = Some(test_process_modules_report(
+                    "proc-0",
+                    0,
+                    vec![test_process_module_entry("focus.dll", "Test")],
+                ));
+                app.process_environment_result = Some(test_process_environment_report(
+                    "proc-0",
+                    0,
+                    vec![crate::model::ProcessEnvironmentEntry {
+                        name: "FOCUS".into(),
+                        value: "value".into(),
+                    }],
+                ));
+                let mut position = None;
+                for (focus, editing, active) in [
+                    (app::ProcessInfoFocus::Tabs, false, false),
+                    (app::ProcessInfoFocus::Content, false, true),
+                    (app::ProcessInfoFocus::Content, true, false),
+                ] {
+                    if editing && tab == app::ProcessInfoTab::Threads {
+                        continue;
+                    }
+                    app.process_info_focus = focus;
+                    app.process_info_filter_editing = editing;
+                    app.process_network.editing = editing && tab == app::ProcessInfoTab::Network;
+                    let buffer = render_app_to_buffer(&app, width, 40);
+                    let xy = find_text_position(&buffer, heading).expect(heading);
+                    if let Some(old) = position {
+                        assert_eq!(xy, old);
+                    }
+                    position = Some(xy);
+                    let cell = &buffer[xy];
+                    assert_eq!(
+                        cell.fg,
+                        if active {
+                            app.theme().focus_border
+                        } else {
+                            app.theme().text
+                        },
+                        "{tab:?}"
+                    );
+                    assert_eq!(cell.modifier.contains(Modifier::BOLD), active, "{tab:?}");
+                }
+                app.process_info_focus = app::ProcessInfoFocus::Content;
+                app.process_info_filter_editing = false;
+                app.process_network.editing = true;
+                assert_eq!(
+                    ui::process_info_dialog::table_has_focus(&app),
+                    tab != app::ProcessInfoTab::Network
+                );
+                app.show_help = true;
+                assert!(!ui::process_info_dialog::table_has_focus(&app));
+            }
+        }
+    }
+}

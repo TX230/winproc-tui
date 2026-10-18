@@ -171,7 +171,10 @@ fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>
         Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
     ))];
     lines.push(Line::from(vec![
-        Span::styled("Filter: ", Style::default().fg(theme.muted)),
+        Span::styled(
+            "Filter: ",
+            super::process_info_dialog::filter_label_style(app, theme),
+        ),
         Span::styled(
             filter_input_text(app, width),
             Style::default().fg(theme.text),
@@ -206,11 +209,15 @@ fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>
     let header = Style::default()
         .fg(theme.accent)
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
-    lines.push(Line::from(vec![
-        Span::styled(fit_cell("Name", name_width), header),
-        Span::raw(" "),
-        Span::styled(fit_cell("Value", value_width), header),
-    ]));
+    lines.push(super::process_info_dialog::table_header(
+        Line::from(vec![
+            Span::styled(fit_cell("Name", name_width), header),
+            Span::raw(" "),
+            Span::styled(fit_cell("Value", value_width), header),
+        ]),
+        super::process_info_dialog::table_has_focus(app),
+        theme,
+    ));
     for (index, entry) in entries.iter().enumerate() {
         let style =
             Style::default()

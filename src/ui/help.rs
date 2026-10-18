@@ -323,6 +323,10 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Refresh Info tab",
     },
     HelpItem {
+        key: "Table / Filter focus",
+        label: "Accent bold heading/label means focus; row highlight retains selection",
+    },
+    HelpItem {
         key: "Type (Files)",
         label: "Filter full paths; one row per handle",
     },
