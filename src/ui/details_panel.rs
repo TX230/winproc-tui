@@ -85,14 +85,15 @@ pub(crate) fn draw_details_panel(
     let layout = graph_workspace_layout(area, app);
     draw_graph_shared_controls(frame, layout.controls, app, layout.columns, theme);
     let graph_focused = app.panel_has_focus(FocusedPanel::DetailsGraph);
-    frame.render_widget(
-        graph_workspace_block(
-            graph_workspace_title(app, theme, graph_focused, layout.span_controls),
-            theme,
-            graph_focused,
-        ),
-        layout.graph_slots,
+    let mut block = graph_workspace_block(
+        graph_workspace_title(app, theme, graph_focused, layout.span_controls),
+        theme,
+        graph_focused,
     );
+    if app.show_samples_panel && layout.samples.is_none() {
+        block = block.title_bottom(" Samples hidden: enlarge terminal ");
+    }
+    frame.render_widget(block, layout.graph_slots);
 
     let bounds = graph_bounds(
         app.effective_graph_time_span_seconds(),
@@ -165,7 +166,6 @@ pub(crate) fn draw_details_panel(
             theme,
             common_y_label_width,
             selected_sample_time,
-            layout.compact,
         );
     }
     render_graph_workspace_scrollbar(frame, &layout, app.graph_scroll_row, graph_focused, theme);
@@ -291,7 +291,6 @@ fn render_graph_card(
     theme: Theme,
     y_label_width: usize,
     selected_sample_time: Option<DateTime<Local>>,
-    compact: bool,
 ) {
     let active = app.active_graph_id == Some(card.id);
     // Comparison values get their own border row so a long target cannot clip digits.
@@ -323,9 +322,9 @@ fn render_graph_card(
     let inner = block.inner(card.area);
     frame.render_widget(block, card.area);
 
-    if compact || inner.height < 8 || inner.width < 30 {
+    if inner.height < 5 || inner.width < 30 {
         let lines = vec![Line::from(Span::styled(
-            "Resize terminal to view Graph",
+            "Enlarge terminal to view Graph",
             Style::default().fg(theme.muted),
         ))];
         frame.render_widget(
@@ -984,10 +983,16 @@ fn draw_graph_shared_controls(
     theme: Theme,
 ) {
     let controls = graph_shared_control_areas(area, app.show_samples_panel);
-    render_graph_toggle(
+    render_graph_toggle_mark(
         frame,
         controls.samples,
-        app.show_samples_panel,
+        if app.show_samples_panel && app.samples_temporarily_collapsed {
+            "[~]"
+        } else if app.show_samples_panel {
+            "[x]"
+        } else {
+            "[ ]"
+        },
         "v",
         "Samples",
         theme,
@@ -1089,11 +1094,32 @@ fn render_graph_toggle(
     label: &'static str,
     theme: Theme,
 ) {
+    render_graph_toggle_mark(
+        frame,
+        area,
+        if checked { "[x]" } else { "[ ]" },
+        key,
+        label,
+        theme,
+    );
+}
+
+fn render_graph_toggle_mark(
+    frame: &mut ratatui::Frame<'_>,
+    area: Option<Rect>,
+    mark: &'static str,
+    key: &'static str,
+    label: &'static str,
+    theme: Theme,
+) {
     let Some(toggle_area) = area else {
         return;
     };
-    let mark = if checked { "[x]" } else { "[ ]" };
-    let mark_color = if checked { theme.accent } else { theme.muted };
+    let mark_color = if mark == "[x]" {
+        theme.accent
+    } else {
+        theme.muted
+    };
     let toggle = Paragraph::new(Line::from(vec![
         Span::styled(mark, Style::default().fg(mark_color).bg(theme.panel)),
         Span::raw(" "),

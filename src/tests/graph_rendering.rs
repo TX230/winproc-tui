@@ -784,7 +784,7 @@ fn graph_fit_all_disables_zoom_out_and_zoom_in_uses_visible_span() {
 }
 
 #[test]
-fn compact_workspace_keeps_process_row_panel_title_remove_and_resize_message() {
+fn compact_workspace_keeps_process_row_panel_title_remove_and_content() {
     let mut app = make_test_app(3, 10);
     add_test_graph(&mut app, 0);
     app.show_samples_panel = false;
@@ -806,10 +806,7 @@ fn compact_workspace_keeps_process_row_panel_title_remove_and_resize_message() {
     );
     assert!(rendered.contains("Slot#1"), "{rendered}");
     assert!(rendered.contains("[x]"), "{rendered}");
-    assert!(
-        rendered.contains("Resize terminal to view Graph"),
-        "{rendered}"
-    );
+    assert!(rendered.contains("No samples available"), "{rendered}");
 }
 
 #[test]
@@ -2207,4 +2204,148 @@ fn graph_state_text_stays_readable_in_every_appearance() {
             }
         }
     }
+}
+
+#[test]
+fn compact_workspace_renders_data_and_restores_samples_and_shared_state() {
+    let mut app = make_test_app(30, 10);
+    assign_private_graph(&mut app);
+    let base = Local.with_ymd_and_hms(2026, 9, 17, 10, 0, 0).unwrap();
+    for seconds in 0..20 {
+        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.processes[0].private_bytes = Some(540_426_240 + seconds as u64);
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.system_history.record_snapshot(&app.snapshot);
+    }
+    app.select_details_sample_latest();
+    let id = app.active_graph_id;
+    app.show_samples_panel = true;
+    let small = Rect::new(0, 0, 80, 24);
+    app::sync_layout_state(&mut app, small);
+    let layout = ui::layout::graph_workspace_layout(
+        main_panel_areas_for_app(small, &app).details.unwrap(),
+        &app,
+    );
+    assert!(layout.samples.is_some());
+    assert!(layout.compact);
+    let rendered = render_app_to_text(&app, 80, 24);
+    assert!(rendered.contains("540,426,259 B"), "{rendered}");
+    assert!(rendered.contains("SAMPLES"), "{rendered}");
+    assert!(!rendered.contains("Enlarge terminal"), "{rendered}");
+    let chart = ui::layout::details_graph_chart_area(layout.graph_cards[0].plot, 10).unwrap();
+    assert!(chart.height >= 2);
+    // Plot mouse input uses the same compact geometry as drawing.
+    app.on_mouse(left_click(chart.right() - 1, chart.y), small);
+    assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+    assert_eq!(app.active_graph_id, id);
+    app.set_ab_point_a();
+    app.select_details_sample_oldest();
+    app.set_ab_point_b();
+    let selected = app.selected_details_sample_time();
+    let comparison = app.ab_comparison.clone();
+    let offset = app.graph_time_offset_seconds;
+    app.focused_panel = FocusedPanel::DetailsSamples;
+    for screen in [
+        small,
+        Rect::new(0, 0, 120, 32),
+        Rect::new(0, 0, 180, 50),
+        small,
+        Rect::new(0, 0, 180, 50),
+    ] {
+        app::sync_layout_state(&mut app, screen);
+        assert_eq!(app.active_graph_id, id);
+        assert_eq!(app.selected_details_sample_time(), selected);
+        assert_eq!(app.ab_comparison, comparison);
+        assert_eq!(app.graph_time_offset_seconds, offset);
+        assert!(app.show_samples_panel);
+        let text = render_app_to_text(&app, screen.width, screen.height);
+        if screen == small {
+            assert!(app.samples_temporarily_collapsed);
+            assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
+            assert!(text.contains("[~] v: Samples"), "{text}");
+            let (key_x, key_y) =
+                find_text_position(&render_app_to_buffer(&app, 80, 24), "v: Samples").unwrap();
+            assert_eq!(
+                render_app_to_buffer(&app, 80, 24)[(key_x, key_y)].fg,
+                app.theme().key_hint
+            );
+            assert!(text.contains("Samples hidden: enlarge terminal"), "{text}");
+            // Hidden Samples must not move the drawn layout control's hit target.
+            let buffer = render_app_to_buffer(&app, 80, 24);
+            let (x, y) = find_text_position(&buffer, "l: Auto").unwrap();
+            app.on_mouse(left_click(x, y), screen);
+            assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
+            app.graph_slot_layout = GraphSlotLayout::Auto;
+        } else {
+            assert!(app.effective_show_samples_panel());
+            assert!(text.contains("SAMPLES"), "{text}");
+            assert!(!text.contains("Samples hidden"), "{text}");
+        }
+    }
+}
+
+#[test]
+fn compact_manual_split_and_multiple_graph_navigation_preserve_time() {
+    let mut app = make_test_app(30, 10);
+    for seconds in 0..20 {
+        app.snapshot.captured_at += chrono::Duration::seconds(1);
+        for row in &mut app.snapshot.processes {
+            row.private_bytes = Some(1_000 + seconds);
+        }
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        app.system_history.record_snapshot(&app.snapshot);
+    }
+    for index in 0..3 {
+        app.add_or_reveal_graph_source(
+            GraphSlot::process(
+                ProcessIdentity::from_row(&app.snapshot.processes[index]),
+                DetailsMetric::Private,
+            ),
+            FocusedPanel::Processes,
+        );
+    }
+    app.select_details_sample_latest();
+    app.select_details_sample_older(1);
+    app.set_ab_point_a();
+    let selected = app.selected_details_sample_time();
+    let comparison = app.ab_comparison.clone();
+    let preference = app::ProcessPanelHeight::Manual(30);
+    app.process_panel_height = preference;
+    app.focused_panel = FocusedPanel::DetailsGraph;
+    let screen = Rect::new(0, 0, 80, 24);
+    app::sync_layout_state(&mut app, screen);
+    assert!(main_panel_areas_for_app(screen, &app).processes.page_size >= 1);
+    for key in [KeyCode::Up, KeyCode::Up, KeyCode::Down, KeyCode::Down] {
+        app.on_key(KeyEvent::new(key, KeyModifiers::NONE)).unwrap();
+        app::sync_layout_state(&mut app, screen);
+        let layout = ui::layout::graph_workspace_layout(
+            main_panel_areas_for_app(screen, &app).details.unwrap(),
+            &app,
+        );
+        assert_eq!(layout.graph_cards.len(), 1);
+        assert_eq!(Some(layout.graph_cards[0].id), app.active_graph_id);
+        assert_eq!(app.selected_details_sample_time(), selected);
+        assert_eq!(app.ab_comparison, comparison);
+        assert_eq!(app.process_panel_height, preference);
+    }
+    app::sync_layout_state(&mut app, Rect::new(0, 0, 180, 70));
+    assert_eq!(
+        main_panel_areas_for_app(app.last_screen_area, &app)
+            .processes
+            .body_capacity,
+        30
+    );
+    app.graph_entries.clear();
+    app::sync_layout_state(&mut app, screen);
+    let text = render_app_to_text(&app, 80, 24);
+    assert!(text.contains("No graph metrics selected"), "{text}");
+    assert!(!text.contains("enlarge terminal"), "{text}");
 }

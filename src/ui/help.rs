@@ -594,6 +594,14 @@ const GRAPH_ROWS: &[HelpItem] = &[
         key: "v/d/l",
         label: "Samples / Delta / layout",
     },
+    HelpItem {
+        key: "Compact workspace",
+        label: "Short terminals show the active Graph; select other Graphs with ↑/↓.",
+    },
+    HelpItem {
+        key: "[~] Samples",
+        label: "Enabled but temporarily hidden. Enlarge terminal to restore; View explains other causes.",
+    },
 ];
 
 const SAMPLES_ROWS: &[HelpItem] = &[

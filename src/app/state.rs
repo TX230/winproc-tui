@@ -2661,8 +2661,13 @@ impl App {
         }
 
         self.show_samples_panel = true;
-        self.status = "Samples panel shown".to_string();
         self.sync_graph_layout_visibility();
+        self.status = if self.samples_temporarily_collapsed {
+            "Samples enabled but hidden: show Graphs/add a metric, or enlarge terminal"
+        } else {
+            "Samples panel shown"
+        }
+        .to_string();
         self.reveal_active_graph();
     }
 
@@ -6684,10 +6689,22 @@ impl App {
             MainMenuItem::Action(MainMenuAction::ToggleGraphs) => {
                 format!("[{}] Graphs", if self.show_details { 'x' } else { ' ' })
             }
-            MainMenuItem::Action(MainMenuAction::ToggleSamples) => format!(
-                "[{}] Samples",
-                if self.show_samples_panel { 'x' } else { ' ' }
-            ),
+            MainMenuItem::Action(MainMenuAction::ToggleSamples) => {
+                if self.show_samples_panel && self.samples_temporarily_collapsed {
+                    if !self.show_details {
+                        "[~] Samples (hidden: show Graphs)".to_string()
+                    } else if self.graph_entries.is_empty() {
+                        "[~] Samples (hidden: add a Graph)".to_string()
+                    } else {
+                        "[~] Samples (hidden: enlarge terminal)".to_string()
+                    }
+                } else {
+                    format!(
+                        "[{}] Samples",
+                        if self.show_samples_panel { 'x' } else { ' ' }
+                    )
+                }
+            }
             MainMenuItem::Action(MainMenuAction::ToggleDelta) => {
                 format!("[{}] Delta", if self.show_sample_delta { 'x' } else { ' ' })
             }

@@ -3624,7 +3624,7 @@ fn graph_shared_control_areas_for_app(
     let controls = graph_workspace_layout_for_app(app, screen_area)
         .map(|layout| layout.controls)
         .unwrap_or_default();
-    graph_shared_control_areas(controls, app.effective_show_samples_panel())
+    graph_shared_control_areas(controls, app.show_samples_panel)
 }
 
 fn details_sample_page_size_for_samples_area(

@@ -32,7 +32,7 @@ const DETAILS_SAMPLES_MIN_HEIGHT: u16 = 8;
 const DETAILS_SAMPLES_FRAME_HEIGHT: u16 = 2;
 const DETAILS_SAMPLES_MIN_ROW_HEIGHT: u16 = 1;
 const GRAPH_WORKSPACE_INSET_SIZE: u16 = 2;
-const GRAPH_WORKSPACE_MIN_HEIGHT: u16 = 5;
+const GRAPH_WORKSPACE_MIN_HEIGHT: u16 = 10;
 const PROCESS_TABLE_CHROME_HEIGHT: u16 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,7 +378,13 @@ fn graph_workspace_content_areas(
     let samples_min_height = details_samples_min_height(summary_visibility);
     let divider_width = 1;
     let available_width = content.width.saturating_sub(divider_width);
-    let graph_slots_min_width = GRAPH_SLOT_MIN_WIDTH.saturating_add(GRAPH_WORKSPACE_INSET_SIZE);
+    // A narrow single active card still has room for exact cursor values and axes.
+    let card_min_width = if content.width < GRAPH_SLOT_MIN_WIDTH + DETAILS_SAMPLES_MIN_WIDTH + 3 {
+        40
+    } else {
+        GRAPH_SLOT_MIN_WIDTH
+    };
+    let graph_slots_min_width = card_min_width.saturating_add(GRAPH_WORKSPACE_INSET_SIZE);
     let samples_width =
         samples_max_width.min(available_width.saturating_sub(graph_slots_min_width));
     if content.height >= samples_min_height && samples_width >= DETAILS_SAMPLES_MIN_WIDTH {
@@ -545,7 +551,7 @@ pub(crate) fn details_graph_rows(area: Rect) -> std::rc::Rc<[Rect]> {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
-            Constraint::Min(8),
+            Constraint::Min(if area.height < 10 { 3 } else { 8 }),
             Constraint::Length(1),
         ])
         .split(area)
