@@ -215,7 +215,6 @@ fn shortcut(row: MainMenuRow) -> &'static str {
         MainMenuAction::ExportGraphsCsv => "Ctrl+E",
         MainMenuAction::OpenProfiles => "Ctrl+T",
         MainMenuAction::SaveProfile => "Ctrl+S",
-        MainMenuAction::SaveProfileAs => "Ctrl+Shift+S",
         MainMenuAction::OpenColumns => "c (Processes)",
         MainMenuAction::ToggleTrackedOnly => "Shift+T",
         MainMenuAction::ToggleTreeView => "v (Processes)",

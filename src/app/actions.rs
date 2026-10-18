@@ -140,9 +140,7 @@ impl App {
         if let Some(view) = self.investigation_profiles_view().cloned() {
             match view {
                 InvestigationProfilesView::Browse => match key.code {
-                    KeyCode::Char('s') if key.modifiers == KeyModifiers::CONTROL => {
-                        self.begin_save_investigation_profile_as()
-                    }
+                    _ if is_ctrl_s(key) => self.save_active_investigation_profile(),
                     KeyCode::Esc => self.close_investigation_profiles(),
                     KeyCode::Enter => self.load_selected_investigation_profile(),
                     KeyCode::Delete => self.request_delete_selected_investigation_profile(),
@@ -3657,8 +3655,7 @@ fn is_ctrl_t(key: KeyEvent) -> bool {
 
 fn is_ctrl_s(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'s'))
-        && key.modifiers.contains(KeyModifiers::CONTROL)
-        && !key.modifiers.contains(KeyModifiers::ALT)
+        && key.modifiers == KeyModifiers::CONTROL
 }
 
 fn is_shift_t(key: KeyEvent) -> bool {

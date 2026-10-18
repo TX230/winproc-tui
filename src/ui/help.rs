@@ -476,8 +476,8 @@ const TRACKING_ROWS: &[HelpItem] = &[
         label: "Start empty each time the app starts",
     },
     HelpItem {
-        key: "Ctrl+S (Profiles)",
-        label: "Save the current tracking list as a new profile",
+        key: "Investigation menu",
+        label: "Save profile as creates a new named profile (Live only)",
     },
     HelpItem {
         key: "t",

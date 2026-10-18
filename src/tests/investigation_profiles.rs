@@ -775,7 +775,7 @@ fn empty_profile_browser_has_a_save_route_and_explicit_scope() {
     let mut app = make_test_app(1, 10);
     app.open_investigation_profiles();
     let rendered = render_app_to_text(&app, 120, 60);
-    assert!(rendered.contains("Ctrl+S Save As"));
+    assert!(rendered.contains("Ctrl+S Save"));
     assert!(rendered.contains("Profiles do not include app settings or Graphs"));
     app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL))
         .unwrap();
@@ -914,4 +914,122 @@ fn profile_browser_selection_uses_process_theme_surface_across_all_themes() {
             }
         }
     }
+}
+
+#[test]
+fn save_shortcut_has_the_same_target_inside_profile_browser() {
+    for browse in [false, true] {
+        for bound in [false, true] {
+            let mut app = make_test_app(1, 10);
+            app.runtime.saved_investigation_profiles = vec![profile("Original"), profile("Other")];
+            if bound {
+                app.active_investigation_profile = Some("Original".into());
+            }
+            app.watch_list = vec!["changed.exe".into()];
+            if browse {
+                app.open_investigation_profiles();
+                app.select_investigation_profile_index(1);
+            }
+            app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL))
+                .unwrap();
+            assert_eq!(
+                app.runtime.saved_investigation_profiles[1].tracked_names,
+                ["proc-0"]
+            );
+            if bound {
+                assert_eq!(
+                    app.runtime.saved_investigation_profiles[0].tracked_names,
+                    ["changed.exe"]
+                );
+                assert!(!matches!(
+                    app.investigation_profiles_view(),
+                    Some(InvestigationProfilesView::NameInput { .. })
+                ));
+            } else {
+                assert!(matches!(
+                    app.investigation_profiles_view(),
+                    Some(InvestigationProfilesView::NameInput { .. })
+                ));
+                assert_eq!(
+                    app.runtime.saved_investigation_profiles[0].tracked_names,
+                    ["proc-0"]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn decoded_save_keys_with_extra_modifiers_never_save() {
+    for browse in [false, true] {
+        for bound in [false, true] {
+            for extra in [
+                KeyModifiers::SHIFT,
+                KeyModifiers::ALT,
+                KeyModifiers::SUPER,
+                KeyModifiers::HYPER,
+                KeyModifiers::META,
+            ] {
+                for ch in ['s', 'S'] {
+                    let mut app = make_test_app(1, 10);
+                    app.runtime.saved_investigation_profiles = vec![profile("Original")];
+                    if bound {
+                        app.active_investigation_profile = Some("Original".into());
+                    }
+                    app.watch_list = vec!["changed.exe".into()];
+                    if browse {
+                        app.open_investigation_profiles();
+                    }
+                    app.on_key(KeyEvent::new(
+                        KeyCode::Char(ch),
+                        KeyModifiers::CONTROL | extra,
+                    ))
+                    .unwrap();
+                    assert_eq!(app.runtime.saved_investigation_profiles.len(), 1);
+                    assert_eq!(
+                        app.runtime.saved_investigation_profiles[0].tracked_names,
+                        ["proc-0"]
+                    );
+                    assert!(!matches!(
+                        app.investigation_profiles_view(),
+                        Some(InvestigationProfilesView::NameInput { .. })
+                    ));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn menu_save_as_creates_a_separate_profile_without_overwriting_original() {
+    use crate::app::state::{MainMenuAction, MainMenuItem, MainMenuSection};
+    let mut app = make_test_app(1, 10);
+    app.runtime.saved_investigation_profiles = vec![profile("Original")];
+    app.active_investigation_profile = Some("Original".into());
+    app.watch_list = vec!["changed.exe".into()];
+    app.open_main_menu_section(MainMenuSection::Investigation);
+    let index = app
+        .main_menu_rows()
+        .iter()
+        .position(|row| row.item == MainMenuItem::Action(MainMenuAction::SaveProfileAs))
+        .unwrap();
+    app.activate_main_menu_at(index).unwrap();
+    assert!(matches!(
+        app.investigation_profiles_view(),
+        Some(InvestigationProfilesView::NameInput { .. })
+    ));
+    for ch in "Copy".chars() {
+        app.push_investigation_profile_name_char(ch);
+    }
+    app.commit_investigation_profile_name_input();
+    assert_eq!(app.runtime.saved_investigation_profiles.len(), 2);
+    assert_eq!(
+        app.runtime.saved_investigation_profiles[0].tracked_names,
+        ["proc-0"]
+    );
+    assert_eq!(
+        app.runtime.saved_investigation_profiles[1].tracked_names,
+        ["changed.exe"]
+    );
+    assert_eq!(app.active_investigation_profile.as_deref(), Some("Copy"));
 }

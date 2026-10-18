@@ -522,7 +522,7 @@ fn dialog_shortcut_guidance_is_separated_from_content_by_a_blank_row() {
     cases.push((
         "investigation-profiles",
         render_app_to_buffer(&profiles, screen.width, screen.height),
-        "Ctrl+S Save As  Esc Close",
+        "Ctrl+S Save  Esc Close",
     ));
 
     let mut recording = make_test_app(3, 10);

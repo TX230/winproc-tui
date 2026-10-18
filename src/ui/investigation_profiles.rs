@@ -198,7 +198,7 @@ fn draw_browse(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: The
         shortcuts.push(("Delete", "Delete"));
     }
     if app.activity() == AppActivity::Live {
-        shortcuts.push(("Ctrl+S", "Save As"));
+        shortcuts.push(("Ctrl+S", "Save"));
     }
     shortcuts.push(("Esc", "Close"));
     crate::ui::footer::register_shortcut_text(

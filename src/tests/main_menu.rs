@@ -473,8 +473,9 @@ fn menu_shortcuts_align_and_preserve_semantic_colors_and_hover() {
         app.main_menu_selected = 2;
         let buffer = render_app_to_buffer(&app, 120, 60);
         let (x1, y1) = find_text_position(&buffer, "Ctrl+T").unwrap();
-        let (x2, y2) = find_text_position(&buffer, "Ctrl+Shift+S").unwrap();
-        assert_eq!(x1 + 6, x2 + 12);
+        let (x2, y2) = find_text_position(&buffer, "Ctrl+S").unwrap();
+        assert_eq!(x1 + 6, x2 + 6);
+        assert!(find_text_position(&buffer, "Ctrl+Shift+S").is_none());
         assert_eq!(buffer[(x1, y1)].fg, theme.key_hint);
         let row = main_menu_item_area(screen, &app, 1).unwrap();
         app.on_mouse(mouse_move(row.x, row.y), screen);
@@ -924,7 +925,8 @@ fn long_unicode_tracking_name_keeps_shortcuts_visible_and_overflow_target_fixed(
         let buffer = render_app_to_buffer(&app, width, 24);
         let row = main_menu_item_area(screen, &app, 0).unwrap();
         assert!(find_text_position(&buffer, "t (Processes)").is_some());
-        assert!(find_text_position(&buffer, "Ctrl+Shift+S").is_some());
+        assert!(find_text_position(&buffer, "Ctrl+Shift+S").is_none());
+        assert!(find_text_position(&buffer, "Save profile as").is_some());
         assert_eq!(ui::main_menu_index_at(screen, &app, row.x, row.y), Some(0));
         app.select_process_index(0);
     }
