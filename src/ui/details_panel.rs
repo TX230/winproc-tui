@@ -1309,7 +1309,6 @@ struct MovingAverageWindow {
     values: [f64; 5],
     len: usize,
     next: usize,
-    total: f64,
 }
 
 impl MovingAverageWindow {
@@ -1320,15 +1319,16 @@ impl MovingAverageWindow {
         };
         if self.len < self.values.len() {
             self.values[self.len] = value;
-            self.total += value;
             self.len += 1;
         } else {
-            self.total -= self.values[self.next];
             self.values[self.next] = value;
-            self.total += value;
             self.next = (self.next + 1) % self.values.len();
         }
-        (self.len == self.values.len()).then_some(self.total / self.values.len() as f64)
+        // Re-sum the five retained values: subtracting an expired value from a
+        // rolling total leaves cancellation residue after a fractional spike.
+        // In particular, an all-zero window must yield exactly zero.
+        (self.len == self.values.len())
+            .then(|| self.values.iter().sum::<f64>() / self.values.len() as f64)
     }
 }
 
@@ -2781,6 +2781,19 @@ mod tests {
     }
 
     #[test]
+    fn moving_average_drops_fractional_spikes_without_negative_residue() {
+        let mut window = MovingAverageWindow::default();
+        for _ in 0..1000 {
+            for value in [0.1, 0.1, 0.1, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0] {
+                if let Some(mean) = window.update(Some(value)) {
+                    assert!(mean >= 0.0);
+                }
+            }
+            assert_eq!(window.update(Some(0.0)), Some(0.0));
+        }
+    }
+
+    #[test]
     fn moving_average_resets_for_missing_values_and_missing_frames() {
         let base = chrono::Local
             .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
@@ -3755,6 +3768,7 @@ mod tests {
         for height in [6, 8, 9, 10, 16, 24] {
             for (lower, upper, values, metric) in [
                 (0.0, 1.0, [0.0, 0.001, 0.5, 1.0], GraphValueFormat::Percent),
+                (0.0, 1.0, [0.1, 0.1, 0.1, 0.001], GraphValueFormat::Percent),
                 (0.0, 1.0, [0.0; 4], GraphValueFormat::Count),
                 (0.0, 1.0, [0.001; 4], GraphValueFormat::Percent),
                 (
@@ -3773,7 +3787,11 @@ mod tests {
                 let samples = (0..20)
                     .map(|index| GraphSample {
                         captured_at: base + chrono::Duration::seconds(index),
-                        value: Some(values[index as usize % values.len()]),
+                        value: Some(if index < 8 || lower > 0.0 {
+                            values[index as usize % values.len()]
+                        } else {
+                            0.0
+                        }),
                     })
                     .collect::<Vec<_>>();
                 for mode in [GraphDisplayMode::Raw, GraphDisplayMode::MovingAverage5] {
