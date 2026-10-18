@@ -905,3 +905,20 @@ mod tests {
         assert_eq!(wrap_display_width("abcdefghij", 4), ["abcd", "efgh", "ij"]);
     }
 }
+
+pub(crate) fn inspection_filter_area(content: Rect, app: &App) -> Option<Rect> {
+    if app.process_info_detail_is_open() {
+        return None;
+    }
+    if app.process_info_tab == ProcessInfoTab::Network {
+        return Some(super::network::content_layout(content).filter);
+    }
+    if !matches!(
+        app.process_info_tab,
+        ProcessInfoTab::Files | ProcessInfoTab::Dlls | ProcessInfoTab::Environment
+    ) {
+        return None;
+    }
+    let (header, _) = inspection_table_areas(content, inspection_header_rows(app));
+    (header.height > 1).then(|| Rect::new(header.x, header.y + 1, header.width, 1))
+}

@@ -274,7 +274,7 @@ fn network_process_filter_accepts_direct_text_without_intercepting_navigation() 
         press(&mut app, KeyCode::Char(ch));
     }
     assert_eq!(app.process_network.filter, "rarez 映像");
-    assert!(!app.process_network.editing);
+    assert!(app.process_network.editing);
     assert!(app.process_network.all);
     assert!(matches!(requests.try_recv(), Err(TryRecvError::Empty)));
     press(&mut app, KeyCode::Left);
@@ -285,6 +285,10 @@ fn network_process_filter_accepts_direct_text_without_intercepting_navigation() 
     press(&mut app, KeyCode::Backspace);
     assert_eq!(app.process_network.filter, "rare");
     assert_eq!(app.process_network.entries().len(), 3);
+    press(&mut app, KeyCode::Down);
+    assert_eq!(app.process_network.selected, 0);
+    press(&mut app, KeyCode::Tab);
+    assert!(!app.process_network.editing);
     press(&mut app, KeyCode::Down);
     assert_eq!(app.process_network.selected, 1);
     press(&mut app, KeyCode::End);
@@ -332,7 +336,7 @@ fn network_process_filter_click_focuses_direct_input_and_shows_matching_shortcut
     ));
     app.on_mouse(left_click(layout.filter.x, layout.filter.y), screen);
     assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);
-    assert!(!app.process_network.editing);
+    assert!(app.process_network.editing);
     press(&mut app, KeyCode::Char('r'));
     assert_eq!(app.process_network.filter, "r");
     assert!(matches!(requests.try_recv(), Err(TryRecvError::Empty)));
@@ -342,9 +346,9 @@ fn network_process_filter_click_focuses_direct_input_and_shows_matching_shortcut
         app.theme().focus_surface
     );
     let text = render_app_to_text(&app, screen.width, screen.height);
-    assert!(text.contains("Ctrl+U refresh"));
+    assert!(text.contains("Tab/Enter Table"));
     assert!(text.contains("[Alt+A] All endpoints"));
-    assert!(text.contains("/ or Ctrl+F filter"));
+    assert!(!text.contains("Ctrl+U refresh"));
     press(&mut app, KeyCode::Esc);
     assert!(app.show_process_info_dialog);
     assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);

@@ -5187,6 +5187,20 @@ impl App {
     }
 
     pub(crate) fn focus_next_process_info_control(&mut self) {
+        if !self.process_info_detail_is_open()
+            && self.activity() != AppActivity::LogView
+            && matches!(
+                self.process_info_tab,
+                ProcessInfoTab::Files
+                    | ProcessInfoTab::Dlls
+                    | ProcessInfoTab::Environment
+                    | ProcessInfoTab::Network
+            )
+            && self.process_info_focus == ProcessInfoFocus::Tabs
+        {
+            self.on_inspection_filter_key(crossterm::event::KeyCode::Char('/').into());
+            return;
+        }
         if self.process_info_tab == ProcessInfoTab::Scheduling {
             if self.activity() == AppActivity::LogView
                 || self
@@ -5228,6 +5242,20 @@ impl App {
     }
 
     pub(crate) fn focus_previous_process_info_control(&mut self) {
+        if !self.process_info_detail_is_open()
+            && self.activity() != AppActivity::LogView
+            && matches!(
+                self.process_info_tab,
+                ProcessInfoTab::Files
+                    | ProcessInfoTab::Dlls
+                    | ProcessInfoTab::Environment
+                    | ProcessInfoTab::Network
+            )
+            && self.process_info_focus == ProcessInfoFocus::Content
+        {
+            self.on_inspection_filter_key(crossterm::event::KeyCode::Char('/').into());
+            return;
+        }
         if self.process_info_tab == ProcessInfoTab::Scheduling {
             if self.activity() == AppActivity::LogView
                 || self

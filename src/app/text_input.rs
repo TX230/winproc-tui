@@ -11,7 +11,7 @@ pub(crate) const FILTER_SHORTCUTS: &[(&str, &str)] = &[
 ];
 
 pub(crate) const INSPECTION_FILTER_SHORTCUTS: &[(&str, &str)] = &[
-    ("Enter", "Apply"),
+    ("Tab/Enter", "Table"),
     ("Esc", "tabs"),
     ("Ctrl+←/→", "tabs"),
     ("Ctrl+U", "Clear text"),
@@ -126,7 +126,12 @@ impl App {
         if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
             self.process_info_filter_editing = false;
             self.process_network.editing = false;
-            return false;
+            self.process_info_focus = if key.code == KeyCode::BackTab {
+                ProcessInfoFocus::Tabs
+            } else {
+                ProcessInfoFocus::Content
+            };
+            return true;
         }
         let (text, cursor) = match self.process_info_tab {
             ProcessInfoTab::Files => (
@@ -150,8 +155,17 @@ impl App {
         match key.code {
             KeyCode::Enter => self.process_info_filter_editing = false,
             _ => {
+                let before = text.clone();
                 edit(text, cursor, key);
+                if *text == before {
+                    // Cursor movement and unhandled keys must not move table selection.
+                    return true;
+                }
             }
+        }
+        if key.code == KeyCode::Enter {
+            self.process_network.editing = false;
+            return true;
         }
         self.process_network.editing =
             self.process_info_filter_editing && self.process_info_tab == ProcessInfoTab::Network;

@@ -380,11 +380,11 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter / Esc / Tab (filter)",
-        label: "Apply / return to tabs / next control; retain text",
+        label: "Table / tabs / table; retain text",
     },
     HelpItem {
         key: "Home/End, ←/→ (filter)",
-        label: "Move text cursor; Ctrl+U clears text",
+        label: "Move text cursor; Ctrl+U clears text; ↑/↓ keep row",
     },
     HelpItem {
         key: "Type (DLL / Environment)",

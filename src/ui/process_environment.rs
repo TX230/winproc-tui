@@ -358,6 +358,7 @@ fn filter_input_view(value: &str, cursor: usize, width: usize) -> (String, usize
 
 fn set_filter_cursor(area: Rect, app: &App) {
     if app.process_info_focus != ProcessInfoFocus::Content
+        || !app.process_info_filter_editing
         || app.process_environment_show_detail
         || app.process_environment_result.is_none()
     {

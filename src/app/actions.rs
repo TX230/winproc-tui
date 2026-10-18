@@ -2123,6 +2123,28 @@ impl App {
                 self.file_action_mouse(mouse, content);
                 return;
             }
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+                && !tab_click
+                && !self.process_info_detail_is_open()
+                && self.activity() != crate::app::AppActivity::LogView
+            {
+                let content = crate::ui::process_info_content_area_for_screen(
+                    screen_area,
+                    self.process_info_height(),
+                );
+                let filter = crate::ui::process_info_dialog::inspection_filter_area(content, self);
+                if filter.is_some_and(|area| contains_point(area, mouse.column, mouse.row)) {
+                    self.on_inspection_filter_key(KeyEvent::new(
+                        KeyCode::Char('f'),
+                        KeyModifiers::CONTROL,
+                    ));
+                    return;
+                }
+                if contains_point(content, mouse.column, mouse.row) {
+                    self.process_info_filter_editing = false;
+                    self.process_network.editing = false;
+                }
+            }
             if self.process_info_tab == crate::app::ProcessInfoTab::Scheduling
                 && !tab_click
                 && self.scheduling_mouse_selection(mouse, screen_area)

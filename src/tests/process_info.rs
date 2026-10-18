@@ -665,6 +665,9 @@ fn process_info_scrollbar_thumb_follows_content_focus() {
 
     app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
         .unwrap();
+    assert!(app.process_info_filter_editing);
+    app.on_key(KeyCode::Tab.into()).unwrap();
+    assert!(!app.process_info_filter_editing);
     assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
     let content_focused = render_app_to_buffer(&app, screen.width, screen.height);
     assert!(area_contains_foreground(
@@ -1288,7 +1291,7 @@ fn inspection_filter_activation_preserves_text_and_uses_end_from_tabs_and_conten
                 app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
                     .unwrap();
                 assert!(!app.process_info_filter_editing);
-                assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+                assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
             }
         }
     }
@@ -1706,5 +1709,51 @@ fn process_info_keeps_one_rectangle_across_all_tabs_and_focus() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn inspection_filter_and_table_are_distinct_focus_stops() {
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+        app::ProcessInfoTab::Network,
+    ] {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = tab;
+        app.on_key(KeyCode::Tab.into()).unwrap();
+        assert!(app.process_info_filter_editing);
+        app.open_files_selected = 2;
+        app.process_modules_selected = 2;
+        app.process_environment_selected = 2;
+        app.process_network.selected = 2;
+        for key in [
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::PageDown,
+            KeyCode::Left,
+            KeyCode::Home,
+        ] {
+            app.on_key(key.into()).unwrap();
+            assert_eq!(
+                (
+                    app.open_files_selected,
+                    app.process_modules_selected,
+                    app.process_environment_selected,
+                    app.process_network.selected
+                ),
+                (2, 2, 2, 2)
+            );
+        }
+        app.on_key(KeyCode::Tab.into()).unwrap();
+        assert!(!app.process_info_filter_editing);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+        app.on_key(KeyCode::BackTab.into()).unwrap();
+        assert!(app.process_info_filter_editing);
+        app.on_key(KeyCode::BackTab.into()).unwrap();
+        assert!(!app.process_info_filter_editing);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
     }
 }

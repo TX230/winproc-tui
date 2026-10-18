@@ -263,6 +263,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
 
 fn set_open_files_filter_cursor(area: Rect, app: &App) {
     if app.process_info_focus != ProcessInfoFocus::Content
+        || !app.process_info_filter_editing
         || app.open_files_show_detail
         || app.file_action.is_some()
     {

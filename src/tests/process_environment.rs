@@ -181,6 +181,7 @@ fn environment_filter_cursor_and_mouse_rows_match_rendered_layout() {
     ));
     app.process_environment_filter = "o".to_string();
     app.process_environment_filter_cursor = 1;
+    app.process_info_filter_editing = true;
     let screen = Rect::new(0, 0, 160, 45);
     let content = ui::process_info_content_area_for_screen(screen, app.process_info_height());
     let expected_cursor = Position::new(content.x + "Filter: ".len() as u16 + 1, content.y + 1);

@@ -222,7 +222,7 @@ fn draw_content(
     );
     let filter_width = layout.filter.width.saturating_sub(8) as usize;
     let (filter_text, cursor_column) = filter_window(view, filter_width);
-    let filter_active = focused && (view.editing || view.target.is_some());
+    let filter_active = focused && view.editing;
     frame.render_widget(
         Paragraph::new(format!("Filter: {filter_text}")).style(if filter_active {
             normal.bg(theme.focus_surface)
