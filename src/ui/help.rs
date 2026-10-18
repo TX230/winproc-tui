@@ -12,14 +12,13 @@ use crate::{
 
 const COLUMN_SEPARATOR: &str = "  │  ";
 const KEY_LABEL_GAP: usize = 2;
-const FOOTER_HEIGHT: u16 = 1;
 const HELP_SHORTCUT_ITEMS: [(&str, &str); 6] = [
+    ("Esc/Enter/F1/?", "Close"),
     ("s", "Sections"),
     ("←/→", "Section"),
     ("↑/↓", "Scroll"),
     ("PageUp/PageDown", "Page"),
     ("Home/End", "Jump"),
-    ("Esc/Enter/F1/?", "Close"),
 ];
 
 #[derive(Clone, Copy)]
@@ -939,16 +938,14 @@ pub(crate) fn draw_help(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, t
         theme,
     );
     if !layout.footer.is_empty() {
+        let footer = help_footer(theme, layout.footer.width);
         crate::ui::footer::register_shortcut_text(
             app,
             layout.footer,
-            &ratatui::text::Text::from(Line::from(shortcut_spans(&HELP_SHORTCUT_ITEMS, theme))),
+            &footer,
             ratatui::layout::Alignment::Left,
         );
-        frame.render_widget(
-            Paragraph::new(Line::from(shortcut_spans(&HELP_SHORTCUT_ITEMS, theme))),
-            layout.footer,
-        );
+        frame.render_widget(Paragraph::new(footer), layout.footer);
     }
 }
 
@@ -1284,13 +1281,33 @@ fn draw_version_info(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, them
     frame.render_widget(Paragraph::new(footer), layout.footer);
 }
 
+// Keep each key/action group intact so rendering and clickable regions agree.
+// Close comes first, including when the terminal is too short for every row.
+fn help_footer(theme: Theme, width: u16) -> Text<'static> {
+    let mut lines = Vec::new();
+    let mut items = Vec::new();
+    for item in HELP_SHORTCUT_ITEMS {
+        let mut candidate = items.clone();
+        candidate.push(item);
+        if !items.is_empty()
+            && Line::from(shortcut_spans(&candidate, theme)).width() > usize::from(width)
+        {
+            lines.push(Line::from(shortcut_spans(&items, theme)));
+            items.clear();
+        }
+        items.push(item);
+    }
+    lines.push(Line::from(shortcut_spans(&items, theme)));
+    Text::from(lines)
+}
+
 fn help_modal(area: Rect) -> ScrollableModal {
     let width = help_content_width().min(area.width.saturating_sub(4));
     ScrollableModal::new(
         "Keyboard shortcuts",
         width,
         help_lines(crate::ui::THEMES[0], width as usize).len() as u16,
-        FOOTER_HEIGHT,
+        help_footer(crate::ui::THEMES[0], width.saturating_add(2)).height() as u16,
     )
 }
 

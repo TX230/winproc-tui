@@ -1146,7 +1146,7 @@ fn help_enters_the_current_panel_section_at_180_by_60() {
 #[test]
 fn help_sections_share_wrapped_positions_and_picker_cancel_preserves_scroll() {
     let mut app = make_test_app(3, 10);
-    for (width, height) in [(100, 25), (180, 60), (240, 60)] {
+    for (width, height) in [(80, 24), (100, 25), (180, 60), (240, 60)] {
         let screen = Rect::new(0, 0, width, height);
         crate::app::sync_layout_state(&mut app, screen);
         app.open_help();
@@ -1344,5 +1344,71 @@ fn resource_titles_use_readable_panel_colors_at_every_width() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn help_footer_wraps_complete_groups_and_clicks_match_visible_rows() {
+    use super::support::left_click;
+    for (width, height) in [(80, 24), (100, 24), (120, 32), (180, 60)] {
+        let mut app = make_test_app(3, 10);
+        let screen = Rect::new(0, 0, width, height);
+        crate::app::sync_layout_state(&mut app, screen);
+        app.open_help();
+        let buffer = render_app_to_buffer(&app, width, height);
+        let (close_x, close_y) = find_text_position(&buffer, "Esc/Enter/F1/? Close").unwrap();
+        let popup = help_area(screen);
+        for x in popup.x + 1..popup.right() - 1 {
+            assert_eq!(buffer[(x, close_y - 1)].symbol(), " ", "blank footer gap");
+        }
+        assert_eq!(buffer[(close_x, close_y)].fg, app.theme().key_hint);
+        assert_eq!(buffer[(close_x + 14, close_y)].fg, app.theme().text);
+        for group in [
+            "s Sections",
+            "←/→ Section",
+            "↑/↓ Scroll",
+            "PageUp/PageDown Page",
+            "Home/End Jump",
+        ] {
+            let (x, y) = find_text_position(&buffer, group).unwrap();
+            assert!(y >= close_y);
+            let regions = app.shortcut_map.borrow();
+            assert!(
+                regions
+                    .regions
+                    .iter()
+                    .any(|region| region.area.contains((x, y).into())
+                        && region.area.right() <= popup.right() - 1)
+            );
+        }
+        let (x, y) = find_text_position(&buffer, "PageUp/PageDown Page").unwrap();
+        if width == 80 {
+            assert!(y > close_y, "compact guidance must wrap");
+        }
+        app.on_key(KeyCode::End.into()).unwrap();
+        let end = app.help_scroll.offset;
+        render_app_to_buffer(&app, width, height);
+        app.on_mouse(left_click(x, y), screen);
+        assert_eq!(
+            app.help_scroll.offset,
+            end.saturating_sub(app.help_scroll.page_size)
+        );
+        let buffer = render_app_to_buffer(&app, width, height);
+        let (x, y) = find_text_position(&buffer, "Home/End Jump").unwrap();
+        app.on_mouse(left_click(x, y), screen);
+        assert_eq!(app.help_scroll.offset, 0);
+        for key in [
+            KeyCode::Esc,
+            KeyCode::Enter,
+            KeyCode::F(1),
+            KeyCode::Char('?'),
+        ] {
+            app.on_key(key.into()).unwrap();
+            assert!(!app.show_help && !app.show_quit_confirmation);
+            app.open_help();
+        }
+        render_app_to_buffer(&app, width, height);
+        app.on_mouse(left_click(close_x + 14, close_y), screen);
+        assert!(!app.show_help && !app.show_quit_confirmation);
     }
 }
