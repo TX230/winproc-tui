@@ -147,7 +147,7 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
         assert!(!app.open_files_show_detail);
         assert_eq!(app.open_files_selected, 39);
     }
-    for ch in "映像/ r a".chars() {
+    for ch in "映像// r a".chars() {
         app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
             .unwrap();
     }

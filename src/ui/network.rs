@@ -574,6 +574,7 @@ pub(crate) fn shortcuts(
         ]
     } else {
         vec![
+            ("/ or Ctrl+F", "filter"),
             ("Esc", "tabs"),
             ("Ctrl+←/→", "tabs"),
             ("Enter", "details"),

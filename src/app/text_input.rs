@@ -90,19 +90,30 @@ impl App {
         {
             return false;
         }
-        let environment_slash = self.process_info_tab == ProcessInfoTab::Environment
-            && !self.process_info_filter_editing
+        let activation_slash = !self.process_info_filter_editing
             && key.code == KeyCode::Char('/')
             && !key
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-        if environment_slash
+        if activation_slash
             || (key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL)
         {
             self.process_info_focus = ProcessInfoFocus::Content;
             self.process_info_filter_editing = true;
-            if environment_slash {
-                self.process_environment_filter_cursor = self.process_environment_filter.len();
+            match self.process_info_tab {
+                ProcessInfoTab::Files => {
+                    self.open_files_filter_cursor = self.open_files_filter.len()
+                }
+                ProcessInfoTab::Dlls => {
+                    self.process_modules_filter_cursor = self.process_modules_filter.len()
+                }
+                ProcessInfoTab::Environment => {
+                    self.process_environment_filter_cursor = self.process_environment_filter.len()
+                }
+                ProcessInfoTab::Network => {
+                    self.process_network.cursor = self.process_network.filter.len()
+                }
+                _ => unreachable!(),
             }
             if self.process_info_tab == ProcessInfoTab::Network {
                 self.process_network.editing = true;

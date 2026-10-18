@@ -337,12 +337,12 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "2–10s while visible; >1s/error stops; Ctrl+U retry",
     },
     HelpItem {
-        key: "/ (Environment)",
-        label: "Start Filter editing; / stays literal while editing",
+        key: "/ or Ctrl+F (Info lists)",
+        label: "Edit from tabs/list at text end; next / is literal",
     },
     HelpItem {
-        key: "Ctrl+F (Info)",
-        label: "Edit Files / DLL / Environment / Network filter",
+        key: "Enter / Esc / Tab (filter)",
+        label: "Apply / return to tabs / next control; retain text",
     },
     HelpItem {
         key: "Home/End, ←/→ (filter)",
@@ -727,7 +727,7 @@ const NETWORK_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Type (Info)",
-        label: "Filter directly, including /, a, r, Space",
+        label: "Filter directly; / or Ctrl+F starts explicit editing",
     },
     HelpItem {
         key: "/ or Ctrl+F (global list)",

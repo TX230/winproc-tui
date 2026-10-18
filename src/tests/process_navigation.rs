@@ -1615,7 +1615,7 @@ fn environment_slash_starts_filter_from_tabs_and_content_without_entering_text()
         app.process_info_tab = ProcessInfoTab::Environment;
         app.process_info_focus = focus;
         app.process_environment_filter = "日本語".into();
-        assert!(render_app_to_text(&app, 120, 60).contains("/ filter"));
+        assert!(render_app_to_text(&app, 120, 60).contains("/ or Ctrl+F filter"));
         app.on_key(KeyCode::Char('/').into()).unwrap();
         assert!(app.process_info_filter_editing);
         assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);

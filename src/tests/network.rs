@@ -270,16 +270,16 @@ fn network_process_filter_accepts_direct_text_without_intercepting_navigation() 
     assert!(app.process_network.filter.is_empty());
     press(&mut app, KeyCode::Tab);
     assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);
-    for ch in "rare/ 映像".chars() {
+    for ch in "rarez 映像".chars() {
         press(&mut app, KeyCode::Char(ch));
     }
-    assert_eq!(app.process_network.filter, "rare/ 映像");
+    assert_eq!(app.process_network.filter, "rarez 映像");
     assert!(!app.process_network.editing);
     assert!(app.process_network.all);
     assert!(matches!(requests.try_recv(), Err(TryRecvError::Empty)));
     press(&mut app, KeyCode::Left);
     press(&mut app, KeyCode::Backspace);
-    assert_eq!(app.process_network.filter, "rare/ 像");
+    assert_eq!(app.process_network.filter, "rarez 像");
     press(&mut app, KeyCode::Delete);
     press(&mut app, KeyCode::Backspace);
     press(&mut app, KeyCode::Backspace);
@@ -341,7 +341,7 @@ fn network_process_filter_click_focuses_direct_input_and_shows_matching_shortcut
     let text = render_app_to_text(&app, screen.width, screen.height);
     assert!(text.contains("Ctrl+U refresh"));
     assert!(text.contains("[Alt+A] All endpoints"));
-    assert!(!text.contains("/ filter"));
+    assert!(text.contains("/ or Ctrl+F filter"));
     press(&mut app, KeyCode::Esc);
     assert!(app.show_process_info_dialog);
     assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);

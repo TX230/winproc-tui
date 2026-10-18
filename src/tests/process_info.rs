@@ -691,14 +691,13 @@ fn narrow_process_info_footer_keeps_dynamic_tab_primary_actions() {
     let dlls = render_app_to_text(&app, screen.width, screen.height);
     assert!(dlls.contains("Enter details"), "{dlls}");
     assert!(dlls.contains("Ctrl+U refresh"), "{dlls}");
-    assert!(dlls.contains("Ctrl+C copy path"), "{dlls}");
+    assert!(dlls.contains("/ or Ctrl+F filter"), "{dlls}");
 
     app.process_info_tab = app::ProcessInfoTab::Environment;
     let environment = render_app_to_text(&app, screen.width, screen.height);
-    assert!(environment.contains("/ filter"), "{environment}");
+    assert!(environment.contains("/ or Ctrl+F filter"), "{environment}");
     assert!(environment.contains("Enter details"), "{environment}");
     assert!(environment.contains("Ctrl+U refresh"), "{environment}");
-    assert!(environment.contains("Ctrl+C copy"), "{environment}");
 }
 
 #[test]
@@ -1205,4 +1204,102 @@ fn threads_table_keeps_headers_pinned_while_scrolling() {
     assert!(text.contains("worker-20"));
     assert!(!text.contains("worker-0 "));
     assert!(ui::process_info_scrollbar_area_for_screen(screen, &app).is_some());
+}
+
+#[test]
+fn inspection_filter_activation_preserves_text_and_uses_end_from_tabs_and_content() {
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+        app::ProcessInfoTab::Network,
+    ] {
+        for focus in [app::ProcessInfoFocus::Tabs, app::ProcessInfoFocus::Content] {
+            for activation in [
+                KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
+                KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+            ] {
+                let mut app = make_test_app(1, 10);
+                app.open_selected_process_info_dialog().unwrap();
+                app.process_info_tab = tab;
+                app.process_info_focus = focus;
+                app.open_files_filter = "日a".into();
+                app.process_modules_filter = "日a".into();
+                app.process_environment_filter = "日a".into();
+                app.process_network.filter = "日a".into();
+                let target = app.process_info_target.clone();
+                assert!(render_app_to_text(&app, 160, 60).contains("/ or Ctrl+F filter"));
+                app.on_key(activation).unwrap();
+                assert!(app.process_info_filter_editing);
+                assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+                for ch in "/hH".chars() {
+                    app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
+                        .unwrap();
+                }
+                let (text, cursor) = match tab {
+                    app::ProcessInfoTab::Files => {
+                        (&app.open_files_filter, app.open_files_filter_cursor)
+                    }
+                    app::ProcessInfoTab::Dlls => (
+                        &app.process_modules_filter,
+                        app.process_modules_filter_cursor,
+                    ),
+                    app::ProcessInfoTab::Environment => (
+                        &app.process_environment_filter,
+                        app.process_environment_filter_cursor,
+                    ),
+                    _ => (&app.process_network.filter, app.process_network.cursor),
+                };
+                assert_eq!(text, "日a/hH");
+                assert_eq!(cursor, text.len());
+                assert_eq!(
+                    app.process_info_target.as_ref().map(|t| &t.identity),
+                    target.as_ref().map(|t| &t.identity)
+                );
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+                    .unwrap();
+                assert!(!app.process_info_filter_editing);
+                assert!(!app.process_info_detail_is_open());
+                app.on_key(activation).unwrap();
+                app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+                    .unwrap();
+                assert!(!app.process_info_filter_editing);
+                assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
+            }
+        }
+    }
+}
+
+#[test]
+fn inspection_filter_activation_does_not_steal_detail_input() {
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+        app::ProcessInfoTab::Network,
+    ] {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = tab;
+        app.process_info_focus = app::ProcessInfoFocus::Content;
+        match tab {
+            app::ProcessInfoTab::Files => app.open_files_show_detail = true,
+            app::ProcessInfoTab::Dlls => app.process_modules_show_detail = true,
+            app::ProcessInfoTab::Environment => app.process_environment_show_detail = true,
+            _ => app.process_network.detail = true,
+        }
+        for key in [
+            KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+        ] {
+            app.on_key(key).unwrap();
+            assert!(app.process_info_detail_is_open());
+            assert!(!app.process_info_filter_editing);
+        }
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.process_info_detail_is_open());
+        assert!(app.show_process_info_dialog);
+        assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+    }
 }
