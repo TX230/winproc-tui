@@ -629,24 +629,6 @@ fn draw_footer(frame: &mut ratatui::Frame<'_>, footer: Rect, app: &App, theme: T
 }
 
 fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
-    if let Some(view) = &app.file_action
-        && app.process_info_tab == ProcessInfoTab::Files
-    {
-        return fitted_shortcut_spans(
-            if view.busy() {
-                &[("Esc", "back"), ("PgUp/PgDn", "scroll")]
-            } else {
-                &[
-                    ("Esc", "back"),
-                    ("Enter", "open"),
-                    ("↑/↓", "select"),
-                    ("PgUp/PgDn", "scroll"),
-                ]
-            },
-            width,
-            theme,
-        );
-    }
     if app.process_info_filter_editing {
         return fitted_shortcut_spans(
             crate::app::text_input::INSPECTION_FILTER_SHORTCUTS,
@@ -736,8 +718,8 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("Esc", "tabs"),
             ],
             ProcessInfoTab::Files => vec![
+                ("Enter", "actions"),
                 ("/ or Ctrl+F", "filter"),
-                ("Enter", "details"),
                 ("Ctrl+U", "refresh now"),
                 ("Ctrl+C", "copy rows"),
                 ("↑/↓", "select"),
@@ -767,6 +749,12 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             ],
         }
     };
+    if app.process_info_tab == ProcessInfoTab::Files
+        && (app.activity() == crate::app::AppActivity::LogView
+            || super::open_files::selected_entry(app).is_none())
+    {
+        items.retain(|(_, label)| *label != "actions");
+    }
     if !app.scheduling.applying {
         items.push(("h/Shift+H", "height"));
         items.push(("Alt+H", "auto"));
@@ -776,7 +764,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         && app.activity() != crate::app::AppActivity::LogView
         && super::open_files::selected_entry(app).is_some()
     {
-        items.insert(0, ("F4", "actions"));
+        items.push(("Space", "details"));
     }
     fitted_shortcut_spans(&items, width, theme)
 }

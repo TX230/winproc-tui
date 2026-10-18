@@ -1148,7 +1148,12 @@ fn inspection_tables_pin_headers_and_keep_scrolled_rows_clickable() {
                 _ => app.process_environment_selected,
             };
             assert_eq!(selected, index);
-            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            let detail_key = if tab == app::ProcessInfoTab::Files {
+                KeyCode::Char(' ')
+            } else {
+                KeyCode::Enter
+            };
+            app.on_key(KeyEvent::new(detail_key, KeyModifiers::NONE))
                 .unwrap();
             assert!(app.process_info_detail_is_open());
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))

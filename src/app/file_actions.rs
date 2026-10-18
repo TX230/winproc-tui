@@ -11,6 +11,7 @@ pub(crate) struct FileActionView {
     pub(crate) selected: usize,
     pub(crate) message: String,
     pub(crate) failed: bool,
+    pub(crate) scroll: crate::ui::widgets::scrollable_modal::ScrollableModalState,
     generation: u64,
     pending: bool,
 }
@@ -38,10 +39,10 @@ impl App {
             selected: 0,
             message: String::new(),
             failed: false,
+            scroll: Default::default(),
             generation: self.file_action_generation,
             pending: false,
         });
-        self.open_files_scroll.scroll_home();
     }
     pub(crate) fn launch_file_action(&mut self, selected: usize) {
         if self.activity() == AppActivity::LogView {
@@ -123,10 +124,10 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.file_action = None;
-                self.open_files_scroll.scroll_home();
             }
             KeyCode::Up | KeyCode::Down | KeyCode::Tab | KeyCode::BackTab if !view.busy() => {
-                view.selected ^= 1
+                view.selected ^= 1;
+                view.scroll.scroll_home();
             }
             KeyCode::Enter if !view.busy() => {
                 let selected = view.selected;
@@ -138,10 +139,9 @@ impl App {
             KeyCode::Char('o' | 'O') if key.modifiers == KeyModifiers::CONTROL => {
                 self.launch_file_action(1)
             }
-            KeyCode::PageDown => self.scroll_process_info_down(self.process_info_page_size()),
-            KeyCode::PageUp => self.scroll_process_info_up(self.process_info_page_size()),
-            KeyCode::Home => self.scroll_process_info_home(),
-            KeyCode::End => self.scroll_process_info_end(),
+            KeyCode::PageDown | KeyCode::PageUp | KeyCode::Home | KeyCode::End => {
+                self.scroll_file_actions(key.code)
+            }
             _ => {}
         }
     }

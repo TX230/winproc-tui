@@ -2069,6 +2069,11 @@ impl App {
         }
 
         if self.show_process_info_dialog {
+            if self.file_action.is_some() {
+                self.file_action_mouse(mouse, screen_area);
+                return;
+            }
+
             let tab_click = matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
                 && process_info_tab_at(
                     screen_area,
@@ -2112,16 +2117,6 @@ impl App {
                     return;
                 }
                 _ => {}
-            }
-            if self.file_action.is_some()
-                && self.process_info_tab == crate::app::ProcessInfoTab::Files
-            {
-                let content = crate::ui::process_info_content_area_for_screen(
-                    screen_area,
-                    self.process_info_height(),
-                );
-                self.file_action_mouse(mouse, content);
-                return;
             }
             if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
                 && !tab_click

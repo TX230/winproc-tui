@@ -328,6 +328,10 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter (Files)",
+        label: "Open file actions directly",
+    },
+    HelpItem {
+        key: "Space (Files)",
         label: "Full path, I/O attributes, raw masks",
     },
     HelpItem {

@@ -107,7 +107,8 @@ impl App {
             KeyCode::Enter if self.open_files_show_detail => {
                 self.close_process_info_detail();
             }
-            KeyCode::Enter => {
+            KeyCode::Enter => self.open_file_actions(),
+            KeyCode::Char(' ') if !self.open_files_show_detail => {
                 self.open_selected_process_info_detail();
             }
             KeyCode::Char(ch)

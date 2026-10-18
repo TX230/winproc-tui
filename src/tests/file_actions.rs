@@ -10,7 +10,7 @@ fn key(app: &mut crate::App, code: KeyCode, modifiers: KeyModifiers) {
     app.on_key(KeyEvent::new(code, modifiers)).unwrap();
 }
 #[test]
-fn file_actions_capture_path_and_preserve_enter_and_editor_priority() {
+fn file_actions_enter_opens_modal_directly_and_preserves_editor_priority() {
     let mut app = make_test_app(1, 10);
     show_process_info_files_tab(&mut app);
     app.open_files_result = Some(test_open_files_report(
@@ -23,9 +23,8 @@ fn file_actions_capture_path_and_preserve_enter_and_editor_priority() {
         .path
         .clone();
     key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(app.open_files_show_detail);
-    assert!(app.file_action.is_none());
-    key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
+    assert!(!app.open_files_show_detail);
+    assert!(app.file_action.is_some());
     assert_eq!(
         app.file_action.as_ref().unwrap().path.to_str().unwrap(),
         path
@@ -37,13 +36,12 @@ fn file_actions_capture_path_and_preserve_enter_and_editor_priority() {
     );
     key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     assert!(app.file_action.is_none());
-    key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     key(&mut app, KeyCode::Char('/'), KeyModifiers::NONE);
     key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
     key(&mut app, KeyCode::Char('o'), KeyModifiers::CONTROL);
     assert!(app.file_action.is_none());
     assert!(app.process_info_filter_editing);
-    assert!(!render_app_to_text(&app, 100, 30).contains("F4 actions"));
+    assert!(!render_app_to_text(&app, 100, 30).contains("Enter actions"));
 }
 #[test]
 fn file_actions_narrow_footer_and_mouse_share_action_path_and_errors() {
@@ -57,7 +55,7 @@ fn file_actions_narrow_footer_and_mouse_share_action_path_and_errors() {
     let screen = Rect::new(0, 0, 60, 24);
     app::sync_layout_state(&mut app, screen);
     let buffer = render_app_to_buffer(&app, 60, 24);
-    let (x, y) = find_text_position(&buffer, "F4 actions").unwrap();
+    let (x, y) = find_text_position(&buffer, "Enter actions").unwrap();
     app.on_mouse(
         MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -155,5 +153,48 @@ fn file_actions_log_view_rejects_actions_and_hides_shortcut() {
     key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
     assert!(app.file_action.is_none());
     assert!(app.file_action_worker.is_none());
-    assert!(!render_app_to_text(&app, 100, 30).contains("F4 actions"));
+    assert!(!render_app_to_text(&app, 100, 30).contains("Enter actions"));
+}
+
+#[test]
+fn file_actions_modal_preserves_parent_scroll_and_blocks_background_mouse() {
+    let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
+    let mut report = test_open_files_report("proc-0", 0, "fixture.txt");
+    let entry = report.entries[0].clone();
+    report.entries = (0..50).map(|_| entry.clone()).collect();
+    app.open_files_result = Some(report);
+    for (width, height) in [(120, 48), (60, 24)] {
+        let screen = Rect::new(0, 0, width, height);
+        app::sync_layout_state(&mut app, screen);
+        app.select_open_file(49);
+        let offset = app.open_files_scroll.offset;
+        assert!(offset > 0);
+        let parent = crate::ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
+        )
+        .area;
+        key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+        let modal = crate::ui::file_actions::layout(screen);
+        assert!(modal.area.height < parent.height);
+        assert!(!app.open_files_show_detail);
+        app.file_action.as_mut().unwrap().message =
+            "Long failure details ".repeat(150) + "END OF ERROR";
+        key(&mut app, KeyCode::End, KeyModifiers::NONE);
+        assert!(render_app_to_text(&app, width, height).contains("END OF ERROR"));
+        assert_eq!(app.open_files_scroll.offset, offset);
+        app.on_mouse(
+            super::support::left_click(parent.x, parent.bottom() - 1),
+            screen,
+        );
+        assert!(app.process_info_resize_drag.is_none());
+        key(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!(app.file_action.as_ref().unwrap().selected, 1);
+        assert_eq!(app.file_action.as_ref().unwrap().scroll.offset, 0);
+        key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(app.open_files_selected, 49);
+        assert_eq!(app.open_files_scroll.offset, offset);
+        assert!(app.show_process_info_dialog);
+    }
 }

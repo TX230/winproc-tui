@@ -85,7 +85,7 @@ fn open_file_modes_keep_each_handle_and_each_unknown_attribute_independent() {
         .unwrap();
     app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
         .unwrap();
-    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
         .unwrap();
     assert!(app.open_files_show_detail);
     assert!(render_app_to_text(&app, 160, 35).contains("0xC0000022"));
@@ -135,7 +135,7 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
         }
         app.on_mouse(super::support::left_click(x, y), screen);
         assert_eq!(app.open_files_selected, 39);
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             .unwrap();
         app::sync_layout_state(&mut app, screen);
         assert!(app.open_files_show_detail);
