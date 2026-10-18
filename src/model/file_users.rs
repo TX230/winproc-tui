@@ -23,14 +23,6 @@ impl FileSearchMode {
             Self::ExactPath => "Exact path",
         }
     }
-
-    pub(crate) fn next(self) -> Self {
-        match self {
-            Self::FileName => Self::Path,
-            Self::Path => Self::ExactPath,
-            Self::ExactPath => Self::FileName,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

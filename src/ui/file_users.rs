@@ -27,7 +27,6 @@ pub(crate) fn browser_layout(screen: Rect) -> ScrollableModalLayout {
 
 pub(crate) struct ContentLayout {
     pub(crate) query: Rect,
-    pub(crate) mode: Rect,
     status: Rect,
     progress: Rect,
     notice: Rect,
@@ -46,16 +45,15 @@ pub(crate) fn content_layout(area: Rect) -> ContentLayout {
     };
     ContentLayout {
         query: row(0),
-        mode: row(1),
-        status: row(2),
-        progress: row(3),
-        notice: row(4),
-        header: row(5),
+        status: row(1),
+        progress: row(2),
+        notice: row(3),
+        header: row(4),
         rows: Rect::new(
             area.x,
-            area.y.saturating_add(6).min(area.bottom()),
+            area.y.saturating_add(5).min(area.bottom()),
             area.width,
-            area.height.saturating_sub(6),
+            area.height.saturating_sub(5),
         ),
     }
 }
@@ -268,11 +266,6 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
             Paragraph::new(format!("Query: {query}")).style(control_style(FileUsersFocus::Query)),
             content.query,
         );
-        frame.render_widget(
-            Paragraph::new(format!("Mode: {}", view.mode.label()))
-                .style(control_style(FileUsersFocus::Mode)),
-            content.mode,
-        );
         if view.focus == FileUsersFocus::Query
             && !app.show_process_info_dialog
             && content.query.width > 7
@@ -305,7 +298,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
                 if view
                     .searched
                     .as_ref()
-                    .is_some_and(|query| query.text != view.draft || query.mode != view.mode)
+                    .is_some_and(|query| query.text != view.draft)
                 {
                     "Query changed; start a search to update results"
                 } else {
@@ -412,7 +405,6 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
     } else {
         match view.focus {
             FileUsersFocus::Query => "search",
-            FileUsersFocus::Mode => "mode",
             FileUsersFocus::Results => "info",
         }
     };
@@ -439,11 +431,6 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
         )
     } else if view.focus == FileUsersFocus::Query {
         super::footer::shortcut_spans(&[("←/→", "cursor"), ("Backspace/Delete", "edit")], theme)
-    } else if view.focus == FileUsersFocus::Mode {
-        super::footer::shortcut_spans(
-            &[("/", "query"), ("←/→", "mode"), ("Tab", "results")],
-            theme,
-        )
     } else {
         super::footer::shortcut_spans(
             &[

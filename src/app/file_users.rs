@@ -13,7 +13,6 @@ use crate::{
 pub(crate) enum FileUsersFocus {
     #[default]
     Query,
-    Mode,
     Results,
 }
 
@@ -22,7 +21,6 @@ pub(crate) struct FileUsersView {
     pub(crate) visible: bool,
     pub(crate) draft: String,
     pub(crate) cursor: usize,
-    pub(crate) mode: FileSearchMode,
     pub(crate) searched: Option<FileSearchQuery>,
     pub(crate) report: FileSearchReport,
     pub(crate) focus: FileUsersFocus,
@@ -70,7 +68,7 @@ impl App {
         }
         let query = FileSearchQuery {
             text: self.file_users.draft.clone(),
-            mode: self.file_users.mode,
+            mode: FileSearchMode::Path,
         };
         if let Err(error) = query.validate() {
             self.file_users.notice = Some(error);
@@ -270,16 +268,9 @@ impl App {
         }
         if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
             view.detail = false;
-            let reverse =
-                key.code == KeyCode::BackTab || key.modifiers.contains(KeyModifiers::SHIFT);
-            view.focus = match (view.focus, reverse) {
-                (FileUsersFocus::Query, false) | (FileUsersFocus::Results, true) => {
-                    FileUsersFocus::Mode
-                }
-                (FileUsersFocus::Mode, false) | (FileUsersFocus::Query, true) => {
-                    FileUsersFocus::Results
-                }
-                _ => FileUsersFocus::Query,
+            view.focus = match view.focus {
+                FileUsersFocus::Query => FileUsersFocus::Results,
+                FileUsersFocus::Results => FileUsersFocus::Query,
             };
             return Ok(());
         }
@@ -331,18 +322,6 @@ impl App {
                     }
                 }
                 _ => {}
-            }
-            return Ok(());
-        } else if view.focus == FileUsersFocus::Mode {
-            if matches!(
-                key.code,
-                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Left
-            ) {
-                view.mode = if key.code == KeyCode::Left {
-                    view.mode.next().next()
-                } else {
-                    view.mode.next()
-                };
             }
             return Ok(());
         } else {
@@ -425,9 +404,6 @@ impl App {
                 } else if !view.detail && layout.query.contains(position) {
                     view.focus = FileUsersFocus::Query;
                     view.cursor = view.draft.len();
-                } else if !view.detail && layout.mode.contains(position) {
-                    view.focus = FileUsersFocus::Mode;
-                    view.mode = view.mode.next();
                 } else if !view.detail && layout.rows.contains(position) {
                     view.focus = FileUsersFocus::Results;
                     view.selected = (view.scroll.offset + (mouse.row - layout.rows.y) as usize)

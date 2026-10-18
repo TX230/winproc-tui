@@ -110,6 +110,7 @@ fn file_users_search_is_explicit_and_independent_of_process_filters() {
         panic!("search expected")
     };
     assert_eq!(query.text, "映像 / test.mxf");
+    assert_eq!(query.mode, FileSearchMode::Path);
     app.start_file_search();
     assert!(requests.try_recv().is_err());
     deliver(
@@ -372,7 +373,7 @@ fn file_search_reopens_at_query_and_slash_focuses_from_mode_or_results() {
     assert_eq!(app.file_users.cursor, "映像".len());
     press(&mut app, KeyCode::Char('/'));
     assert_eq!(app.file_users.draft, "映像/");
-    for focus in [FileUsersFocus::Mode, FileUsersFocus::Results] {
+    for focus in [FileUsersFocus::Results] {
         app.file_users.focus = focus;
         let buffer = render_app_to_buffer(&app, 120, 60);
         let (x, y) = super::support::find_text_position(&buffer, "/ query").unwrap();
@@ -484,4 +485,19 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
     assert_eq!(app.file_users.draft, "media");
     assert_eq!(app.file_users.selected, 1);
     assert_eq!(app.file_users.report.progress.denied_processes, 3);
+}
+
+#[test]
+fn file_users_has_only_query_and_results_controls() {
+    let (mut app, requests, _) = setup();
+    app.open_file_users();
+    for key in [KeyCode::Tab, KeyCode::BackTab] {
+        press(&mut app, key);
+        assert_eq!(app.file_users.focus, FileUsersFocus::Results);
+        press(&mut app, key);
+        assert_eq!(app.file_users.focus, FileUsersFocus::Query);
+    }
+    let buffer = render_app_to_buffer(&app, 120, 48);
+    assert!(super::support::find_text_position(&buffer, "Mode:").is_none());
+    assert!(requests.try_recv().is_err());
 }

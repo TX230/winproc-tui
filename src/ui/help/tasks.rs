@@ -22,7 +22,7 @@ const GUIDES: [&[&str]; 4] = [
         "Outcome: identify inspected processes with an open disk-file handle matching your query.",
         "Before starting: use Live or Recording; file search is unavailable in Log view. Have a filename or full path to search for.",
         "1. Close Help. Investigation > Find processes by file opens Query without starting a scan. Type the filename or path.",
-        "2. Select Mode (click it or Tab), then choose Filename contains, Path contains, or Exact path. Return to Query and use the displayed Search action (Enter).",
+        "2. Enter a filename or any part of its path in Query, then press Enter. Search always matches text anywhere in the full path.",
         "3. Read the capture status and coverage with the results. No matches means none in the inspected scope; inaccessible processes and mapped-only files can be missed.",
         "4. Select a matching result and use the displayed info action (Enter). Process Info opens its Files tab and lists that process's matching handles. Click a handle row (or Tab to the list), then use its detail action (Enter) for the full path and access attributes.",
         "Result: the captured process and matching file path are visible. This does not prove that the handle prevents deletion. If the process exits or closes the handle, retry the search.",

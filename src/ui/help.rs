@@ -38,7 +38,7 @@ struct HelpSection {
 
 const FILE_USERS_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "/ (Mode / Results)",
+        key: "/ (Results)",
         label: "Edit Query; opening file search focuses Query",
     },
     HelpItem {
@@ -47,15 +47,11 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Find processes by file: Tab/Shift+Tab",
-        label: "Focus Query, Mode, or Results",
+        label: "Focus Query or Results",
     },
     HelpItem {
         key: "Enter / Ctrl+U (file search)",
-        label: "Search from Query / repeat search",
-    },
-    HelpItem {
-        key: "←/→, Space/Enter (Mode)",
-        label: "Filename / path substring / exact path",
+        label: "Search path substring from Query / repeat search",
     },
     HelpItem {
         key: "Enter (file results)",
