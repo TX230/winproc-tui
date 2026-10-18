@@ -248,10 +248,28 @@ impl App {
         }
 
         if self.show_process_kill_confirmation {
-            match key.code {
-                KeyCode::Enter => self.confirm_process_kill(),
-                KeyCode::Esc => self.cancel_process_kill_confirmation(),
-                _ => {}
+            if self.process_kill_job.is_some() {
+                match key.code {
+                    KeyCode::Enter | KeyCode::Esc => self.cancel_process_kill_confirmation(),
+                    KeyCode::Up => {
+                        self.process_kill_scroll = self.process_kill_scroll.saturating_sub(1)
+                    }
+                    KeyCode::Down => {
+                        self.process_kill_scroll = (self.process_kill_scroll + 1)
+                            .min(self.process_kill_targets.len().saturating_sub(1))
+                    }
+                    KeyCode::Home => self.process_kill_scroll = 0,
+                    KeyCode::End => {
+                        self.process_kill_scroll = self.process_kill_targets.len().saturating_sub(1)
+                    }
+                    _ => {}
+                }
+            } else {
+                match key.code {
+                    KeyCode::Enter => self.confirm_process_kill(),
+                    KeyCode::Esc => self.cancel_process_kill_confirmation(),
+                    _ => {}
+                }
             }
             return Ok(());
         }
@@ -2157,6 +2175,24 @@ impl App {
         }
 
         if self.show_process_kill_confirmation {
+            if self.process_kill_job.is_some()
+                && contains_point(
+                    crate::ui::process_kill_confirm::process_kill_results_area(screen_area),
+                    mouse.column,
+                    mouse.row,
+                )
+            {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        self.process_kill_scroll = self.process_kill_scroll.saturating_sub(1)
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.process_kill_scroll = (self.process_kill_scroll + 1)
+                            .min(self.process_kill_targets.len().saturating_sub(1))
+                    }
+                    _ => {}
+                }
+            }
             return;
         }
 

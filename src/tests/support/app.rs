@@ -224,6 +224,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
         tracked_remove_discarded_samples: 0,
         show_process_kill_confirmation: false,
         process_kill_targets: Vec::new(),
+        process_kill_job: None,
+        process_kill_scroll: 0,
         show_display_area_warning: false,
         show_metric_column_warning: false,
         show_no_graph_metrics_warning: false,

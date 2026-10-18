@@ -179,7 +179,8 @@ fn help_dialog_buffer_shows_two_column_layout() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("Kill selected processes, or the focused process if none are selected"),
+        rendered
+            .contains("Kill selected processes, or the focused process; review progress/results"),
         "{rendered}"
     );
     assert!(

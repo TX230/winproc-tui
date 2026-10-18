@@ -187,7 +187,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "d/Delete",
-        label: "Kill selected processes, or the focused process if none are selected",
+        label: "Kill selected processes, or the focused process; review progress/results",
     },
     HelpItem {
         key: "v",

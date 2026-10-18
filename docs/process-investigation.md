@@ -148,3 +148,11 @@ Endpoint context menus capture the displayed endpoint and owner metadata; openin
 ## Threads
 
 Threads captures TID, name, cumulative CPU time, base priority, and Ideal Processor for the fixed live target. A dedicated bounded-request worker holds a verified process handle throughout capture and checks process creation time and name. Thread handles are checked for owner, creation before capture, and exit before querying details, so a reused TID cannot supply another lifetime's values. Unavailable fields remain explicit and partial captures report their affected row count. Rows are ordered by TID; capture status and column headings stay above scrolling data. Refresh is manual, tab switches retain data, and new/closed sessions invalidate results by process identity and dialog generation. Log view performs no live collection. Thread data is not sampled, recorded, exported, or copied.
+
+## Process Termination
+
+Confirmation freezes the selected live ProcessIdentity values. Enter starts one asynchronous batch; Esc cancels only before execution. During execution, sampling, Recording, drawing, resizing, and result scrolling continue. Repeated confirmation cannot submit another batch. The progress view reports processed/total, killed, failed, already-exited, and unconfirmed exit counts, with an inspectable outcome for each original target. Completed results remain until explicitly dismissed.
+
+Before termination, the worker requires a known creation time and verifies creation time and executable name on an owned process handle. The comparison uses the seconds precision of ProcessIdentity. TerminateProcess and the bounded exit wait use that same handle, so PID reuse after opening cannot retarget the action. Access and verification failures do not terminate a process. A successful request is counted as killed only when exit is observed; a one-second wait timeout remains explicitly unconfirmed. No child-process tree is terminated implicitly.
+
+There is no interactive cancellation during execution. Application shutdown skips unstarted targets; an attempt already started may finish and is never reversed. Outcomes are session-local and do not enter configuration, recording, or exports.

@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    process::Command,
     sync::mpsc::TryRecvError,
     time::{Duration, Instant},
 };
@@ -1160,6 +1159,8 @@ pub(crate) struct App {
     pub(crate) tracked_remove_discarded_samples: usize,
     pub(crate) show_process_kill_confirmation: bool,
     pub(crate) process_kill_targets: Vec<ProcessKillTarget>,
+    pub(crate) process_kill_job: Option<super::process_kill::KillJob>,
+    pub(crate) process_kill_scroll: usize,
     pub(crate) show_display_area_warning: bool,
     pub(crate) show_metric_column_warning: bool,
     pub(crate) show_no_graph_metrics_warning: bool,
@@ -1446,6 +1447,8 @@ impl App {
             tracked_remove_discarded_samples: 0,
             show_process_kill_confirmation: false,
             process_kill_targets: Vec::new(),
+            process_kill_job: None,
+            process_kill_scroll: 0,
             show_display_area_warning: false,
             show_metric_column_warning: false,
             show_no_graph_metrics_warning: false,
@@ -4828,6 +4831,9 @@ impl App {
     }
 
     pub(crate) fn request_process_kill_confirmation(&mut self) -> bool {
+        if self.process_kill_job.is_some() {
+            return true;
+        }
         if self.activity() == AppActivity::LogView {
             self.status = "Process kill is unavailable in Log view".to_string();
             return false;
@@ -4850,38 +4856,33 @@ impl App {
     }
 
     pub(crate) fn confirm_process_kill(&mut self) {
-        let attempts = self
-            .process_kill_targets
-            .iter()
-            .map(taskkill_force_pid)
-            .collect::<Vec<_>>();
-        self.reset_process_kill_confirmation();
+        if self.process_kill_job.is_some() {
+            return;
+        }
+        if self.process_kill_targets.is_empty() {
+            self.cancel_process_kill_confirmation();
+            self.status = "No process PIDs selected".into();
+            return;
+        }
+        self.process_kill_job = Some(super::process_kill::KillJob::spawn(
+            self.process_kill_targets.clone(),
+        ));
+        self.process_kill_scroll = 0;
         self.clear_process_multi_selection();
-
-        let succeeded = attempts.iter().filter(|attempt| attempt.success).count();
-        let failed = attempts.len().saturating_sub(succeeded);
-        self.status = match (succeeded, failed) {
-            (0, 0) => "No process PIDs selected".to_string(),
-            (_, 0) => format!("Killed {succeeded} process(es)"),
-            (0, _) => format!(
-                "Kill failed for {failed} process(es): {}",
-                failed_taskkill_targets(&attempts)
-            ),
-            _ => format!(
-                "Killed {succeeded}; failed {failed}: {}",
-                failed_taskkill_targets(&attempts)
-            ),
-        };
     }
 
     pub(crate) fn cancel_process_kill_confirmation(&mut self) {
-        self.reset_process_kill_confirmation();
-        self.status = "Process kill canceled".to_string();
-    }
-
-    fn reset_process_kill_confirmation(&mut self) {
+        if self
+            .process_kill_job
+            .as_ref()
+            .is_some_and(|job| !job.finished())
+        {
+            return;
+        }
+        let completed = self.process_kill_job.take();
         self.show_process_kill_confirmation = false;
         self.process_kill_targets.clear();
+        self.status = completed.map_or_else(|| "Process kill canceled".into(), |job| job.summary());
     }
 
     fn selected_live_processes_for_kill(&self) -> Vec<ProcessKillTarget> {
@@ -7907,39 +7908,6 @@ fn preserve_process_row_order(
     });
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TaskkillAttempt {
-    pid: u32,
-    name: String,
-    success: bool,
-}
-
-fn taskkill_force_pid(target: &ProcessKillTarget) -> TaskkillAttempt {
-    let success = Command::new("taskkill")
-        .args(taskkill_force_pid_args(target.pid))
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
-    TaskkillAttempt {
-        pid: target.pid,
-        name: target.name.clone(),
-        success,
-    }
-}
-
-fn taskkill_force_pid_args(pid: u32) -> [String; 3] {
-    ["/f".to_string(), "/pid".to_string(), pid.to_string()]
-}
-
-fn failed_taskkill_targets(attempts: &[TaskkillAttempt]) -> String {
-    attempts
-        .iter()
-        .filter(|attempt| !attempt.success)
-        .map(|attempt| format!("{} ({})", attempt.pid, attempt.name))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 fn tracked_live_identities(
     processes: &[ProcessRow],
     normalized_tracked_names: &HashSet<String>,
@@ -8188,15 +8156,5 @@ impl App {
                 self.ensure_selected_process_column_visible();
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod process_kill_tests {
-    use super::taskkill_force_pid_args;
-
-    #[test]
-    fn taskkill_targets_one_pid() {
-        assert_eq!(taskkill_force_pid_args(42), ["/f", "/pid", "42"]);
     }
 }

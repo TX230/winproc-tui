@@ -15,6 +15,7 @@ mod open_files_auto_refresh;
 mod performance;
 mod process_environment;
 mod process_info;
+mod process_kill;
 mod process_modules;
 mod process_navigation;
 mod process_table;

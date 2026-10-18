@@ -70,6 +70,8 @@ Threads uses a separate bounded-request worker for explicit read-only captures. 
 
 Scheduling has an independent worker for priority reads and explicit confirmed changes. A session retains one verified process handle, uses a bounded request queue, and checks dialog generation before applying queued work. Its reports and restoration point belong to Process Info, outside sampling, histories, Recording, and configuration.
 
+Process termination runs on a batch worker independent of sampling. The UI owns the frozen target set and per-target outcomes, polls typed results without waiting, and permits only one batch until its results are dismissed. A worker holds the verified process handle through termination and a bounded exit wait. Shutdown signals it to skip unstarted targets without joining it on the UI thread.
+
 ### 3.2 Keep state ownership centralized
 
 `App` owns Live, paused, Recording, Log-list, and Log-view state. Display accessors select the appropriate snapshot and history without asking widgets to maintain activity-specific copies.
