@@ -348,15 +348,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
                 .map(|(i, entry)| {
                     let style = if i == view.selected {
                         normal
-                            .bg(
-                                if view.focus == FileUsersFocus::Results
-                                    && !app.show_process_info_dialog
-                                {
-                                    theme.focus_surface
-                                } else {
-                                    theme.table_selection_surface
-                                },
-                            )
+                            .bg(theme.table_selection_surface)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         normal

@@ -13,8 +13,11 @@ pub(crate) struct Theme {
     pub(crate) muted: Color,
     pub(crate) accent: Color,
     pub(crate) focus_border: Color,
+    // Focused controls and pointer hover; never a replacement for a selected table row.
     pub(crate) focus_surface: Color,
     pub(crate) key_hint: Color,
+    // Persistent row selection in this theme, independent of keyboard focus.
+    // Column intersections may use table_intersection_surface on top of this base.
     pub(crate) table_selection_surface: Color,
     pub(crate) table_column_surface: Color,
     pub(crate) table_intersection_surface: Color,

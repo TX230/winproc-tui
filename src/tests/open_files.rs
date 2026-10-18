@@ -126,7 +126,7 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
         let buffer = render_app_to_buffer(&app, width, height);
         let (x, y) = super::support::find_text_position_in_area(&buffer, area, "0xDC")
             .expect("last handle visible");
-        assert_eq!(buffer[(x, y)].bg, app.theme().focus_surface);
+        assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
         if width == 60 {
             let rendered = buffer_to_text(&buffer);
             assert!(rendered.contains("Cached: N  Async: Y  Access: RWA  W-Thru: Y"));
@@ -186,7 +186,7 @@ fn open_file_modes_unicode_names_do_not_shift_attribute_columns() {
             for (offset, ch) in value.chars().enumerate() {
                 assert_eq!(buffer[(x + offset as u16, y + 1)].symbol(), ch.to_string());
             }
-            assert_eq!(buffer[(x, y + 1)].bg, app.theme().focus_surface);
+            assert_eq!(buffer[(x, y + 1)].bg, app.theme().table_selection_surface);
         }
         let (directory_x, header_y) =
             super::support::find_text_position_in_area(&buffer, area, "Directory").unwrap();
@@ -1166,6 +1166,32 @@ fn process_info_files_keeps_tab_selection_distinct_from_focus_and_summary() {
                 let (x, y) = find_text_position(&buffer, "Live result").expect("capture summary");
                 assert_eq!(buffer[(x, y)].fg, theme.text);
                 assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
+            }
+        }
+    }
+}
+
+#[test]
+fn files_selection_keeps_theme_color_across_focus_and_contrast_modes() {
+    let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
+    app.open_files_result = Some(test_open_files_report("proc-0", 0, "selection-color.txt"));
+    let screen = Rect::new(0, 0, 120, 48);
+    for theme in 0..crate::ui::theme::THEMES.len() {
+        app.theme_index = theme;
+        for contrast in [false, true] {
+            app.high_contrast = contrast;
+            for focus in [app::ProcessInfoFocus::Tabs, app::ProcessInfoFocus::Content] {
+                app.process_info_focus = focus;
+                for editing in [false, true] {
+                    app.process_info_filter_editing = editing;
+                    app::sync_layout_state(&mut app, screen);
+                    let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+                    let (x, y) =
+                        super::support::find_text_position(&buffer, "selection-color.txt").unwrap();
+                    assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
+                    assert_ne!(buffer[(x, y)].bg, app.theme().focus_surface);
+                }
             }
         }
     }

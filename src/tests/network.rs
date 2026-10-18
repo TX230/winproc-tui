@@ -438,7 +438,7 @@ fn network_filter_unicode_details_copy_and_mouse_geometry_remain_consistent() {
         let buffer = render_app_to_buffer(&app, width, height);
         let (x, y) = find_text_position(&buffer, "TCP6").expect("selected TCP6 row");
         assert!(buffer[(x, y)].modifier.contains(Modifier::BOLD));
-        assert_eq!(buffer[(x, y)].bg, app.theme().focus_surface);
+        assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
         assert_eq!(y, layout.rows.y);
         press(&mut app, KeyCode::Char(' '));
         let detail = ui::network::detail_lines(&app.network_browser, layout.rows.width).join("");
@@ -539,7 +539,7 @@ fn network_process_detail_scroll_survives_layout_sync_and_uses_own_hit_regions()
     let buffer = render_app_to_buffer(&app, 80, 24);
     let (x, y) = super::support::find_text_position_in_area(&buffer, layout.rows, "TCP6").unwrap();
     assert_eq!(y, layout.rows.y + 1);
-    assert_eq!(buffer[(x, y)].bg, app.theme().focus_surface);
+    assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
 }
 
 #[test]

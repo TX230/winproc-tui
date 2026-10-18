@@ -52,6 +52,8 @@ This is a runtime data-flow diagram, not a strict Rust dependency graph. `ui` re
 
 `model` is the data layer and does not depend on `ui` or `samplers`. Samplers produce model values but never mutate `App` or widgets directly. `App` owns the active model state and coordinates all transitions.
 
+Table selection and keyboard focus are separate UI states. Selected table rows use the active theme's selection surface regardless of focus; entering a table must not replace that surface with the neutral control-focus color. Existing column-intersection highlighting may refine the selected cell without changing the row's selection meaning. Focus is conveyed by panel/tab emphasis and contextual controls. Hover and input-field surfaces remain distinct from table selection. Concrete colors and rendering rules are owned by `ui::theme`, Help, and drawing tests.
+
 ## 3. Cross-Cutting Design Decisions
 
 ### 3.1 Keep the UI thread responsive

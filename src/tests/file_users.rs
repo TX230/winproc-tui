@@ -228,7 +228,7 @@ fn file_users_selection_details_and_mouse_share_responsive_geometry() {
         let buffer = render_app_to_buffer(&app, width, height);
         let (x, y) = super::support::find_text_position_in_area(&buffer, rows, "1273")
             .expect("last PID visible");
-        assert_eq!(buffer[(x, y)].bg, app.theme().focus_surface);
+        assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
         app.on_mouse(left_click(x, y), screen);
         assert_eq!(app.file_users.selected, 39);
         press(&mut app, KeyCode::Char(' '));

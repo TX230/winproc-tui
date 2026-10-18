@@ -243,7 +243,6 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
                 theme,
                 width,
                 index == app.open_files_selected,
-                app.process_info_focus == ProcessInfoFocus::Content,
             ));
         }
     }
@@ -450,14 +449,9 @@ fn open_files_table_rows(
     theme: Theme,
     width: usize,
     selected: bool,
-    focused: bool,
 ) -> Vec<Line<'static>> {
     let style = Style::default().fg(theme.text).bg(if selected {
-        if focused {
-            theme.focus_surface
-        } else {
-            theme.table_selection_surface
-        }
+        theme.table_selection_surface
     } else {
         theme.panel_alt
     });

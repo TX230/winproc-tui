@@ -73,6 +73,14 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
 
 const GLOBAL_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "Selected table row",
+        label: "Theme-tinted background stays selected when focus moves",
+    },
+    HelpItem {
+        key: "Keyboard focus",
+        label: "Panel/tab emphasis and contextual shortcuts identify the active control",
+    },
+    HelpItem {
         key: "Ctrl+E",
         label: "Export all Graphs to CSV from any main panel",
     },

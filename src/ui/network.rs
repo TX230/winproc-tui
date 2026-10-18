@@ -342,7 +342,9 @@ fn draw_content(
                     width,
                 );
                 let style = if index == view.selected {
-                    normal.bg(theme.focus_surface).add_modifier(Modifier::BOLD)
+                    normal
+                        .bg(theme.table_selection_surface)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     normal
                 };
