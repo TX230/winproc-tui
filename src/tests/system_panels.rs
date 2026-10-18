@@ -1067,3 +1067,134 @@ fn compact_summary_render_evidence() {
     let rendered = render_app_to_text(&app, 80, 24);
     assert!(rendered.contains("TAIL"), "{rendered}");
 }
+
+#[test]
+fn panel_selection_feedback_tracks_keyboard_and_mouse_focus() {
+    use std::time::{Duration, Instant};
+    for (width, height) in [(80, 24), (180, 60)] {
+        let mut app = make_test_app(3, 10);
+        let screen = Rect::new(0, 0, width, height);
+        app.set_screen_area(screen);
+        let now = Instant::now();
+        app.focused_panel = FocusedPanel::System;
+        app.select_resource_panel(app::ResourcePanel::Gpu);
+        app.refresh_status_feedback(now);
+        assert!(app.status.starts_with("GPU row: "));
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+        app.refresh_status_feedback(now);
+        assert_eq!(app.focused_panel, FocusedPanel::SystemActivity);
+        assert!(app.status.is_empty());
+        assert!(!render_app_to_text(&app, width, height).contains("GPU row: "));
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL))
+            .unwrap();
+        app.refresh_status_feedback(now);
+        assert_eq!(app.focused_panel, FocusedPanel::Cpu);
+        assert!(app.status.is_empty());
+
+        // Border clicks change focus without activating a metric or process action.
+        for (panel, resource, area) in [
+            (
+                FocusedPanel::System,
+                Some(app::ResourcePanel::Memory),
+                ui::ram_vram_panel_area_for_screen(screen, &app),
+            ),
+            (
+                FocusedPanel::System,
+                Some(app::ResourcePanel::Gpu),
+                ui::gpu_panel_area_for_screen(screen, &app),
+            ),
+            (
+                FocusedPanel::SystemActivity,
+                None,
+                ui::system_activity_panel_area_for_screen(screen, &app),
+            ),
+            (
+                FocusedPanel::Cpu,
+                None,
+                ui::cpu_panel_area_for_screen(screen, &app),
+            ),
+            (
+                FocusedPanel::Processes,
+                None,
+                ui::main_panel_areas_for_app(screen, &app).processes.area,
+            ),
+        ] {
+            app.on_mouse(left_click(area.x, area.y), screen);
+            app.refresh_status_feedback(now);
+            assert_eq!(app.focused_panel, panel);
+            if let Some(resource) = resource {
+                assert_eq!(app.resource_panel, resource);
+            }
+            assert!(app.status.starts_with("Focus:"));
+            assert!(render_app_to_text(&app, width, height).contains(&app.status));
+        }
+
+        // Every resource row message has the short lifetime, even without sampling.
+        for (panel, resource, message) in [
+            (
+                FocusedPanel::System,
+                app::ResourcePanel::Memory,
+                "MEM row: Physical",
+            ),
+            (
+                FocusedPanel::System,
+                app::ResourcePanel::Gpu,
+                "GPU row: Usage",
+            ),
+            (
+                FocusedPanel::System,
+                app::ResourcePanel::Gpu,
+                "GPU adapter 1/1",
+            ),
+            (
+                FocusedPanel::SystemActivity,
+                app::ResourcePanel::Gpu,
+                "NW/DISK row: Net Rx",
+            ),
+            (FocusedPanel::Cpu, app::ResourcePanel::Gpu, "CPU row: Usage"),
+        ] {
+            app.focused_panel = panel;
+            app.resource_panel = resource;
+            app.status = message.into();
+            app.refresh_status_feedback(now);
+            assert_eq!(app.status, message);
+            app.refresh_status_feedback(now + Duration::from_secs(2));
+            assert!(app.status.is_empty());
+            app.status = message.into();
+            app.refresh_status_feedback(now);
+            app.focused_panel = FocusedPanel::Processes;
+            app.refresh_status_feedback(now);
+            assert!(app.status.is_empty());
+        }
+    }
+}
+
+#[test]
+fn panel_focus_feedback_cleanup_preserves_action_results_and_warnings() {
+    use std::time::{Duration, Instant};
+    for message in [
+        "Warning: sampling worker stopped",
+        "Copied row: proc-0",
+        "Exported Graph CSV",
+    ] {
+        let mut app = make_test_app(3, 10);
+        app.set_screen_area(Rect::new(0, 0, 180, 60));
+        app.focused_panel = FocusedPanel::System;
+        app.resource_panel = app::ResourcePanel::Gpu;
+        app.status = message.into();
+        let now = Instant::now();
+        app.refresh_status_feedback(now);
+        for key in [KeyCode::Right, KeyCode::Right, KeyCode::Down] {
+            app.on_key(KeyEvent::new(key, KeyModifiers::CONTROL))
+                .unwrap();
+            app.refresh_status_feedback(now + Duration::from_secs(1));
+            assert_eq!(app.status, message);
+        }
+        assert_eq!(app.focused_panel, FocusedPanel::Processes);
+        app.refresh_status_feedback(now + Duration::from_secs(5));
+        assert_eq!(app.status, message);
+        app.refresh_status_feedback(now + Duration::from_secs(6));
+        assert!(app.status.is_empty());
+    }
+}

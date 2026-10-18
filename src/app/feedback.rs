@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use super::App;
+use super::{App, FocusedPanel, ResourcePanel};
 
 const ACTION_FEEDBACK_LIFETIME: Duration = Duration::from_secs(6);
 const FOCUS_FEEDBACK_LIFETIME: Duration = Duration::from_secs(2);
@@ -10,6 +10,7 @@ pub(crate) struct StatusFeedback {
     observed: String,
     expires_at: Option<Instant>,
     context: (bool, bool, bool),
+    panel: Option<(FocusedPanel, ResourcePanel)>,
 }
 
 impl App {
@@ -21,15 +22,30 @@ impl App {
             self.network_browser.visible,
             self.file_users.visible,
         );
+        let panel = (self.focused_panel, self.resource_panel);
+        let selection_feedback = [
+            "MEM row: ",
+            "GPU row: ",
+            "GPU adapter ",
+            "NW/DISK row: ",
+            "CPU row: ",
+        ]
+        .iter()
+        .any(|prefix| self.status.starts_with(prefix));
+        let focus_feedback = selection_feedback || self.status.starts_with("Focus:");
         let feedback = &mut self.status_feedback;
         let mut changed = false;
-        if context != feedback.context && self.status == feedback.observed {
+        if (context != feedback.context
+            || (focus_feedback && feedback.panel.is_some_and(|previous| previous != panel)))
+            && self.status == feedback.observed
+        {
             changed = !self.status.is_empty();
             self.status.clear();
         }
         feedback.context = context;
+        feedback.panel = Some(panel);
         if self.status != feedback.observed {
-            let lifetime = if self.status.starts_with("Focus:") {
+            let lifetime = if focus_feedback {
                 FOCUS_FEEDBACK_LIFETIME
             } else {
                 ACTION_FEEDBACK_LIFETIME
