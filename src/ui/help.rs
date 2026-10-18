@@ -427,6 +427,10 @@ const SCHEDULING_ROWS: &[HelpItem] = &[
 
 const RAM_VRAM_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "Compact values / …",
+        label: "Widen the terminal for full values and supplementary fields",
+    },
+    HelpItem {
         key: "Tab / Ctrl+←/→",
         label: "Move focus between MEM and GPU panels",
     },
@@ -454,6 +458,10 @@ const RAM_VRAM_ROWS: &[HelpItem] = &[
 
 const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "Compact values / …",
+        label: "Widen the terminal for full values and supplementary fields",
+    },
+    HelpItem {
         key: "↑/↓",
         label: "Select the previous/next metric",
     },
@@ -468,6 +476,10 @@ const SYSTEM_ACTIVITY_ROWS: &[HelpItem] = &[
 ];
 
 const CPU_ROWS: &[HelpItem] = &[
+    HelpItem {
+        key: "Compact values / …",
+        label: "Widen the terminal for full values and supplementary fields",
+    },
     HelpItem {
         key: "↑/↓",
         label: "Select Usage / Threads / Processes / Per-core",

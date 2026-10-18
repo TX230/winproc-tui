@@ -941,6 +941,18 @@ fn process_text_style(row: &VisibleProcessRow<'_>, theme: Theme) -> Style {
     }
 }
 
+fn process_title_available_width(app: &App, width: u16) -> u16 {
+    let columns = visible_metric_columns(
+        width,
+        &app.process_columns,
+        app.process_metric_column_offset,
+        &app.process_column_widths,
+    );
+    let reserved = process_metric_overflow_indicator(&columns, app.process_columns.len())
+        .map_or(0, |text| text_width(&text) as u16);
+    width.saturating_sub(2).saturating_sub(reserved)
+}
+
 fn process_table_title(app: &App, width: u16, theme: Theme) -> Line<'static> {
     let filter = app.active_filter_text();
     let mut spans = vec![Span::styled(
@@ -952,14 +964,14 @@ fn process_table_title(app: &App, width: u16, theme: Theme) -> Line<'static> {
         spans.extend(filter_title_spans(
             filter,
             app.filter_cursor,
-            width.saturating_sub(30) as usize,
+            process_title_available_width(app, width).saturating_sub(25) as usize,
             theme,
         ));
     } else if app.is_process_jump_editing() {
         spans.push(title_separator(theme));
         spans.extend(jump_title_spans(app.process_jump_draft(), theme));
     } else {
-        for segment in process_table_state_segments(app) {
+        for segment in process_table_state_segments(app, width) {
             spans.push(title_separator(theme));
             if segment.kind == ProcessTitleSegmentKind::TrackedOnly {
                 spans.extend(process_tracked_only_title_spans(app, theme));
@@ -976,7 +988,7 @@ fn process_table_title(app: &App, width: u16, theme: Theme) -> Line<'static> {
     Line::from(spans)
 }
 
-fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
+fn process_table_state_segments(app: &App, width: u16) -> Vec<ProcessTitleSegment> {
     let visible_label = if app.effective_process_view_mode() == ProcessViewMode::Tree
         && !app.active_filter_text().is_empty()
         && app.visible_process_match_count() != app.visible_process_count()
@@ -1024,10 +1036,27 @@ fn process_table_state_segments(app: &App) -> Vec<ProcessTitleSegment> {
     ];
     let filter = app.active_filter_text();
     if !filter.is_empty() {
-        segments.push(ProcessTitleSegment {
-            kind: ProcessTitleSegmentKind::Filter,
-            label: format!("Filter \"{filter}\""),
-        });
+        let budget =
+            usize::from(process_title_available_width(app, width).saturating_sub(48)).min(32);
+        let mut preview = String::new();
+        for ch in filter.chars() {
+            if text_width(&format!("{preview}{ch}")) > budget {
+                break;
+            }
+            preview.push(ch);
+        }
+        let omitted = if preview.len() < filter.len() {
+            "…"
+        } else {
+            ""
+        };
+        segments.insert(
+            0,
+            ProcessTitleSegment {
+                kind: ProcessTitleSegmentKind::Filter,
+                label: format!("Filter(Ctrl+F) \"{preview}{omitted}\""),
+            },
+        );
     }
     segments
 }
@@ -1223,7 +1252,7 @@ fn process_title_control_area(
             .unwrap_or_else(|| area.right());
     let mut prefix_width =
         text_width(PROCESS_TITLE) + crate::ui::widgets::block::PANEL_NAME_PADDING_WIDTH;
-    for segment in process_table_state_segments(app) {
+    for segment in process_table_state_segments(app, area.width) {
         prefix_width = prefix_width.saturating_add(text_width(TITLE_SEPARATOR));
         if segment.kind == target {
             let title_x = area.x.saturating_add(1).saturating_add(prefix_width as u16);

@@ -61,6 +61,10 @@ The `.NET` column preset selects `.NET Gen2`, `.NET LOH`, and `.NET POH` by defa
 
 `WS Shrbl` is derived only when both PDH counters exist in the same sample and `Working Set >= Working Set - Private`. An invalid negative difference is unavailable (`--`); it is never clamped to zero. The collector does not call `QueryWorkingSet`, and the previous `WS Shrd` metric is not collected or exposed.
 
+## Responsive Summary Values
+
+Upper-panel rows use their ordinary formats when they fit. On narrow screens they shorten labels and use decimal unit scaling (including k/M/G for counts) with rounded values. A measurement and its unit are kept together; a value that still cannot fit is replaced by an ellipsis, never a bare numeric prefix. Supplementary fields or capacities may be omitted with an ellipsis. Widening the terminal restores the complete rows; contextual Help explains this route. Raw measurements, sorting, Graph data, and recording fields are unchanged.
+
 ## MEM and GPU Panels
 
 MEM metrics and per-adapter GPU metrics retain 7,200 one-second samples and do not depend on the Tracking List. Available GPU adapters use one-based titles from `GPU 1/N` through `GPU N/N`.

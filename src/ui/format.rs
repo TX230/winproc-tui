@@ -195,3 +195,179 @@ mod tests {
         assert_eq!(format_kb_per_sec(12_345_678), "12,346 KB/s");
     }
 }
+
+/// Fit a summary row without ever exposing only a prefix of a measurement.
+/// The original row is retained at wider widths; an ellipsis requests more room.
+pub(crate) fn bounded_summary_line(
+    mut line: ratatui::text::Line<'static>,
+    width: u16,
+) -> ratatui::text::Line<'static> {
+    use ratatui::text::Span;
+    let width = usize::from(width);
+    if line.width() <= width {
+        return line;
+    }
+    if line.spans.len() == 1 {
+        if line.spans[0].content.starts_with("[Per-core") {
+            line.spans[0].content = "[Per-core]".into();
+        }
+        if line.width() > width {
+            line.spans = vec![Span::raw(if width > 0 { "…" } else { "" })];
+        }
+        return line;
+    }
+    line.spans.retain(|span| !span.content.trim().is_empty());
+    if line.spans.len() < 2 {
+        return line;
+    }
+    let label = line.spans[0].content.trim();
+    let label = match label {
+        "Free + Zeroed" => "Free+0",
+        "Commit charge" => "Commit",
+        "Dedicated" => "Ded",
+        "Encode" => "Enc",
+        "Decode" => "Dec",
+        "Net Rx" => "Rx",
+        "Net Tx" => "Tx",
+        "Disk R" => "R",
+        "Disk W" => "W",
+        "Disk Q" => "Queue",
+        "Freq(P/E)" => "P/E",
+        "Processes" => "Procs",
+        "Nonpaged Pool" => "Nonpaged",
+        "Paged Pool" => "Paged",
+        other => other,
+    }
+    .to_string();
+    line.spans[0].content = format!("{label} ").into();
+    // Compact each complete numeric token and its unit, preserving semantic styles.
+    for span in line.spans.iter_mut().skip(1) {
+        let supplementary = span.content.starts_with(" (") || span.content.starts_with(" max");
+        span.content = format!(
+            "{}{}",
+            if supplementary { " " } else { "" },
+            compact_summary_value(&span.content)
+        )
+        .into();
+    }
+    if line.width() <= width {
+        return line;
+    }
+    // Drop supplementary spans (codec max/engine count, CPU U/K), explicitly.
+    while line.spans.len() > 2 && line.width() + 1 > width {
+        line.spans.pop();
+    }
+    let budget = width.saturating_sub(line.spans[0].width() + 1);
+    if let Some(value) = line.spans.get_mut(1) {
+        let primary = value
+            .content
+            .split_once('/')
+            .filter(|(_, rest)| rest.starts_with(|ch: char| ch.is_ascii_digit() || ch == '-'))
+            .map(|(first, _)| first)
+            .unwrap_or(&value.content)
+            .trim();
+        if value.width() > budget {
+            value.content = if ratatui::text::Span::raw(primary).width() <= budget {
+                primary.to_string()
+            } else {
+                String::new()
+            }
+            .into();
+        }
+    }
+    line.spans.push(Span::raw("…"));
+    if line.width() > width {
+        line.spans = vec![Span::raw(if width > 0 { "…" } else { "" })];
+    }
+    line
+}
+
+fn compact_summary_value(value: &str) -> String {
+    let tokens: Vec<_> = value.split_whitespace().collect();
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let token = tokens[i].replace(',', "");
+        if let Ok(mut number) = token.parse::<f64>() {
+            let unit = tokens.get(i + 1).copied().unwrap_or("");
+            let units: &[&str] = match unit {
+                "MB" => &["MB", "GB", "TB", "PB", "EB"],
+                "MB/s" => &["MB/s", "GB/s", "TB/s", "PB/s", "EB/s"],
+                "Mbps" => &["Mbps", "Gbps", "Tbps", "Pbps", "Ebps"],
+                "MHz" => &["MHz", "GHz", "THz"],
+                _ => &["", "k", "M", "G", "T", "P", "E"],
+            };
+            let mut index = 0;
+            while number >= 1000.0 && index + 1 < units.len() {
+                number /= 1000.0;
+                index += 1;
+            }
+            let digits = if index == 0 {
+                format!("{number:.0}")
+            } else {
+                format!("{number:.1}")
+            };
+            result.push(format!("{digits}{}", units[index]));
+            if !units[0].is_empty() {
+                i += 1;
+            }
+        } else {
+            result.push(token);
+        }
+        i += 1;
+    }
+    result.join(" ").replace(" / ", "/")
+}
+
+#[cfg(test)]
+mod bounded_summary_tests {
+    use super::*;
+    use ratatui::{
+        Terminal,
+        backend::TestBackend,
+        text::{Line, Span},
+        widgets::Paragraph,
+    };
+    #[test]
+    fn compact_summary_units_preserve_quantity_and_rate_meanings() {
+        for (input, expected) in [
+            ("123,456 MB/s", "123.5GB/s"),
+            ("12,345 Mbps", "12.3Gbps"),
+            ("--", "--"),
+            ("12,345 MB / 64,000 MB", "12.3GB/64.0GB"),
+            ("-- / 64,000 MB", "--/64.0GB"),
+            ("3,850 MHz / 2,500 MHz", "3.9GHz/2.5GHz"),
+            ("999 MB/s", "999MB/s"),
+            ("12,345", "12.3k"),
+        ] {
+            assert_eq!(compact_summary_value(input), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn overflow_never_renders_a_partial_number_or_rate_unit() {
+        for value in ["123,456 MB/s", "--", "18,446,744,073,709 MB", "123%"] {
+            for width in 1..32 {
+                let line = bounded_summary_line(
+                    Line::from(vec![Span::raw("Disk R  "), Span::raw(value)]),
+                    width,
+                );
+                assert!(line.width() <= usize::from(width));
+                let text = line.to_string();
+                assert!(!text.ends_with("MB") || !value.ends_with("MB/s"));
+                let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
+                terminal
+                    .draw(|f| f.render_widget(Paragraph::new(line.clone()), f.area()))
+                    .unwrap();
+                let rendered: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(|c| c.symbol())
+                    .collect();
+                assert_eq!(rendered.trim_end(), text.trim_end());
+            }
+        }
+    }
+}

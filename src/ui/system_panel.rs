@@ -16,7 +16,7 @@ use crate::{
         Theme,
         cpu_panel::{cpu_panel_lines_for_app, draw_cpu_panel},
         footer::shortcut_spans,
-        format::{format_integer, format_mb, ratio_optional},
+        format::{bounded_summary_line, format_integer, format_mb, ratio_optional},
         graph_slot::graph_value_spans,
         layout::system_panel_area_for_screen,
         widgets::block::{modal_block_focused, modal_title, panel_block_focused},
@@ -48,7 +48,13 @@ pub(crate) fn draw_system_panel(
     let memory_column_areas = memory_column_areas(memory_inner, &memory_columns);
     for (lines, column_area) in memory_columns.into_iter().zip(memory_column_areas) {
         frame.render_widget(
-            Paragraph::new(Text::from(lines)).style(Style::default().bg(theme.panel)),
+            Paragraph::new(Text::from(
+                lines
+                    .into_iter()
+                    .map(|line| bounded_summary_line(line, column_area.width))
+                    .collect::<Vec<_>>(),
+            ))
+            .style(Style::default().bg(theme.panel)),
             column_area,
         );
     }
@@ -62,8 +68,13 @@ pub(crate) fn draw_system_panel(
         let gpu_inner = gpu_block.inner(panels[1]);
         frame.render_widget(gpu_block, panels[1]);
         frame.render_widget(
-            Paragraph::new(Text::from(gpu_usage_lines(app, theme)))
-                .style(Style::default().bg(theme.panel)),
+            Paragraph::new(Text::from(
+                gpu_usage_lines(app, theme)
+                    .into_iter()
+                    .map(|line| bounded_summary_line(line, gpu_inner.width))
+                    .collect::<Vec<_>>(),
+            ))
+            .style(Style::default().bg(theme.panel)),
             gpu_inner,
         );
     }
@@ -79,8 +90,13 @@ pub(crate) fn draw_system_panel(
     let activity_inner = activity_block.inner(panels[2]);
     frame.render_widget(activity_block, panels[2]);
 
-    let right = Paragraph::new(Text::from(system_activity_lines(app, theme)))
-        .style(Style::default().bg(theme.panel));
+    let right = Paragraph::new(Text::from(
+        system_activity_lines(app, theme)
+            .into_iter()
+            .map(|line| bounded_summary_line(line, activity_inner.width))
+            .collect::<Vec<_>>(),
+    ))
+    .style(Style::default().bg(theme.panel));
     frame.render_widget(right, activity_inner);
 
     draw_cpu_panel(frame, panels[3], app, theme);
@@ -332,7 +348,7 @@ fn top_panel_areas(area: Rect, app: &App) -> [Rect; 4] {
     let total: u32 = desired.iter().map(|width| u32::from(*width)).sum();
     let mut widths = desired;
     if total > u32::from(area.width) {
-        // At very small widths, keep all four panels and clip their contents.
+        // Keep four panels; bound each row to its assigned content width.
         for (width, desired) in widths.iter_mut().zip(desired) {
             *width = (u32::from(desired) * u32::from(area.width) / total) as u16;
         }

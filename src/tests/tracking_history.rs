@@ -387,7 +387,7 @@ fn process_table_title_shows_concise_active_view_state() {
 
     assert!(
         rendered.contains(
-            "PROCESSES  · 1 visible · Flat(v) · [x] Tracked-only(Shift+T) · [x] Show exited(Shift+E) · Filter \"target\""
+            "PROCESSES  · Filter(Ctrl+F) \"target\" · 1 visible · Flat(v) · [x] Tracked-only(Shift+T) · [x] Show exited(Shift+E)"
         ),
         "{rendered}"
     );
@@ -423,8 +423,8 @@ fn process_table_title_shows_concise_active_view_state() {
             .contains(Modifier::BOLD)
     );
 
-    let (filter_x, filter_y) =
-        find_text_position(&buffer, "Filter \"target\"").expect("filter state should be rendered");
+    let (filter_x, filter_y) = find_text_position(&buffer, "Filter(Ctrl+F) \"target\"")
+        .expect("filter state should be rendered");
     let filter_cell = &buffer[(filter_x, filter_y)];
     assert_eq!(filter_cell.fg, ui::THEMES[0].warning);
     assert_ne!(filter_cell.fg, ui::THEMES[0].tracked);

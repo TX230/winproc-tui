@@ -1037,3 +1037,33 @@ fn compact_memory_navigation_excludes_hidden_pressure_column_after_resize() {
     assert_eq!(app.selected_system_metric(), SystemMetric::PagedPool);
     assert_eq!(app.graph_entries.len(), 1);
 }
+
+#[test]
+fn compact_summary_render_evidence() {
+    let mut app = make_test_app(3, 10);
+    app.process_columns = model::MetricColumn::ALL.to_vec();
+    app.snapshot.used_memory = 12_345_000_000;
+    app.snapshot.total_memory = 64_000_000_000;
+    app.snapshot.modified_memory = Some(u64::MAX);
+    app.snapshot.standby_memory = None;
+    app.snapshot.thread_count = Some(u64::MAX);
+    app.snapshot.network_received_bytes_per_sec = Some(u64::MAX);
+    app.filter_text = "no-match-長い-filter-abcdefghijklmnopqrstuvwxyz-TAIL".into();
+    app.rebuild_visible_process_cache();
+    app.clamp_process_table_state();
+    for width in [80, 120, 240] {
+        let rendered = render_app_to_text(&app, width, 24);
+        assert!(rendered.contains("Filter(Ctrl+F)"), "{rendered}");
+        assert!(rendered.contains("0 visible"), "{rendered}");
+        assert!(rendered.contains("--"), "{rendered}");
+        assert!(
+            rendered.contains("18.4EB") || rendered.contains("18,446,744,073,710 MB"),
+            "{rendered}"
+        );
+        println!("COMPACT EVIDENCE {width}x24\n{rendered}");
+    }
+    app.begin_filter_edit();
+    assert!(app.filter_draft.ends_with("TAIL"));
+    let rendered = render_app_to_text(&app, 80, 24);
+    assert!(rendered.contains("TAIL"), "{rendered}");
+}

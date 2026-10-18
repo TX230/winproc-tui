@@ -34,11 +34,12 @@ pub(crate) fn draw_cpu_panel(frame: &mut ratatui::Frame<'_>, area: Rect, app: &A
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let paragraph = Paragraph::new(Text::from(cpu_panel_lines_for_app(
-        app,
-        theme,
-        inner.height,
-    )))
+    let paragraph = Paragraph::new(Text::from(
+        cpu_panel_lines_for_app(app, theme, inner.height)
+            .into_iter()
+            .map(|line| crate::ui::format::bounded_summary_line(line, inner.width))
+            .collect::<Vec<_>>(),
+    ))
     .style(Style::default().bg(theme.panel));
     frame.render_widget(paragraph, inner);
 }
@@ -110,7 +111,8 @@ pub(crate) fn cpu_per_core_button_area(panel: Rect) -> Option<Rect> {
     Some(Rect::new(
         inner.x,
         inner.y.saturating_add(PER_CORE_ROW),
-        (PER_CORE_BUTTON_LABEL.chars().count() as u16).min(inner.width),
+        crate::ui::format::bounded_summary_line(Line::from(PER_CORE_BUTTON_LABEL), inner.width)
+            .width() as u16,
         1,
     ))
 }
