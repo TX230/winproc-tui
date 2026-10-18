@@ -26,7 +26,7 @@ The result dialog retains full native errors and the resolved path, with scrolli
 
 ## Navigation and Scrolling
 
-Process Info handles tab switching before filter editing: Ctrl+Left/Right changes tabs while retaining filter text. Escape returns from a row detail to its list, from tab content or filter editing to the tab row without clearing the filter, and from the tab row closes Process Info. Pending Scheduling changes retain their existing input lock until completion.
+Process Info handles tab switching before filter editing: Ctrl+Left/Right changes tabs while retaining filter text. Escape returns from a row detail to its list, from tab content or filter editing to the tab row without clearing the filter, and from the tab row closes Process Info. Pending Scheduling changes retain their existing input lock until completion. Compact Process Info guidance prioritizes leaving the current focus or closing the dialog, then contextual actions. Scheduling retains selection, change, default, and restore guidance before secondary navigation and sizing commands. Only complete shortcut groups are shown; the footer and clickable regions use the same fitted text and retain a blank row above the guidance. The complete reference remains available in Help.
 
 Files, DLLs, Environment, and Network lists scroll their data rows independently. Capture information, filters, warnings, and column headings remain fixed above the rows. Drawing, row selection, scrollbars, and mouse hit testing share the scrolling body geometry. Detail views retain their own scrolling content.
 

@@ -701,11 +701,11 @@ fn narrow_process_info_footer_keeps_dynamic_tab_primary_actions() {
     let dlls = render_app_to_text(&app, screen.width, screen.height);
     assert!(dlls.contains("Enter details"), "{dlls}");
     assert!(dlls.contains("Ctrl+U refresh"), "{dlls}");
-    assert!(dlls.contains("/ or Ctrl+F filter"), "{dlls}");
+    assert!(dlls.contains("/ filter"), "{dlls}");
 
     app.process_info_tab = app::ProcessInfoTab::Environment;
     let environment = render_app_to_text(&app, screen.width, screen.height);
-    assert!(environment.contains("/ or Ctrl+F filter"), "{environment}");
+    assert!(environment.contains("/ filter"), "{environment}");
     assert!(environment.contains("Enter details"), "{environment}");
     assert!(environment.contains("Ctrl+U refresh"), "{environment}");
 }
@@ -755,7 +755,7 @@ fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
             .modifier
             .contains(Modifier::BOLD | Modifier::UNDERLINED)
     );
-    assert!(buffer_to_text(&tabs_focused).contains("←/→ tabs  ↑/↓ scroll  Esc close"));
+    assert!(buffer_to_text(&tabs_focused).contains("Esc close  ←/→ tabs  ↑/↓ scroll"));
     let (hint_x, hint_y) =
         find_text_position(&tabs_focused, "←/→ tabs").expect("tab-focus shortcut should render");
     assert_eq!(tabs_focused[(hint_x, hint_y)].fg, app.theme().key_hint);
@@ -1574,5 +1574,106 @@ fn process_info_manual_resize_preserves_selected_rows_and_stable_refresh_geometr
             app.process_info_height(),
         );
         assert!(small.content.height < before.content.height);
+    }
+}
+
+#[test]
+fn compact_process_info_keeps_exit_guidance_at_every_focus_stop() {
+    use app::{ProcessInfoFocus, ProcessInfoTab};
+    for (width, height) in [(80, 24), (120, 36)] {
+        for tab in ProcessInfoTab::ALL {
+            // Tab row, content, explicit editor, detail, and affinity editor.
+            for state in 0..5 {
+                let filterable = matches!(
+                    tab,
+                    ProcessInfoTab::Files
+                        | ProcessInfoTab::Dlls
+                        | ProcessInfoTab::Environment
+                        | ProcessInfoTab::Network
+                );
+                if (state == 1 && !tab.content_is_focusable())
+                    || ((state == 2 || state == 3) && !filterable)
+                    || (state == 4 && tab != ProcessInfoTab::Scheduling)
+                {
+                    continue;
+                }
+                let mut app = make_test_app(2, 10);
+                app.open_selected_process_info_dialog().unwrap();
+                app.process_info_tab = tab;
+                app.process_info_focus = if state == 0 {
+                    ProcessInfoFocus::Tabs
+                } else {
+                    ProcessInfoFocus::Content
+                };
+                app.process_info_filter_editing = state == 2;
+                app.scheduling.affinity_focused = state == 4;
+                if state == 3 {
+                    match tab {
+                        ProcessInfoTab::Files => app.open_files_show_detail = true,
+                        ProcessInfoTab::Dlls => app.process_modules_show_detail = true,
+                        ProcessInfoTab::Environment => app.process_environment_show_detail = true,
+                        ProcessInfoTab::Network => app.process_network.detail = true,
+                        _ => unreachable!(),
+                    }
+                }
+                let screen = Rect::new(0, 0, width, height);
+                app::sync_layout_state(&mut app, screen);
+                let buffer = render_app_to_buffer(&app, width, height);
+                let guidance = if state == 0 {
+                    "Esc close"
+                } else if state == 3 {
+                    "Esc/Enter back"
+                } else {
+                    "Esc tabs"
+                };
+                let (x, y) = find_text_position(&buffer, guidance).unwrap_or_else(|| {
+                    panic!("{tab:?} state {state}: {}", buffer_to_text(&buffer))
+                });
+                let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                    screen,
+                    app.process_info_height(),
+                );
+                assert!(layout.footer.contains((x, y).into()));
+                assert_eq!(buffer[(x, y)].fg, app.theme().key_hint);
+                for col in layout.footer.x..layout.footer.right() {
+                    assert_eq!(buffer[(col, y - 1)].symbol(), " ");
+                }
+                for region in &app.shortcut_map.borrow().regions {
+                    assert!(region.area.right() <= layout.footer.right());
+                    assert_eq!(region.area.y, y);
+                }
+                if tab == ProcessInfoTab::Scheduling && state != 0 {
+                    for text in ["Space", "Ctrl+Z restore", "Ctrl+D default"] {
+                        assert!(
+                            find_text_position(&buffer, text).is_some(),
+                            "{}",
+                            buffer_to_text(&buffer)
+                        );
+                    }
+                    let movement = if state == 4 {
+                        "←/→/↑/↓ move"
+                    } else {
+                        "←/→ set"
+                    };
+                    assert!(find_text_position(&buffer, movement).is_some());
+                }
+                // Click the action label: it shares the keyboard escape behavior.
+                app.on_mouse(left_click(x + guidance.len() as u16 - 1, y), screen);
+                if state == 0 {
+                    assert!(!app.show_process_info_dialog);
+                } else {
+                    assert!(app.show_process_info_dialog);
+                    assert!(!app.process_info_filter_editing);
+                    assert!(!app.process_info_detail_is_open());
+                    if state == 3 {
+                        assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);
+                        app.on_key(KeyCode::Esc.into()).unwrap();
+                    }
+                    assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);
+                    app.on_key(KeyCode::Esc.into()).unwrap();
+                    assert!(!app.show_process_info_dialog);
+                }
+            }
+        }
     }
 }

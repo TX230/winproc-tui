@@ -632,23 +632,25 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
     if let Some(view) = &app.file_action
         && app.process_info_tab == ProcessInfoTab::Files
     {
-        return crate::ui::footer::shortcut_spans(
+        return fitted_shortcut_spans(
             if view.busy() {
                 &[("Esc", "back"), ("PgUp/PgDn", "scroll")]
             } else {
                 &[
+                    ("Esc", "back"),
                     ("Enter", "open"),
                     ("↑/↓", "select"),
-                    ("Esc", "back"),
                     ("PgUp/PgDn", "scroll"),
                 ]
             },
+            width,
             theme,
         );
     }
     if app.process_info_filter_editing {
-        return crate::ui::footer::shortcut_spans(
+        return fitted_shortcut_spans(
             crate::app::text_input::INSPECTION_FILTER_SHORTCUTS,
+            width,
             theme,
         );
     }
@@ -696,19 +698,19 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             ProcessInfoTab::Scheduling if app.scheduling.affinity_focused => vec![
                 ("Space", "toggle"),
                 ("Ctrl+D", "default"),
-                ("p", "priority"),
-                ("←/→/↑/↓", "move"),
-                ("Tab", "next"),
                 ("Ctrl+Z", "restore"),
+                ("←/→/↑/↓", "move"),
+                ("p", "priority"),
+                ("Tab", "next"),
                 ("Ctrl+U", "refresh"),
                 ("Esc", "tabs"),
             ],
             ProcessInfoTab::Scheduling => vec![
-                ("a", "affinity"),
                 ("←/→", "set"),
                 ("Space", "select"),
-                ("Ctrl+D", "default"),
                 ("Ctrl+Z", "restore"),
+                ("Ctrl+D", "default"),
+                ("a", "affinity"),
                 ("Ctrl+U", "refresh"),
                 ("Tab", "next"),
                 ("Esc", "tabs"),
@@ -766,11 +768,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         }
     };
     if !app.scheduling.applying {
-        if width >= 100 {
-            items.insert(0, ("h/Shift+H", "height"));
-        } else {
-            items.push(("h/Shift+H", "height"));
-        }
+        items.push(("h/Shift+H", "height"));
         items.push(("Alt+H", "auto"));
     }
     if app.process_info_tab == ProcessInfoTab::Files
@@ -780,9 +778,22 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
     {
         items.insert(0, ("F4", "actions"));
     }
+    fitted_shortcut_spans(&items, width, theme)
+}
+
+// Navigation out of the current focus always wins over optional commands.
+// Admit only whole groups, using the same spans for drawing and hit testing.
+fn fitted_shortcut_spans(items: &[(&str, &str)], width: u16, theme: Theme) -> Vec<Span<'static>> {
+    let mut items = items.to_vec();
+    items.sort_by_key(|(key, _)| !key.split('/').any(|part| part == "Esc"));
     let mut spans = Vec::new();
     let mut used = 0usize;
     for (key, label) in items {
+        let key = if width < 80 && key == "/ or Ctrl+F" {
+            "/"
+        } else {
+            key
+        };
         let separator = usize::from(!spans.is_empty()) * 2;
         let item_width = Span::raw(format!("{key} {label}")).width();
         if used.saturating_add(separator).saturating_add(item_width) > width as usize {
