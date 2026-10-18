@@ -1378,7 +1378,7 @@ fn help_footer_wraps_complete_groups_and_clicks_match_visible_rows() {
                     .regions
                     .iter()
                     .any(|region| region.area.contains((x, y).into())
-                        && region.area.right() <= popup.right() - 1)
+                        && region.area.right() < popup.right())
             );
         }
         let (x, y) = find_text_position(&buffer, "PageUp/PageDown Page").unwrap();

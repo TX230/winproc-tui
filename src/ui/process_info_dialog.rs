@@ -43,12 +43,12 @@ pub(crate) struct ProcessInfoDialogLayout {
 }
 
 pub(crate) fn table_has_focus(app: &App) -> bool {
-    app.process_info_focus == ProcessInfoFocus::Content
-        && !app.process_info_filter_editing
-        && !(app.process_info_tab == ProcessInfoTab::Network && app.process_network.editing)
-        && !app.show_help
-        && app.file_action.is_none()
-        && app.context_menu.is_none()
+    !(app.process_info_focus != ProcessInfoFocus::Content
+        || app.process_info_filter_editing
+        || app.show_help
+        || (app.process_info_tab == ProcessInfoTab::Network && app.process_network.editing)
+        || app.file_action.is_some()
+        || app.context_menu.is_some())
 }
 
 pub(crate) fn table_header(mut line: Line<'static>, focused: bool, theme: Theme) -> Line<'static> {
@@ -898,6 +898,23 @@ fn contains_point(area: Rect, x: u16, y: u16) -> bool {
     x >= area.x && x < area.right() && y >= area.y && y < area.bottom()
 }
 
+pub(crate) fn inspection_filter_area(content: Rect, app: &App) -> Option<Rect> {
+    if app.process_info_detail_is_open() {
+        return None;
+    }
+    if app.process_info_tab == ProcessInfoTab::Network {
+        return Some(super::network::content_layout(content).filter);
+    }
+    if !matches!(
+        app.process_info_tab,
+        ProcessInfoTab::Files | ProcessInfoTab::Dlls | ProcessInfoTab::Environment
+    ) {
+        return None;
+    }
+    let (header, _) = inspection_table_areas(content, inspection_header_rows(app));
+    (header.height > 1).then(|| Rect::new(header.x, header.y + 1, header.width, 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -935,21 +952,4 @@ mod tests {
     fn wrapped_image_value_keeps_all_text() {
         assert_eq!(wrap_display_width("abcdefghij", 4), ["abcd", "efgh", "ij"]);
     }
-}
-
-pub(crate) fn inspection_filter_area(content: Rect, app: &App) -> Option<Rect> {
-    if app.process_info_detail_is_open() {
-        return None;
-    }
-    if app.process_info_tab == ProcessInfoTab::Network {
-        return Some(super::network::content_layout(content).filter);
-    }
-    if !matches!(
-        app.process_info_tab,
-        ProcessInfoTab::Files | ProcessInfoTab::Dlls | ProcessInfoTab::Environment
-    ) {
-        return None;
-    }
-    let (header, _) = inspection_table_areas(content, inspection_header_rows(app));
-    (header.height > 1).then(|| Rect::new(header.x, header.y + 1, header.width, 1))
 }

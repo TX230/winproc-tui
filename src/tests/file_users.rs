@@ -373,8 +373,8 @@ fn file_search_reopens_at_query_and_slash_focuses_from_mode_or_results() {
     assert_eq!(app.file_users.cursor, "映像".len());
     press(&mut app, KeyCode::Char('/'));
     assert_eq!(app.file_users.draft, "映像/");
-    for focus in [FileUsersFocus::Results] {
-        app.file_users.focus = focus;
+    {
+        app.file_users.focus = FileUsersFocus::Results;
         let buffer = render_app_to_buffer(&app, 120, 60);
         let (x, y) = super::support::find_text_position(&buffer, "/ query").unwrap();
         app.on_mouse(left_click(x, y), Rect::new(0, 0, 120, 60));
