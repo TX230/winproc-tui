@@ -57,7 +57,7 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter (file results)",
-        label: "Open Files for the process using this file",
+        label: "Open Files filtered to this exact path; edit Filter to clear",
     },
     HelpItem {
         key: "Space (file results)",

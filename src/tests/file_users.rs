@@ -393,3 +393,95 @@ fn file_search_reopens_at_query_and_slash_focuses_from_mode_or_results() {
     assert_eq!(app.file_users.selected, 1);
     assert!(requests.try_recv().is_err());
 }
+
+#[test]
+fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
+    use crate::samplers::open_files::{OpenFilesRequest, OpenFilesResult, OpenFilesWorker};
+    let (mut app, requests, updates) = setup();
+    let (worker, captures, results) = OpenFilesWorker::test_pair();
+    app.open_files_worker = worker;
+    app.open_file_users();
+    app.file_users.draft = "media".into();
+    app.file_users.focus = FileUsersFocus::Results;
+    let original = entry(0);
+    app.file_users.report.matches = vec![original.clone(), entry(1)];
+    app.file_users.report.progress.denied_processes = 3;
+    press(&mut app, KeyCode::Enter);
+    let (id, _) = requests.try_recv().unwrap();
+    press(&mut app, KeyCode::Down);
+    deliver(
+        &mut app,
+        &updates,
+        id,
+        FileSearchReport {
+            end: Some(FileSearchEnd::Complete),
+            ..Default::default()
+        },
+        Some(original.owner.clone()),
+    );
+    assert_eq!(app.open_files_filter, original.path);
+    assert_eq!(app.file_users.selected, 1);
+    let OpenFilesRequest::Collect {
+        generation,
+        identity,
+        ..
+    } = captures.try_recv().unwrap()
+    else {
+        panic!()
+    };
+    let mut report =
+        super::support::test_open_files_report("player-0.exe", original.owner.pid, "unrelated.dll");
+    let mut same_name = report.entries[0].clone();
+    same_name.path = original.path.replace("media", "other");
+    report.entries.push(same_name);
+    let mut matched = report.entries[0].clone();
+    matched.path = original.path.clone();
+    matched.handle.value = 100;
+    report.entries.push(matched.clone());
+    matched.handle.value = 104;
+    report.entries.push(matched);
+    let send = |report, generation, identity| {
+        results
+            .send(OpenFilesResult {
+                report,
+                generation,
+                identity,
+                elapsed: std::time::Duration::from_millis(10),
+            })
+            .unwrap()
+    };
+    send(report.clone(), generation + 1, identity.clone());
+    assert!(!app.poll_open_files_results().unwrap());
+    send(report.clone(), generation, identity.clone());
+    assert!(app.poll_open_files_results().unwrap());
+    assert_eq!(ui::open_files::filtered_entries(&app).len(), 2);
+    assert_eq!(
+        ui::open_files::selected_entry(&app).unwrap().path,
+        original.path
+    );
+    assert!(render_app_to_text(&app, 180, 42).contains("matched handles 2"));
+    app.refresh_open_files().unwrap();
+    let OpenFilesRequest::Collect {
+        generation,
+        identity,
+        ..
+    } = captures.try_recv().unwrap()
+    else {
+        panic!()
+    };
+    report.entries.truncate(1);
+    send(report, generation, identity);
+    assert!(app.poll_open_files_results().unwrap());
+    assert!(ui::open_files::selected_entry(&app).is_none());
+    assert!(render_app_to_text(&app, 180, 42).contains("Original match unavailable"));
+    press(&mut app, KeyCode::Char('/'));
+    app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+        .unwrap();
+    press(&mut app, KeyCode::Enter);
+    assert!(app.open_files_filter.is_empty());
+    assert_eq!(ui::open_files::filtered_entries(&app).len(), 1);
+    app.close_process_info_dialog();
+    assert_eq!(app.file_users.draft, "media");
+    assert_eq!(app.file_users.selected, 1);
+    assert_eq!(app.file_users.report.progress.denied_processes, 3);
+}

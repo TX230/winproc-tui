@@ -31,6 +31,7 @@ pub(crate) struct FileUsersView {
     pub(crate) detail: bool,
     pub(crate) pending: Option<u64>,
     pub(crate) verifying: bool,
+    pub(crate) navigation_match: Option<FileUserMatch>,
     pub(crate) notice: Option<String>,
 }
 
@@ -57,6 +58,7 @@ impl App {
         self.file_users.visible = false;
         self.file_users.pending = None;
         self.file_users.verifying = false;
+        self.file_users.navigation_match = None;
     }
 
     pub(crate) fn start_file_search(&mut self) {
@@ -106,10 +108,13 @@ impl App {
         let finished = update.report.end.is_some();
         if self.file_users.verifying {
             if finished {
+                let navigation_match = self.file_users.navigation_match.take();
                 self.file_users.pending = None;
                 self.file_users.verifying = false;
                 self.file_users.notice = match &update.report.end {
-                    Some(FileSearchEnd::Failed(error)) => Some(error.clone()),
+                    Some(FileSearchEnd::Failed(error)) => {
+                        Some(format!("Original match unavailable: {error}"))
+                    }
                     Some(FileSearchEnd::Complete) => update.report.cleanup_warning.clone(),
                     end => Some(
                         end.as_ref()
@@ -122,6 +127,8 @@ impl App {
                     && update.report.end == Some(FileSearchEnd::Complete)
                     && update.report.cleanup_warning.is_none()
                     && let Some(owner) = update.owner
+                    && let Some(matched) = navigation_match
+                    && matched.owner == owner
                 {
                     let target = ProcessInfoDialogTarget {
                         identity: owner.identity(),
@@ -132,6 +139,10 @@ impl App {
                         self.open_verified_process_info_dialog(target, ProcessInfoTab::Files)
                     {
                         self.file_users.notice = Some(error.to_string());
+                    } else {
+                        self.open_files_filter = matched.path.clone();
+                        self.open_files_filter_cursor = self.open_files_filter.len();
+                        self.open_files_match_path = Some(matched.path);
                     }
                 }
             }
@@ -172,7 +183,8 @@ impl App {
         let Some(entry) = self.file_users.selected_entry() else {
             return;
         };
-        let owner = entry.owner.clone();
+        let matched = entry.clone();
+        let owner = matched.owner.clone();
         self.file_users_next_id = self.file_users_next_id.wrapping_add(1).max(1);
         let id = self.file_users_next_id;
         match self
@@ -182,6 +194,7 @@ impl App {
             Ok(()) => {
                 self.file_users.pending = Some(id);
                 self.file_users.verifying = true;
+                self.file_users.navigation_match = Some(matched);
                 self.file_users.notice = None;
             }
             Err(error) => self.file_users.notice = Some(error.to_string()),

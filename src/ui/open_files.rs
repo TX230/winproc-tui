@@ -144,7 +144,11 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         lines.push(Line::from(Span::styled(
             format!(
                 "{} ({} / PID {}) · Auto off; Ctrl+U retry",
-                error.message(),
+                if has_match_filter(app) {
+                    format!("Original match unavailable: {}", error.message())
+                } else {
+                    error.message().to_string()
+                },
                 report.process_name,
                 report.pid
             ),
@@ -169,7 +173,9 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
 
     let entries = filtered_entries(app);
     let total_paths = report.entries.len();
-    let path_count = if app.open_files_filter.is_empty() {
+    let path_count = if has_match_filter(app) {
+        format!("matched handles {} (edit Filter to clear)", entries.len())
+    } else if app.open_files_filter.is_empty() {
         format!("named handles {total_paths}")
     } else {
         format!("shown {}/{total_paths}", entries.len())
@@ -194,7 +200,14 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         Style::default().fg(theme.text),
     )));
     lines.push(Line::from(vec![
-        Span::styled("Filter: ", Style::default().fg(theme.muted)),
+        Span::styled(
+            if has_match_filter(app) {
+                "Exact:  "
+            } else {
+                "Filter: "
+            },
+            Style::default().fg(theme.muted),
+        ),
         Span::styled(
             filter_input_text(app, width),
             Style::default().fg(theme.text),
@@ -224,7 +237,9 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
 
     if entries.is_empty() {
         lines.push(Line::from(Span::styled(
-            if app.open_files_filter.is_empty() {
+            if has_match_filter(app) {
+                "Original match unavailable in this capture."
+            } else if app.open_files_filter.is_empty() {
                 "No named disk file handles."
             } else {
                 "No matching paths."
@@ -330,6 +345,13 @@ pub(crate) fn filtered_entries(app: &App) -> Vec<&OpenFileEntry> {
     let Some(report) = &app.open_files_result else {
         return Vec::new();
     };
+    if has_match_filter(app) {
+        return report
+            .entries
+            .iter()
+            .filter(|entry| entry.path == app.open_files_filter)
+            .collect();
+    }
     let terms = filter_terms(&app.open_files_filter);
     if terms.is_empty() {
         return report.entries.iter().collect();
@@ -342,6 +364,10 @@ pub(crate) fn filtered_entries(app: &App) -> Vec<&OpenFileEntry> {
             terms.iter().any(|term| path.contains(term))
         })
         .collect()
+}
+
+pub(crate) fn has_match_filter(app: &App) -> bool {
+    app.open_files_match_path.as_deref() == Some(app.open_files_filter.as_str())
 }
 
 fn filter_terms(filter: &str) -> Vec<String> {

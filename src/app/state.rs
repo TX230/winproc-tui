@@ -1188,6 +1188,7 @@ pub(crate) struct App {
     pub(crate) open_files_in_flight_generation: Option<u64>,
     pub(crate) open_files_refresh: super::open_files::OpenFilesRefresh,
     pub(crate) open_files_filter: String,
+    pub(crate) open_files_match_path: Option<String>,
     pub(crate) open_files_filter_cursor: usize,
     pub(crate) open_files_selected: usize,
     pub(crate) open_files_show_detail: bool,
@@ -1493,6 +1494,7 @@ impl App {
             open_files_in_flight_generation: None,
             open_files_refresh: super::open_files::OpenFilesRefresh::default(),
             open_files_filter: String::new(),
+            open_files_match_path: None,
             open_files_filter_cursor: 0,
             open_files_selected: 0,
             open_files_show_detail: false,
@@ -5578,6 +5580,7 @@ impl App {
         self.open_files_show_detail = false;
         self.file_action = None;
         self.open_files_filter.clear();
+        self.open_files_match_path = None;
         self.open_files_filter_cursor = 0;
         self.open_files_result = None;
         self.open_files_result_identity = None;
