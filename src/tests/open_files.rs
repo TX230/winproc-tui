@@ -151,7 +151,8 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
         app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE))
             .unwrap();
     }
-    assert_eq!(app.open_files_filter, "映像/ r a");
+    // The first typed character enters editing, so both subsequent slashes are literal.
+    assert_eq!(app.open_files_filter, "映像// r a");
     assert_eq!(app.open_files_selected, 0);
 }
 
@@ -1195,4 +1196,40 @@ fn files_selection_keeps_theme_color_across_focus_and_contrast_modes() {
             }
         }
     }
+}
+
+#[test]
+fn typing_after_leaving_files_filter_restores_editor_and_cursor() {
+    let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
+    app.open_files_result = Some(test_open_files_report("proc-0", 0, "sample.txt"));
+    let screen = Rect::new(0, 0, 120, 48);
+    app::sync_layout_state(&mut app, screen);
+    app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.process_info_filter_editing);
+    app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+        .unwrap();
+    assert!(!app.process_info_filter_editing);
+    app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.process_info_filter_editing);
+    assert_eq!(app.open_files_filter, "s");
+    let mut terminal = Terminal::new(TestBackend::new(screen.width, screen.height)).unwrap();
+    terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+    let content = ui::process_info_content_area_for_screen(screen, app.process_info_height());
+    assert_eq!(
+        app.draw_cursor.get(),
+        Some(Position::new(content.x + 9, content.y + 1))
+    );
+    assert!(buffer_to_text(terminal.backend().buffer()).contains("Tab/Enter Table"));
+    app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+        .unwrap();
+    app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.open_files_filter, "as");
+    app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+        .unwrap();
+    terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+    assert!(app.draw_cursor.get().is_none());
 }

@@ -177,6 +177,7 @@ impl App {
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
                     && !ch.is_control() =>
             {
+                self.process_info_filter_editing = true;
                 self.push_open_files_filter_char(ch)
             }
             _ => {}

@@ -335,6 +335,10 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Move filter cursor / edit filter",
     },
     HelpItem {
+        key: "Typing (Files table)",
+        label: "Focus Filter and edit with a visible cursor",
+    },
+    HelpItem {
         key: "Enter (Files)",
         label: "Open file actions directly",
     },
