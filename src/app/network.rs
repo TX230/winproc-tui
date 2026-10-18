@@ -278,7 +278,7 @@ impl App {
         let area = if global {
             ui::browser_layout(screen).content
         } else {
-            crate::ui::process_info_content_area_for_screen(screen)
+            crate::ui::process_info_content_area_for_screen(screen, self.process_info_height())
         };
         let view = self.network_view_mut(global);
         let layout = ui::content_layout(area);
@@ -305,7 +305,9 @@ impl App {
             return Ok(());
         }
         self.sync_network_layout(global, self.last_screen_area);
-        let width = ui::active_content_area(self.last_screen_area, global).width;
+        let width =
+            ui::active_content_area(self.last_screen_area, global, self.process_info_height())
+                .width;
         let view = self.network_view_mut(global);
         let explicit_filter_edit = view.editing;
         if explicit_filter_edit || (!global && !view.detail) {
@@ -483,7 +485,7 @@ impl App {
             return;
         }
         self.sync_network_layout(global, screen);
-        let area = ui::active_content_area(screen, global);
+        let area = ui::active_content_area(screen, global, self.process_info_height());
         let inside = area.contains(Position::new(mouse.column, mouse.row));
         if inside && !global {
             self.process_info_focus = ProcessInfoFocus::Content;

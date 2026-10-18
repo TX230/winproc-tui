@@ -339,6 +339,9 @@ impl LoopTrace {
 
 pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     let resized = app.last_screen_area != screen_area;
+    if resized {
+        app.process_info_resize_drag = None;
+    }
     app.set_screen_area(screen_area);
     if resized && app.is_main_menu_open() && app.main_menu_section == state::MainMenuSection::More {
         app.close_main_menu();
@@ -357,8 +360,12 @@ pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     let graph_reorder_page_size = graph_reorder_page_size_for_screen(screen_area, app);
     app.set_graph_reorder_page_size(graph_reorder_page_size);
     app.set_log_list_page_size(crate::ui::log_list_page_size_for_screen(screen_area));
-    app.set_process_info_page_size(process_info_page_size_for_screen(screen_area));
-    if resized
+    let old_info_page_size = app.process_info_page_size();
+    app.set_process_info_page_size(process_info_page_size_for_screen(
+        screen_area,
+        app.process_info_height(),
+    ));
+    if (resized || old_info_page_size != app.process_info_page_size())
         && app.show_process_info_dialog
         && app.process_info_tab == ProcessInfoTab::Scheduling
         && app.process_info_focus == ProcessInfoFocus::Content

@@ -277,6 +277,18 @@ const PROCESSES_ROWS: &[HelpItem] = &[
 
 const PROCESS_INFO_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "h / Shift+H",
+        label: "Increase / decrease Info height outside filter editing",
+    },
+    HelpItem {
+        key: "Drag bottom border",
+        label: "Resize Info; manual height is shared by all tabs",
+    },
+    HelpItem {
+        key: "Alt+H",
+        label: "Reset Info height; reopening also resets",
+    },
+    HelpItem {
         key: "Ctrl+←/→",
         label: "Switch Info tabs, including during filter editing",
     },

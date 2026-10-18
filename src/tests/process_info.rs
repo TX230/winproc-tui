@@ -382,7 +382,11 @@ fn process_info_renders_range_above_underlined_metric_headers() {
     let buffer = render_app_to_buffer(&app, 120, 40);
     let (_, range_y) = find_text_position(&buffer, &range).expect("comparison range should render");
     let (_, header_y) = find_text_position(&buffer, "At B").expect("metric header should render");
-    let metrics_x = ui::process_info_content_area_for_screen(Rect::new(0, 0, 120, 40)).x;
+    let metrics_x = ui::process_info_content_area_for_screen(
+        Rect::new(0, 0, 120, 40),
+        app.process_info_height(),
+    )
+    .x;
 
     assert!(range_y < header_y);
     for heading in ["Metrics", "At B", "B-A"] {
@@ -597,8 +601,11 @@ fn process_info_small_dialog_scrolls_without_overwriting_footer_shortcuts() {
         .record_snapshot_unbounded(captured_at, &[process]);
     app.open_selected_process_info_dialog().unwrap();
     let screen = Rect::new(0, 0, 60, 12);
-    app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
-    let content = ui::process_info_content_area_for_screen(screen);
+    app.set_process_info_page_size(ui::process_info_page_size_for_screen(
+        screen,
+        app.process_info_height(),
+    ));
+    let content = ui::process_info_content_area_for_screen(screen, app.process_info_height());
 
     app.on_mouse(
         MouseEvent {
@@ -637,7 +644,10 @@ fn process_info_scrollbar_thumb_follows_content_focus() {
     ));
     let screen = Rect::new(0, 0, 60, 16);
     app.set_screen_area(screen);
-    app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+    app.set_process_info_page_size(ui::process_info_page_size_for_screen(
+        screen,
+        app.process_info_height(),
+    ));
     let scrollbar =
         ui::process_info_scrollbar_area_for_screen(screen, &app).expect("Process Info scrollbar");
 
@@ -728,7 +738,11 @@ fn process_info_tabs_and_content_cycle_without_changing_the_fixed_target() {
     assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Tabs);
     let screen = Rect::new(0, 0, 120, 40);
     let tabs_focused = render_app_to_buffer(&app, screen.width, screen.height);
-    let tabs_area = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen).tabs;
+    let tabs_area = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+        screen,
+        app.process_info_height(),
+    )
+    .tabs;
     let (tab_x, tab_y) = find_text_position_in_area(&tabs_focused, tabs_area, "Metrics")
         .expect("active Process Info tab should render");
     assert_eq!(
@@ -854,10 +868,16 @@ fn process_info_mouse_tabs_content_and_outside_click_are_modal() {
     let mut app = make_test_app(2, 10);
     app.open_selected_process_info_dialog().unwrap();
     let screen = Rect::new(0, 0, 200, 60);
-    let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen);
+    let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+        screen,
+        app.process_info_height(),
+    );
     let image_point = (layout.tabs.y..layout.tabs.bottom())
         .flat_map(|y| (layout.tabs.x..layout.tabs.right()).map(move |x| (x, y)))
-        .find(|(x, y)| ui::process_info_tab_at(screen, *x, *y) == Some(app::ProcessInfoTab::Image))
+        .find(|(x, y)| {
+            ui::process_info_tab_at(screen, *x, *y, app.process_info_height())
+                == Some(app::ProcessInfoTab::Image)
+        })
         .expect("Image tab should have a hit area");
 
     app.on_mouse(left_click(image_point.0, image_point.1), screen);
@@ -890,7 +910,10 @@ fn process_info_image_shows_extended_fields_and_scrolls_long_values() {
         .unwrap();
     let screen = Rect::new(0, 0, 70, 18);
     app.set_screen_area(screen);
-    app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+    app.set_process_info_page_size(ui::process_info_page_size_for_screen(
+        screen,
+        app.process_info_height(),
+    ));
 
     let first_page = render_app_to_text(&app, screen.width, screen.height);
     assert!(first_page.contains("User"), "{first_page}");
@@ -1074,7 +1097,8 @@ fn inspection_tables_pin_headers_and_keep_scrolled_rows_clickable() {
             ));
             let screen = Rect::new(0, 0, width, height);
             app::sync_layout_state(&mut app, screen);
-            let content = ui::process_info_content_area_for_screen(screen);
+            let content =
+                ui::process_info_content_area_for_screen(screen, app.process_info_height());
             let (header, body) = ui::process_info_dialog::inspection_table_areas(
                 content,
                 ui::process_info_dialog::inspection_header_rows(&app),
@@ -1301,5 +1325,254 @@ fn inspection_filter_activation_does_not_steal_detail_input() {
         assert!(!app.process_info_detail_is_open());
         assert!(app.show_process_info_dialog);
         assert_eq!(app.process_info_focus, app::ProcessInfoFocus::Content);
+    }
+}
+
+#[test]
+fn process_info_height_keys_preserve_target_and_filters_for_all_tabs() {
+    for tab in app::ProcessInfoTab::ALL {
+        for (width, height) in [(60, 24), (100, 30), (160, 48), (180, 60)] {
+            let mut app = make_test_app(1, 10);
+            app.open_selected_process_info_dialog().unwrap();
+            app.process_info_tab = tab;
+            app.process_info_focus = app::ProcessInfoFocus::Content;
+            let target = app.process_info_target.as_ref().unwrap().identity.clone();
+            let screen = Rect::new(0, 0, width, height);
+            app::sync_layout_state(&mut app, screen);
+            let initial = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                screen,
+                app.process_info_height(),
+            );
+            app.on_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::SHIFT))
+                .unwrap();
+            let smaller = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                screen,
+                app.process_info_height(),
+            );
+            assert_eq!(smaller.area.height + 1, initial.area.height);
+            assert!(smaller.content.height > 0);
+            assert!(smaller.content.bottom() < smaller.footer.y);
+            assert_eq!(app.process_info_target.as_ref().unwrap().identity, target);
+            assert_eq!(app.process_info_tab, tab);
+            assert!(app.open_files_filter.is_empty());
+            assert!(app.process_modules_filter.is_empty());
+            assert!(app.process_environment_filter.is_empty());
+            assert!(app.process_network.filter.is_empty());
+            app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE))
+                .unwrap();
+            assert_eq!(
+                ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                    screen,
+                    app.process_info_height()
+                )
+                .area
+                .height,
+                initial.area.height
+            );
+            let manual = app.process_info_height();
+            app.process_info_tab = tab.next();
+            assert_eq!(app.process_info_height(), manual);
+            app.process_info_tab = tab;
+            app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::ALT))
+                .unwrap();
+            assert!(app.process_info_manual_height.is_none());
+            assert_eq!(
+                ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                    screen,
+                    app.process_info_height()
+                ),
+                initial
+            );
+            app.process_info_manual_height = Some(16);
+            app.close_process_info_dialog();
+            app.process_info_tab = app::ProcessInfoTab::Metrics;
+            app.open_selected_process_info_dialog().unwrap();
+            assert!(app.process_info_manual_height.is_none());
+        }
+    }
+}
+
+#[test]
+fn process_info_height_drag_clamps_and_cancels_on_resize_or_tab_change() {
+    use crossterm::event::MouseButton;
+    for tab in app::ProcessInfoTab::ALL {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = tab;
+        let screen = Rect::new(0, 0, 180, 60);
+        app::sync_layout_state(&mut app, screen);
+        let before = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
+        );
+        let event = |kind, row| MouseEvent {
+            kind,
+            column: before.area.x + 5,
+            row,
+            modifiers: KeyModifiers::NONE,
+        };
+        let bottom = before.area.bottom() - 1;
+        app.on_mouse(
+            event(MouseEventKind::Down(MouseButton::Left), bottom),
+            screen,
+        );
+        assert!(app.process_info_resize_drag.is_some());
+        app.on_mouse(
+            event(MouseEventKind::Drag(MouseButton::Left), bottom - 3),
+            screen,
+        );
+        let after = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
+        );
+        assert_eq!(after.area.height + 6, before.area.height);
+        assert_eq!(after.area.bottom() + 3, before.area.bottom());
+        app.on_mouse(
+            event(MouseEventKind::Up(MouseButton::Left), bottom - 3),
+            screen,
+        );
+        assert!(app.process_info_resize_drag.is_none());
+        let saved = app.process_info_height();
+        app.process_info_resize_drag = Some((bottom, saved));
+        app::sync_layout_state(&mut app, Rect::new(0, 0, 60, 18));
+        assert!(app.process_info_resize_drag.is_none());
+        assert_eq!(app.process_info_height(), saved);
+        let narrow = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            app.last_screen_area,
+            saved,
+        );
+        assert!(narrow.area.bottom() <= 18);
+        assert!(narrow.content.height > 0);
+        assert_eq!(narrow.footer.height, 1);
+        app.process_info_resize_drag = Some((bottom, saved));
+        app.activate_process_info_tab(app::ProcessInfoTab::Metrics)
+            .unwrap();
+        assert!(app.process_info_resize_drag.is_none());
+    }
+}
+
+#[test]
+fn process_info_height_does_not_steal_filter_editor_or_pending_scheduling_input() {
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+        app::ProcessInfoTab::Network,
+    ] {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = tab;
+        app::sync_layout_state(&mut app, Rect::new(0, 0, 180, 60));
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE))
+            .unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::SHIFT))
+            .unwrap();
+        assert!(app.process_info_manual_height.is_none());
+        let filter = match tab {
+            app::ProcessInfoTab::Files => &app.open_files_filter,
+            app::ProcessInfoTab::Dlls => &app.process_modules_filter,
+            app::ProcessInfoTab::Environment => &app.process_environment_filter,
+            _ => &app.process_network.filter,
+        };
+        assert_eq!(filter, "hH");
+        let text = render_app_to_text(&app, 180, 60);
+        assert!(!text.contains("h/Shift+H height"));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(render_app_to_text(&app, 180, 60).contains("h/Shift+H height"));
+    }
+    let mut app = make_test_app(1, 10);
+    app.open_selected_process_info_dialog().unwrap();
+    app.process_info_tab = app::ProcessInfoTab::Scheduling;
+    app.scheduling.applying = true;
+    app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.process_info_manual_height.is_none());
+}
+
+#[test]
+fn process_info_manual_resize_preserves_selected_rows_and_stable_refresh_geometry() {
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+    ] {
+        let mut app = make_test_app(1, 10);
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_tab = tab;
+        let mut files = super::support::test_open_files_report("proc-0", 0, "file");
+        files.entries = (0..100)
+            .map(|i| {
+                let mut e = files.entries[0].clone();
+                e.path = format!("file-{i}");
+                e
+            })
+            .collect();
+        app.open_files_result = Some(files);
+        app.process_modules_result = Some(test_process_modules_report(
+            "proc-0",
+            0,
+            (0..100)
+                .map(|i| test_process_module_entry(&format!("file-{i}"), "Test"))
+                .collect(),
+        ));
+        app.process_environment_result = Some(super::support::test_process_environment_report(
+            "proc-0",
+            0,
+            (0..100)
+                .map(|i| crate::model::ProcessEnvironmentEntry {
+                    name: format!("V{i}"),
+                    value: "test".into(),
+                })
+                .collect(),
+        ));
+        let screen = Rect::new(0, 0, 180, 60);
+        app::sync_layout_state(&mut app, screen);
+        let before = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
+        );
+        app.open_files_result.as_mut().unwrap().entries.truncate(90);
+        assert_eq!(
+            before,
+            ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                screen,
+                app.process_info_height()
+            )
+        );
+        app.process_info_focus = app::ProcessInfoFocus::Content;
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+        let selection = (
+            app.open_files_selected,
+            app.process_modules_selected,
+            app.process_environment_selected,
+        );
+        for _ in 0..20 {
+            app.on_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::SHIFT))
+                .unwrap();
+        }
+        assert_eq!(
+            selection,
+            (
+                app.open_files_selected,
+                app.process_modules_selected,
+                app.process_environment_selected
+            )
+        );
+        let selected = match tab {
+            app::ProcessInfoTab::Files => app.open_files_selected,
+            app::ProcessInfoTab::Dlls => app.process_modules_selected,
+            _ => app.process_environment_selected,
+        };
+        let offset = app.process_info_scroll_offset();
+        assert!(selected >= offset && selected < offset + app.process_info_page_size());
+        let small = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
+        );
+        assert!(small.content.height < before.content.height);
     }
 }

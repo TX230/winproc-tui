@@ -48,7 +48,7 @@ pub(crate) fn draw_process_info_dialog(
     app: &App,
     theme: Theme,
 ) {
-    let layout = process_info_dialog_layout_for_screen(screen);
+    let layout = process_info_dialog_layout_for_screen(screen, app.process_info_height());
     frame.render_widget(Clear, layout.area);
     let dialog_theme = theme;
     frame.render_widget(
@@ -119,10 +119,15 @@ pub(crate) fn draw_process_info_dialog(
     draw_footer(frame, layout.footer, app, theme);
 }
 
-pub(crate) fn process_info_dialog_layout_for_screen(screen: Rect) -> ProcessInfoDialogLayout {
+pub(crate) fn process_info_dialog_layout_for_screen(
+    screen: Rect,
+    height: u16,
+) -> ProcessInfoDialogLayout {
     let screen_regions = screen_layout(screen);
     let available = screen_regions.get(1).copied().unwrap_or(screen);
-    let modal = PROCESS_INFO_MODAL.layout(available);
+    let mut spec = PROCESS_INFO_MODAL;
+    spec.content_height = height;
+    let modal = spec.layout(available);
     let tab_height = tab_row_count(modal.content.width).min(modal.content.height);
     let top_gap = u16::from(modal.content.height.saturating_sub(tab_height) > 1);
     let tabs = Rect::new(
@@ -195,16 +200,19 @@ pub(crate) fn draw_inspection_lines(
     );
 }
 
-pub(crate) fn process_info_content_area_for_screen(screen: Rect) -> Rect {
-    process_info_dialog_layout_for_screen(screen).content
+pub(crate) fn process_info_content_area_for_screen(screen: Rect, height: u16) -> Rect {
+    process_info_dialog_layout_for_screen(screen, height).content
 }
 
-pub(crate) fn process_info_page_size_for_screen(screen: Rect) -> usize {
-    process_info_content_area_for_screen(screen).height.max(1) as usize
+pub(crate) fn process_info_page_size_for_screen(screen: Rect, height: u16) -> usize {
+    process_info_content_area_for_screen(screen, height)
+        .height
+        .max(1) as usize
 }
 
 pub(crate) fn process_info_total_rows(app: &App) -> usize {
-    let width = process_info_content_area_for_screen(app.last_screen_area).width;
+    let width =
+        process_info_content_area_for_screen(app.last_screen_area, app.process_info_height()).width;
     match app.process_info_tab {
         ProcessInfoTab::Metrics => process_info_metrics_lines(app, width, app.theme()).len(),
         ProcessInfoTab::Image => process_info_image_lines(app, width, app.theme()).len(),
@@ -222,8 +230,13 @@ pub(crate) fn process_info_total_rows(app: &App) -> usize {
     }
 }
 
-pub(crate) fn process_info_tab_at(screen: Rect, x: u16, y: u16) -> Option<ProcessInfoTab> {
-    let layout = process_info_dialog_layout_for_screen(screen);
+pub(crate) fn process_info_tab_at(
+    screen: Rect,
+    x: u16,
+    y: u16,
+    height: u16,
+) -> Option<ProcessInfoTab> {
+    let layout = process_info_dialog_layout_for_screen(screen, height);
     ProcessInfoTab::ALL
         .into_iter()
         .zip(tab_areas(layout.tabs))
@@ -231,7 +244,7 @@ pub(crate) fn process_info_tab_at(screen: Rect, x: u16, y: u16) -> Option<Proces
 }
 
 pub(crate) fn process_info_scrollbar_area_for_screen(screen: Rect, app: &App) -> Option<Rect> {
-    let content = process_info_content_area_for_screen(screen);
+    let content = process_info_content_area_for_screen(screen, app.process_info_height());
     if app.process_info_tab == ProcessInfoTab::Network {
         return super::network::scrollbar_area(content, &app.process_network);
     }
@@ -627,7 +640,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
     {
         return super::network::shortcuts(&app.process_network, false, width, theme);
     }
-    let items = if app.scheduling.applying {
+    let mut items = if app.scheduling.applying {
         Vec::new()
     } else if app.process_info_focus == ProcessInfoFocus::Tabs
         && !app.process_info_tab.content_is_focusable()
@@ -735,6 +748,14 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             ],
         }
     };
+    if !app.scheduling.applying {
+        if width >= 100 {
+            items.insert(0, ("h/Shift+H", "height"));
+        } else {
+            items.push(("h/Shift+H", "height"));
+        }
+        items.push(("Alt+H", "auto"));
+    }
     let mut spans = Vec::new();
     let mut used = 0usize;
     for (key, label) in items {
@@ -817,27 +838,27 @@ mod tests {
 
     #[test]
     fn large_screen_uses_centered_maximum_outer_size_below_header() {
-        let layout = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 60));
+        let layout = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 60), 40);
 
         assert_eq!(layout.area.width, 142);
-        assert_eq!(layout.area.height, 24);
+        assert_eq!(layout.area.height, 44);
         assert!(layout.area.y >= 1);
         assert_eq!(layout.area.x, 29);
     }
 
     #[test]
     fn narrow_or_short_screen_shrinks_only_that_dimension() {
-        let narrow = process_info_dialog_layout_for_screen(Rect::new(0, 0, 100, 60));
-        assert_eq!((narrow.area.width, narrow.area.height), (100, 24));
+        let narrow = process_info_dialog_layout_for_screen(Rect::new(0, 0, 100, 60), 40);
+        assert_eq!((narrow.area.width, narrow.area.height), (100, 44));
 
-        let short = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 24));
+        let short = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 24), 40);
         assert_eq!((short.area.width, short.area.height), (142, 21));
     }
 
     #[test]
     fn small_screen_keeps_tabs_content_and_shortcuts_separate() {
         let screen = Rect::new(0, 0, 60, 12);
-        let layout = process_info_dialog_layout_for_screen(screen);
+        let layout = process_info_dialog_layout_for_screen(screen, 40);
 
         assert!(layout.tabs.bottom() <= layout.content.y);
         assert_eq!(layout.content.bottom() + 1, layout.footer.y);

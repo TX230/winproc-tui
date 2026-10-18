@@ -22,6 +22,14 @@ Process Info handles tab switching before filter editing: Ctrl+Left/Right change
 
 Files, DLLs, Environment, and Network lists scroll their data rows independently. Capture information, filters, warnings, and column headings remain fixed above the rows. Drawing, row selection, scrollbars, and mouse hit testing share the scrolling body geometry. Detail views retain their own scrolling content.
 
+## Dialog Size
+
+Process Info uses terminal-bounded initial height budgets: information-heavy Metrics and list tabs have a larger budget, while Image and Scheduling use a smaller bounded budget. These budgets are independent of live sample values, row counts, capture completion, and refresh results, so asynchronous changes never resize the dialog. Other modals retain their own layout policies.
+
+Keyboard height adjustment and bottom-border dragging use the same geometry as drawing, tab hit testing, row hit testing, and scrollbars. A manual height is shared across all tabs for the open dialog session. Reset returns each tab to its initial budget; closing and reopening also resets, without saving configuration. The centered dialog remains terminal-bounded on terminal resize, retains the preferred height, and ends any active drag. Minimum manual size reserves tab, content, spacing, and footer regions whenever the terminal permits them. Resizing retains the process identity, active tab, filters, and selected rows; scrolling is clamped to the new viewport and selected list rows remain visible.
+
+Printable height shortcuts apply outside explicit filter editing. During explicit editing they remain literal filter text; detail navigation and pending Scheduling operations retain their input priority.
+
 ## Tab Collection Boundaries
 
 | Tab | Data source and lifecycle |

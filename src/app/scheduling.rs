@@ -184,8 +184,10 @@ impl App {
                             PriorityOutcome::Failed(_) | PriorityOutcome::AppliedUnverified(_)
                         )
                     }) {
-                        let area =
-                            crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+                        let area = crate::ui::process_info_content_area_for_screen(
+                            self.last_screen_area,
+                            self.process_info_height(),
+                        );
                         let total =
                             crate::ui::scheduling::lines(self, area.width, self.theme()).len();
                         self.scheduling
@@ -368,7 +370,10 @@ impl App {
 
     fn move_scheduling_vertical(&mut self, down: bool) {
         use crate::ui::scheduling::{Control, layout};
-        let area = crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+        let area = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        );
         let geometry = layout(self, area.width);
         let current = if self.scheduling.affinity_focused {
             Control::Affinity(self.scheduling.affinity_selected)
@@ -421,7 +426,10 @@ impl App {
             .map(|r| r.cpus().len())
             .unwrap_or(0);
         self.scheduling.affinity_selected = index.min(count.saturating_sub(1));
-        let area = crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+        let area = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        );
         let total = crate::ui::scheduling::lines(self, area.width, self.theme()).len();
         self.scheduling.scroll.ensure_visible(
             crate::ui::scheduling::layout(self, area.width)
@@ -515,7 +523,10 @@ impl App {
 
     fn affinity_notice(&mut self, message: &str) {
         self.scheduling.notice = Some(message.into());
-        let area = crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+        let area = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        );
         let total = crate::ui::scheduling::lines(self, area.width, self.theme()).len();
         self.scheduling
             .scroll
@@ -538,7 +549,10 @@ impl App {
     pub(crate) fn select_priority(&mut self, index: usize) {
         self.scheduling.affinity_focused = false;
         self.scheduling.selected = index.min(4);
-        let area = crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+        let area = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        );
         let total = crate::ui::scheduling::lines(self, area.width, self.theme()).len();
         self.scheduling.scroll.ensure_visible(
             crate::ui::scheduling::layout(self, area.width)
@@ -559,7 +573,8 @@ impl App {
             return true;
         }
         if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-            let area = crate::ui::process_info_content_area_for_screen(screen);
+            let area =
+                crate::ui::process_info_content_area_for_screen(screen, self.process_info_height());
             if let Some(control) =
                 crate::ui::scheduling::control_at(self, area, mouse.column, mouse.row)
             {

@@ -1220,6 +1220,8 @@ pub(crate) struct App {
     pub(crate) process_info_image_scroll: ScrollableModalState,
     pub(crate) process_info_dlls_scroll: ScrollableModalState,
     pub(crate) process_info_environment_scroll: ScrollableModalState,
+    pub(crate) process_info_manual_height: Option<u16>,
+    pub(crate) process_info_resize_drag: Option<(u16, u16)>,
     pub(crate) process_info_target: Option<ProcessInfoDialogTarget>,
     pub(crate) process_info_verified_snapshot_at: Option<DateTime<Local>>,
     pub(crate) process_info_generation: u64,
@@ -1529,6 +1531,8 @@ impl App {
                 page_size: 1,
                 ..ScrollableModalState::default()
             },
+            process_info_manual_height: None,
+            process_info_resize_drag: None,
             process_info_target: None,
             process_info_verified_snapshot_at: None,
             process_info_generation: 0,
@@ -5033,6 +5037,15 @@ impl App {
         })
     }
 
+    // Stable per-tab budgets do not react to asynchronous capture/list length changes.
+    pub(crate) fn process_info_height(&self) -> u16 {
+        self.process_info_manual_height
+            .unwrap_or(match self.process_info_tab {
+                ProcessInfoTab::Image | ProcessInfoTab::Scheduling => 24,
+                _ => 40,
+            })
+    }
+
     pub(crate) fn set_process_info_page_size(&mut self, page_size: usize) {
         // Network owns separate table and detail geometry in sync_network_layout.
         if self.process_info_tab == ProcessInfoTab::Network {
@@ -5106,6 +5119,7 @@ impl App {
     }
 
     pub(crate) fn activate_process_info_tab(&mut self, tab: ProcessInfoTab) -> Result<()> {
+        self.process_info_resize_drag = None;
         self.process_info_filter_editing = false;
         self.process_network.editing = false;
         if !self.show_process_info_dialog {
@@ -5540,6 +5554,8 @@ impl App {
         self.threads = super::threads::ThreadsView::default();
         self.process_info_tab = initial_tab;
         self.process_info_focus = ProcessInfoFocus::Tabs;
+        self.process_info_manual_height = None;
+        self.process_info_resize_drag = None;
         self.show_process_info_dialog = true;
         self.process_info_scroll.reset();
         self.process_info_image_scroll.reset();
@@ -5604,6 +5620,7 @@ impl App {
         self.open_files_refresh = super::open_files::OpenFilesRefresh::default();
         self.process_info_verified_snapshot_at = None;
         self.process_network = super::network::NetworkView::default();
+        self.process_info_resize_drag = None;
         self.show_process_info_dialog = false;
         self.process_info_target = None;
         self.process_info_scroll.stop_drag();
@@ -5919,6 +5936,7 @@ impl App {
         }
         self.set_process_info_page_size(crate::ui::process_info_page_size_for_screen(
             self.last_screen_area,
+            self.process_info_height(),
         ));
         true
     }
@@ -5949,6 +5967,7 @@ impl App {
         }
         self.set_process_info_page_size(crate::ui::process_info_page_size_for_screen(
             self.last_screen_area,
+            self.process_info_height(),
         ));
         true
     }
@@ -6086,7 +6105,11 @@ impl App {
                 );
             }
         }
-        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let width = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        )
+        .width;
         let total = crate::ui::process_modules::process_modules_total_rows(self, width);
         self.process_info_dlls_scroll
             .set_page_size(self.process_info_dlls_scroll.page_size, total);
@@ -6143,8 +6166,11 @@ impl App {
         }
         if self.process_modules_show_detail {
             self.process_info_dlls_scroll.scroll_home();
-            let width =
-                crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+            let width = crate::ui::process_info_content_area_for_screen(
+                self.last_screen_area,
+                self.process_info_height(),
+            )
+            .width;
             let total = crate::ui::process_modules::process_modules_total_rows(self, width);
             self.process_info_dlls_scroll
                 .set_page_size(self.process_info_dlls_scroll.page_size, total);
@@ -6163,7 +6189,11 @@ impl App {
             self.process_info_dlls_scroll.offset =
                 selected_line.saturating_add(1).saturating_sub(page_size);
         }
-        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let width = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        )
+        .width;
         let total = crate::ui::process_modules::process_modules_total_rows(self, width);
         self.process_info_dlls_scroll
             .set_page_size(page_size, total);
@@ -6233,7 +6263,11 @@ impl App {
     fn reset_process_modules_filter_selection(&mut self) {
         self.process_modules_selected = 0;
         self.process_info_dlls_scroll.scroll_home();
-        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let width = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        )
+        .width;
         let total = crate::ui::process_modules::process_modules_total_rows(self, width);
         self.process_info_dlls_scroll
             .set_page_size(self.process_info_dlls_scroll.page_size, total);
@@ -6373,7 +6407,11 @@ impl App {
                 );
             }
         }
-        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let width = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        )
+        .width;
         let total = crate::ui::process_environment::process_environment_total_rows(self, width);
         self.process_info_environment_scroll
             .set_page_size(self.process_info_environment_scroll.page_size, total);
@@ -6433,8 +6471,11 @@ impl App {
         }
         if self.process_environment_show_detail {
             self.process_info_environment_scroll.scroll_home();
-            let width =
-                crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+            let width = crate::ui::process_info_content_area_for_screen(
+                self.last_screen_area,
+                self.process_info_height(),
+            )
+            .width;
             let total = crate::ui::process_environment::process_environment_total_rows(self, width);
             self.process_info_environment_scroll
                 .set_page_size(self.process_info_environment_scroll.page_size, total);
@@ -6453,7 +6494,11 @@ impl App {
             self.process_info_environment_scroll.offset =
                 selected_line.saturating_add(1).saturating_sub(page_size);
         }
-        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let width = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        )
+        .width;
         let total = crate::ui::process_environment::process_environment_total_rows(self, width);
         self.process_info_environment_scroll
             .set_page_size(page_size, total);
@@ -6524,7 +6569,11 @@ impl App {
     fn reset_process_environment_filter_selection(&mut self) {
         self.process_environment_selected = 0;
         self.process_info_environment_scroll.scroll_home();
-        let width = crate::ui::process_info_content_area_for_screen(self.last_screen_area).width;
+        let width = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        )
+        .width;
         let total = crate::ui::process_environment::process_environment_total_rows(self, width);
         self.process_info_environment_scroll
             .set_page_size(self.process_info_environment_scroll.page_size, total);

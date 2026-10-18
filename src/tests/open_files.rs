@@ -122,7 +122,7 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
             .unwrap();
         assert_eq!(app.open_files_selected, 39);
-        let area = ui::process_info_content_area_for_screen(screen);
+        let area = ui::process_info_content_area_for_screen(screen, app.process_info_height());
         let buffer = render_app_to_buffer(&app, width, height);
         let (x, y) = super::support::find_text_position_in_area(&buffer, area, "0xDC")
             .expect("last handle visible");
@@ -170,7 +170,7 @@ fn open_file_modes_unicode_names_do_not_shift_attribute_columns() {
     for width in [80, 112, 160] {
         let screen = Rect::new(0, 0, width, 35);
         app::sync_layout_state(&mut app, screen);
-        let area = ui::process_info_content_area_for_screen(screen);
+        let area = ui::process_info_content_area_for_screen(screen, app.process_info_height());
         let buffer = render_app_to_buffer(&app, width, 35);
         let mut previous_x = area.x;
         for (heading, value) in [
@@ -758,7 +758,7 @@ fn open_files_filter_shows_colon_and_terminal_cursor() {
         error: None,
     });
     let screen = Rect::new(0, 0, 160, 45);
-    let content = ui::process_info_content_area_for_screen(screen);
+    let content = ui::process_info_content_area_for_screen(screen, app.process_info_height());
     let expected_cursor = Position::new(content.x + 10, content.y + 1);
 
     let backend = TestBackend::new(screen.width, screen.height);
@@ -814,10 +814,10 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
     });
     let screen = Rect::new(0, 0, 160, 45);
     show_process_info_files_tab(&mut app);
-    let before = ui::process_info_page_size_for_screen(screen);
+    let before = ui::process_info_page_size_for_screen(screen, app.process_info_height());
 
     app.open_files_filter = "b.log".to_string();
-    let after = ui::process_info_page_size_for_screen(screen);
+    let after = ui::process_info_page_size_for_screen(screen, app.process_info_height());
 
     assert_eq!(before, after);
 }
@@ -936,6 +936,7 @@ fn open_files_table_column_names_are_underlined() {
 fn open_files_scroll_offset_changes_rendered_rows() {
     let mut app = make_test_app(1, 10);
     show_process_info_files_tab(&mut app);
+    app.process_info_manual_height = Some(20);
     app.open_files_result = Some(OpenFilesReport {
         pid: 0,
         process_name: "proc-0".to_string(),
@@ -956,7 +957,10 @@ fn open_files_scroll_offset_changes_rendered_rows() {
         error: None,
     });
     let screen = Rect::new(0, 0, 160, 45);
-    app.set_process_info_page_size(ui::process_info_page_size_for_screen(screen));
+    app.set_process_info_page_size(ui::process_info_page_size_for_screen(
+        screen,
+        app.process_info_height(),
+    ));
     app.scroll_process_info_end();
 
     let rendered = render_app_to_text(&app, screen.width, screen.height);
@@ -1100,7 +1104,10 @@ fn process_info_files_keeps_tab_selection_distinct_from_focus_and_summary() {
             show_process_info_files_tab(&mut app);
             app.open_files_result = Some(test_open_files_report("proc-0", 0, "sample.bin"));
             let screen = Rect::new(0, 0, width, height);
-            let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(screen);
+            let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                screen,
+                app.process_info_height(),
+            );
             let theme = app.theme();
             for focus in [app::ProcessInfoFocus::Tabs, app::ProcessInfoFocus::Content] {
                 app.process_info_focus = focus;
@@ -1119,7 +1126,7 @@ fn process_info_files_keeps_tab_selection_distinct_from_focus_and_summary() {
                     focus == app::ProcessInfoFocus::Tabs
                 );
                 assert_eq!(
-                    ui::process_info_tab_at(screen, x, y),
+                    ui::process_info_tab_at(screen, x, y, app.process_info_height()),
                     Some(app::ProcessInfoTab::Files)
                 );
                 let (x, y) =
@@ -1132,13 +1139,26 @@ fn process_info_files_keeps_tab_selection_distinct_from_focus_and_summary() {
                     let gap_cell = &buffer[(x, layout.tabs.y - 1)];
                     assert_eq!(gap_cell.symbol(), " ");
                     assert_eq!(gap_cell.bg, theme.panel_alt);
-                    assert_eq!(ui::process_info_tab_at(screen, x, layout.tabs.y - 1), None);
+                    assert_eq!(
+                        ui::process_info_tab_at(
+                            screen,
+                            x,
+                            layout.tabs.y - 1,
+                            app.process_info_height()
+                        ),
+                        None
+                    );
                 }
                 assert_eq!(layout.content.y, layout.tabs.bottom() + 1);
                 for x in layout.tabs.x..layout.tabs.right() {
                     assert_eq!(buffer[(x, layout.tabs.bottom())].symbol(), " ");
                     assert_eq!(
-                        ui::process_info_tab_at(screen, x, layout.tabs.bottom()),
+                        ui::process_info_tab_at(
+                            screen,
+                            x,
+                            layout.tabs.bottom(),
+                            app.process_info_height()
+                        ),
                         None
                     );
                 }

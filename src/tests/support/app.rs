@@ -306,6 +306,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
             page_size: 1,
             ..ui::widgets::scrollable_modal::ScrollableModalState::default()
         },
+        process_info_manual_height: None,
+        process_info_resize_drag: None,
         process_info_target: None,
         process_info_verified_snapshot_at: None,
         process_info_generation: 0,

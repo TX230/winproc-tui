@@ -78,7 +78,10 @@ impl App {
         if self.open_files_show_detail {
             return;
         }
-        let area = crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+        let area = crate::ui::process_info_content_area_for_screen(
+            self.last_screen_area,
+            self.process_info_height(),
+        );
         let stride = open_files::entry_row_height(area.width.saturating_sub(1) as usize);
         let line = self.open_files_selected * stride;
         let total = self.open_files_total_rows();
@@ -137,8 +140,10 @@ impl App {
                         _ => self.scroll_process_info_end(),
                     }
                 } else {
-                    let area =
-                        crate::ui::process_info_content_area_for_screen(self.last_screen_area);
+                    let area = crate::ui::process_info_content_area_for_screen(
+                        self.last_screen_area,
+                        self.process_info_height(),
+                    );
                     let step = if amount > 1 {
                         (amount
                             / open_files::entry_row_height(area.width.saturating_sub(1) as usize))
@@ -178,7 +183,8 @@ impl App {
     }
 
     pub(crate) fn on_open_files_mouse(&mut self, mouse: MouseEvent, screen: Rect) {
-        let area = crate::ui::process_info_content_area_for_screen(screen);
+        let area =
+            crate::ui::process_info_content_area_for_screen(screen, self.process_info_height());
         if self.activity() == AppActivity::LogView {
             return;
         }

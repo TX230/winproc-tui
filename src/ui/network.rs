@@ -28,11 +28,11 @@ pub(crate) fn browser_layout(screen: Rect) -> ScrollableModalLayout {
     layout
 }
 
-pub(crate) fn active_content_area(screen: Rect, global: bool) -> Rect {
+pub(crate) fn active_content_area(screen: Rect, global: bool, height: u16) -> Rect {
     if global {
         browser_layout(screen).content
     } else {
-        super::process_info_content_area_for_screen(screen)
+        super::process_info_content_area_for_screen(screen, height)
     }
 }
 
@@ -553,7 +553,7 @@ pub(crate) fn shortcuts(
     width: u16,
     theme: Theme,
 ) -> Vec<Span<'static>> {
-    let items = if view.editing {
+    let mut items = if view.editing {
         vec![
             ("Enter", "Apply"),
             ("Esc", "Clear"),
@@ -585,6 +585,14 @@ pub(crate) fn shortcuts(
             ("↑/↓", "select"),
         ]
     };
+    if !global && !view.editing {
+        if width >= 100 {
+            items.insert(0, ("h/Shift+H", "height"));
+        } else {
+            items.push(("h/Shift+H", "height"));
+        }
+        items.push(("Alt+H", "auto"));
+    }
     shortcut_line(&items, width, theme)
 }
 

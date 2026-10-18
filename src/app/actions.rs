@@ -53,6 +53,7 @@ impl App {
         self.clear_source_cell_click();
         self.column_resize_drag = None;
         self.process_panel_resize_drag = None;
+        self.process_info_resize_drag = None;
         self.pending_context_menu = None;
 
         if key.code == KeyCode::F(12) {
@@ -409,6 +410,24 @@ impl App {
             }
             if self.scheduling.applying {
                 self.on_scheduling_key(key);
+                return Ok(());
+            }
+            if is_plain_h(key) || is_shift_h(key) || is_alt_h(key) {
+                if is_alt_h(key) {
+                    self.process_info_manual_height = None;
+                } else {
+                    let area =
+                        crate::ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                            self.last_screen_area,
+                            self.process_info_height(),
+                        )
+                        .area;
+                    self.set_process_info_height(
+                        i32::from(area.height.saturating_sub(4))
+                            + if is_shift_h(key) { -1 } else { 1 },
+                    );
+                }
+                super::sync_layout_state(self, self.last_screen_area);
                 return Ok(());
             }
             if self.process_info_tab == crate::app::ProcessInfoTab::Scheduling
@@ -1969,9 +1988,48 @@ impl App {
 
         if self.show_process_info_dialog {
             let tab_click = matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-                && process_info_tab_at(screen_area, mouse.column, mouse.row).is_some();
+                && process_info_tab_at(
+                    screen_area,
+                    mouse.column,
+                    mouse.row,
+                    self.process_info_height(),
+                )
+                .is_some();
             if self.scheduling.applying {
                 return;
+            }
+            let area = crate::ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                screen_area,
+                self.process_info_height(),
+            )
+            .area;
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left)
+                    if mouse.row == area.bottom().saturating_sub(1)
+                        && mouse.column >= area.x
+                        && mouse.column < area.right() =>
+                {
+                    self.stop_process_info_scrollbar_drag();
+                    self.process_info_resize_drag =
+                        Some((mouse.row, area.height.saturating_sub(4)));
+                    return;
+                }
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    if let Some((start_row, height)) = self.process_info_resize_drag {
+                        // Centered dialog: moving the bottom border one row adds two rows.
+                        self.set_process_info_height(
+                            i32::from(height) + 2 * (i32::from(mouse.row) - i32::from(start_row)),
+                        );
+                        super::sync_layout_state(self, screen_area);
+                        return;
+                    }
+                }
+                MouseEventKind::Up(MouseButton::Left)
+                    if self.process_info_resize_drag.take().is_some() =>
+                {
+                    return;
+                }
+                _ => {}
             }
             if self.process_info_tab == crate::app::ProcessInfoTab::Scheduling
                 && !tab_click
@@ -1989,7 +2047,12 @@ impl App {
             }
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left) => {
-                    if let Some(tab) = process_info_tab_at(screen_area, mouse.column, mouse.row) {
+                    if let Some(tab) = process_info_tab_at(
+                        screen_area,
+                        mouse.column,
+                        mouse.row,
+                        self.process_info_height(),
+                    ) {
                         if let Err(error) = self.activate_process_info_tab(tab) {
                             self.status = format!("Process Info tab failed: {error}");
                         } else {
@@ -1997,13 +2060,19 @@ impl App {
                         }
                     } else if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
                         && contains_point(
-                            process_info_content_area_for_screen(screen_area),
+                            process_info_content_area_for_screen(
+                                screen_area,
+                                self.process_info_height(),
+                            ),
                             mouse.column,
                             mouse.row,
                         )
                     {
                         self.process_info_focus = ProcessInfoFocus::Content;
-                        let content = process_info_content_area_for_screen(screen_area);
+                        let content = process_info_content_area_for_screen(
+                            screen_area,
+                            self.process_info_height(),
+                        );
                         if let Some(index) = crate::ui::process_modules::process_module_index_at(
                             content,
                             self,
@@ -2020,13 +2089,19 @@ impl App {
                         }
                     } else if self.process_info_tab == crate::app::ProcessInfoTab::Environment
                         && contains_point(
-                            process_info_content_area_for_screen(screen_area),
+                            process_info_content_area_for_screen(
+                                screen_area,
+                                self.process_info_height(),
+                            ),
                             mouse.column,
                             mouse.row,
                         )
                     {
                         self.process_info_focus = ProcessInfoFocus::Content;
-                        let content = process_info_content_area_for_screen(screen_area);
+                        let content = process_info_content_area_for_screen(
+                            screen_area,
+                            self.process_info_height(),
+                        );
                         if let Some(index) =
                             crate::ui::process_environment::process_environment_index_at(
                                 content,
@@ -2044,7 +2119,10 @@ impl App {
                             );
                         }
                     } else if contains_point(
-                        process_info_content_area_for_screen(screen_area),
+                        process_info_content_area_for_screen(
+                            screen_area,
+                            self.process_info_height(),
+                        ),
                         mouse.column,
                         mouse.row,
                     ) {
@@ -2070,7 +2148,10 @@ impl App {
                 }
                 MouseEventKind::ScrollUp
                     if contains_point(
-                        process_info_content_area_for_screen(screen_area),
+                        process_info_content_area_for_screen(
+                            screen_area,
+                            self.process_info_height(),
+                        ),
                         mouse.column,
                         mouse.row,
                     ) =>
@@ -2082,7 +2163,10 @@ impl App {
                 }
                 MouseEventKind::ScrollDown
                     if contains_point(
-                        process_info_content_area_for_screen(screen_area),
+                        process_info_content_area_for_screen(
+                            screen_area,
+                            self.process_info_height(),
+                        ),
                         mouse.column,
                         mouse.row,
                     ) =>
@@ -2463,7 +2547,8 @@ impl App {
             && self.process_info_tab == crate::app::ProcessInfoTab::Network;
         if global || process_network {
             let view = self.network_view(global);
-            let area = crate::ui::network::active_content_area(screen, global);
+            let area =
+                crate::ui::network::active_content_area(screen, global, self.process_info_height());
             let rows = crate::ui::network::content_layout(area).rows;
             if view.detail || !rows.contains(anchor) {
                 return None;
@@ -2543,6 +2628,12 @@ impl App {
             return Some(self.graph_export_context_menu(anchor));
         }
         None
+    }
+
+    fn set_process_info_height(&mut self, height: i32) {
+        let available = crate::ui::layout::screen_layout(self.last_screen_area)[1].height;
+        self.process_info_manual_height =
+            Some(height.clamp(12, i32::from(available.saturating_sub(4).max(12))) as u16);
     }
 
     fn adjust_process_panel_height(&mut self, delta: i32) {

@@ -108,9 +108,12 @@ pub(crate) fn fixed_header_rows(app: &App) -> usize {
 }
 
 pub(crate) fn open_files_total_rows(app: &App) -> usize {
-    let width = super::process_info_content_area_for_screen(app.last_screen_area)
-        .width
-        .saturating_sub(1) as usize;
+    let width = super::process_info_content_area_for_screen(
+        app.last_screen_area,
+        app.process_info_height(),
+    )
+    .width
+    .saturating_sub(1) as usize;
     open_files_lines(app, app.theme(), width)
         .len()
         .saturating_sub(fixed_header_rows(app))

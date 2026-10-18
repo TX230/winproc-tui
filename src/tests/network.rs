@@ -326,7 +326,10 @@ fn network_process_filter_click_focuses_direct_input_and_shows_matching_shortcut
     deliver(&mut app, &results, capture(&requests), snapshot);
     let screen = Rect::new(0, 0, 100, 30);
     sync_layout_state(&mut app, screen);
-    let layout = ui::network::content_layout(ui::process_info_content_area_for_screen(screen));
+    let layout = ui::network::content_layout(ui::process_info_content_area_for_screen(
+        screen,
+        app.process_info_height(),
+    ));
     app.on_mouse(left_click(layout.filter.x, layout.filter.y), screen);
     assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);
     assert!(!app.process_network.editing);
@@ -519,7 +522,7 @@ fn network_process_detail_scroll_survives_layout_sync_and_uses_own_hit_regions()
     sync_layout_state(&mut app, screen);
     assert_eq!(app.process_network.scroll.offset, offset);
     assert!(render_app_to_text(&app, 80, 24).contains("capture failure"));
-    let area = ui::process_info_content_area_for_screen(screen);
+    let area = ui::process_info_content_area_for_screen(screen, app.process_info_height());
     let bar = ui::network::scrollbar_area(area, &app.process_network).unwrap();
     app.on_mouse(left_click(bar.x, bar.y), screen);
     assert_eq!(app.process_network.scroll.offset, 0);
@@ -629,7 +632,10 @@ fn network_shared_table_uses_available_width_for_both_ipv6_addresses() {
     let screen = Rect::new(0, 0, 160, 35);
     sync_layout_state(&mut app, screen);
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let layout = ui::network::content_layout(ui::process_info_content_area_for_screen(screen));
+    let layout = ui::network::content_layout(ui::process_info_content_area_for_screen(
+        screen,
+        app.process_info_height(),
+    ));
     let row = (layout.rows.x..layout.rows.right())
         .map(|x| buffer[(x, layout.rows.y)].symbol())
         .collect::<String>();
@@ -954,7 +960,7 @@ fn network_mode_labels_fit_and_click_at_compact_widths() {
             deliver(&mut app, &results, capture(&requests), snapshot);
             let screen = Rect::new(0, 0, width, 24);
             sync_layout_state(&mut app, screen);
-            let area = ui::network::active_content_area(screen, global);
+            let area = ui::network::active_content_area(screen, global, app.process_info_height());
             let layout = ui::network::content_layout(area);
             assert_eq!(layout.filter.right(), layout.mode.x);
             assert!(layout.filter.width >= 16);

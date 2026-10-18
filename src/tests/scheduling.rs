@@ -225,7 +225,7 @@ fn scheduling_mouse_selection_and_small_layout_share_option_geometry() {
         let screen = Rect::new(0, 0, width, height);
         crate::app::sync_layout_state(&mut f.app, screen);
         f.app.select_priority(4);
-        let area = ui::process_info_content_area_for_screen(screen);
+        let area = ui::process_info_content_area_for_screen(screen, 24);
         let (column, row) = control_position(&f.app, screen, ui::scheduling::Control::Priority(4));
         assert!(row < area.bottom());
         assert_eq!(
@@ -390,7 +390,7 @@ fn scheduling_affinity_sparse_and_64_cpu_mouse_and_keyboard_geometry() {
             f.key(KeyCode::End, KeyModifiers::NONE);
             let index = mask.count_ones() as usize - 1;
             assert_eq!(f.app.scheduling.affinity_selected, index);
-            let area = ui::process_info_content_area_for_screen(screen);
+            let area = ui::process_info_content_area_for_screen(screen, 24);
             let (column, row) =
                 control_position(&f.app, screen, ui::scheduling::Control::Affinity(index));
             assert!(row < area.bottom());
@@ -506,7 +506,7 @@ fn scheduling_affinity_rejects_reopened_results_and_reveals_failed_application()
 }
 
 fn control_position(app: &App, screen: Rect, control: ui::scheduling::Control) -> (u16, u16) {
-    let area = ui::process_info_content_area_for_screen(screen);
+    let area = ui::process_info_content_area_for_screen(screen, app.process_info_height());
     let geometry = ui::scheduling::layout(app, area.width);
     let cell = geometry
         .cells
@@ -707,7 +707,7 @@ fn scheduling_spacing_separates_tabs_priority_affinity_and_summary() {
     affinity_ready(&mut f);
     let screen = Rect::new(0, 0, 160, 40);
     crate::app::sync_layout_state(&mut f.app, screen);
-    let area = ui::process_info_content_area_for_screen(screen);
+    let area = ui::process_info_content_area_for_screen(screen, 24);
     let buffer = render_app_to_buffer(&f.app, 160, 40);
     let priority = find_text_position(&buffer, "Priority (").unwrap();
     let affinity = find_text_position(&buffer, "Affinity (Group 0)").unwrap();
