@@ -448,3 +448,43 @@ fn log_list_modal_for_height(content_height: u16) -> ScrollableModal {
         FOOTER_HEIGHT,
     )
 }
+
+// Wrap before measuring so keyboard scrolling and rendered rows use one geometry.
+pub(crate) fn log_error_content(area: Rect, app: &App) -> (ScrollableModal, Text<'static>) {
+    let width = area.width.min(78).saturating_sub(4).max(1) as usize;
+    let lines: Vec<Line<'static>> = app
+        .log_open_error
+        .as_deref()
+        .unwrap_or_default()
+        .split('\n')
+        .flat_map(|line| super::process_info_dialog::wrap_display_width(line, width))
+        .map(Line::from)
+        .collect();
+    (
+        ScrollableModal::new(
+            "LOG OPEN ERROR",
+            74,
+            lines.len().min(u16::MAX as usize) as u16,
+            2,
+        ),
+        Text::from(lines),
+    )
+}
+
+pub(crate) fn draw_log_error(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    let (modal, text) = log_error_content(area, app);
+    let layout = modal.render(frame, area, text, app.log_error_scroll, false, theme);
+    let footer = Text::from(vec![
+        Line::from(shortcut_spans(
+            &[
+                ("↑/↓", "Scroll"),
+                ("PgUp/PgDn", "Page"),
+                ("Home/End", "First/Last"),
+            ],
+            theme,
+        )),
+        Line::from(shortcut_spans(&[("Enter/Esc", "Back to logs")], theme)),
+    ]);
+    crate::ui::footer::register_shortcut_text(app, layout.footer, &footer, Alignment::Left);
+    frame.render_widget(Paragraph::new(footer), layout.footer);
+}

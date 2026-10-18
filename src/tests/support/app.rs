@@ -326,6 +326,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
         log_list_worker: None,
         log_list_last_click: None,
         log_load_worker: None,
+        log_open_error: None,
+        log_error_scroll: 0,
         log_view_watch_list: Vec::new(),
         log_view_normalized_watch_names: std::collections::HashSet::new(),
         focused_panel: FocusedPanel::Processes,

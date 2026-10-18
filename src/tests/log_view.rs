@@ -818,3 +818,142 @@ fn recording_interval_is_written_and_partial_window_is_flushed() {
     );
     let _ = std::fs::remove_file(path);
 }
+
+const ERROR_TEST_HEADER: &str = r#"{"s":{"v":3,"id":"s3","app":"1.0.0","host":"PC","start":1777883412000,"interval":1,"tracked":[],"columns":[],"sort":["Process","asc"],"system":{}}}"#;
+const ERROR_TEST_FRAME: &str =
+    r#"{"f":[1777883412000,[[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],null,[]],[]]}"#;
+
+fn wait_for_log_load(app: &mut crate::App) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.log_load_worker.is_some() {
+        app.poll_log_workers();
+        assert!(
+            std::time::Instant::now() < deadline,
+            "load worker timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn log_open_error_preserves_live_and_loaded_data_and_retries_repaired_file() {
+    let path = unique_recording_path("log-open-error");
+    let valid = format!("{ERROR_TEST_HEADER}\n{ERROR_TEST_FRAME}\n");
+    std::fs::write(&path, &valid).unwrap();
+    for loaded in [false, true] {
+        let mut app = make_test_app(1, 10);
+        if loaded {
+            app.apply_loaded_log(app::logs::load_log(&path, SortSpec::default()).unwrap());
+        }
+        let activity = app.activity();
+        let captured = app.display_snapshot().captured_at;
+        let old_path = app.log_view_path.clone();
+        std::fs::write(&path, format!("{ERROR_TEST_HEADER}\nnot-json\n")).unwrap();
+        app.show_log_list = true;
+        app.log_list_dir = path.parent().map(|p| p.to_path_buf());
+        app.log_summaries = vec![app::logs::summarize_log(&path)];
+        assert!(app.log_summaries[0].error.is_some());
+        let dir = app.log_list_dir.clone();
+        app.load_selected_log();
+        assert!(app.log_load_worker.is_some());
+        wait_for_log_load(&mut app);
+        assert!(app.log_open_error.as_ref().unwrap().contains("invalid"));
+        assert_eq!(app.activity(), activity);
+        assert_eq!(app.display_snapshot().captured_at, captured);
+        assert_eq!(app.log_view_path, old_path);
+        app.on_key(KeyCode::Esc.into()).unwrap();
+        assert!(app.show_log_list);
+        assert_eq!(app.log_list_dir, dir);
+        assert_eq!(app.log_list_index, 0);
+        // Repair without refreshing the stale invalid preview, then retry.
+        std::fs::write(&path, &valid).unwrap();
+        app.on_key(KeyCode::Enter.into()).unwrap();
+        wait_for_log_load(&mut app);
+        assert!(app.log_open_error.is_none());
+        assert_eq!(app.activity(), AppActivity::LogView);
+        app.show_log_list = true;
+        app.close_log_list();
+        assert_eq!(app.activity(), AppActivity::LogView);
+        assert_eq!(app.log_view_path, Some(path.clone()));
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn log_open_worker_validates_middle_records_and_drops_obsolete_results() {
+    let path = unique_recording_path("log-middle-error");
+    std::fs::write(
+        &path,
+        format!("{ERROR_TEST_HEADER}\nnot-json\n{ERROR_TEST_FRAME}\n"),
+    )
+    .unwrap();
+    let mut app = make_test_app(1, 10);
+    app.show_log_list = true;
+    app.log_summaries = vec![app::logs::summarize_log(&path)];
+    assert!(
+        app.log_summaries[0].error.is_none(),
+        "preview is not full validation"
+    );
+    app.load_selected_log();
+    wait_for_log_load(&mut app);
+    assert!(app.log_open_error.is_some());
+    app.on_key(KeyCode::Esc.into()).unwrap();
+    // File disappears after the preview, exercising an actual I/O failure.
+    std::fs::remove_file(&path).unwrap();
+    app.load_selected_log();
+    wait_for_log_load(&mut app);
+    assert!(
+        app.log_open_error
+            .as_ref()
+            .unwrap()
+            .contains("failed to open")
+    );
+    app.on_key(KeyCode::Esc.into()).unwrap();
+    app.load_selected_log();
+    app.close_log_list();
+    assert!(app.log_load_worker.is_none());
+    app.poll_log_workers();
+    assert!(app.log_open_error.is_none());
+    assert_eq!(app.activity(), AppActivity::Live);
+}
+
+#[test]
+fn log_error_full_text_scroll_resize_help_and_click_restore_browser() {
+    use ratatui::{Terminal, backend::TestBackend};
+    let mut app = make_test_app(1, 10);
+    app.show_log_list = true;
+    app.show_log_dir_dialog = true;
+    app.log_dir_draft = "unchanged draft".into();
+    app.log_dir_cursor = 4;
+    app.log_open_error = Some(format!(
+        "Failed to open log\n{}\nFINAL ERROR DETAIL",
+        "long path and detailed cause ".repeat(200)
+    ));
+    for (width, height) in [(80, 24), (120, 40), (80, 24)] {
+        app.last_screen_area = Rect::new(0, 0, width, height);
+        app.on_key(KeyCode::End.into()).unwrap();
+        let rendered = render_app_to_text(&app, width, height);
+        assert!(rendered.contains("FINAL ERROR DETAIL"), "{rendered}");
+        assert!(rendered.contains("Enter/Esc Back to logs"));
+        assert!(app.log_error_scroll > 0);
+        app.on_key(KeyCode::Home.into()).unwrap();
+        assert_eq!(app.log_error_scroll, 0);
+        app.on_key(KeyCode::PageDown.into()).unwrap();
+        assert!(app.log_error_scroll > 0);
+        let before = app.log_error_scroll;
+        app.on_key(KeyCode::F(1).into()).unwrap();
+        assert_eq!(app.contextual_help_title(), "Global");
+        app.on_key(KeyCode::Esc.into()).unwrap();
+        assert_eq!(app.log_error_scroll, before);
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| ui::draw(f, &app)).unwrap();
+        assert!(!terminal.backend().cursor_visible());
+        assert_eq!(app.log_dir_cursor, 4);
+    }
+    let buffer = render_app_to_buffer(&app, 80, 24);
+    let (x, y) = find_text_position(&buffer, "Enter/Esc").unwrap();
+    app.on_mouse(left_click(x, y), Rect::new(0, 0, 80, 24));
+    assert!(app.log_open_error.is_none());
+    assert!(app.show_log_list);
+    assert_eq!(app.log_dir_draft, "unchanged draft");
+}

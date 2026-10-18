@@ -269,6 +269,11 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
         begin_input_layer(app);
         draw_recording_error(frame, area, app, theme);
     }
+    if app.log_open_error.is_some() {
+        frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
+        begin_input_layer(app);
+        log_list::draw_log_error(frame, area, app, theme);
+    }
     if app.show_help {
         frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
         begin_input_layer(app);

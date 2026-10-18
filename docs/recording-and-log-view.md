@@ -18,7 +18,8 @@ stateDiagram-v2
     Live --> LogList: open log list
     LogView --> LogList: open log list
     LogList --> LogView: select valid log
-    LogList --> Live: close
+    LogList --> Live: close when opened from Live
+    LogList --> LogView: close when opened from Log view
     LogView --> Live: return to Live
 
     Recording --> Recording: log-list request rejected
@@ -102,3 +103,5 @@ In Log view, the footer provides shortcuts to return to Live and to add a metric
 The Recording progress indicator remains visible and advances while the display is paused, independently of the frozen process snapshot.
 
 The log browser previews the selected recording's tracked process names, recorded interval and time range from cached summaries. Selection performs no file reads or history reconstruction; the existing background summary scan reads recording metadata and the tail. Older metadata omissions appear as `--`, and invalid-file indications are retained.
+
+Log-open failures appear in a persistent, scrollable error overlay containing the complete path and error chain. Dismissal restores the browser directory and selection; users can retry or choose another file. Opening always runs full validation on the background loader, even when the cached preview reports an error, so a repaired file can be retried without relying on stale metadata. Failure and browser dismissal preserve the current activity and previously loaded data. Closing or refreshing the browser (including changing directory) drops its pending result receivers, preventing older requests from changing a replacement browser or workspace. Workers remain nonblocking.

@@ -71,6 +71,27 @@ impl App {
             return Ok(());
         }
 
+        if self.log_open_error.is_some() {
+            let (modal, _) = crate::ui::log_list::log_error_content(self.last_screen_area, self);
+            let page = modal.page_size(self.last_screen_area);
+            let max = modal.max_offset_for_page_size(page);
+            self.log_error_scroll = self.log_error_scroll.min(max);
+            match key.code {
+                KeyCode::Enter | KeyCode::Esc => self.log_open_error = None,
+                KeyCode::Up => self.log_error_scroll = self.log_error_scroll.saturating_sub(1),
+                KeyCode::Down => self.log_error_scroll = (self.log_error_scroll + 1).min(max),
+                KeyCode::PageUp => {
+                    self.log_error_scroll = self.log_error_scroll.saturating_sub(page)
+                }
+                KeyCode::PageDown => {
+                    self.log_error_scroll = (self.log_error_scroll + page).min(max)
+                }
+                KeyCode::Home => self.log_error_scroll = 0,
+                KeyCode::End => self.log_error_scroll = max,
+                _ => {}
+            }
+            return Ok(());
+        }
         if self.recording_error.is_some() {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.dismiss_recording_error(),
@@ -1638,6 +1659,17 @@ impl App {
             return;
         }
 
+        if self.log_open_error.is_some() {
+            let code = match mouse.kind {
+                MouseEventKind::ScrollUp => Some(KeyCode::Up),
+                MouseEventKind::ScrollDown => Some(KeyCode::Down),
+                _ => None,
+            };
+            if let Some(code) = code {
+                let _ = self.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+            }
+            return;
+        }
         if self.executable_location.is_some() && self.recording_error.is_none() {
             self.executable_location_mouse(mouse);
             return;

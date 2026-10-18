@@ -6,6 +6,9 @@ use crate::ui::help;
 
 impl App {
     pub(crate) fn contextual_help_title(&self) -> &'static str {
+        if self.log_open_error.is_some() {
+            return "Global";
+        }
         if self.show_process_info_dialog {
             return match self.process_info_tab {
                 ProcessInfoTab::Network => "Network endpoints",

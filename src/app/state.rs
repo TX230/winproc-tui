@@ -1237,6 +1237,8 @@ pub(crate) struct App {
     pub(crate) log_list_worker: Option<LogListWorker>,
     pub(crate) log_list_last_click: Option<LogListClick>,
     pub(crate) log_load_worker: Option<LogLoadWorker>,
+    pub(crate) log_open_error: Option<String>,
+    pub(crate) log_error_scroll: usize,
     pub(crate) log_view_watch_list: Vec<String>,
     pub(crate) log_view_normalized_watch_names: HashSet<String>,
     pub(crate) focused_panel: FocusedPanel,
@@ -1559,6 +1561,8 @@ impl App {
             log_list_worker: None,
             log_list_last_click: None,
             log_load_worker: None,
+            log_open_error: None,
+            log_error_scroll: 0,
             log_view_watch_list: Vec::new(),
             log_view_normalized_watch_names: HashSet::new(),
             focused_panel: FocusedPanel::Processes,
@@ -1797,6 +1801,7 @@ impl App {
             || self.show_recording_stop_confirmation
             || self.show_recording_tracking_fixed
             || self.recording_error.is_some()
+            || self.log_open_error.is_some()
             || self.show_tracked_remove_confirmation
             || self.show_process_kill_confirmation
             || self.show_display_area_warning
@@ -7174,12 +7179,11 @@ impl App {
         self.show_log_dir_dialog = false;
         self.log_list_last_click = None;
         self.log_list_scroll.stop_drag();
-        if self.activity() == AppActivity::LogView {
-            self.exit_log_view();
-        } else {
-            self.ensure_visible_panel_focus();
-            self.status = "Log list closed".to_string();
-        }
+        self.log_load_worker = None;
+        self.log_list_worker = None;
+        self.log_open_error = None;
+        self.ensure_visible_panel_focus();
+        self.status = "Log list closed".to_string();
     }
 
     pub(crate) fn refresh_log_list(&mut self) -> Result<()> {
@@ -7188,6 +7192,8 @@ impl App {
             .clone()
             .map(Ok)
             .unwrap_or_else(|| self.default_log_list_dir())?;
+        self.log_load_worker = None;
+        self.log_open_error = None;
         self.log_list_dir = Some(dir.clone());
         self.log_summaries.clear();
         self.log_list_index = 0;
@@ -7410,10 +7416,6 @@ impl App {
             self.status = "No log selected".to_string();
             return;
         };
-        if let Some(error) = &summary.error {
-            self.status = format!("Cannot open log: {error}");
-            return;
-        }
         let path = summary.path.clone();
         self.log_list_last_click = None;
         self.log_load_worker = Some(LogLoadWorker::spawn(path.clone(), self.sort));
@@ -7445,14 +7447,30 @@ impl App {
                     changed = true;
                 }
                 Ok(Some(Err(error))) => {
-                    self.status = format!("Failed to open log: {error}");
+                    self.log_open_error = Some(format!(
+                        "Failed to open log
+
+{}
+
+{error}",
+                        worker.path().display()
+                    ));
+                    self.log_error_scroll = 0;
                     self.log_load_worker = None;
                     changed = true;
                 }
                 Ok(None) => {}
                 Err(_) => {
+                    self.log_open_error = Some(format!(
+                        "Failed to open log
+
+{}
+
+Log load worker stopped",
+                        worker.path().display()
+                    ));
+                    self.log_error_scroll = 0;
                     self.log_load_worker = None;
-                    self.status = "Log load worker stopped".to_string();
                     changed = true;
                 }
             }

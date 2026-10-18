@@ -90,7 +90,7 @@ impl LogLoadWorker {
         let (sender, receiver) = mpsc::channel();
         let worker_path = path.clone();
         thread::spawn(move || {
-            let result = load_log(&path, sort).map_err(|error| error.to_string());
+            let result = load_log(&path, sort).map_err(|error| format!("{error:#}"));
             let _ = sender.send(result);
         });
         Self {

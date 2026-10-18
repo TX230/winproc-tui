@@ -147,7 +147,11 @@ const GLOBAL_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+L",
-        label: "Open log list",
+        label: "Open log list; Enter opens, r refreshes, Esc returns unchanged",
+    },
+    HelpItem {
+        key: "Log open error",
+        label: "↑/↓, PgUp/PgDn, Home/End scroll; Enter/Esc returns to logs for retry",
     },
     HelpItem {
         key: "Ctrl+R",
