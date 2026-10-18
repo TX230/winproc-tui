@@ -161,7 +161,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     let primary_key = items.first().map(|(key, _)| *key);
     if app.can_adjust_process_panel_height() {
         items.insert(0, ("h/Shift+H", "Height"));
-        items.push(("Alt+H", "Auto height"));
+        items.push(("Alt+0", "Auto height"));
     }
     if app.focused_panel == FocusedPanel::Processes && app.activity() != AppActivity::LogView {
         let view_index = items

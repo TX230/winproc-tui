@@ -1381,7 +1381,7 @@ fn process_info_height_keys_preserve_target_and_filters_for_all_tabs() {
             app.process_info_tab = tab.next();
             assert_eq!(app.process_info_height(), manual);
             app.process_info_tab = tab;
-            app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::ALT))
+            app.on_key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::ALT))
                 .unwrap();
             assert!(app.process_info_manual_height.is_none());
             assert_eq!(

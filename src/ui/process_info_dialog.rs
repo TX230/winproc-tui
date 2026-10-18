@@ -800,7 +800,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
     }
     if !app.scheduling.applying {
         items.push(("h/Shift+H", "height"));
-        items.push(("Alt+H", "auto"));
+        items.push(("Alt+0", "auto"));
     }
     if app.process_info_tab == ProcessInfoTab::Files
         && app.process_info_focus == ProcessInfoFocus::Content

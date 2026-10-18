@@ -84,8 +84,8 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Export all Graphs to CSV from any main panel",
     },
     HelpItem {
-        key: "Alt+F/I/V/T",
-        label: "File / Investigation / View / Settings menus",
+        key: "Alt+F/I/V/T/H",
+        label: "File / Investigation / View / Settings / Help menus",
     },
     HelpItem {
         key: "Menu / Shift+F10",
@@ -302,7 +302,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Resize Info; manual height is shared by all tabs",
     },
     HelpItem {
-        key: "Alt+H",
+        key: "Alt+0",
         label: "Reset Info height; reopening also resets",
     },
     HelpItem {
@@ -780,7 +780,7 @@ const PROCESS_GRAPH_SPLIT_ROWS: &[HelpItem] = &[
         label: "Increase / decrease Processes height",
     },
     HelpItem {
-        key: "Alt+H",
+        key: "Alt+0",
         label: "Reset Processes height to Auto",
     },
 ];

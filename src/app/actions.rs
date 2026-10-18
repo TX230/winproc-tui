@@ -475,8 +475,8 @@ impl App {
                 self.on_scheduling_key(key);
                 return Ok(());
             }
-            if is_plain_h(key) || is_shift_h(key) || is_alt_h(key) {
-                if is_alt_h(key) {
+            if is_plain_h(key) || is_shift_h(key) || is_auto_height_key(key) {
+                if is_auto_height_key(key) {
                     self.process_info_manual_height = None;
                 } else {
                     let area =
@@ -789,6 +789,7 @@ impl App {
                 'i' => Some(super::state::MainMenuSection::Investigation),
                 'v' => Some(super::state::MainMenuSection::View),
                 't' => Some(super::state::MainMenuSection::Settings),
+                'h' => Some(super::state::MainMenuSection::Help),
                 _ => None,
             };
             if let Some(section) = section {
@@ -1021,7 +1022,7 @@ impl App {
         }
 
         if self.can_adjust_process_panel_height() {
-            if is_alt_h(key) {
+            if is_auto_height_key(key) {
                 self.reset_process_panel_height();
                 return Ok(());
             }
@@ -3884,10 +3885,8 @@ fn is_plain_t(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('t')) && key.modifiers.is_empty()
 }
 
-fn is_alt_h(key: KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'h'))
-        && key.modifiers.contains(KeyModifiers::ALT)
-        && !key.modifiers.contains(KeyModifiers::CONTROL)
+fn is_auto_height_key(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char('0') && key.modifiers == KeyModifiers::ALT
 }
 
 fn is_shift_h(key: KeyEvent) -> bool {

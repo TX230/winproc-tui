@@ -558,7 +558,7 @@ fn footer_shows_process_height_shortcuts_only_for_visible_workspace_focus() {
         assert!(footer.contains("h/Shift+H Height"), "{width}: {footer}");
     }
     let wide = render_app_to_text(&app, 360, 45);
-    assert!(wide.lines().last().unwrap().contains("Alt+H Auto height"));
+    assert!(wide.lines().last().unwrap().contains("Alt+0 Auto height"));
 
     app.focused_panel = FocusedPanel::System;
     let system = render_app_to_text(&app, 360, 45);

@@ -378,7 +378,7 @@ impl HeaderAction {
     fn access_index(self, compact: bool) -> Option<usize> {
         let offset = usize::from(!compact);
         match self {
-            Self::File | Self::Investigation | Self::View => Some(offset),
+            Self::File | Self::Investigation | Self::View | Self::Help => Some(offset),
             Self::Settings => Some(offset + 2),
             _ => None,
         }
@@ -389,7 +389,7 @@ impl HeaderAction {
             Self::Investigation => "Alt+I",
             Self::View => "Alt+V",
             Self::Settings => "Alt+T",
-            Self::Help => "",
+            Self::Help => "Alt+H",
             Self::Processes => "F2",
             Self::Network => "F3",
             Self::FileUsers => "F4",

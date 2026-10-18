@@ -316,10 +316,10 @@ fn menu_arrows_switch_categories_and_restore_workspace_focus() {
 }
 
 #[test]
-fn menu_access_keys_respect_editors_modals_and_existing_alt_h() {
+fn menu_access_keys_respect_editors_modals_and_auto_height() {
     use crate::app::{ProcessPanelHeight, file_users::FileUsersFocus};
     let mut app = make_test_app(1, 10);
-    for ch in ['f', 'i', 'v', 't'] {
+    for ch in ['f', 'i', 'v', 't', 'h'] {
         app.begin_filter_edit();
         alt(&mut app, ch);
         assert!(!app.is_main_menu_open());
@@ -337,7 +337,7 @@ fn menu_access_keys_respect_editors_modals_and_existing_alt_h() {
     }
     app.show_details = true;
     app.process_panel_height = ProcessPanelHeight::Auto;
-    alt(&mut app, 'h');
+    alt(&mut app, '0');
     assert!(!app.is_main_menu_open());
     assert_eq!(app.process_panel_height, ProcessPanelHeight::Auto);
     app.network_browser.visible = true;
@@ -1117,4 +1117,39 @@ fn version_info_contains_metadata_and_blocks_workspace_input() {
             }
         }
     }
+}
+
+#[test]
+fn help_access_key_opens_menu_without_changing_manual_height() {
+    use crate::app::ProcessPanelHeight;
+    for width in [65, 80, 120, 180] {
+        let mut app = make_test_app(1, 10);
+        app.set_screen_area(Rect::new(0, 0, width, 40));
+        app.process_panel_height = ProcessPanelHeight::Manual(12);
+        for ch in ['h', 'H'] {
+            alt(&mut app, ch);
+            assert!(app.is_main_menu_open());
+            assert_eq!(app.main_menu_section, MainMenuSection::Help);
+            assert_eq!(app.process_panel_height, ProcessPanelHeight::Manual(12));
+            assert!(render_app_to_text(&app, width, 40).contains("Keyboard shortcuts"));
+            app.dismiss_main_menu();
+        }
+        app.open_selected_process_info_dialog().unwrap();
+        app.process_info_manual_height = Some(22);
+        alt(&mut app, 'h');
+        assert_eq!(app.process_info_manual_height, Some(22));
+        assert!(!app.is_main_menu_open());
+        for modifiers in [
+            KeyModifiers::ALT | KeyModifiers::SHIFT,
+            KeyModifiers::ALT | KeyModifiers::CONTROL,
+        ] {
+            app.on_key(KeyEvent::new(KeyCode::Char('0'), modifiers))
+                .unwrap();
+            assert_eq!(app.process_info_manual_height, Some(22));
+        }
+        alt(&mut app, '0');
+        assert!(app.process_info_manual_height.is_none());
+        assert!(app.show_process_info_dialog);
+    }
+    assert_eq!(HeaderAction::Help.shortcut(), "Alt+H");
 }

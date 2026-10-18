@@ -1041,7 +1041,7 @@ fn process_height_shortcuts_share_one_preference_across_workspace_focus() {
             .unwrap();
         assert_eq!(app.process_panel_height, ProcessPanelHeight::Manual(17));
 
-        app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::ALT))
+        app.on_key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::ALT))
             .unwrap();
         app::sync_layout_state(&mut app, screen);
         assert_eq!(app.process_panel_height, ProcessPanelHeight::Auto);

@@ -613,7 +613,7 @@ pub(crate) fn shortcuts(
         } else {
             items.push(("h/Shift+H", "height"));
         }
-        items.push(("Alt+H", "auto"));
+        items.push(("Alt+0", "auto"));
     }
     shortcut_line(&items, width, theme)
 }
