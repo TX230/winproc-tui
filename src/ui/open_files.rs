@@ -196,14 +196,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         Style::default().fg(theme.text),
     )));
     lines.push(Line::from(vec![
-        Span::styled(
-            if has_match_filter(app) {
-                "Exact:  "
-            } else {
-                "Filter: "
-            },
-            Style::default().fg(theme.muted),
-        ),
+        Span::styled("Filter: ", Style::default().fg(theme.muted)),
         Span::styled(
             filter_input_text(app, width),
             Style::default().fg(theme.text),

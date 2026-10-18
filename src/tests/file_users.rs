@@ -456,6 +456,9 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
     send(report.clone(), generation, identity.clone());
     assert!(app.poll_open_files_results().unwrap());
     assert_eq!(ui::open_files::filtered_entries(&app).len(), 2);
+    let rendered = render_app_to_text(&app, 180, 42);
+    assert!(rendered.contains("Filter: "));
+    assert!(!rendered.contains("Exact:"));
     assert_eq!(
         ui::open_files::selected_entry(&app).unwrap().path,
         original.path
