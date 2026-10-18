@@ -5072,13 +5072,9 @@ impl App {
         })
     }
 
-    // Stable per-tab budgets do not react to asynchronous capture/list length changes.
+    // One stable budget across tabs, focus changes and asynchronous captures.
     pub(crate) fn process_info_height(&self) -> u16 {
-        self.process_info_manual_height
-            .unwrap_or(match self.process_info_tab {
-                ProcessInfoTab::Image | ProcessInfoTab::Scheduling => 24,
-                _ => 40,
-            })
+        self.process_info_manual_height.unwrap_or(40)
     }
 
     pub(crate) fn set_process_info_page_size(&mut self, page_size: usize) {

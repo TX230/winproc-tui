@@ -1677,3 +1677,34 @@ fn compact_process_info_keeps_exit_guidance_at_every_focus_stop() {
         }
     }
 }
+
+#[test]
+fn process_info_keeps_one_rectangle_across_all_tabs_and_focus() {
+    let mut app = make_test_app(1, 10);
+    app.open_selected_process_info_dialog().unwrap();
+    for (width, height) in [(80, 24), (120, 36), (180, 60)] {
+        let screen = Rect::new(0, 0, width, height);
+        for manual in [None, Some(18)] {
+            app.process_info_manual_height = manual;
+            let expected = crate::ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                screen,
+                app.process_info_height(),
+            )
+            .area;
+            for tab in app::ProcessInfoTab::ALL {
+                app.process_info_tab = tab;
+                for focus in [app::ProcessInfoFocus::Tabs, app::ProcessInfoFocus::Content] {
+                    app.process_info_focus = focus;
+                    assert_eq!(
+                        crate::ui::process_info_dialog::process_info_dialog_layout_for_screen(
+                            screen,
+                            app.process_info_height()
+                        )
+                        .area,
+                        expected
+                    );
+                }
+            }
+        }
+    }
+}
