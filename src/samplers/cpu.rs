@@ -1,6 +1,6 @@
 use std::{
     io,
-    mem::{align_of, size_of, size_of_val},
+    mem::{align_of, offset_of, size_of},
     ptr::null_mut,
 };
 
@@ -10,8 +10,8 @@ use winapi::{
     um::{
         sysinfoapi::GetLogicalProcessorInformationEx,
         winnt::{
-            LTP_PC_SMT, RelationAll, RelationCache, RelationProcessorCore,
-            SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+            CACHE_RELATIONSHIP, GROUP_AFFINITY, LTP_PC_SMT, PROCESSOR_RELATIONSHIP, RelationAll,
+            RelationCache, RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
         },
         winreg::{HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW},
     },
@@ -99,7 +99,7 @@ pub(super) fn affinity_core_kinds() -> Vec<Option<CpuCoreKind>> {
 fn collect_cpu_topology() -> CpuTopologySample {
     // SAFETY: the size probe supplies a valid output pointer and no data buffer. The second call
     // receives word-aligned storage at least as large as the reported byte count. Parsing below
-    // validates each record and variable-length group-mask range before creating references.
+    // checks byte ranges and decodes fields without forming typed record references.
     unsafe {
         let mut buffer_size = 0u32;
         let first_status =
@@ -123,119 +123,88 @@ fn collect_cpu_topology() -> CpuTopologySample {
             return CpuTopologySample::default();
         }
 
-        let mut sample = CpuTopologySample::default();
-        let mut physical_cores = 0u32;
-        let mut logical_threads = 0u32;
-        let mut smt_enabled = false;
-        let mut offset = 0usize;
-
-        while offset
-            .checked_add(size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>())
-            .is_some_and(|end| end <= valid_bytes)
-        {
-            let info_ptr = buffer
-                .as_ptr()
-                .cast::<u8>()
-                .add(offset)
-                .cast::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>();
-            if !(info_ptr as usize)
-                .is_multiple_of(align_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>())
-            {
-                return CpuTopologySample::default();
-            }
-            let info = &*info_ptr;
-            let record_size = info.Size as usize;
-            if record_size < size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>()
-                || offset
-                    .checked_add(record_size)
-                    .is_none_or(|end| end > valid_bytes)
-            {
-                return CpuTopologySample::default();
-            }
-
-            let relationship = info.Relationship;
-            if relationship == RelationProcessorCore {
-                physical_cores = physical_cores.saturating_add(1);
-                let processor = info.u.Processor();
-                let group_count = processor.GroupCount as usize;
-                let group_masks_bytes =
-                    match group_count.checked_mul(size_of_val(&processor.GroupMask[0])) {
-                        Some(bytes) => bytes,
-                        None => return CpuTopologySample::default(),
-                    };
-                let record_start = info_ptr as usize;
-                let record_end = match record_start.checked_add(record_size) {
-                    Some(end) => end,
-                    None => return CpuTopologySample::default(),
-                };
-                let group_masks_start = processor.GroupMask.as_ptr() as usize;
-                let group_masks_end = match group_masks_start.checked_add(group_masks_bytes) {
-                    Some(end) => end,
-                    None => return CpuTopologySample::default(),
-                };
-                if group_masks_start < record_start || group_masks_end > record_end {
-                    return CpuTopologySample::default();
-                }
-                let group_masks =
-                    std::slice::from_raw_parts(processor.GroupMask.as_ptr(), group_count);
-                let efficiency_class = processor.EfficiencyClass;
-                let thread_count = group_masks
-                    .iter()
-                    .map(|group| group.Mask.count_ones())
-                    .sum::<u32>();
-                logical_threads = logical_threads.saturating_add(thread_count.max(1));
-                smt_enabled |= (processor.Flags & LTP_PC_SMT) != 0;
-                for group in group_masks {
-                    push_efficiency_class_bits(
-                        &mut sample.logical_efficiency_classes,
-                        group.Group as usize,
-                        group.Mask,
-                        efficiency_class,
-                    );
-                }
-            } else if relationship == RelationCache {
-                let cache = info.u.Cache();
-                let cache_size = cache.CacheSize as u64;
-                match cache.Level {
-                    1 => {
-                        sample.l1_cache_bytes = Some(
-                            sample
-                                .l1_cache_bytes
-                                .unwrap_or(0)
-                                .saturating_add(cache_size),
-                        );
-                    }
-                    2 => {
-                        sample.l2_cache_bytes = Some(
-                            sample
-                                .l2_cache_bytes
-                                .unwrap_or(0)
-                                .saturating_add(cache_size),
-                        );
-                    }
-                    3 => {
-                        sample.l3_cache_bytes = Some(
-                            sample
-                                .l3_cache_bytes
-                                .unwrap_or(0)
-                                .saturating_add(cache_size),
-                        );
-                    }
-                    _ => {}
-                }
-            }
-
-            offset += record_size;
-        }
-
-        sample.physical_cores = (physical_cores > 0).then_some(physical_cores);
-        sample.logical_threads = (logical_threads > 0).then_some(logical_threads);
-        sample.smt_enabled = sample
-            .physical_cores
-            .zip(sample.logical_threads)
-            .map(|(cores, threads)| smt_enabled || threads > cores);
-        sample
+        // Decode only the returned bytes; a record can be smaller than the outer union.
+        let bytes = std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), valid_bytes);
+        parse_cpu_topology(bytes).unwrap_or_default()
     }
+}
+
+fn parse_cpu_topology(bytes: &[u8]) -> Option<CpuTopologySample> {
+    const HEADER: usize = offset_of!(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, u);
+    let mut sample = CpuTopologySample::default();
+    let mut physical_cores = 0u32;
+    let mut logical_threads = 0u32;
+    let mut smt_enabled = false;
+    let mut offset = 0usize;
+    while offset < bytes.len() {
+        let header = bytes.get(offset..offset.checked_add(HEADER)?)?;
+        let relationship = u32::from_ne_bytes(header.get(..4)?.try_into().ok()?);
+        let record_size = u32::from_ne_bytes(header.get(4..8)?.try_into().ok()?) as usize;
+        if record_size < HEADER {
+            return None;
+        }
+        let record = bytes.get(offset..offset.checked_add(record_size)?)?;
+        let payload = record.get(HEADER..)?;
+        if relationship == RelationProcessorCore {
+            let flags = *payload.get(offset_of!(PROCESSOR_RELATIONSHIP, Flags))?;
+            let efficiency_class =
+                *payload.get(offset_of!(PROCESSOR_RELATIONSHIP, EfficiencyClass))?;
+            let count_offset = offset_of!(PROCESSOR_RELATIONSHIP, GroupCount);
+            let group_count = u16::from_ne_bytes(
+                payload
+                    .get(count_offset..count_offset + 2)?
+                    .try_into()
+                    .ok()?,
+            ) as usize;
+            if group_count == 0 {
+                return None;
+            }
+            let masks_offset = offset_of!(PROCESSOR_RELATIONSHIP, GroupMask);
+            let masks_size = group_count.checked_mul(size_of::<GROUP_AFFINITY>())?;
+            let masks = payload.get(masks_offset..masks_offset.checked_add(masks_size)?)?;
+            let mut thread_count = 0u32;
+            for group in masks.chunks_exact(size_of::<GROUP_AFFINITY>()) {
+                let mask = usize::from_ne_bytes(group.get(..size_of::<usize>())?.try_into().ok()?);
+                let group_offset = offset_of!(GROUP_AFFINITY, Group);
+                let group_index =
+                    u16::from_ne_bytes(group.get(group_offset..group_offset + 2)?.try_into().ok()?)
+                        as usize;
+                thread_count = thread_count.saturating_add(mask.count_ones());
+                push_efficiency_class_bits(
+                    &mut sample.logical_efficiency_classes,
+                    group_index,
+                    mask,
+                    efficiency_class,
+                );
+            }
+            physical_cores = physical_cores.saturating_add(1);
+            logical_threads = logical_threads.saturating_add(thread_count);
+            smt_enabled |= (flags & LTP_PC_SMT) != 0;
+        } else if relationship == RelationCache {
+            let level = *payload.get(offset_of!(CACHE_RELATIONSHIP, Level))?;
+            let size_offset = offset_of!(CACHE_RELATIONSHIP, CacheSize);
+            let cache_size =
+                u32::from_ne_bytes(payload.get(size_offset..size_offset + 4)?.try_into().ok()?)
+                    as u64;
+            let cache = match level {
+                1 => Some(&mut sample.l1_cache_bytes),
+                2 => Some(&mut sample.l2_cache_bytes),
+                3 => Some(&mut sample.l3_cache_bytes),
+                _ => None,
+            };
+            if let Some(cache) = cache {
+                *cache = Some(cache.unwrap_or(0).saturating_add(cache_size));
+            }
+        }
+        offset += record_size;
+    }
+    sample.physical_cores = (physical_cores > 0).then_some(physical_cores);
+    sample.logical_threads = (logical_threads > 0).then_some(logical_threads);
+    sample.smt_enabled = sample
+        .physical_cores
+        .zip(sample.logical_threads)
+        .map(|(cores, threads)| smt_enabled || threads > cores);
+    Some(sample)
 }
 
 fn push_efficiency_class_bits(
@@ -446,6 +415,93 @@ fn format_cpu_caches(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn core_record(class: u8, mask: u64) -> Vec<u8> {
+        let mut record = vec![0u8; 48];
+        record[4..8].copy_from_slice(&48u32.to_ne_bytes());
+        record[8] = if mask.count_ones() > 1 { LTP_PC_SMT } else { 0 };
+        record[9] = class;
+        record[30..32].copy_from_slice(&1u16.to_ne_bytes());
+        record[32..40].copy_from_slice(&mask.to_ne_bytes());
+        record
+    }
+
+    #[test]
+    fn topology_accepts_short_hybrid_records_and_classifies_clocks() {
+        let mut bytes = core_record(1, 3);
+        bytes.extend(core_record(0, 4));
+        let topology = parse_cpu_topology(&bytes).unwrap();
+        assert_eq!(topology.physical_cores, Some(2));
+        assert_eq!(topology.logical_threads, Some(3));
+        assert_eq!(topology.smt_enabled, Some(true));
+        assert_eq!(
+            topology.logical_efficiency_classes,
+            vec![Some(1), Some(1), Some(0)]
+        );
+        let frequencies = [(0, 4000), (1, 4200), (2, 1800)];
+        for (kind, expected) in [
+            (CpuCoreKind::Performance, 4100),
+            (CpuCoreKind::Efficiency, 1800),
+        ] {
+            assert_eq!(
+                average_current_frequency_mhz(&frequencies, |index, _| cpu_core_kind(
+                    index,
+                    &topology.logical_efficiency_classes
+                ) == Some(kind)),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn topology_handles_homogeneous_cores_and_processor_groups() {
+        let mut bytes = core_record(0, 1);
+        let mut other = core_record(0, 2);
+        other[40..42].copy_from_slice(&1u16.to_ne_bytes());
+        bytes.extend(other);
+        let topology = parse_cpu_topology(&bytes).unwrap();
+        assert_eq!(topology.logical_efficiency_classes[65], Some(0));
+        assert_eq!(cpu_core_kind(0, &topology.logical_efficiency_classes), None);
+        assert_eq!(topology.logical_threads, Some(2));
+    }
+
+    #[test]
+    fn topology_rejects_truncation_and_invalid_lengths() {
+        let bytes = core_record(1, 3);
+        for length in 1..bytes.len() {
+            assert!(
+                parse_cpu_topology(&bytes[..length]).is_none(),
+                "length {length}"
+            );
+        }
+        for size in [0u32, 7, 32, 49, u32::MAX] {
+            let mut invalid = bytes.clone();
+            invalid[4..8].copy_from_slice(&size.to_ne_bytes());
+            assert!(parse_cpu_topology(&invalid).is_none(), "size {size}");
+        }
+        for count in [0u16, 2, u16::MAX] {
+            let mut invalid = bytes.clone();
+            invalid[30..32].copy_from_slice(&count.to_ne_bytes());
+            assert!(parse_cpu_topology(&invalid).is_none(), "count {count}");
+        }
+    }
+
+    #[test]
+    fn topology_preserves_caches_and_skips_unknown_records() {
+        let mut bytes = core_record(0, 1);
+        let mut cache = vec![0u8; 56];
+        cache[..4].copy_from_slice(&RelationCache.to_ne_bytes());
+        cache[4..8].copy_from_slice(&56u32.to_ne_bytes());
+        cache[8] = 3;
+        cache[12..16].copy_from_slice(&8192u32.to_ne_bytes());
+        bytes.extend(cache);
+        bytes.extend(99u32.to_ne_bytes());
+        bytes.extend(8u32.to_ne_bytes());
+        assert_eq!(
+            parse_cpu_topology(&bytes).unwrap().l3_cache_bytes,
+            Some(8192)
+        );
+    }
 
     #[test]
     fn average_current_frequency_mhz_uses_matching_processors_only() {

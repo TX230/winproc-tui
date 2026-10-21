@@ -151,7 +151,7 @@ fn cpu_frequency_line(snapshot: &Snapshot, theme: Theme) -> Line<'static> {
             format_cpu_panel_frequency_mhz(snapshot.cpu_e_core_frequency_mhz)
         )
     } else {
-        format_cpu_panel_frequency_mhz(primary)
+        format!("{} / --", format_cpu_panel_frequency_mhz(primary))
     };
     Line::from(vec![
         metric_label("Freq(P/E)", theme),
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn cpu_frequency_omits_e_segment_without_e_cores() {
+    fn cpu_frequency_shows_placeholder_without_e_cores() {
         let without_e = cpu_frequency_line(&snapshot_with_cores(false), crate::ui::THEMES[0]);
         let with_e = cpu_frequency_line(&snapshot_with_cores(true), crate::ui::THEMES[0]);
         let join = |line: Line<'_>| {
@@ -292,7 +292,7 @@ mod tests {
                 .collect::<String>()
         };
 
-        assert_eq!(join(without_e), "Freq(P/E)  3200 MHz");
+        assert_eq!(join(without_e), "Freq(P/E)  3200 MHz / --");
         assert_eq!(join(with_e), "Freq(P/E)  3200 MHz / 1800 MHz");
     }
 }

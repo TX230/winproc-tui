@@ -115,12 +115,12 @@ GPU Engine instance names are parsed for PID, LUID, physical-engine index, engin
 | Display | Log field | Description | Primary source | Format |
 |---|---|---|---|---|
 | `Usage` | `cpu_percent`, `cpu_user_percent`, `cpu_kernel_percent` | Total processor utilization with its user-mode (`U`) and privileged/kernel-mode (`K`) components. | PDH `\Processor Information(_Total)\% Processor Time`, `% User Time`, and `% Privileged Time`; total falls back to the `sysinfo` CPU refresh | `nn% (U nn%, K nn%)`; unavailable components use `--` |
-| `Freq(P/E)` | Not recorded | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | `P MHz / E MHz`; the slash and E value are omitted when no E core is classified |
+| `Freq(P/E)` | Not recorded | Average current clock for logical CPUs classified as performance or efficiency cores. It changes with power management and load. | PDH `\Processor Information(*)\Processor Frequency` multiplied by `\Processor Information(*)\% Processor Performance`, plus Windows processor `EfficiencyClass` | `P MHz / E MHz`; both positions remain visible; absent or unavailable E clocks use `--` |
 | `[Per-core Usage (P/E)]` dialog | Not recorded | Utilization for every logical CPU, with `P`, `E`, or `-` when classification is unavailable. | `sysinfo` CPU usage and `GetLogicalProcessorInformationEx(RelationProcessorCore)` | Compact grid of `CPU n (P/E/-) nn%`, in ascending index order across each row |
 | `Threads` | `thread_count` | System thread count. | `GetPerformanceInfo` (`ThreadCount`) | Integer; graphable |
 | `Processes` | `process_count` | System process count. | `GetPerformanceInfo` (`ProcessCount`); fallback is the collected process count | Integer; graphable and recorded |
 
-If P/E classification is unavailable or all logical CPUs report the same `EfficiencyClass`, `Freq(P/E)` uses the ordinary current-clock summary without an E segment and dialog entries use `-`.
+If P/E classification is unavailable or all logical CPUs report the same `EfficiencyClass`, `Freq(P/E)` uses the ordinary current-clock summary in the first position and `--` in the E position and dialog entries use `-`.
 The per-core dialog uses the available width to place several CPUs on each row. It reduces the column count on narrower screens and scrolls by grid row when the entries exceed the visible height.
 `Usage`, `Threads`, and `Processes` are retained in `SystemHistory` and can be graphed. Total, user, and kernel utilization plus the process count are stored in recording frames; older schema-v2 logs without the new user/kernel fields show `--` for those two components. Per-logical-CPU values and frequency are not recorded, so the per-core dialog reports that state in Log view.
 

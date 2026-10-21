@@ -61,7 +61,7 @@ fn cpu_panel_renders_compact_summary_and_per_core_control() {
 }
 
 #[test]
-fn cpu_frequency_omits_e_segment_when_no_e_core_exists() {
+fn cpu_frequency_shows_placeholder_when_no_e_core_exists() {
     let mut app = make_test_app(3, 10);
     app.snapshot.cpu_p_core_frequency_mhz = Some(3_200);
     app.snapshot.cpu_e_core_frequency_mhz = Some(1_800);
@@ -72,8 +72,25 @@ fn cpu_frequency_omits_e_segment_when_no_e_core_exists() {
 
     let rendered = render_app_to_text(&app, 120, 30);
 
-    assert!(rendered.contains("Freq(P/E)  3200 MHz"), "{rendered}");
-    assert!(!rendered.contains("3200 MHz /"), "{rendered}");
+    assert!(rendered.contains("Freq(P/E)  3200 MHz / --"), "{rendered}");
+    assert!(!rendered.contains("1800 MHz"), "{rendered}");
+}
+
+#[test]
+fn cpu_frequency_renders_unavailable_hybrid_clocks() {
+    let mut app = make_test_app(3, 10);
+    app.snapshot.cpu_p_core_frequency_mhz = Some(3200);
+    app.snapshot.cpu_e_core_frequency_mhz = None;
+    app.snapshot.cpu_logical_processors = vec![CpuLogicalProcessorSample {
+        usage_percent: 25,
+        kind: Some(CpuCoreKind::Efficiency),
+    }];
+    let rendered = render_app_to_text(&app, 120, 30);
+    assert!(rendered.contains("Freq(P/E)  3200 MHz / --"), "{rendered}");
+    app.snapshot.cpu_p_core_frequency_mhz = None;
+    app.snapshot.cpu_current_frequency_mhz = None;
+    let rendered = render_app_to_text(&app, 120, 30);
+    assert!(rendered.contains("Freq(P/E)  -- / --"), "{rendered}");
 }
 
 #[test]
