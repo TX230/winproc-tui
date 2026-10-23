@@ -711,7 +711,8 @@ fn process_tree_prefix(
     if app.effective_process_view_mode() != ProcessViewMode::Tree || row.is_tracked_total {
         return Line::default();
     }
-    let offset = process_tree_disclosure_offset(row.tree_depth, width);
+    let offset =
+        process_tree_disclosure_offset(row.tree_depth, width, text_width(&row.process.name));
     let mut spans = Vec::new();
     if offset > 0 {
         let indent = if row.tree_depth.saturating_mul(2) > offset {
@@ -742,11 +743,13 @@ fn process_tree_prefix(
     Line::from(spans)
 }
 
-fn process_tree_disclosure_offset(depth: usize, width: u16) -> usize {
-    let limit = (width / 3).min(width.saturating_sub(14));
-    depth
-        .saturating_mul(2)
-        .min(usize::from(limit.max(u16::from(depth > 0 && width > 3))))
+fn process_tree_disclosure_offset(depth: usize, width: u16, name_width: usize) -> usize {
+    // Keep full indentation whenever it and the name fit. Otherwise reclaim
+    // indentation for the name, retaining a compressed-depth marker for children.
+    let content_width = usize::from(width).saturating_sub(2);
+    let minimum_indent = usize::from(depth > 0 && width > 3);
+    let available_indent = content_width.saturating_sub(name_width).max(minimum_indent);
+    depth.saturating_mul(2).min(available_indent)
 }
 
 pub(crate) fn process_tree_disclosure_hit_test(
@@ -776,9 +779,16 @@ pub(crate) fn process_tree_disclosure_hit_test(
     let Some(process_rect) = column_rects.get(2) else {
         return false;
     };
+    let Some(process) = app.visible_process_at(visible_row_index) else {
+        return false;
+    };
     let disclosure_x = process_rect.x.saturating_add(
-        u16::try_from(process_tree_disclosure_offset(depth, process_rect.width))
-            .unwrap_or(u16::MAX),
+        u16::try_from(process_tree_disclosure_offset(
+            depth,
+            process_rect.width,
+            text_width(&process.name),
+        ))
+        .unwrap_or(u16::MAX),
     );
     x == disclosure_x && x < process_rect.right()
 }

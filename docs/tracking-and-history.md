@@ -56,6 +56,8 @@ In Tree view, a text filter keeps direct live matches and the ancestor paths nee
 
 Selection follows full process identity across sampling refreshes and sibling reordering. Collapsing a subtree whose descendant has focus moves focus to the collapsed parent, and hidden descendants are removed from multi-selection. Display pause builds the tree from the frozen snapshot; Recording continues to use the current live snapshot and allows Tree view.
 
+Tree rows retain full indentation and process names whenever both fit in the Process column. When they do not fit, indentation is compressed to prioritize the name while preserving a hierarchy cue. Names are shortened only when they exceed the remaining cell width after the compact hierarchy controls. Disclosure drawing and mouse targeting use the same row-specific width allocation.
+
 ## Process column sizing
 
 Dragging a column header boundary edits the same persisted width preference as keyboard sizing. Shared column geometry owns both the visible grip and hit target, including reordered and horizontally scrolled columns. Dragging captures the column identity until release; it does not sort or select rows. Modal input and terminal resize cancel an active drag.

@@ -649,3 +649,81 @@ fn copy_table_respects_tree_depth_collapse_and_filter() {
     assert!(table.contains("other-child.exe"));
     assert!(!table.contains("\troot.exe\t"));
 }
+
+#[test]
+fn tree_column_fit_preserves_full_indentation_when_name_fits() {
+    let mut app = make_test_app(8, 30);
+    for (index, process) in app.snapshot.processes.iter_mut().enumerate() {
+        process.pid = 100 + index as u32;
+        process.parent_pid = (index > 0).then_some(99 + index as u32);
+        process.name = format!("p{index}.exe");
+    }
+    app.process_view_mode = ProcessViewMode::Tree;
+    app.process_column_widths.set(SortColumn::ProcessName, 26);
+    app.rebuild_visible_process_cache();
+    let buffer = render_app_to_buffer(&app, 120, 60);
+    let (root_x, _) = find_text_position(&buffer, "p0.exe").unwrap();
+    for depth in 1..8 {
+        let (x, y) = find_text_position(&buffer, &format!("p{depth}.exe")).unwrap();
+        assert_eq!(x, root_x + depth * 2, "depth {depth}");
+        assert_ne!(buffer[(x - 3, y)].symbol(), "…");
+    }
+}
+
+#[test]
+fn tree_column_fit_preserves_long_names_and_disclosure_hits() {
+    for name in ["long-parent-name.exe", "親プロセスの名前.exe"] {
+        let mut app = make_tree_app();
+        app.snapshot
+            .processes
+            .iter_mut()
+            .find(|p| p.pid == 20)
+            .unwrap()
+            .name = name.into();
+        let name_width = ratatui::text::Line::from(name).width() as u16;
+        app.process_column_widths
+            .set(SortColumn::ProcessName, name_width + 3);
+        app.rebuild_visible_process_cache();
+        let screen = Rect::new(0, 0, 120, 60);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let first = name.chars().next().unwrap().to_string();
+        let (x, y) = find_text_position(&buffer, if name.is_ascii() { name } else { &first })
+            .expect("name starts inside the cell");
+        let mut cell_x = x;
+        for ch in name.chars() {
+            let symbol = ch.to_string();
+            assert_eq!(buffer[(cell_x, y)].symbol(), symbol, "full name {name}");
+            cell_x += ratatui::text::Line::from(symbol).width() as u16;
+        }
+        assert_eq!(buffer[(x - 3, y)].symbol(), "…");
+        assert_eq!(buffer[(x - 2, y)].symbol(), "▾");
+        app.on_mouse(mouse_move(x - 2, y), screen);
+        assert_eq!(
+            app.process_disclosure_hovered.as_ref().map(|p| p.pid),
+            Some(20)
+        );
+        app.on_mouse(left_click(x - 2, y), screen);
+        assert_eq!(app.visible_process_count(), 4);
+        assert!(app.watch_list.is_empty());
+    }
+}
+
+#[test]
+fn tree_column_fit_uses_entire_name_budget_at_every_depth() {
+    let mut app = make_test_app(8, 30);
+    for (index, process) in app.snapshot.processes.iter_mut().enumerate() {
+        process.pid = 100 + index as u32;
+        process.parent_pid = (index > 0).then_some(99 + index as u32);
+        process.name = format!("process-{index}-with-a-very-long-name.exe");
+    }
+    app.process_view_mode = ProcessViewMode::Tree;
+    app.process_column_widths.set(SortColumn::ProcessName, 26);
+    app.rebuild_visible_process_cache();
+    let buffer = render_app_to_buffer(&app, 120, 60);
+    let (root_x, _) = find_text_position(&buffer, "process-0-").unwrap();
+    for depth in 0..8 {
+        let (x, y) = find_text_position(&buffer, &format!("process-{depth}-")).unwrap();
+        assert_eq!(x, root_x + u16::from(depth > 0));
+        assert_eq!(buffer[(root_x + 23, y)].symbol(), "⋯");
+    }
+}
