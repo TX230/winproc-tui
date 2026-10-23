@@ -711,16 +711,12 @@ fn process_tree_prefix(
     if app.effective_process_view_mode() != ProcessViewMode::Tree || row.is_tracked_total {
         return Line::default();
     }
-    let offset =
-        process_tree_disclosure_offset(row.tree_depth, width, text_width(&row.process.name));
-    let mut spans = Vec::new();
-    if offset > 0 {
-        let indent = if row.tree_depth.saturating_mul(2) > offset {
-            format!("{}…", " ".repeat(offset.saturating_sub(1)))
-        } else {
-            " ".repeat(offset)
-        };
-        spans.push(Span::styled(indent, base_style));
+    let offset = process_tree_disclosure_offset(row.tree_depth);
+    let visible_indent = offset.min(usize::from(width));
+    let mut spans = vec![Span::styled(" ".repeat(visible_indent), base_style)];
+    // Bound allocation by the column width without moving an offscreen disclosure.
+    if offset >= usize::from(width) {
+        return Line::from(spans);
     }
     let glyph = match (row.tree_has_children, row.tree_expanded) {
         (true, true) => "▾",
@@ -743,13 +739,8 @@ fn process_tree_prefix(
     Line::from(spans)
 }
 
-fn process_tree_disclosure_offset(depth: usize, width: u16, name_width: usize) -> usize {
-    // Keep full indentation whenever it and the name fit. Otherwise reclaim
-    // indentation for the name, retaining a compressed-depth marker for children.
-    let content_width = usize::from(width).saturating_sub(2);
-    let minimum_indent = usize::from(depth > 0 && width > 3);
-    let available_indent = content_width.saturating_sub(name_width).max(minimum_indent);
-    depth.saturating_mul(2).min(available_indent)
+fn process_tree_disclosure_offset(depth: usize) -> usize {
+    depth.saturating_mul(2)
 }
 
 pub(crate) fn process_tree_disclosure_hit_test(
@@ -779,17 +770,9 @@ pub(crate) fn process_tree_disclosure_hit_test(
     let Some(process_rect) = column_rects.get(2) else {
         return false;
     };
-    let Some(process) = app.visible_process_at(visible_row_index) else {
-        return false;
-    };
-    let disclosure_x = process_rect.x.saturating_add(
-        u16::try_from(process_tree_disclosure_offset(
-            depth,
-            process_rect.width,
-            text_width(&process.name),
-        ))
-        .unwrap_or(u16::MAX),
-    );
+    let disclosure_x = process_rect
+        .x
+        .saturating_add(u16::try_from(process_tree_disclosure_offset(depth)).unwrap_or(u16::MAX));
     x == disclosure_x && x < process_rect.right()
 }
 

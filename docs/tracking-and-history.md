@@ -56,7 +56,7 @@ In Tree view, a text filter keeps direct live matches and the ancestor paths nee
 
 Selection follows full process identity across sampling refreshes and sibling reordering. Collapsing a subtree whose descendant has focus moves focus to the collapsed parent, and hidden descendants are removed from multi-selection. Display pause builds the tree from the frozen snapshot; Recording continues to use the current live snapshot and allows Tree view.
 
-Tree rows retain full indentation and process names whenever both fit in the Process column. When they do not fit, indentation is compressed to prioritize the name while preserving a hierarchy cue. Names are shortened only when they exceed the remaining cell width after the compact hierarchy controls. Disclosure drawing and mouse targeting use the same row-specific width allocation.
+Tree indentation depends only on hierarchy depth, never on column width or process-name length. Narrowing the Process column clips content at its right edge without compressing or shifting the hierarchy. Names are shortened only when they exceed the width remaining after the fixed indentation and disclosure controls. Disclosures outside the column are neither drawn nor clickable; widening the column reveals them at their original positions.
 
 ## Process column sizing
 
@@ -111,7 +111,7 @@ Keyboard focus and process selection are independent. In Processes, Process Info
 
 In Tracked-only mode, select-all selects eligible process identities in the current list, including rows outside the viewport, without changing keyboard focus or scroll position. Text filtering and Tree collapse bound this list; hidden rows, Ghost Rows, and Tracked Total are excluded. Repeating select-all leaves the eligible set selected. Text input and modal dialogs retain their own key handling.
 
-Tree indentation is bounded to preserve readable process names. A compressed-depth marker retains the indication of deeper ancestry; disclosure geometry uses the same bound as rendering. Process Info remains the full-name inspection route. Parentage, filtering and collapse semantics do not depend on the displayed indentation.
+Tree disclosure drawing and mouse targeting share the same depth-based position. Process Info remains the full-name inspection route, and keyboard expansion remains available when a disclosure is clipped, subject to the existing filter restriction. Parentage, filtering and collapse semantics do not depend on column width.
 
 Process context menus capture the full process identity and displayed row when opened, and retain that identity while visible. Reordering and PID reuse cannot retarget their actions. Double-clicking a process name or PID opens Process Info; tracking by process name is an explicit context action and retains Live-only and retained-history confirmation rules.
 

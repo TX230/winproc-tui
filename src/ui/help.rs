@@ -175,8 +175,8 @@ const GLOBAL_ROWS: &[HelpItem] = &[
 
 const PROCESSES_ROWS: &[HelpItem] = &[
     HelpItem {
-        key: "… in Tree indentation",
-        label: "Deeper ancestors compressed; Enter opens the full process name",
+        key: "Tree indentation",
+        label: "Fixed by depth; widen Process or press Enter for the full name",
     },
     HelpItem {
         key: "Stronger cell highlight",

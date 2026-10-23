@@ -557,7 +557,7 @@ fn narrow_process_column_keeps_disclosure_draw_and_hit_test_aligned() {
 }
 
 #[test]
-fn deep_tree_preserves_name_width_and_disclosure_target() {
+fn deep_tree_clips_without_shifting_disclosure_target() {
     let mut app = make_test_app(15, 30);
     for (index, process) in app.snapshot.processes.iter_mut().enumerate() {
         process.pid = index as u32 + 100;
@@ -565,13 +565,42 @@ fn deep_tree_preserves_name_width_and_disclosure_target() {
         process.name = format!("branch-{index:02}.exe");
     }
     app.process_view_mode = ProcessViewMode::Tree;
-    app.process_column_widths.set(SortColumn::ProcessName, 24);
+    app.process_column_widths.set(SortColumn::ProcessName, 44);
     app.rebuild_visible_process_cache();
     let screen = Rect::new(0, 0, 120, 60);
     let buffer = render_app_to_buffer(&app, 120, 60);
+    let (root_x, _) = find_text_position(&buffer, "branch-00.exe").unwrap();
     let (name_x, name_y) = find_text_position(&buffer, "branch-12.exe").unwrap();
-    assert_eq!(buffer[(name_x - 3, name_y)].symbol(), "…");
+    assert_eq!(name_x, root_x + 24);
     assert_eq!(buffer[(name_x - 2, name_y)].symbol(), "▾");
+    for width in [24, 25, 26, 27] {
+        app.process_column_widths
+            .set(SortColumn::ProcessName, width);
+        let buffer = render_app_to_buffer(&app, 120, 60);
+        let area = crate::ui::main_panel_areas_for_app(screen, &app)
+            .processes
+            .area;
+        for x in root_x - 2..root_x - 2 + width {
+            assert_eq!(
+                crate::ui::process_tree_disclosure_hit_test(area, x, &app, 12),
+                width > 24 && x == name_x - 2,
+                "width {width}, x {x}"
+            );
+        }
+        assert_eq!(buffer[(root_x - 2, name_y)].symbol(), " ");
+        if width > 24 {
+            assert_eq!(buffer[(name_x - 2, name_y)].symbol(), "▾");
+        }
+        if width == 27 {
+            assert_eq!(buffer[(name_x, name_y)].symbol(), "⋯");
+        }
+    }
+    app.process_column_widths.set(SortColumn::ProcessName, 44);
+    let buffer = render_app_to_buffer(&app, 120, 60);
+    assert_eq!(
+        find_text_position(&buffer, "branch-12.exe"),
+        Some((name_x, name_y))
+    );
     app.on_mouse(left_click(name_x - 2, name_y), screen);
     assert_eq!(app.visible_process_count(), 13);
     assert!(app.watch_list.is_empty());
@@ -682,7 +711,7 @@ fn tree_column_fit_preserves_long_names_and_disclosure_hits() {
             .name = name.into();
         let name_width = ratatui::text::Line::from(name).width() as u16;
         app.process_column_widths
-            .set(SortColumn::ProcessName, name_width + 3);
+            .set(SortColumn::ProcessName, name_width + 4);
         app.rebuild_visible_process_cache();
         let screen = Rect::new(0, 0, 120, 60);
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
@@ -695,7 +724,7 @@ fn tree_column_fit_preserves_long_names_and_disclosure_hits() {
             assert_eq!(buffer[(cell_x, y)].symbol(), symbol, "full name {name}");
             cell_x += ratatui::text::Line::from(symbol).width() as u16;
         }
-        assert_eq!(buffer[(x - 3, y)].symbol(), "…");
+        assert_eq!(buffer[(x - 3, y)].symbol(), " ");
         assert_eq!(buffer[(x - 2, y)].symbol(), "▾");
         app.on_mouse(mouse_move(x - 2, y), screen);
         assert_eq!(
@@ -722,8 +751,45 @@ fn tree_column_fit_uses_entire_name_budget_at_every_depth() {
     let buffer = render_app_to_buffer(&app, 120, 60);
     let (root_x, _) = find_text_position(&buffer, "process-0-").unwrap();
     for depth in 0..8 {
-        let (x, y) = find_text_position(&buffer, &format!("process-{depth}-")).unwrap();
-        assert_eq!(x, root_x + u16::from(depth > 0));
+        let (x, y) = find_text_position(&buffer, &format!("process-{depth}")).unwrap();
+        assert_eq!(x, root_x + depth * 2);
         assert_eq!(buffer[(root_x + 23, y)].symbol(), "⋯");
     }
+}
+
+#[test]
+fn tree_column_resize_keeps_name_and_disclosure_positions() {
+    let mut app = make_tree_app();
+    app.snapshot
+        .processes
+        .iter_mut()
+        .find(|p| p.pid == 20)
+        .unwrap()
+        .name = "long-parent-name.exe".into();
+    app.rebuild_visible_process_cache();
+    let screen = Rect::new(0, 0, 120, 60);
+    let mut original_position = None;
+    for width in [40, 24, 18, 8, 40] {
+        app.process_column_widths
+            .set(SortColumn::ProcessName, width);
+        let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+        let (x, y) = find_text_position(&buffer, "lon").unwrap();
+        assert_eq!(*original_position.get_or_insert((x, y)), (x, y));
+        assert_eq!(buffer[(x - 2, y)].symbol(), "▾");
+        assert_eq!(buffer[(x - 3, y)].symbol(), " ");
+        if width < 24 {
+            assert_eq!(buffer[(x + width - 5, y)].symbol(), "⋯");
+        } else {
+            assert!(find_text_position(&buffer, "long-parent-name.exe").is_some());
+        }
+        app.on_mouse(mouse_move(x - 2, y), screen);
+        assert_eq!(
+            app.process_disclosure_hovered.as_ref().map(|p| p.pid),
+            Some(20)
+        );
+    }
+    let (x, y) = original_position.unwrap();
+    app.on_mouse(left_click(x - 2, y), screen);
+    assert_eq!(app.visible_process_count(), 4);
+    assert!(app.watch_list.is_empty());
 }
