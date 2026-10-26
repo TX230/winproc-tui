@@ -81,6 +81,28 @@ Recording requires at least one process name in the Tracking List, but no matchi
 
 Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows, columns, and samples. Press `F1` or `?` at any time for the complete controls; the footer shows the main actions available in the current context.
 
+### Collect .NET Metrics
+
+**A runtime bug in .NET 8/9/10 can cause an application to hang if metrics collection starts during its initialization.** To avoid automatic attachment during startup, winproc-tui leaves collection disabled on every launch.
+
+1. Confirm that the target application has finished initializing.
+2. Select its process in PROCESSES and press `n` to start collection.
+3. Press `n` again to stop collection for that process.
+
+Tracking List membership is not required. Selecting .NET columns in COLUMNS only changes their visibility; it does not start collection. A new or restarted process requires explicit enablement again.
+
+**.NET Framework applications are not affected by this issue.** Their supported metrics continue to be collected automatically through PDH, without an enable action.
+
+Manual collection during initialization can still trigger the runtime bug. This precaution prevents automatic attachment; it does not fix the runtime itself. See [.NET collection](docs/dotnet-metrics-collection.md) for upstream reports and collection limitations.
+
+![Before collection: PowerShell processes have gray N markers and OFF in their .NET metric columns](assets/screenshots/dotnet-metrics-off.png)
+
+_Before collection: the .NET columns show OFF._
+
+![After enabling collection for PowerShell PID 35964: its N marker is pink and metrics have values, while other processes remain OFF](assets/screenshots/dotnet-metrics-on.png)
+
+_After pressing n: the selected process shows measurements; the other processes remain OFF. The N marker turns pink immediately when the request is accepted, even before the first measurements arrive._
+
 ## Capabilities
 
 Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
@@ -89,7 +111,7 @@ Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, us
 - **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
 - **Graphs and A/B comparison**: Keeps up to 16 metrics in an ordered workspace with synchronized Samples, then compares metric values at two selected sample times.
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
-- **.NET metrics**: Collection for .NET 8/9/10 starts disabled because connecting during application initialization can hang the target. After initialization, select a supported process and press `n` to start or stop collection; Tracking List membership is not required. New or restarted processes require explicit authorization again. The .NET Framework PDH collection path is unaffected by this EventPipe startup issue: supported .NET Framework 4.8 heap metrics continue to be collected automatically as before, without explicit enablement. See in-app Help for controls and [.NET collection](docs/dotnet-metrics-collection.md) for collection states and limitations.
+- **.NET metrics**: Collect .NET 8/9/10 metrics explicitly for individual processes; supported .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning and steps.
 - **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
 - **Network endpoints**: Open **Investigation > Network endpoints** (**F3**) to inspect TCP/UDP addresses, ports, and owners across the system, then open Process Info for an owner. The workspace keeps its results and filter when switching views. Lists refresh on demand and are not recorded.
 - **Recording and Log view**: Records system metrics and matching processes as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
