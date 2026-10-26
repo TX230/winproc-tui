@@ -465,7 +465,7 @@ pub(super) fn format_graph_sample_value(
     };
     match value_format {
         GraphValueFormat::Percent => format!("{value:.1}%"),
-        GraphValueFormat::AdaptiveBitsPerSec => format_io_rate(value.round().max(0.0) as u64),
+        GraphValueFormat::AdaptiveBytesPerSec => format_io_rate(value.round().max(0.0) as u64),
         GraphValueFormat::MegabitsPerSec => format_mbps(value.round().max(0.0) as u64),
         GraphValueFormat::MegabytesPerSec => format_mb_per_sec(value.round().max(0.0) as u64),
         GraphValueFormat::QueueLength => format!("{value:.1}"),
@@ -495,7 +495,7 @@ fn format_details_sample_delta(
 fn format_details_delta(delta: f64, value_format: GraphValueFormat) -> String {
     match value_format {
         GraphValueFormat::Percent => format!("{delta:+.1}%"),
-        GraphValueFormat::AdaptiveBitsPerSec => format_signed_io_rate(delta.round() as i128),
+        GraphValueFormat::AdaptiveBytesPerSec => format_signed_io_rate(delta.round() as i128),
         GraphValueFormat::MegabitsPerSec => {
             let mbps = ((delta * 8.0) / 1_000_000.0).round() as i128;
             format_signed_integer(mbps) + " Mbps"
@@ -518,6 +518,54 @@ fn format_optional_integer(value: Option<u64>) -> String {
     value
         .map(format_integer)
         .unwrap_or_else(|| "--".to_string())
+}
+
+#[cfg(test)]
+mod io_tests {
+    use super::*;
+
+    #[test]
+    fn process_io_copy_matches_graph_samples_and_signed_deltas() {
+        let row = ProcessRow {
+            pid: 42,
+            name: "fixture.exe".into(),
+            io_read_bytes_per_sec: Some(62_500),
+            io_write_bytes_per_sec: None,
+            ..ProcessRow::default()
+        };
+        assert_eq!(
+            selected_process_row_text(
+                &row,
+                &[
+                    MetricColumn::IoReadBytesPerSec,
+                    MetricColumn::IoWriteBytesPerSec
+                ]
+            ),
+            "42\tfixture.exe\t62.5 KB/s\t--"
+        );
+        let format = GraphValueFormat::from_details_metric(crate::app::DetailsMetric::IoRead);
+        assert_eq!(
+            format_graph_sample_value(Some(62_500.0), format),
+            "62.5 KB/s"
+        );
+        assert_eq!(format_graph_sample_value(None, format), "--");
+        assert_eq!(
+            format_details_sample_delta(Some(62_500.0), Some(125_000.0), format),
+            "-62.5 KB/s"
+        );
+        assert_eq!(
+            format_details_sample_delta(Some(62_500.0), None, format),
+            "--"
+        );
+        assert_eq!(
+            format_details_sample_delta(Some(62_500.0), Some(62_500.0), format),
+            "+0 B/s"
+        );
+        assert_eq!(
+            format_graph_sample_value(Some(125_000.0), GraphValueFormat::MegabitsPerSec),
+            "1 Mbps"
+        );
+    }
 }
 
 #[cfg(not(test))]

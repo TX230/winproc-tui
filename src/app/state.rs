@@ -202,7 +202,7 @@ pub(crate) enum GraphValueFormat {
     BytesPerSec,
     Count,
     Percent,
-    AdaptiveBitsPerSec,
+    AdaptiveBytesPerSec,
     MegabitsPerSec,
     MegabytesPerSec,
     QueueLength,
@@ -212,7 +212,7 @@ impl GraphValueFormat {
     pub(crate) fn from_details_metric(metric: DetailsMetric) -> Self {
         match metric {
             DetailsMetric::CpuPercent | DetailsMetric::GpuPercent => Self::Percent,
-            DetailsMetric::IoRead | DetailsMetric::IoWrite => Self::AdaptiveBitsPerSec,
+            DetailsMetric::IoRead | DetailsMetric::IoWrite => Self::AdaptiveBytesPerSec,
             DetailsMetric::Private
             | DetailsMetric::Workset
             | DetailsMetric::WorksetPrivate

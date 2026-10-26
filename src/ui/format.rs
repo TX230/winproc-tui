@@ -120,31 +120,11 @@ pub(crate) fn format_mbps(bytes_per_sec: u64) -> String {
 }
 
 pub(crate) fn format_io_rate(bytes_per_sec: u64) -> String {
-    if bytes_per_sec < 125_000 {
-        let kbps = ((bytes_per_sec as f64 * 8.0) / 1_000.0).round() as u64;
-        format!("{} Kbps", format_integer(kbps))
-    } else {
-        format_mbps(bytes_per_sec)
-    }
-}
-
-pub(crate) fn format_kb_per_sec(bytes_per_sec: u64) -> String {
-    let whole_kb = bytes_per_sec / 1_000 + u64::from(bytes_per_sec % 1_000 >= 500);
-    format!("{} KB/s", format_integer(whole_kb))
-}
-
-pub(crate) fn format_signed_mbps(bytes_per_sec: i128) -> String {
-    let mbps = ((bytes_per_sec as f64 * 8.0) / 1_000_000.0).round() as i128;
-    format!("{} Mbps", format_signed_integer(mbps))
+    format!("{}/s", format_compact_bytes(bytes_per_sec))
 }
 
 pub(crate) fn format_signed_io_rate(bytes_per_sec: i128) -> String {
-    if bytes_per_sec.unsigned_abs() < 125_000 {
-        let kbps = ((bytes_per_sec as f64 * 8.0) / 1_000.0).round() as i128;
-        format!("{} Kbps", format_signed_integer(kbps))
-    } else {
-        format_signed_mbps(bytes_per_sec)
-    }
+    format!("{}/s", format_signed_compact_bytes(bytes_per_sec))
 }
 
 pub(crate) fn format_mb_per_sec(bytes_per_sec: u64) -> String {
@@ -174,25 +154,33 @@ mod tests {
     fn signed_compact_values_keep_sign_for_decreases_and_zero() {
         assert_eq!(format_signed_compact_bytes(-12_300_000), "-12.3 MB");
         assert_eq!(format_signed_compact_bytes(0), "+0 B");
-        assert_eq!(format_signed_mbps(-1_000_000), "-8 Mbps");
-        assert_eq!(format_signed_mbps(0), "+0 Mbps");
     }
 
     #[test]
-    fn io_rates_use_kbps_below_one_mbps() {
-        assert_eq!(format_io_rate(62_500), "500 Kbps");
-        assert_eq!(format_io_rate(124_999), "1,000 Kbps");
-        assert_eq!(format_io_rate(125_000), "1 Mbps");
-        assert_eq!(format_signed_io_rate(-62_500), "-500 Kbps");
-        assert_eq!(format_signed_io_rate(0), "+0 Kbps");
-        assert_eq!(format_signed_io_rate(125_000), "+1 Mbps");
-    }
-
-    #[test]
-    fn byte_rates_use_whole_decimal_kilobytes_per_second() {
-        assert_eq!(format_kb_per_sec(499), "0 KB/s");
-        assert_eq!(format_kb_per_sec(500), "1 KB/s");
-        assert_eq!(format_kb_per_sec(12_345_678), "12,346 KB/s");
+    fn io_rates_use_adaptive_decimal_bytes_and_preserve_delta_signs() {
+        for (value, expected) in [
+            (0, "0 B/s"),
+            (999, "999 B/s"),
+            (1_000, "1.0 KB/s"),
+            (62_500, "62.5 KB/s"),
+            (125_000, "125.0 KB/s"),
+            (999_999, "1.0 MB/s"),
+            (1_000_000, "1.0 MB/s"),
+            (12_345_678_900, "12.3 GB/s"),
+        ] {
+            assert_eq!(format_io_rate(value), expected);
+            assert_eq!(
+                format_signed_io_rate(i128::from(value)),
+                format!("+{expected}")
+            );
+            if value > 0 {
+                assert_eq!(
+                    format_signed_io_rate(-i128::from(value)),
+                    format!("-{expected}")
+                );
+            }
+        }
+        assert_eq!(format_mbps(125_000), "1 Mbps");
     }
 }
 

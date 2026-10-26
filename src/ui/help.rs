@@ -183,6 +183,10 @@ const GLOBAL_ROWS: &[HelpItem] = &[
 
 const PROCESSES_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "I/O units",
+        label: "Process I/O uses B/s, KB/s, MB/s; system Net Rx/Tx uses Mbps",
+    },
+    HelpItem {
         key: "No processes shown",
         label: "Check Filter and Tracked-only; the empty table shows a recovery shortcut",
     },

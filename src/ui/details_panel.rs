@@ -1469,7 +1469,7 @@ fn format_metric_exact_value(value: f64, metric: GraphValueFormat) -> String {
             format!("{}/s", format_integer(value.round().max(0.0) as u64))
         }
         GraphValueFormat::Percent => format!("{value:.1}%"),
-        GraphValueFormat::AdaptiveBitsPerSec => format_io_rate(value.round().max(0.0) as u64),
+        GraphValueFormat::AdaptiveBytesPerSec => format_io_rate(value.round().max(0.0) as u64),
         GraphValueFormat::MegabitsPerSec => {
             format!("{} Mbps", ((value * 8.0) / 1_000_000.0).round() as u64)
         }
@@ -1718,7 +1718,7 @@ fn format_ab_delta(delta: f64, metric: GraphValueFormat) -> String {
             format!("{}/s", format_signed_integer(delta.round() as i128))
         }
         GraphValueFormat::Percent => format!("{delta:+.1}%"),
-        GraphValueFormat::AdaptiveBitsPerSec => format_signed_io_rate(delta.round() as i128),
+        GraphValueFormat::AdaptiveBytesPerSec => format_signed_io_rate(delta.round() as i128),
         GraphValueFormat::MegabitsPerSec => {
             let mbps = ((delta * 8.0) / 1_000_000.0).round() as i128;
             format_signed_integer(mbps) + " Mbps"
@@ -1914,7 +1914,7 @@ fn graph_y_bounds(
     // Rate series are stored in bytes/s. Keep a zero-based axis readable as at
     // least 0..1 in its displayed unit, rather than rounding both ends to zero.
     let unit_upper = match metric {
-        GraphValueFormat::AdaptiveBitsPerSec => 125.0,
+        GraphValueFormat::AdaptiveBytesPerSec => 1.0,
         GraphValueFormat::MegabitsPerSec => 125_000.0,
         GraphValueFormat::MegabytesPerSec => 1_000_000.0,
         _ => 1.0,
@@ -2649,18 +2649,18 @@ mod tests {
     }
 
     #[test]
-    fn process_io_graph_values_switch_units_below_one_mbps() {
+    fn process_io_graph_values_and_deltas_use_byte_rates() {
         assert_eq!(
-            format_metric_exact_value(62_500.0, GraphValueFormat::AdaptiveBitsPerSec),
-            "500 Kbps"
+            format_metric_exact_value(62_500.0, GraphValueFormat::AdaptiveBytesPerSec),
+            "62.5 KB/s"
         );
         assert_eq!(
-            format_metric_exact_value(125_000.0, GraphValueFormat::AdaptiveBitsPerSec),
-            "1 Mbps"
+            format_metric_exact_value(125_000.0, GraphValueFormat::AdaptiveBytesPerSec),
+            "125.0 KB/s"
         );
         assert_eq!(
-            format_ab_delta(-62_500.0, GraphValueFormat::AdaptiveBitsPerSec),
-            "-500 Kbps"
+            format_ab_delta(-62_500.0, GraphValueFormat::AdaptiveBytesPerSec),
+            "-62.5 KB/s"
         );
         assert_eq!(
             format_metric_exact_value(62_500.0, GraphValueFormat::MegabitsPerSec),
@@ -3403,7 +3403,7 @@ mod tests {
             (GraphValueFormat::BytesPerSec, "20/s"),
             (GraphValueFormat::Count, "20"),
             (GraphValueFormat::Percent, "20.0%"),
-            (GraphValueFormat::AdaptiveBitsPerSec, "0 Kbps"),
+            (GraphValueFormat::AdaptiveBytesPerSec, "20 B/s"),
             (GraphValueFormat::MegabitsPerSec, "0 Mbps"),
             (GraphValueFormat::MegabytesPerSec, "0.0 MB/s"),
             (GraphValueFormat::QueueLength, "20.0"),
@@ -3731,7 +3731,7 @@ mod tests {
             (GraphValueFormat::BytesPerSec, 1.0, "1 B/s"),
             (GraphValueFormat::Percent, 1.0, "1.0%"),
             (GraphValueFormat::QueueLength, 1.0, "1.0"),
-            (GraphValueFormat::AdaptiveBitsPerSec, 125.0, "1 Kbps"),
+            (GraphValueFormat::AdaptiveBytesPerSec, 1.0, "1 B/s"),
             (GraphValueFormat::MegabitsPerSec, 125_000.0, "1 Mbps"),
             (GraphValueFormat::MegabytesPerSec, 1_000_000.0, "1.0 MB/s"),
         ] {

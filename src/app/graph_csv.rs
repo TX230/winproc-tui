@@ -362,7 +362,7 @@ fn source_header(source: &GraphSlot) -> String {
             GraphValueFormat::Count => "count",
             GraphValueFormat::QueueLength => "requests",
             GraphValueFormat::BytesPerSec
-            | GraphValueFormat::AdaptiveBitsPerSec
+            | GraphValueFormat::AdaptiveBytesPerSec
             | GraphValueFormat::MegabitsPerSec
             | GraphValueFormat::MegabytesPerSec => "bytes/s",
         },

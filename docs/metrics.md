@@ -61,8 +61,8 @@ Most columns are numeric metrics that can be sorted, graphed, sampled, and recor
 | `.NET Alloc/s` | `dotnet_allocation_bytes_per_sec` | Managed allocation rate over the collection interval. | .NET 9/10 built-in metric `dotnet.gc.heap.total_allocated`; .NET 8 `System.Runtime` EventCounter `alloc-rate` | Adaptive decimal bytes per second in Processes; exact bytes/s in detail/copy/log |
 | `GPU D` | `gpu_dedicated_bytes` | Dedicated VRAM used by the process. | PDH `\GPU Process Memory(pid_*)\Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
 | `GPU S` | `gpu_shared_bytes` | Shared system memory used by the process for GPU resources. | PDH `\GPU Process Memory(pid_*)\Non Local Usage` | Adaptive decimal byte unit in Processes; exact bytes in detail/copy/log |
-| `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | Whole-number decimal `KB/s` in Processes; Graph, Samples, and copy use the adaptive rate format described below |
-| `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | Whole-number decimal `KB/s` in Processes; Graph, Samples, and copy use the adaptive rate format described below |
+| `IO Read/s` | `io_read_bytes_per_sec` | Process read I/O throughput, including file, network, and device I/O. | PDH `IO Read Bytes/sec` | Adaptive decimal byte-per-second units across process views and formatted copy output |
+| `IO Write/s` | `io_write_bytes_per_sec` | Process write I/O throughput, including file, network, and device I/O. | PDH `IO Write Bytes/sec` | Adaptive decimal byte-per-second units across process views and formatted copy output |
 | `Full Path` | `path` | Executable path. Used to distinguish same-name processes from different build or working directories. | `sysinfo::Process::exe()` | Path text, shortened from the start when the cell is narrow |
 
 When the `Full Path` column is selected in the Process table, filtering matches both process name and executable path.
@@ -241,7 +241,7 @@ The comparison uses the app-wide A/B timestamps set in Graph or Samples:
 
 For each point, the process identity (PID, name, and start time) and `captured_at` must match exactly. Nearby samples, the latest sample of an exited ghost row, and samples from a reused PID are not substituted. A missing point or metric is displayed as `--`, and a delta is calculated only when both values exist.
 
-Metrics use compact decimal byte units and adaptive process I/O `Kbps` / `Mbps` conversion. Counts use thousands separators. Every calculated delta, including zero, has an explicit sign and is enclosed in parentheses by the dialog.
+Metrics use compact decimal byte units and adaptive decimal process I/O byte-per-second units. Counts use thousands separators. Every calculated delta, including zero, has an explicit sign and is enclosed in parentheses by the dialog.
 
 In `DISPLAY PAUSED`, both the current Snapshot and history come from the paused display state. In Log view, Current is the final recorded Snapshot, metric history comes from the loaded recording, and no live Process Info worker request is made. Static fields that are absent from the recording are displayed as `--`.
 
@@ -379,13 +379,12 @@ Live keeps at most two ordinary identity histories per case-insensitive process 
 | System memory / VRAM | MB. |
 | GPU name / capacity | `name / N GB VRAM`. |
 | Disk summary | Aggregated on one line, such as `C: used/total GB`. |
-| Process I/O in Processes | Whole-number decimal `KB/s`. |
-| Other process I/O displays | Whole-number `Kbps` below 1 Mbps; otherwise whole-number `Mbps`. |
+| Process I/O | Adaptive decimal `B/s`, `KB/s`, `MB/s`, `GB/s`, and larger units across Processes, Process Info, Graph axes and cursor values, Samples, A/B results, and formatted clipboard output. One decimal above bytes; signed deltas retain an explicit sign. |
 | CPU% | 1 decimal place. |
 | GPU% | 1 decimal place. |
 | Missing value | `--`. |
 
-`GB`, `MB`, `KB/s`, `Kbps`, and `Mbps` are rounded using a base of 1,000.
+Byte and throughput units use a decimal base of 1,000. Process I/O remains raw bytes per second in stored histories, Recording, and CSV exports; display scaling does not change sorting, aggregation, or missing values. System Net Rx/Tx retains its existing Mbps format.
 Graph card titles keep process metric names compact and qualify system metrics with their source panel, such as `MEM In use`, `GPU Usage`, `CPU Threads`, and `NW/DISK Net Rx`. System and GPU cards omit the redundant `SYSTEM` target and do not include the full GPU adapter name. Units remain visible in metric-specific values and Y-axis ticks rather than as separate title metadata.
 Percent, throughput, and disk queue-length Y-axis ticks retain their metric-specific formats.
 Graph Y-axis bounds include all plotted values in both Raw and MA5 modes. With the lower bound fixed at zero, the plotted maximum is rounded upward before choosing a readable upper bound, so fractional peaks cannot be clipped by integer rounding. Automatic bounds also use the actual chart height to leave clearance above the X-axis where a nonnegative lower bound permits it. A zero-based range spans at least 0 to 1 in the displayed metric unit, including for empty or all-zero series, so both endpoints never round to zero. Any plotted point that would occupy the X-axis row is lifted to the first row above it for rendering only. This applies to zero and near-zero values in both lower-bound modes and to Raw and MA5 lines; stored values, Samples, cursor values, A/B calculations, clipboard output, CSV, and Recording remain exact.

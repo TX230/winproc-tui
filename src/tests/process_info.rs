@@ -242,7 +242,7 @@ fn process_info_metrics_follow_current_a_and_b_rules_with_missing_values() {
             .find(|row| row.label == "I/O Read Throughput")
             .unwrap()
             .value,
-        "800 Kbps"
+        "100.0 KB/s"
     );
     let compact = render_app_to_text(&app, 60, 50);
     for label in [
@@ -316,7 +316,7 @@ fn process_info_metrics_follow_current_a_and_b_rules_with_missing_values() {
             .unwrap()
             .delta
             .as_deref(),
-        Some("+400 Kbps")
+        Some("+50.0 KB/s")
     );
     let missing = a_view
         .rows
@@ -347,8 +347,8 @@ fn process_info_metrics_follow_current_a_and_b_rules_with_missing_values() {
         .iter()
         .find(|row| row.label == "I/O Read Throughput")
         .unwrap();
-    assert_eq!(io_read.value, "600 Kbps");
-    assert_eq!(io_read.delta.as_deref(), Some("+200 Kbps"));
+    assert_eq!(io_read.value, "75.0 KB/s");
+    assert_eq!(io_read.delta.as_deref(), Some("+25.0 KB/s"));
 
     app.ab_comparison = Some(app::AbComparison {
         a: None,
