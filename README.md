@@ -83,6 +83,24 @@ Recording requires at least one process name in the Tracking List, but no matchi
 
 Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows, columns, and samples. Press `F1` or `?` at any time for the complete controls; the footer shows the main actions available in the current context.
 
+### Inspect Network Addresses and Ports
+
+1. Open **Investigation > Network endpoints** or press `F3` to view network endpoints across the system.
+2. Optionally type in Filter to narrow the list, then press `Enter` to focus it. The default view shows TCP listeners and bound UDP endpoints.
+3. Select a row with `↑` / `↓` and press `Enter` to open Process Info for the process using that port.
+
+The list is captured when you first open the view. Press `r` while the list has focus to refresh it.
+
+### Find Processes That Have a File Open
+
+1. Open **Investigation > Find processes by file** or press `F4` to open file search.
+2. Enter a file name or any part of its path in Query, then press `Enter` to start searching. Opening the view alone does not start a search.
+3. Select a result with `↑` / `↓` and press `Enter` to open that process's Files tab in Process Info. Inspect the matching file's handles, access rights, and other details.
+
+Results also report uninspected scope, such as inaccessible processes. No matches does not guarantee that no process has the file open.
+
+Both investigations are available in Live and during Recording. Switching views preserves results and input, but these reports are not recorded and are unavailable in Log view.
+
 ### Collect .NET Metrics
 
 **A runtime bug in .NET 8/9/10 can cause an application to hang if metrics collection starts during its initialization.** To avoid automatic attachment during startup, winproc-tui leaves collection disabled on every launch.
@@ -114,8 +132,8 @@ _After pressing n: the selected process shows measurements; the other processes 
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
 - **.NET metrics**: Collect .NET 8/9/10 metrics explicitly for individual processes; supported .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning and steps.
 - **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
-- **Find processes by file**: Search by file name or path to find processes that have a file open. Open a result in the Process Info Files tab to inspect its handles, access rights, and other details.
-- **Network endpoints**: Open **Investigation > Network endpoints** (**F3**) to inspect TCP/UDP addresses, ports, and owners across the system, then open Process Info for an owner. The workspace keeps its results and filter when switching views. Lists refresh on demand and are not recorded.
+- **Find processes by file**: Find processes by file name or path and inspect their open-file details. See [Find Processes That Have a File Open](#find-processes-that-have-a-file-open) for the steps.
+- **Network endpoints**: Inspect TCP/UDP addresses, ports, and the processes using them across the system. See [Inspect Network Addresses and Ports](#inspect-network-addresses-and-ports) for the steps.
 - **Recording and Log view**: Records system metrics and matching processes as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
 
 The last working Tracking List and app settings are restored on the next launch, or startup can choose a saved Investigation Profile or an empty Tracking List. Graphs start empty each time the app starts; filter input and runtime process identities are not saved.
@@ -129,7 +147,7 @@ The last working Tracking List and app settings are restored on the next launch,
 - Compare `Private Bytes` with `Working Set - Private` to investigate whether a large allocated buffer may be going unused.
 - Review handle-count trends and the Files tab in Process Info to find files that may not have been closed. Inspect each file handle's cache mode, write-through setting, I/O mode, and access rights.
 - Inspect the paths and versions of DLLs loaded by a process.
-- Find processes using a file by name or path through **Investigation > Find processes by file** (**F4**), then open the owner's Files tab. Search reports include partial-coverage information.
+- Find processes that have a specific file open and inspect how the file was opened and its access rights.
 - Compare resource usage before and after a specific operation or code change.
 - Record a target process and later inspect history around the time an issue occurred.
 
