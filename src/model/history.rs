@@ -696,6 +696,7 @@ mod tests {
 
     fn row(pid: u32, name: &str, private_bytes: u64) -> ProcessRow {
         ProcessRow {
+            dotnet_eventpipe: None,
             pid,
             parent_pid: None,
             name: name.to_string(),

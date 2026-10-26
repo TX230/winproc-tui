@@ -100,6 +100,14 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "Toggle/switch category; outside closes; confirmations stay explicit",
     },
     HelpItem {
+        key: "n (Processes)",
+        label: "Toggle selected process .NET metrics; N: gray = .NET 8+, pink = starting/collecting",
+    },
+    HelpItem {
+        key: ".NET cells",
+        label: "OFF: disabled; ...: starting; --: unsupported/unknown/unavailable",
+    },
+    HelpItem {
         key: "F2/F3/F4",
         label: "Processes / Network / Find processes by file view",
     },

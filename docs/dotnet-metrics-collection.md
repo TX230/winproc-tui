@@ -4,7 +4,7 @@ This implementation note explains how `winproc-tui` detects managed processes an
 
 ## Scope
 
-The live sampling worker attempts collection for every live process identity, regardless of Tracking List membership. A process is identified by `(PID, name, start_time)` so PID reuse cannot attach an old session or cached detection result to a new process.
+EventPipe collection starts disabled on every run. After an explicit per-process n action, the live sampling worker attempts collection only for that authorized live process lifetime, regardless of Tracking List membership. A process is identified by `(PID, name, start_time)` so PID reuse cannot attach an old session or cached detection result to a new process.
 
 | Target | Collection path | Available values |
 |---|---|---|
@@ -15,45 +15,73 @@ The live sampling worker attempts collection for every live process identity, re
 
 WinUI 3 is not detected as a special application type. A managed WinUI 3 process is supported when it runs on a supported .NET runtime and exposes the diagnostics pipe. A native-only WinUI 3 process does not expose these managed runtime metrics.
 
-The initial synchronous startup sample does not open .NET sessions. EventPipe collection begins in the persistent live sampling worker. Log view does not run live .NET collection.
+The initial synchronous startup sample does not open .NET sessions. EventPipe collection begins in the persistent live sampling worker only after explicit authorization. Log view does not run live .NET collection.
 
 .NET Framework 4.8 does not expose a POH generation. Its PDH `Gen 0 heap size` counter is the maximum allocation threshold before the next Gen0 collection, not the current Gen0 heap occupancy represented by the modern runtime values. The collector therefore leaves Framework Gen0 and POH unavailable instead of placing semantically different data in those columns.
 
+## Explicit authorization and startup safety
+
+The Processes panel shows a gray-background N beside T when a loaded .NET 8+ runtime has been confirmed for that process lifetime. .NET Framework does not show this marker; its PDH metrics remain collected independently of the n action. A separate background worker examines loaded runtime modules without opening diagnostics IPC or starting EventPipe. Detection uses known creation times and checks identity before and after inspection; inaccessible or unknown runtimes are not positively marked. Positive detections are retained only for that lifetime; negative results are retried after ten seconds. This detection is live-only, independent of column visibility, and does not change recording schemas.
+
+In Processes, n toggles metrics for the selected live process only, including untracked processes. Enabling requires a confirmed .NET 8+ runtime. Other processes, including instances with the same name, keep their own permissions. Exit and PID reuse revoke permission. Tracking changes and profile switches do not change existing collection permission. Turning one process off cancels its permit immediately and removes its session asynchronously; reenabling that same identity waits for both queued removal and its reader to finish. Other processes can continue collecting and can be enabled independently.
+
+N turns pink immediately when an enable action is accepted, including initial connection and first-sample waiting. It remains pink while fresh metrics are collected, and returns to gray on disable, failure, or loss of fresh measurements after collection has started. Pink during startup acknowledges the request and does not prove that a sample has arrived. Log view and exited rows do not display a live N marker. Selection and repeated n key events must not accidentally toggle multiple processes; only one key press toggles the focused lifetime.
+
+The COLUMNS dialog identifies the startup hang risk as a .NET 8/9/10 runtime issue and explains that choosing these columns changes visibility only. It also states that .NET Framework metrics are collected automatically. Its notice directs users to select a process and press n to start or stop collection. The former top-right .NET control is removed. Help and the Processes footer describe n and the marker meanings. Enable only after the target application has initialized: fixed delays do not prove readiness, and manual attachment during initialization can still hang the target.
+
+Alt+N retains the existing bulk authorization dialog for compatibility. It opens with an unchecked Enable .NET metrics control holding keyboard focus. Space or clicking the control immediately toggles bulk collection; Enter and Esc close without changing collection state. The warning references dotnet/runtime Issue #119014. This legacy route remains separate from the primary per-process n action.
+
+The legacy bulk confirmation freezes candidates from the current live snapshot whose names match the Tracking List, independently of display pause, filters, and column visibility. Matching uses the existing case-insensitive Tracking List rules and includes all matching live PIDs. An empty list or no identifiable live matches opens a visible guidance dialog. The enabled state is independent of the authorized target set: Space or a checkbox click can enable it even with zero targets, without granting any process connection permission. The runtime deadlock warning and upstream Issue reference remain visible in this state; guidance must never replace them. The guidance explains how to add a target to the Tracking List or start an existing tracked app, then retry. An enable attempt with no eligible identities checks the box and retains the guidance, but cannot start any connection. Subsequent samples, newly started processes, and Tracking List additions do not populate the empty authorization set. Enter or Esc closes it. If all captured targets become ineligible before activation, show the same guidance instead of silently rejecting the action. Candidates must have a known creation time and must still match when enabled and when the reader starts its request. New processes, same-name restarts, reused PIDs, and newly monitored targets never inherit authorization. To capture another set, turn collection off, close and reopen the dialog, then enable collection. Toggling within an open dialog never adds candidates beyond those captured when it opened. After authorization, removing a name from the Tracking List or switching profiles does not revoke its existing permits. The Tracking List limits only the candidates of this legacy bulk dialog, not individual n actions. Adding or re-adding a name never grants permission automatically. Profiles, saved settings, and recording actions cannot grant authorization.
+
+Disabling cancels permits immediately. Already in-flight work drains asynchronously; the bulk dialog shows Stopping until the sampling worker acknowledges shutdown and all readers and cleanup tasks finish. Disabling an empty authorization set with no active readers requires no worker shutdown, so repeated toggles remain immediate. Re-enabling is refused while draining; an open dialog keeps its checkbox unchecked and displays the stopping state. If a target runtime does not respond, this may remain Stopping; the UI stays usable, and this is not a target-recovery mechanism. When a non-empty authorization set loses all targets through exit or removal, collection returns to disabled. An explicitly enabled empty set stays enabled until the user turns it off.
+
+Process Info distinguishes Disabled, Not enabled, Waiting, Collecting, and Unavailable with a reason for EventPipe. Paused and log views describe their displayed/recorded data instead of presenting current collection status as historical state. Legacy PDH collection remains independent. An internal, non-serialized collection-generation marker allows the UI to discard queued EventPipe measurements after revocation without clearing ordinary PDH values. Existing history remains intact; subsequent absent measurements use the existing missing-value semantics.
+
+Related runtime reports: [MetricsEventSource initialization deadlock](https://github.com/dotnet/runtime/issues/119014), [its fix](https://github.com/dotnet/runtime/pull/131501), and separate .NET 8 reports [#105682](https://github.com/dotnet/runtime/issues/105682) and [#118014](https://github.com/dotnet/runtime/issues/118014). A fix merged to runtime main does not establish that a supported servicing release contains it.
+
+## No initial metrics
+
+If a session publishes no complete metric interval within 5 seconds of its reader being created, the next sampling pass marks it Unavailable with a no-metrics timeout reason and requests asynchronous session cleanup. The process marker returns to gray and missing cells return to `--`; no automatic reconnect is attempted. Collection failures, including this timeout, show the process name, PID, and reason in the bottom status area once per authorization attempt. Repeated sampling does not overwrite later user messages with the same failure; Process Info retains the detailed status. The user can turn collection off and on to retry after cleanup. A session that has published data uses the existing freshness rules instead of this initial deadline.
+
+A loaded supported CLR does not guarantee that managed diagnostic events are enabled. Applications can disable EventSource support (for example, `System.Diagnostics.Tracing.EventSource.IsSupported=false`) and therefore produce no metrics for the requested providers. A timeout reports the observed lack of metrics, not a definitive diagnosis of the target configuration. This collector deadline does not establish application readiness or recover a runtime startup deadlock. Target application configuration is never modified.
+
 ## End-to-End Flow
 
-1. The one-second live sample builds the current `ProcessRow` list.
-2. `DotNetRuntimeSampler::reconcile_and_apply` converts every row to a full `ProcessIdentity` and removes state for identities that have exited.
-3. For an identity not already classified, the sampler tries to open `\\.\pipe\dotnet-diagnostic-{pid}` once. Opening the pipe is both the initial .NET detection check and the first connection used to start collection.
-4. A successful check creates one independent `dotnet-runtime-{pid}` thread and caches the identity as detected. A failed initial check caches the identity as rejected for the rest of that process lifetime.
+1. The one-second live sample builds the current `ProcessRow` list. A separate worker inspects loaded runtime modules and returns identity-checked runtime classifications without diagnostics IPC.
+2. `DotNetRuntimeSampler::reconcile_and_apply` reconciles full `ProcessIdentity` values, removes exited identities, and checks explicit collection permission.
+3. Only an authorized identity without an active or rejected session may open `\\.\pipe\dotnet-diagnostic-{pid}`. Runtime detection alone never opens this pipe.
+4. Creation time and name are verified again before each session-start request, including protocol fallback. A connected session uses an independent `dotnet-runtime-{pid}` reader thread. Connection or session failure rejects the current attempt; an explicit off/on action after cleanup allows a retry.
 5. The session requests a filtered, one-second EventPipe stream and parses the raw NetTrace v4 FastSerialization data in process.
-6. An accumulator publishes only a coherent collection interval. The session retains only its most recently published interval.
-7. The next live sample copies fresh values into the matching `ProcessRow`. An EventPipe value overrides its legacy PDH fallback only when that EventPipe value exists.
+6. An accumulator publishes only a coherent collection interval and retains the latest interval. If none arrives within five seconds of reader creation, the next sample reports failure and requests asynchronous cleanup.
+7. The next live sample copies fresh values into the matching `ProcessRow`. An EventPipe value overrides its legacy PDH fallback only when that EventPipe value exists. Collection failures produce a bottom status message once per authorization attempt.
 
-Detection does not inspect loaded modules, executable names, or application frameworks. It relies on the runtime-owned diagnostics pipe, which avoids a separate module-enumeration pass over every process.
+Loaded-module detection and collection are separate operations. Negative runtime detections can be checked again after ten seconds; failed collection attempts require explicit retry. Neither executable names nor application frameworks alone establish runtime support.
 
 ### Collection Flow
 
 ```mermaid
 flowchart TD
-    live["One-second Live sample"] --> rows["Current ProcessRow list"]
-    rows --> reconcile["Reconcile by ProcessIdentity"]
-    reconcile --> known{"Identity state"}
-    known -->|Rejected| unavailable["Keep PDH fallbacks or --"]
-    known -->|Active session| latest["Read latest complete interval"]
-    known -->|New identity| pipe["Open diagnostic pipe once"]
-    pipe -->|Unavailable| reject["Cache rejected identity"]
-    reject --> unavailable
-    pipe -->|Available| session["Start per-process EventPipe session"]
-    session --> parser["Parse NetTrace v4 stream"]
-    parser --> accumulator["Publish coherent interval"]
-    accumulator --> latest
-    latest --> fresh{"Age at most 3 seconds?"}
-    fresh -->|No| unavailable
-    fresh -->|Yes| merge["Merge values into ProcessRow"]
+    rows["Current live process identities"] --> detect["Background loaded-module detection; no diagnostics IPC"]
+    rows --> reconcile["Reconcile sessions and explicit permissions"]
+    detect --> classification["Runtime classification for UI and per-process enable eligibility"]
+    reconcile --> permit{"Authorized lifetime?"}
+    permit -->|No| idle["No EventPipe connection; OFF for known supported runtime"]
+    permit -->|Yes| state{"Session state"}
+    state -->|Rejected attempt| unavailable["Keep PDH fallback or --; explicit retry required"]
+    state -->|No session| pipe["Verify identity and open diagnostics pipe"]
+    pipe -->|Failure| unavailable
+    pipe -->|Connected| session["Per-process EventPipe reader"]
+    state -->|Active| session
+    session --> interval{"Complete interval?"}
+    interval -->|Not yet; under 5 seconds| waiting["Waiting: ..."]
+    interval -->|None by initial deadline| timeout["Report failure once; asynchronous cleanup"]
+    timeout --> unavailable
+    interval -->|Yes| fresh{"Age at most 3 seconds?"}
+    fresh -->|No| missing["Keep PDH fallback or --"]
+    fresh -->|Yes| merge["Merge available values into ProcessRow"]
     merge --> display["Processes, Process Info, and Graphs"]
-    merge --> scope{"Retention scope"}
-    scope -->|Not tracked| short["Short Live history"]
-    scope -->|Tracked| long["Long history and recording scope"]
+    merge --> history["Short Live history; long history for tracked names"]
+    merge --> recording["Recording only within session-owned fixed Tracking List"]
 ```
 
 ## Diagnostics IPC Session
@@ -76,7 +104,7 @@ MaxHistograms=0
 
 The actual request encodes these arguments as one semicolon-separated UTF-16 string. Filtering at the provider limits the stream to the four instruments needed to derive the nine displayed values.
 
-If the runtime reports the newer CollectTracing command as unknown or unsupported, the sampler opens a new pipe and sends the older CollectTracing command with only the `System.Runtime` provider and `EventCounterIntervalSec=1`. This protocol fallback selects the .NET 8 path without maintaining a separate runtime-version detector. It also avoids opening both modern and legacy counter sessions on a newer runtime.
+If the runtime reports the newer CollectTracing command as unknown or unsupported, the sampler opens a new pipe and sends the older CollectTracing command with only the `System.Runtime` provider and `EventCounterIntervalSec=1`. Protocol negotiation selects the supported collection path independently of the loaded-runtime classification used for per-process enable eligibility. It also avoids opening both modern and legacy counter sessions on a newer runtime.
 
 ## .NET 9 and .NET 10 Mapping
 
@@ -127,7 +155,7 @@ The persistent process PDH query reads the runtime instance's `Process ID` count
 | `.NET Gen0` | Not collected | The available `Gen 0 heap size` counter is an allocation threshold, not current occupancy |
 | `.NET POH` | Not available | .NET Framework has no POH generation |
 
-These PDH values remain available even though .NET Framework does not expose the .NET Core diagnostics named pipe. They use the same existing one-second PDH query as the other process counters and do not create per-process EventPipe threads.
+The .NET Framework PDH collection path is unaffected by the EventPipe startup deadlock addressed here. Supported Framework metrics continue to be collected automatically as before, without a per-process or bulk enable action. These PDH values remain available even though .NET Framework does not expose the .NET Core diagnostics named pipe. They use the same existing one-second PDH query as the other process counters and do not create per-process EventPipe threads.
 
 ## NetTrace Parsing and Validation
 
@@ -146,10 +174,10 @@ An unsupported stream version, malformed block, truncated stream structure, or p
 ## Freshness, Retry, and Shutdown
 
 - A published interval is applied only for three seconds. Older values become unavailable instead of remaining frozen indefinitely.
-- If an established session ends, that detected identity waits five seconds before another connection attempt.
-- A failed initial detection is not retried for the same identity. This keeps the recurring reconciliation cost small for the much larger set of native processes.
+- A failed or ended session is not automatically retried. Its reason is available in Process Info; retry requires disabling and explicitly enabling collection again.
+- Negative loaded-module detections are retried after ten seconds; positive detections are cached only for that process lifetime. This is separate from a rejected collection attempt, which is not automatically retried.
 - Exited identities are removed on the next live reconciliation.
-- Entering Log view sends `SuspendDotNet`, which clears sessions and detection caches. Returning to Live performs detection again against the current identities.
+- Disabling collection or entering Log view revokes authorization immediately and sends `SuspendDotNet` when session cleanup is needed. An empty set with no readers needs no shutdown request. Returning to Live leaves collection disabled.
 
 Stopping a session must not delay the sampling worker or the UI. Dropping `RuntimeSession` sets a stop flag, moves its join handle to a short-lived `dotnet-runtime-cleanup-{pid}` thread, opens a separate diagnostics pipe, and sends the EventPipe stop command using the stored session ID. The cleanup thread then joins the reader. An atomic guard prevents duplicate stop requests.
 
@@ -164,6 +192,7 @@ sequenceDiagram
     participant C as Cleanup thread
 
     W->>D: Reconcile current process identities
+    Note over D,T: Explicit permission for this lifetime is required before connecting
     D->>T: Open dotnet-diagnostic PID pipe
     T-->>D: Pipe is available
     D->>R: Spawn with the connected pipe
@@ -186,7 +215,7 @@ sequenceDiagram
         D-->>W: Return ProcessRows with fresh values
     end
 
-    W->>D: Identity exits or SuspendDotNet is requested
+    W->>D: Initial 5-second timeout, identity exit, or collection revoked
     D-->>C: Drop session and move its join handle
     C->>T: Send StopTracing on a separate pipe
     T-->>R: End EventPipe stream
@@ -197,15 +226,15 @@ sequenceDiagram
 
 Detection and current value display are independent of Tracking List membership. History and persistence remain intentionally asymmetric:
 
-- every detected live process may show current .NET values;
+- only explicitly authorized live lifetimes may receive EventPipe values; legacy Framework PDH counters remain independent;
 - non-tracked processes keep only the ordinary short live history;
 - tracked processes keep the long live history;
 - Recording includes only processes matching the session's fixed Tracking List;
-- unavailable values are displayed as `--` and omitted from object-based recording fields, while fixed-order schema positions use `null`.
+- missing live .NET cells distinguish disabled (`OFF`) and first-sample waiting (`...`); unsupported metrics, unknown runtimes, failed collection, and other missing measurements retain `--`. These labels are presentation-only; object-based recording fields remain omitted and fixed-order schema positions use `null`.
 
 ## Expected Cost
 
-The UI thread performs no diagnostics IPC or trace parsing. The one-second sampling worker performs identity reconciliation and copies the latest published values; each detected runtime has a dedicated blocking reader thread.
+The UI thread performs no diagnostics IPC or trace parsing. The one-second sampling worker performs identity reconciliation and copies the latest published values; each active authorized runtime session has a dedicated blocking reader thread.
 
 The Issue #75 development benchmark used 20 idle .NET processes on a 20-logical-CPU machine. It measured the collector before three GC-rate values were removed; the current .NET 8 mapping requires the nine counters listed above. The benchmark observed:
 

@@ -29,7 +29,8 @@ const EVENT_COUNTER_GEN2_SIZE: &str = "gen-2-size";
 const EVENT_COUNTER_LOH_SIZE: &str = "loh-size";
 const EVENT_COUNTER_POH_SIZE: &str = "poh-size";
 const METRIC_STALE_AFTER: Duration = Duration::from_secs(3);
-const RETRY_DELAY: Duration = Duration::from_secs(5);
+const FIRST_METRIC_TIMEOUT: Duration = Duration::from_secs(5);
+
 const MAX_BLOCK_SIZE: usize = 16 * 1024 * 1024;
 const MAX_TYPE_NAME_SIZE: usize = 64;
 
@@ -65,8 +66,10 @@ struct PublishedMetrics {
 }
 
 pub(crate) struct DotNetRuntimeSampler {
+    pub(crate) control: super::dotnet_control::DotNetControl,
     sessions: HashMap<ProcessIdentity, RuntimeSession>,
-    retry_after: HashMap<ProcessIdentity, Instant>,
+    #[cfg(not(test))]
+    detection: Option<super::dotnet_detection::DotNetDetection>,
     detected: HashSet<ProcessIdentity>,
     rejected: HashSet<ProcessIdentity>,
 }
@@ -75,7 +78,9 @@ impl DotNetRuntimeSampler {
     pub(crate) fn new() -> Self {
         Self {
             sessions: HashMap::new(),
-            retry_after: HashMap::new(),
+            #[cfg(not(test))]
+            detection: None,
+            control: Default::default(),
             detected: HashSet::new(),
             rejected: HashSet::new(),
         }
@@ -87,40 +92,51 @@ impl DotNetRuntimeSampler {
             .map(ProcessIdentity::from_row)
             .collect::<HashSet<_>>();
 
-        self.sessions.retain(|identity, _| live.contains(identity));
-        self.retry_after
-            .retain(|identity, _| live.contains(identity));
+        self.control.retain(&live);
+        #[cfg(not(test))]
+        self.detection
+            .get_or_insert_with(|| {
+                super::dotnet_detection::DotNetDetection::new(self.control.clone())
+            })
+            .request(live.iter().cloned().collect());
+        self.sessions
+            .retain(|identity, _| self.control.allows(identity));
         self.detected.retain(|identity| live.contains(identity));
         self.rejected.retain(|identity| live.contains(identity));
 
         let finished = self
             .sessions
             .iter()
-            .filter(|(_, session)| session.is_finished())
-            .map(|(identity, _)| identity.clone())
+            .filter(|(_, session)| session.is_finished() || session.first_metric_timed_out())
+            .map(|(identity, session)| (identity.clone(), session.first_metric_timed_out()))
             .collect::<Vec<_>>();
-        for identity in finished {
+        for (identity, timed_out) in finished {
             self.sessions.remove(&identity);
-            self.retry_after
-                .insert(identity, Instant::now() + RETRY_DELAY);
+            self.rejected.insert(identity.clone());
+            if !self.control.status(&identity).starts_with("Unavailable:") {
+                self.control.report(
+                    &identity,
+                    if timed_out {
+                        "Unavailable: no .NET metrics received within 5s; EventSource may be disabled; toggle off/on to retry"
+                    } else {
+                        "Unavailable: session ended; toggle off/on to retry"
+                    }.into(),
+                );
+            }
         }
 
-        let now = Instant::now();
-        self.retry_after.retain(|_, retry_at| *retry_at > now);
         for identity in live {
             if !self.should_start(&identity) {
                 continue;
             }
-            match RuntimeSession::try_spawn(identity.clone()) {
+            match RuntimeSession::try_spawn(identity.clone(), self.control.clone()) {
                 Ok(session) => {
                     self.detected.insert(identity.clone());
                     self.sessions.insert(identity, session);
                 }
-                Err(_) if self.detected.contains(&identity) => {
-                    self.retry_after
-                        .insert(identity, Instant::now() + RETRY_DELAY);
-                }
-                Err(_) => {
+                Err(error) => {
+                    self.control
+                        .report(&identity, format!("Unavailable: {error}"));
                     self.rejected.insert(identity);
                 }
             }
@@ -133,9 +149,16 @@ impl DotNetRuntimeSampler {
                 .get(&identity)
                 .and_then(RuntimeSession::latest)
             else {
+                if self.sessions.contains_key(&identity)
+                    && !self.control.status(&identity).starts_with("Unavailable:")
+                {
+                    self.control.report(&identity, "Waiting".into());
+                }
                 continue;
             };
 
+            process.dotnet_eventpipe = Some(self.control.generation());
+            self.control.report(&identity, "Collecting".into());
             if let Some(heap_bytes) = metrics.heap_bytes {
                 process.dotnet_heap_bytes = Some(heap_bytes);
             }
@@ -160,16 +183,26 @@ impl DotNetRuntimeSampler {
         }
     }
 
+    pub(crate) fn remove_targets(&mut self, identities: &[ProcessIdentity]) {
+        for identity in identities {
+            self.sessions.remove(identity);
+            self.detected.remove(identity);
+            self.rejected.remove(identity);
+        }
+        self.control.finish_remove(identities);
+    }
+
     pub(crate) fn suspend(&mut self) {
+        self.control.disable();
         self.sessions.clear();
-        self.retry_after.clear();
         self.detected.clear();
         self.rejected.clear();
+        self.control.finish_suspend();
     }
 
     fn should_start(&self, identity: &ProcessIdentity) -> bool {
-        !self.sessions.contains_key(identity)
-            && !self.retry_after.contains_key(identity)
+        self.control.allows(identity)
+            && !self.sessions.contains_key(identity)
             && !self.rejected.contains(identity)
     }
 }
@@ -181,6 +214,8 @@ impl Drop for DotNetRuntimeSampler {
 }
 
 struct RuntimeSession {
+    started_at: Instant,
+    permit: Arc<super::dotnet_control::Permit>,
     identity: ProcessIdentity,
     latest: Arc<Mutex<Option<PublishedMetrics>>>,
     session_id: Arc<AtomicU64>,
@@ -191,12 +226,24 @@ struct RuntimeSession {
 }
 
 impl RuntimeSession {
-    fn try_spawn(identity: ProcessIdentity) -> io::Result<Self> {
+    fn try_spawn(
+        identity: ProcessIdentity,
+        control: super::dotnet_control::DotNetControl,
+    ) -> io::Result<Self> {
+        let permit = control
+            .permit(&identity)
+            .ok_or_else(|| io::Error::other("collection disabled"))?;
+        verify_identity(&identity)?;
         let stream = open_diagnostic_pipe(identity.pid, 1)?;
-        Ok(Self::spawn(identity, stream))
+        Ok(Self::spawn(identity, stream, permit, control))
     }
 
-    fn spawn(identity: ProcessIdentity, stream: File) -> Self {
+    fn spawn(
+        identity: ProcessIdentity,
+        stream: File,
+        permit: super::dotnet_control::Permit,
+        control: super::dotnet_control::DotNetControl,
+    ) -> Self {
         let latest = Arc::new(Mutex::new(None));
         let session_id = Arc::new(AtomicU64::new(0));
         let stop_requested = Arc::new(AtomicBool::new(false));
@@ -208,17 +255,25 @@ impl RuntimeSession {
         let worker_stop_sent = Arc::clone(&stop_sent);
         let worker_finished = Arc::clone(&finished);
         let pid = identity.pid;
+        let worker_identity = identity.clone();
+        let permit = Arc::new(permit);
+        let worker_permit = Arc::clone(&permit);
         let join_handle = thread::Builder::new()
             .name(format!("dotnet-runtime-{pid}"))
             .spawn(move || {
-                let _ = collect_runtime_metrics(
-                    pid,
+                let _permit = worker_permit;
+                let result = collect_runtime_metrics(
+                    &worker_identity,
+                    &_permit,
                     stream,
                     worker_session_id,
                     worker_stop_requested,
                     worker_stop_sent,
                     worker_latest,
                 );
+                if let Err(error) = result {
+                    control.report(&worker_identity, format!("Unavailable: {error}"));
+                }
                 worker_finished.store(true, Ordering::Release);
             })
             .ok();
@@ -228,6 +283,8 @@ impl RuntimeSession {
         }
 
         Self {
+            started_at: Instant::now(),
+            permit,
             identity,
             latest,
             session_id,
@@ -236,6 +293,11 @@ impl RuntimeSession {
             finished,
             join_handle,
         }
+    }
+
+    fn first_metric_timed_out(&self) -> bool {
+        self.started_at.elapsed() >= FIRST_METRIC_TIMEOUT
+            && self.latest.lock().is_ok_and(|latest| latest.is_none())
     }
 
     fn is_finished(&self) -> bool {
@@ -253,12 +315,15 @@ impl RuntimeSession {
             return;
         };
         let pid = self.identity.pid;
+        let identity = self.identity.clone();
+        let permit = Arc::clone(&self.permit);
         let session_id = Arc::clone(&self.session_id);
         let stop_sent = Arc::clone(&self.stop_sent);
         let _ = thread::Builder::new()
             .name(format!("dotnet-runtime-cleanup-{pid}"))
             .spawn(move || {
-                request_eventpipe_stop(pid, session_id.load(Ordering::Acquire), &stop_sent);
+                let _permit = permit;
+                request_eventpipe_stop(&identity, session_id.load(Ordering::Acquire), &stop_sent);
                 let _ = join_handle.join();
             });
     }
@@ -271,24 +336,25 @@ impl Drop for RuntimeSession {
 }
 
 fn collect_runtime_metrics(
-    pid: u32,
+    identity: &ProcessIdentity,
+    permit: &super::dotnet_control::Permit,
     stream: File,
     session_id: Arc<AtomicU64>,
     stop_requested: Arc<AtomicBool>,
     stop_sent: Arc<AtomicBool>,
     latest: Arc<Mutex<Option<PublishedMetrics>>>,
 ) -> io::Result<()> {
-    let (stream, id) = open_eventpipe_session(pid, stream)?;
+    let (stream, id) = open_eventpipe_session(identity, permit, stream)?;
     session_id.store(id, Ordering::Release);
     if stop_requested.load(Ordering::Acquire) {
-        request_eventpipe_stop(pid, id, &stop_sent);
+        request_eventpipe_stop(identity, id, &stop_sent);
     }
 
     let mut accumulator = RuntimeMetricAccumulator::default();
     let mut parser = NetTraceParser::new(stream);
     parser.run(|event, payload| {
         if stop_requested.load(Ordering::Acquire) {
-            request_eventpipe_stop(pid, id, &stop_sent);
+            request_eventpipe_stop(identity, id, &stop_sent);
         }
         let metrics = accumulator.handle_event(event, payload);
         if let Some(metrics) = metrics
@@ -302,11 +368,16 @@ fn collect_runtime_metrics(
     })
 }
 
-fn open_eventpipe_session(pid: u32, stream: File) -> io::Result<(File, u64)> {
-    match start_eventpipe_session(stream, pid, CollectCommand::Tracing3) {
+fn open_eventpipe_session(
+    identity: &ProcessIdentity,
+    permit: &super::dotnet_control::Permit,
+    stream: File,
+) -> io::Result<(File, u64)> {
+    let pid = identity.pid;
+    match start_eventpipe_session(stream, identity, permit, CollectCommand::Tracing3) {
         Err(error) if error.kind() == io::ErrorKind::Unsupported => {
             let stream = open_diagnostic_pipe(pid, 5)?;
-            start_eventpipe_session(stream, pid, CollectCommand::Tracing2)
+            start_eventpipe_session(stream, identity, permit, CollectCommand::Tracing2)
         }
         result => result,
     }
@@ -314,10 +385,15 @@ fn open_eventpipe_session(pid: u32, stream: File) -> io::Result<(File, u64)> {
 
 fn start_eventpipe_session(
     mut stream: File,
-    pid: u32,
+    identity: &ProcessIdentity,
+    permit: &super::dotnet_control::Permit,
     command: CollectCommand,
 ) -> io::Result<(File, u64)> {
-    stream.write_all(&collect_tracing_request(pid, command))?;
+    verify_identity(identity)?;
+    if permit.cancelled() {
+        return Err(io::Error::other("collection disabled"));
+    }
+    stream.write_all(&collect_tracing_request(identity.pid, command))?;
     stream.flush()?;
     let response = read_ipc_response(&mut stream)?;
     if response.len() != 8 {
@@ -330,7 +406,7 @@ fn start_eventpipe_session(
     Ok((stream, id))
 }
 
-fn request_eventpipe_stop(pid: u32, session_id: u64, stop_sent: &AtomicBool) {
+fn request_eventpipe_stop(identity: &ProcessIdentity, session_id: u64, stop_sent: &AtomicBool) {
     if session_id == 0
         || stop_sent
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -338,7 +414,10 @@ fn request_eventpipe_stop(pid: u32, session_id: u64, stop_sent: &AtomicBool) {
     {
         return;
     }
-    if stop_eventpipe_session(pid, session_id).is_err() {
+    if verify_identity(identity).is_err() {
+        return;
+    }
+    if stop_eventpipe_session(identity.pid, session_id).is_err() {
         stop_sent.store(false, Ordering::Release);
     }
 }
@@ -1114,6 +1193,31 @@ fn invalid_data(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
+pub(super) fn verify_identity(identity: &ProcessIdentity) -> io::Result<()> {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+    let Some(start) = identity.start_time else {
+        return Err(io::Error::other("unknown process start time"));
+    };
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[Pid::from_u32(identity.pid)]),
+        true,
+        ProcessRefreshKind::nothing(),
+    );
+    match system.process(Pid::from_u32(identity.pid)) {
+        Some(process)
+            if process.start_time() == start
+                && process
+                    .name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(&identity.name) =>
+        {
+            Ok(())
+        }
+        _ => Err(io::Error::other("process exited or identity changed")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1223,6 +1327,18 @@ mod tests {
     #[test]
     fn dropping_twenty_sessions_does_not_serialize_collector_shutdown_waits() {
         let mut sessions = Vec::new();
+        let control = super::super::dotnet_control::DotNetControl::default();
+        assert!(
+            control.enable(
+                (0..20)
+                    .map(|pid| ProcessIdentity {
+                        pid,
+                        name: "test.exe".into(),
+                        start_time: Some(1)
+                    })
+                    .collect()
+            )
+        );
         let mut release_txs = Vec::new();
         let mut finished_rxs = Vec::new();
         for pid in 0..20 {
@@ -1233,6 +1349,16 @@ mod tests {
                 let _ = finished_tx.send(());
             });
             sessions.push(RuntimeSession {
+                started_at: Instant::now(),
+                permit: Arc::new(
+                    control
+                        .permit(&ProcessIdentity {
+                            pid,
+                            name: "test.exe".into(),
+                            start_time: Some(1),
+                        })
+                        .unwrap(),
+                ),
                 identity: ProcessIdentity {
                     pid,
                     name: "test.exe".to_string(),
@@ -1249,8 +1375,11 @@ mod tests {
             finished_rxs.push(finished_rx);
         }
 
+        control.disable();
         let started = Instant::now();
         drop(sessions);
+        control.finish_suspend();
+        assert!(control.stopping());
         let elapsed = started.elapsed();
         for release_tx in release_txs {
             release_tx.send(()).unwrap();
@@ -1260,6 +1389,11 @@ mod tests {
         }
 
         assert!(elapsed < Duration::from_millis(250), "elapsed: {elapsed:?}");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while control.stopping() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!control.stopping());
     }
 
     #[test]
@@ -1370,6 +1504,81 @@ mod tests {
     }
 
     #[test]
+    fn enabled_empty_scope_never_starts_sessions_for_live_processes() {
+        let mut sampler = DotNetRuntimeSampler::new();
+        assert!(sampler.control.enable(vec![]));
+        let mut processes = vec![ProcessRow {
+            pid: 42,
+            name: "unapproved.exe".into(),
+            start_time: Some(100),
+            ..Default::default()
+        }];
+        sampler.reconcile_and_apply(&mut processes);
+        assert!(sampler.control.enabled());
+        assert!(sampler.sessions.is_empty());
+        assert!(sampler.detected.is_empty());
+        assert!(sampler.rejected.is_empty());
+        for row in &processes {
+            let identity = ProcessIdentity::from_row(row);
+            assert!(!sampler.should_start(&identity));
+            assert!(sampler.control.permit(&identity).is_none());
+        }
+    }
+
+    #[test]
+    fn first_metric_timeout_stops_waiting_without_retrying_or_blocking() {
+        let mut sampler = DotNetRuntimeSampler::new();
+        let row = ProcessRow {
+            pid: 42,
+            name: "silent.exe".into(),
+            start_time: Some(100),
+            ..Default::default()
+        };
+        let identity = ProcessIdentity::from_row(&row);
+        assert!(sampler.control.enable_target(identity.clone()));
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        let mut session = RuntimeSession {
+            started_at: Instant::now(),
+            permit: Arc::new(sampler.control.permit(&identity).unwrap()),
+            identity: identity.clone(),
+            latest: Arc::new(Mutex::new(None)),
+            session_id: Arc::new(AtomicU64::new(0)),
+            stop_requested: stop_requested.clone(),
+            stop_sent: Arc::new(AtomicBool::new(false)),
+            finished: Arc::new(AtomicBool::new(false)),
+            join_handle: None,
+        };
+        assert!(!session.first_metric_timed_out());
+        session.started_at = Instant::now() - FIRST_METRIC_TIMEOUT - Duration::from_secs(1);
+        assert!(session.first_metric_timed_out());
+        // A session that has published once uses ordinary stale-data handling.
+        *session.latest.lock().unwrap() = Some(PublishedMetrics {
+            collected_at: Instant::now() - Duration::from_secs(20),
+            metrics: DotNetRuntimeMetrics::default(),
+        });
+        assert!(!session.first_metric_timed_out());
+        *session.latest.lock().unwrap() = None;
+        sampler.sessions.insert(identity.clone(), session);
+        let mut rows = vec![row];
+        sampler.reconcile_and_apply(&mut rows);
+        assert!(stop_requested.load(Ordering::Acquire));
+        assert!(sampler.sessions.is_empty());
+        assert!(sampler.rejected.contains(&identity));
+        assert!(
+            sampler
+                .control
+                .status(&identity)
+                .contains("no .NET metrics received within 5s")
+        );
+        assert!(!sampler.control.is_starting(&identity));
+        assert!(!sampler.control.is_collecting(&identity));
+        assert!(!sampler.should_start(&identity));
+        sampler.reconcile_and_apply(&mut rows);
+        assert!(sampler.sessions.is_empty());
+        assert!(rows[0].dotnet_heap_bytes.is_none());
+    }
+
+    #[test]
     fn negative_detection_is_cached_by_full_process_identity() {
         let mut sampler = DotNetRuntimeSampler::new();
         let identity = ProcessIdentity {
@@ -1377,6 +1586,8 @@ mod tests {
             name: "app.exe".to_string(),
             start_time: Some(100),
         };
+        assert!(!sampler.should_start(&identity));
+        assert!(sampler.control.enable(vec![identity.clone()]));
         assert!(sampler.should_start(&identity));
         sampler.rejected.insert(identity.clone());
         assert!(!sampler.should_start(&identity));
@@ -1385,7 +1596,53 @@ mod tests {
             start_time: Some(200),
             ..identity
         };
-        assert!(sampler.should_start(&restarted));
+        assert!(!sampler.should_start(&restarted));
+    }
+
+    #[test]
+    fn revoked_permission_writes_no_modern_or_fallback_request() {
+        let pid = std::process::id();
+        let system = sysinfo::System::new_all();
+        let process = system.process(sysinfo::Pid::from_u32(pid)).unwrap();
+        let identity = ProcessIdentity {
+            pid,
+            name: process.name().to_string_lossy().into_owned(),
+            start_time: Some(process.start_time()),
+        };
+        let control = super::super::dotnet_control::DotNetControl::default();
+        assert!(control.enable(vec![identity.clone()]));
+        let permit = control.permit(&identity).unwrap();
+        control.disable();
+        for (i, command) in [CollectCommand::Tracing3, CollectCommand::Tracing2]
+            .into_iter()
+            .enumerate()
+        {
+            let path = std::env::temp_dir().join(format!("winproc-dotnet-revoked-{pid}-{i}.tmp"));
+            let stream = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            let result = start_eventpipe_session(stream, &identity, &permit, command);
+            assert!(result.is_err());
+            assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+    #[test]
+    fn disabled_sampler_reconciles_without_attempting_detection() {
+        let mut sampler = DotNetRuntimeSampler::new();
+        let mut rows = vec![ProcessRow {
+            pid: std::process::id(),
+            name: "not-a-real-runtime".into(),
+            start_time: Some(1),
+            ..Default::default()
+        }];
+        sampler.reconcile_and_apply(&mut rows);
+        assert!(sampler.sessions.is_empty());
+        assert!(sampler.rejected.is_empty());
+        assert!(sampler.detected.is_empty());
     }
 
     fn contains_utf16(bytes: &[u8], value: &str) -> bool {

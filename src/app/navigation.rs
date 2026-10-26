@@ -339,6 +339,7 @@ impl App {
                 self.network_browser.visible = false;
                 self.file_users.visible = false;
             }
+            HeaderAction::DotNet => self.toggle_dotnet(),
             HeaderAction::Network => self.open_network_browser(),
             HeaderAction::FileUsers => self.open_file_users(),
             _ => unreachable!(),

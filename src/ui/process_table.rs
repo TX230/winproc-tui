@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-const TRACKED_COLUMN_WIDTH: u16 = 1;
+const TRACKED_COLUMN_WIDTH: u16 = 2;
 const TABLE_COLUMN_SPACING: u16 = 1;
 const TABLE_BORDER_WIDTH: u16 = 2;
 const FIXED_SELECTABLE_COLUMN_COUNT: usize = 2;
@@ -501,7 +501,7 @@ fn process_table_row(
     let process = row.process;
     let text_style = process_text_style(row, theme);
     let mut cells = vec![
-        tracked_cell(row, theme),
+        tracked_and_dotnet_cell(row, app, theme),
         process_fixed_cell(
             if row.multi_selected {
                 format!("*{}", process.pid)
@@ -542,7 +542,7 @@ fn process_table_row(
                 .resolved(SortColumn::Metric(*column))
         };
         cells.push(process_metric_cell(
-            process,
+            row,
             *column,
             column_width,
             app,
@@ -559,7 +559,7 @@ fn process_table_row(
 // Metric cells combine value, graph, and two-dimensional selection state.
 #[allow(clippy::too_many_arguments)]
 fn process_metric_cell(
-    process: &ProcessRow,
+    row: &VisibleProcessRow<'_>,
     column: MetricColumn,
     column_width: u16,
     app: &App,
@@ -570,7 +570,7 @@ fn process_metric_cell(
     theme: Theme,
 ) -> Cell<'static> {
     let mut cell = Cell::from(process_metric_line(
-        process,
+        row,
         column,
         column_width,
         app,
@@ -606,7 +606,7 @@ fn process_row_style(selected: bool, multi_selected: bool, theme: Theme) -> Styl
 }
 
 fn process_metric_line(
-    process: &ProcessRow,
+    row: &VisibleProcessRow<'_>,
     column: MetricColumn,
     column_width: u16,
     app: &App,
@@ -614,7 +614,14 @@ fn process_metric_line(
     text_style: Style,
     theme: Theme,
 ) -> Line<'static> {
+    let process = row.process;
     let value = format_process_column(process, column, column_width);
+    if value == "--"
+        && let Some(label) = dotnet_missing_label(row, column, app)
+    {
+        return Line::from(Span::styled(label, text_style.fg(theme.muted)))
+            .alignment(process_metric_alignment(column));
+    }
     let line = if column == MetricColumn::FullPath {
         match active_filter_query(app) {
             Some(query) if !process_name_matches_query(process, query) => {
@@ -629,20 +636,75 @@ fn process_metric_line(
     line.alignment(process_metric_alignment(column))
 }
 
-fn tracked_cell(row: &VisibleProcessRow<'_>, theme: Theme) -> Cell<'static> {
-    if !row.tracked {
-        return Cell::from(Line::from(Span::raw(tracked_symbol(false))));
+fn dotnet_missing_label(
+    row: &VisibleProcessRow<'_>,
+    column: MetricColumn,
+    app: &App,
+) -> Option<&'static str> {
+    use crate::samplers::dotnet_control::DotNetRuntimeKind;
+    use MetricColumn::*;
+    if !matches!(
+        column,
+        DotNetHeapBytes
+            | DotNetGcGen0HeapBytes
+            | DotNetGcGen1HeapBytes
+            | DotNetGcGen2HeapBytes
+            | DotNetGcLohBytes
+            | DotNetGcPohBytes
+            | DotNetGcCommittedBytes
+            | DotNetGcFragmentationBytes
+            | DotNetAllocationBytesPerSec
+    ) || app.activity() == AppActivity::LogView
+        || app.is_display_paused()
+        || row.is_tracked_total
+        || !matches!(row.lifecycle, ProcessLifecycle::Live)
+    {
+        return None;
     }
-    if row.filter_context {
-        return Cell::from(Line::from(Span::styled(
-            tracked_symbol(true),
-            Style::default().fg(theme.muted),
-        )));
+    let identity = crate::model::ProcessIdentity::from_row(row.process);
+    let control = &app.sampling_worker.dotnet;
+    match control.runtime_kind(&identity) {
+        Some(DotNetRuntimeKind::EventPipe) if !control.allows(&identity) => Some("OFF"),
+        Some(DotNetRuntimeKind::EventPipe) if control.is_starting(&identity) => Some("..."),
+        _ => None,
     }
-    Cell::from(Line::from(Span::styled(
-        tracked_symbol(true),
-        tracked_marker_style(&row.lifecycle, theme),
-    )))
+}
+
+fn tracked_and_dotnet_cell(row: &VisibleProcessRow<'_>, app: &App, theme: Theme) -> Cell<'static> {
+    let tracked_style = if row.filter_context {
+        Style::default().fg(theme.muted)
+    } else if row.tracked {
+        tracked_marker_style(&row.lifecycle, theme)
+    } else {
+        Style::default()
+    };
+    let identity = crate::model::ProcessIdentity::from_row(row.process);
+    let managed = app.activity() != AppActivity::LogView
+        && matches!(row.lifecycle, ProcessLifecycle::Live)
+        && !row.is_tracked_total
+        && app.sampling_worker.dotnet.supports_metrics(&identity);
+    let collecting = managed
+        && app.sampling_worker.dotnet.allows(&identity)
+        && (app.sampling_worker.dotnet.is_starting(&identity)
+            || app.sampling_worker.dotnet.is_collecting(&identity));
+    Cell::from(Line::from(vec![
+        Span::styled(tracked_symbol(row.tracked), tracked_style),
+        Span::styled(
+            if managed { "N" } else { " " },
+            if managed {
+                Style::default()
+                    .fg(ratatui::style::Color::Black)
+                    .bg(if collecting {
+                        crate::ui::header::DOTNET_BACKGROUND
+                    } else {
+                        ratatui::style::Color::Gray
+                    })
+                    .remove_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        ),
+    ]))
 }
 
 fn tracked_marker_style(lifecycle: &ProcessLifecycle, theme: Theme) -> Style {
@@ -1385,6 +1447,7 @@ mod tests {
     #[test]
     fn tracked_cell_uses_t_for_tracked_rows_only() {
         let process = ProcessRow {
+            dotnet_eventpipe: None,
             pid: 1,
             parent_pid: None,
             name: "app.exe".to_string(),
@@ -1464,6 +1527,7 @@ mod tests {
     #[test]
     fn process_io_columns_use_decimal_kilobytes_per_second() {
         let process = ProcessRow {
+            dotnet_eventpipe: None,
             pid: 1,
             parent_pid: None,
             name: "app.exe".to_string(),
@@ -1658,6 +1722,7 @@ mod tests {
     fn tracked_total_text_style_uses_neutral_text_color() {
         let theme = crate::ui::theme::THEMES[0];
         let process = ProcessRow {
+            dotnet_eventpipe: None,
             pid: 0,
             parent_pid: None,
             name: "Tracked Total".to_string(),
@@ -1767,7 +1832,7 @@ mod tests {
         );
         assert_eq!(
             full_path_column_render_width(&visible, &rects),
-            Some(MetricColumn::FullPath.width() + 54)
+            Some(MetricColumn::FullPath.width() + 53)
         );
     }
 

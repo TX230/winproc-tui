@@ -1,6 +1,7 @@
 pub(crate) mod actions;
 pub(crate) mod clipboard;
 pub(crate) mod context_menu;
+pub(crate) mod dotnet;
 pub(crate) mod executable_location;
 pub(crate) mod export;
 pub(crate) mod feedback;

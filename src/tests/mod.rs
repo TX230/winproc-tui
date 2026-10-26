@@ -1,6 +1,7 @@
 mod configuration;
 mod context_menu;
 mod cpu_panel;
+mod dotnet_control;
 mod file_actions;
 mod file_users;
 mod graph_interaction;

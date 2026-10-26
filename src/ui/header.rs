@@ -10,6 +10,9 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+pub(crate) const DOTNET_BACKGROUND: ratatui::style::Color =
+    ratatui::style::Color::Rgb(238, 153, 190);
+
 const PRODUCT_LABEL: &str = " winproc-tui ";
 
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
@@ -51,15 +54,20 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
             HeaderAction::FileUsers => app.file_users.visible,
             _ => false,
         };
-        let hovered = app.header_action_hovered == Some(*action);
+        // Keep this persistent status control visually stable under the pointer.
+        let hovered = *action != HeaderAction::DotNet && app.header_action_hovered == Some(*action);
         let style = Style::default()
-            .fg(if selected {
+            .fg(if *action == HeaderAction::DotNet {
+                theme.background
+            } else if selected {
                 theme.focus_border
             } else {
                 theme.text
             })
             .bg(if hovered {
                 theme.focus_surface
+            } else if *action == HeaderAction::DotNet {
+                DOTNET_BACKGROUND
             } else if active {
                 theme.menu_active
             } else {
@@ -71,8 +79,32 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
                 Modifier::empty()
             });
         let compact = compact_menu(menu_area(area));
-        let spans = action
-            .label(compact)
+        let dotnet_label;
+        let label = if *action == HeaderAction::DotNet {
+            let marker = if app.sampling_worker.dotnet.stopping() {
+                "~"
+            } else if app.sampling_worker.dotnet.enabled() {
+                "x"
+            } else {
+                " "
+            };
+            let name = if app.sampling_worker.dotnet.stopping() {
+                "Stopping"
+            } else {
+                ".NET metrics"
+            };
+            dotnet_label = if rect.width >= 22 {
+                format!("[{marker}] {name} Alt+N")
+            } else if rect.width >= 14 {
+                format!("[{marker}] .NET Alt+N")
+            } else {
+                format!("[{marker}] Alt+N")
+            };
+            &dotnet_label
+        } else {
+            action.label(compact)
+        };
+        let spans = label
             .chars()
             .enumerate()
             .map(|(index, ch)| {
@@ -91,13 +123,18 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
         frame.render_widget(Paragraph::new(Line::from(spans)).style(style), *rect);
     }
     let status_x = actions
-        .last()
+        .iter()
+        .rfind(|(action, _)| *action != HeaderAction::DotNet)
         .map_or(area.x, |(_, rect)| rect.right().saturating_add(1))
         .min(area.right());
+    let status_right = actions
+        .iter()
+        .find(|(action, _)| *action == HeaderAction::DotNet)
+        .map_or(area.right(), |(_, rect)| rect.x.saturating_sub(1));
     let status_area = Rect::new(
         status_x,
         area.y,
-        area.right().saturating_sub(status_x),
+        status_right.saturating_sub(status_x),
         area.height,
     );
     let mut spans = header_status_spans(app, theme, usize::from(status_area.width));
@@ -332,6 +369,7 @@ pub(crate) enum HeaderAction {
     Network,
     FileUsers,
     More,
+    DotNet,
 }
 impl HeaderAction {
     pub(crate) fn label(self, compact: bool) -> &'static str {
@@ -362,6 +400,7 @@ impl HeaderAction {
             Self::Processes => "Processes",
             Self::Network => "Network endpoints",
             Self::More => "More",
+            Self::DotNet => ".NET metrics",
         }
     }
     pub(crate) fn section(self) -> Option<MainMenuSection> {
@@ -394,6 +433,7 @@ impl HeaderAction {
             Self::Network => "F3",
             Self::FileUsers => "F4",
             Self::More => "",
+            Self::DotNet => "Alt+N",
         }
     }
 }
@@ -421,8 +461,9 @@ fn menu_area(area: Rect) -> Rect {
     Rect::new(area.x + width, area.y, area.width - width, area.height)
 }
 fn menu_budget(area: Rect) -> u16 {
-    area.width
-        .saturating_sub(IMPORTANT_STATUS_WIDTH.min(area.width.saturating_sub(12)) + 1)
+    let minimum_menu = if area.width >= 35 { 12 } else { 6 };
+    let status = IMPORTANT_STATUS_WIDTH.min(area.width.saturating_sub(minimum_menu));
+    area.width.saturating_sub(status)
 }
 
 fn compact_menu(area: Rect) -> bool {
@@ -494,4 +535,87 @@ pub(crate) fn header_action_at(screen: Rect, app: &App, x: u16, y: u16) -> Optio
         .into_iter()
         .find(|(_, rect)| rect.contains(ratatui::layout::Position::new(x, y)))
         .map(|(action, _)| action)
+}
+
+fn dotnet_confirmation_modal() -> crate::ui::widgets::scrollable_modal::ScrollableModal {
+    crate::ui::widgets::scrollable_modal::ScrollableModal::new(".NET METRICS", 68, 13, 1)
+}
+
+pub(crate) fn dotnet_checkbox_area(area: Rect) -> Rect {
+    let content = dotnet_confirmation_modal().layout(area).content;
+    Rect::new(
+        content.x,
+        content.y.saturating_add(1),
+        content.width.min("[ ] Enable .NET metrics".len() as u16),
+        content.height.saturating_sub(1).min(1),
+    )
+}
+
+pub(crate) fn draw_dotnet_confirm(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &App,
+    theme: Theme,
+) {
+    use crate::ui::footer::{register_shortcut_text, warning_shortcut_spans};
+    use ratatui::text::Text;
+    let no_targets = app.dotnet_confirmation.as_ref().is_some_and(Vec::is_empty);
+    // Keep the runtime warning in every state, including an empty Tracking List.
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(""), // The focused checkbox is drawn in this row below.
+        Line::from(""),
+        Line::from("Connecting during initialization can hang target apps."),
+        Line::from("This dialog enables live Tracking List processes only."),
+        Line::from("Confirm target apps have finished initializing."),
+        Line::from("See dotnet/runtime Issue #119014 (.NET runtime deadlock)."),
+        Line::from("New or restarted processes will NOT be collected."),
+        Line::from("To include them later, turn off and reopen this dialog."),
+        Line::from(if app.sampling_worker.dotnet.stopping() {
+            "Stopping .NET collection; wait before toggling again.".into()
+        } else {
+            format!(
+                "Tracked process lifetimes: {}",
+                app.dotnet_confirmation.as_ref().map_or(0, Vec::len)
+            )
+        }),
+    ];
+    if no_targets {
+        lines.extend([
+            Line::from(if app.watch_list.is_empty() {
+                "The Tracking List is empty."
+            } else {
+                "No identifiable live processes match the Tracking List."
+            }),
+            Line::from("No authorized targets. Select a target and press t."),
+            Line::from("Start the target app, then use Alt+N again."),
+        ]);
+    }
+    let text = Text::from(lines);
+    let layout = dotnet_confirmation_modal().render(frame, area, text, 0, true, theme);
+    let checkbox = dotnet_checkbox_area(area);
+    let checkbox_label = if app.sampling_worker.dotnet.enabled() {
+        "[x] Enable .NET metrics"
+    } else {
+        "[ ] Enable .NET metrics"
+    };
+    frame.render_widget(
+        Paragraph::new(checkbox_label).style(
+            Style::default()
+                .fg(ratatui::style::Color::Red)
+                .bg(theme.focus_surface)
+                .add_modifier(Modifier::BOLD),
+        ),
+        checkbox,
+    );
+    if checkbox.width >= 3 && checkbox.height > 0 {
+        super::request_cursor(app, (checkbox.x + 1, checkbox.y));
+    }
+    let shortcuts = &[("Space", "Toggle"), ("Enter/Esc", "Close")];
+    let footer = Text::from(Line::from(warning_shortcut_spans(shortcuts, theme)));
+    register_shortcut_text(app, layout.footer, &footer, Alignment::Center);
+    frame.render_widget(
+        Paragraph::new(footer).alignment(Alignment::Center),
+        layout.footer,
+    );
 }

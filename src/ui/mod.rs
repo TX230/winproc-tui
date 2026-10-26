@@ -262,6 +262,10 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
         begin_input_layer(app);
         draw_recording_tracking_fixed(frame, area, app, theme);
     }
+    if app.dotnet_confirmation.is_some() {
+        begin_input_layer(app);
+        crate::ui::header::draw_dotnet_confirm(frame, area, app, theme);
+    }
     if app.show_recording_stop_confirmation {
         begin_input_layer(app);
         draw_recording_stop_confirm(frame, area, app, theme);
@@ -343,6 +347,7 @@ fn modal_scrim_strength(app: &App) -> Option<ModalScrimStrength> {
     if app.recording_error.is_some()
         || app.show_recording_no_tracked_warning
         || app.show_recording_overwrite_confirmation
+        || app.dotnet_confirmation.is_some()
         || app.show_recording_stop_confirmation
         || app.show_tracked_remove_confirmation
         || app.show_process_kill_confirmation

@@ -130,6 +130,7 @@ git -C <main-worktree> commit -m "<message> (Issue #n)" -m "<concise summary of 
 - If initially Issue-free work expands into a category that requires an Issue, stop before implementing the expanded scope and create or select the Issue first.
 - If the maintainer explicitly requests an Issue-free exception, do not create an Issue or add an Issue reference to the commit message.
 - Write GitHub Issue titles and bodies in English.
+- Write Issues for readers who do not know the maintainer's local development environment or conversation history. Describe the problem, requested behavior, and relevant acceptance criteria. Do not include unpublished trial-and-error history, local implementation status, or abandoned UI designs. Do not describe unreleased local behavior as existing public behavior or justify keeping it as legacy compatibility.
 - Use only two issue types: Bug report and Feature request.
 - Issue templates are intentionally light. At minimum, a goal or a description of what is broken is required. Background, scope, acceptance criteria, and test plan are optional and can be added when implementation actually starts or in related commits on the agent branch.
 - Reference Issues in commit titles as specified in Commit Rules, without reference trailers in the body. Completing or integrating work does not by itself authorize closing the Issue; close it only when explicitly requested.

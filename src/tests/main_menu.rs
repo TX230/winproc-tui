@@ -490,7 +490,10 @@ fn menu_shortcuts_align_and_preserve_semantic_colors_and_hover() {
             .unwrap()
             .1;
         assert!(
-            buffer[(heading.x + 1, 0)]
+            buffer[(
+                find_text_position(&buffer, "Investigation").unwrap().0,
+                heading.y
+            )]
                 .modifier
                 .contains(Modifier::UNDERLINED)
         );
@@ -629,8 +632,9 @@ fn profile_label_keeps_both_padding_cells_when_truncated() {
             let (x, y) = find_text_position(&buffer, "PF:").unwrap();
             assert_eq!(buffer[(x - 1, y)].symbol(), " ");
             assert_eq!(buffer[(x - 1, y)].bg, app.theme().menu_bar);
-            assert_eq!(buffer[(width - 1, y)].symbol(), " ");
-            assert_eq!(buffer[(width - 1, y)].bg, app.theme().menu_bar);
+            let profile_end = width - 1;
+            assert_eq!(buffer[(profile_end, y)].symbol(), " ");
+            assert_eq!(buffer[(profile_end, y)].bg, app.theme().menu_bar);
         }
     }
 }
@@ -868,13 +872,27 @@ fn header_bar_has_continuous_neutral_surface_and_distinct_active_state() {
             let colors = app.theme();
             assert_ne!(colors.menu_bar, colors.panel);
             assert_ne!(colors.menu_active, colors.menu_bar);
-            // Unused cells between headings and status retain the same full-width bar.
-            for x in 56..80 {
+            let actions = ui::header::header_actions(ui::screen_layout(screen)[0], &app);
+            let menu_end = actions
+                .iter()
+                .filter(|(action, _)| *action != HeaderAction::DotNet)
+                .map(|(_, rect)| rect.right())
+                .max()
+                .unwrap();
+            let (live_x, _) = find_text_position(&buffer, "LIVE").unwrap();
+            // The gap is neutral even though status now precedes the right-aligned control.
+            for x in menu_end..live_x.saturating_sub(1) {
                 assert_eq!(buffer[(x, 0)].bg, colors.menu_bar);
             }
-            let actions = ui::header::header_actions(ui::screen_layout(screen)[0], &app);
             for (action, rect) in actions {
-                assert_eq!(buffer[(rect.x, 0)].bg, colors.menu_bar);
+                assert_eq!(
+                    buffer[(rect.x, 0)].bg,
+                    if action == HeaderAction::DotNet {
+                        ui::header::DOTNET_BACKGROUND
+                    } else {
+                        colors.menu_bar
+                    }
+                );
                 if action == HeaderAction::File {
                     app.open_main_menu_section(MainMenuSection::File);
                     let buffer = render_app_to_buffer(&app, 120, 30);

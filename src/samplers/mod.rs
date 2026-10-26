@@ -1,6 +1,9 @@
 mod counters;
 mod cpu;
 mod disk;
+pub(crate) mod dotnet_control;
+#[cfg(not(test))]
+mod dotnet_detection;
 mod dotnet_runtime;
 pub(crate) mod gpu;
 pub(crate) mod memory;
@@ -43,10 +46,12 @@ pub(crate) struct CollectSnapshotResult {
 pub(crate) enum SampleRequest {
     Sample,
     SuspendDotNet,
+    RemoveDotNetTargets(Vec<crate::model::ProcessIdentity>),
     Stop,
 }
 
 pub(crate) struct SamplingWorker {
+    pub(crate) dotnet: dotnet_control::DotNetControl,
     pub(crate) request_tx: Sender<SampleRequest>,
     pub(crate) result_rx: Receiver<CollectSnapshotResult>,
     pub(crate) join_handle: Option<JoinHandle<()>>,
@@ -126,8 +131,11 @@ impl SamplingWorker {
     pub(crate) fn spawn(options: SamplingOptions) -> Self {
         let (request_tx, request_rx) = mpsc::channel::<SampleRequest>();
         let (result_tx, result_rx) = mpsc::channel::<CollectSnapshotResult>();
+        let dotnet = dotnet_control::DotNetControl::default();
+        let worker_dotnet = dotnet.clone();
         let join_handle = thread::spawn(move || {
             let mut runtime = SamplingRuntime::new(options);
+            runtime.dotnet_runtime_sampler.control = worker_dotnet;
             while let Ok(request) = request_rx.recv() {
                 match request {
                     SampleRequest::Sample => {
@@ -137,12 +145,16 @@ impl SamplingWorker {
                         }
                     }
                     SampleRequest::SuspendDotNet => runtime.dotnet_runtime_sampler.suspend(),
+                    SampleRequest::RemoveDotNetTargets(identities) => {
+                        runtime.dotnet_runtime_sampler.remove_targets(&identities);
+                    }
                     SampleRequest::Stop => break,
                 }
             }
         });
 
         Self {
+            dotnet,
             request_tx,
             result_rx,
             join_handle: Some(join_handle),
@@ -156,7 +168,17 @@ impl SamplingWorker {
     }
 
     pub(crate) fn suspend_dotnet(&self) {
-        let _ = self.request_tx.send(SampleRequest::SuspendDotNet);
+        if self.dotnet.disable() {
+            let _ = self.request_tx.send(SampleRequest::SuspendDotNet);
+        }
+    }
+
+    pub(crate) fn stop_dotnet_target(&self, identity: &crate::model::ProcessIdentity) {
+        if self.dotnet.disable_target(identity) {
+            let _ = self
+                .request_tx
+                .send(SampleRequest::RemoveDotNetTargets(vec![identity.clone()]));
+        }
     }
 
     pub(crate) fn try_recv(&self) -> std::result::Result<CollectSnapshotResult, TryRecvError> {
@@ -169,6 +191,7 @@ impl SamplingWorker {
         let (result_tx, result_rx) = mpsc::channel::<CollectSnapshotResult>();
         (
             Self {
+                dotnet: Default::default(),
                 request_tx,
                 result_rx,
                 join_handle: None,
@@ -181,6 +204,7 @@ impl SamplingWorker {
 
 impl Drop for SamplingWorker {
     fn drop(&mut self) {
+        self.dotnet.disable();
         let _ = self.request_tx.send(SampleRequest::Stop);
         if let Some(join_handle) = self.join_handle.take() {
             let _ = join_handle.join();
@@ -235,6 +259,7 @@ fn collect_snapshot(
             let extras = process_extras.get(&pid).cloned().unwrap_or_default();
             let workset_bytes = extras.workset_bytes.or(Some(process.memory()));
             ProcessRow {
+                dotnet_eventpipe: None,
                 pid,
                 parent_pid: process.parent().map(|parent| parent.as_u32()),
                 name: process.name().to_string_lossy().into_owned(),

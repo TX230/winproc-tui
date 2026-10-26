@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ProcessRow {
+    pub(crate) dotnet_eventpipe: Option<u64>,
     pub(crate) pid: u32,
     pub(crate) parent_pid: Option<u32>,
     pub(crate) name: String,

@@ -1421,6 +1421,7 @@ mod tests {
         handle_count: Option<u64>,
     ) -> ProcessRow {
         ProcessRow {
+            dotnet_eventpipe: None,
             pid,
             parent_pid: None,
             name: name.to_string(),

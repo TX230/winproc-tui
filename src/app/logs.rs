@@ -443,6 +443,7 @@ fn parse_v3_process(
         .get(&process_id)
         .ok_or_else(|| anyhow!("frame references undefined process ID {process_id}"))?;
     Ok(ProcessRow {
+        dotnet_eventpipe: None,
         pid: definition.1,
         parent_pid: None,
         name: definition.2.clone(),
@@ -930,6 +931,7 @@ impl ProcessRecord {
     fn into_row(self) -> Result<ProcessRow> {
         let metrics = self.metrics.unwrap_or_default();
         Ok(ProcessRow {
+            dotnet_eventpipe: None,
             pid: self.pid.ok_or_else(|| anyhow!("process is missing pid"))?,
             parent_pid: None,
             name: self

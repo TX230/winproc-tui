@@ -272,6 +272,50 @@ fn exited_process_info(process: &ProcessRow) -> ProcessInfo {
     }
 }
 
+#[cfg(not(test))]
+pub(super) fn detect_dotnet_runtime(pid: u32) -> Option<super::dotnet_control::DotNetRuntimeKind> {
+    detected_runtime_support(loaded_module_paths(pid).ok()?)
+}
+
+fn detected_runtime_support(
+    paths: Vec<String>,
+) -> Option<super::dotnet_control::DotNetRuntimeKind> {
+    use super::dotnet_control::DotNetRuntimeKind;
+    let managed = paths.iter().any(|path| {
+        Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.eq_ignore_ascii_case("coreclr.dll") || name.eq_ignore_ascii_case("clr.dll")
+            })
+    });
+    if !managed {
+        return None;
+    }
+    let has_coreclr = paths.iter().any(|path| {
+        Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("coreclr.dll"))
+    });
+    if !has_coreclr {
+        return Some(DotNetRuntimeKind::Framework);
+    }
+    let supported = match dotnet_version_from_module_paths(paths) {
+        InfoValue::Value(version) => version
+            .strip_prefix(".NET ")
+            .and_then(|value| value.split('.').next())
+            .and_then(|major| major.parse::<u32>().ok())
+            .is_some_and(|major| major >= 8),
+        _ => false,
+    };
+    Some(if supported {
+        DotNetRuntimeKind::EventPipe
+    } else {
+        DotNetRuntimeKind::Other
+    })
+}
+
 fn process_dotnet_version(pid: u32) -> InfoValue {
     match loaded_module_paths(pid) {
         Ok(paths) => dotnet_version_from_module_paths(paths),
@@ -770,5 +814,46 @@ mod tests {
         );
         assert!(version_buffer_slice(&buffer, valid_bytes, base, valid_bytes / 2 + 1).is_none());
         assert!(version_buffer_slice(&buffer, valid_bytes + 1, base, 1).is_none());
+    }
+}
+
+#[cfg(test)]
+mod dotnet_detection_tests {
+    use super::detected_runtime_support;
+    use crate::samplers::dotnet_control::DotNetRuntimeKind;
+
+    #[test]
+    fn runtime_detection_distinguishes_native_legacy_and_supported_coreclr() {
+        assert_eq!(
+            detected_runtime_support(vec![r"C:\Windows\System32\kernel32.dll".into()]),
+            None
+        );
+        assert_eq!(
+            detected_runtime_support(vec![r"C:\missing\clr.dll".into()]),
+            Some(DotNetRuntimeKind::Framework)
+        );
+        assert_eq!(
+            detected_runtime_support(vec![
+                r"C:\missing\clr.dll".into(),
+                r"C:\missing\coreclr.dll".into()
+            ]),
+            Some(DotNetRuntimeKind::Other)
+        );
+        for (version, supported) in [
+            ("6.0.36", false),
+            ("8.0.1", true),
+            ("9.0.1", true),
+            ("10.0.1", true),
+        ] {
+            let path = format!(r"C:\dotnet\Microsoft.NETCore.App\{version}\coreclr.dll");
+            assert_eq!(
+                detected_runtime_support(vec![path]),
+                Some(if supported {
+                    DotNetRuntimeKind::EventPipe
+                } else {
+                    DotNetRuntimeKind::Other
+                })
+            );
+        }
     }
 }

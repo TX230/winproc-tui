@@ -418,7 +418,19 @@ fn process_info_metrics_lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'
     for row in metrics.rows {
         if row.label == ".NET Heap" {
             lines.push(Line::from(Span::styled(
-                ".NET runtime · -- = unavailable",
+                if app.activity() == crate::app::AppActivity::LogView || app.is_display_paused() {
+                    ".NET runtime · recorded/displayed values; -- = unavailable".to_string()
+                } else {
+                    let status = app
+                        .process_info_target_process()
+                        .map(|row| {
+                            app.sampling_worker
+                                .dotnet
+                                .status(&crate::model::ProcessIdentity::from_row(row))
+                        })
+                        .unwrap_or_else(|| "Unavailable".into());
+                    format!(".NET EventPipe: {status}; legacy PDH independent")
+                },
                 Style::default().fg(theme.muted),
             )));
         }

@@ -82,6 +82,10 @@ The two-generation limit removes an entire older `ProcessIdentity`; it does not 
 
 Older exited or restarted identities are removed from both sample and peak maps using one retained-identity set. Recording writes every matching generation to the session log independently of this Live pruning. Loaded logs are reconstructed from recorded frames and do not use Live sample or generation capacities.
 
+## .NET Collection Boundary
+
+Individual EventPipe authorization is independent of the Tracking List: n can authorize a supported live process even when it is untracked. Tracking changes and profile switches do not grant or revoke permission. The legacy bulk confirmation still captures matching live Tracking List identities. Starting another process, even with the same name, requires fresh authorization. Display filtering and Tracked-only do not change collection permission. See [.NET Runtime Metrics Collection](dotnet-metrics-collection.md).
+
 ## Recording Boundary
 
 Starting a Recording copies the working Tracking List into session-owned scope. Later display filtering does not alter that scope, and the working list cannot be edited until Recording ends. See [Recording and Log View](recording-and-log-view.md) for lifecycle rules.

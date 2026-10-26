@@ -1097,6 +1097,8 @@ pub(crate) enum SampleFreshness {
 pub(crate) struct App {
     pub(crate) runtime: RuntimeConfig,
     pub(crate) sampling_worker: SamplingWorker,
+    pub(crate) dotnet_confirmation: Option<Vec<ProcessIdentity>>,
+    pub(crate) dotnet_last_status: (bool, bool),
     pub(crate) process_info_worker: ProcessInfoWorker,
     pub(crate) open_files_worker: OpenFilesWorker,
     pub(crate) process_modules_worker: ProcessModulesWorker,
@@ -1398,6 +1400,8 @@ impl App {
             high_contrast: runtime.initial_high_contrast,
             runtime,
             sampling_worker,
+            dotnet_confirmation: None,
+            dotnet_last_status: (false, false),
             process_info_worker,
             open_files_worker,
             process_modules_worker,
@@ -1789,6 +1793,9 @@ impl App {
     }
 
     pub(crate) fn has_workspace_overlay(&self) -> bool {
+        if self.dotnet_confirmation.is_some() {
+            return true;
+        }
         self.executable_location.is_some()
             || self.context_menu.is_some()
             || self.main_menu_activity.is_some()
@@ -2166,6 +2173,15 @@ impl App {
 
     fn rebuild_normalized_watch_names(&mut self) {
         self.normalized_watch_names = normalized_process_names(&self.watch_list);
+        for row in &mut self.snapshot.processes {
+            if !self
+                .sampling_worker
+                .dotnet
+                .accepts(&ProcessIdentity::from_row(row), row.dotnet_eventpipe)
+            {
+                crate::samplers::dotnet_control::clear_runtime_values(row);
+            }
+        }
     }
 
     pub(crate) fn is_tracked_process_name(&self, name: &str) -> bool {
@@ -7683,13 +7699,33 @@ Log load worker stopped",
     }
 
     pub(crate) fn poll_sample_results(&mut self) -> Result<bool> {
-        let mut changed = false;
+        let status = (
+            self.sampling_worker.dotnet.enabled(),
+            self.sampling_worker.dotnet.stopping(),
+        );
+        let mut changed = status != self.dotnet_last_status;
+        self.dotnet_last_status = status;
         loop {
             match self.sampling_worker.try_recv() {
                 Ok(collected) => {
                     changed |= self.apply_sample_result(collected)?;
                 }
-                Err(TryRecvError::Empty) => return Ok(changed),
+                Err(TryRecvError::Empty) => {
+                    if self.activity() != AppActivity::LogView {
+                        let failures = self.sampling_worker.dotnet.take_failure_notices();
+                        if !failures.is_empty() {
+                            self.status = failures
+                                .into_iter()
+                                .map(|(id, reason)| {
+                                    format!(".NET {} ({}): {}", id.name, id.pid, reason)
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" | ");
+                            changed = true;
+                        }
+                    }
+                    return Ok(changed);
+                }
                 Err(TryRecvError::Disconnected) => {
                     self.sampling_in_progress = false;
                     self.status = "Warning: sampling worker stopped".to_string();
@@ -7715,6 +7751,15 @@ Log load worker stopped",
         );
         self.last_tracked_live_identities = next_tracked_live_identities;
         let mut next_snapshot = collected.snapshot;
+        for row in &mut next_snapshot.processes {
+            if !self
+                .sampling_worker
+                .dotnet
+                .accepts(&ProcessIdentity::from_row(row), row.dotnet_eventpipe)
+            {
+                crate::samplers::dotnet_control::clear_runtime_values(row);
+            }
+        }
         if self.process_order_hold_active() {
             preserve_process_row_order(
                 &mut next_snapshot.processes,
@@ -8067,6 +8112,7 @@ fn tracked_total_row(
     }
 
     Some(ProcessRow {
+        dotnet_eventpipe: None,
         pid: 0,
         parent_pid: None,
         name: "Tracked Total".to_string(),

@@ -93,6 +93,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                     },
                 ),
                 ("t", "Track process name"),
+                ("n", ".NET metrics"),
                 ("c", "Columns"),
                 ("w/W", "Width"),
                 ("s", "Sort"),

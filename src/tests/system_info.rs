@@ -119,7 +119,7 @@ fn column_picker_scrollbar_drag_scrolls_content() {
 fn column_picker_panel_fits_rendered_content_height() {
     let popup = column_picker_area(Rect::new(0, 0, 100, 45));
 
-    assert_eq!(popup.height, MetricColumn::ALL.len() as u16 + 6);
+    assert_eq!(popup.height, (MetricColumn::ALL.len() as u16 + 11).min(45));
 }
 
 #[test]
@@ -591,4 +591,71 @@ fn sample_page_selection_preserves_anchor_reverses_and_clamps() {
         first + chrono::Duration::seconds(8)
     );
     assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 4);
+}
+
+#[test]
+fn column_picker_dotnet_notice_stays_visible_and_does_not_authorize_collection() {
+    for (width, height) in [(65, 20), (80, 24), (100, 45)] {
+        let mut app = make_test_app(1, 10);
+        app.open_column_picker();
+        let screen = Rect::new(0, 0, width, height);
+        app.set_column_picker_page_size(ui::column_picker_page_size_for_screen(screen));
+        for offset in [
+            0,
+            ui::column_picker_scroll_max_for_page_size(app.column_picker_scroll.page_size),
+        ] {
+            app.column_picker_scroll.offset = offset;
+            let buffer = render_app_to_buffer(&app, width, height);
+            let text = buffer_to_text(&buffer);
+            let (notice_x, notice_y) =
+                find_text_position(&buffer, ".NET 8/9/10 runtime bug:").unwrap();
+            let (_, shortcut_y) = find_text_position(&buffer, "Enter/Esc close").unwrap();
+            let popup = column_picker_area(screen);
+            let notice = (notice_y..shortcut_y - 1)
+                .map(|y| {
+                    (notice_x..popup.right() - 1)
+                        .map(|x| buffer[(x, y)].symbol())
+                        .collect::<String>()
+                        .trim()
+                        .to_owned()
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            for message in [
+                ".NET 8/9/10 runtime bug: collecting metrics during app startup",
+                "may cause the app to hang.",
+                "Selecting .NET 8/9/10 columns here does not start collection.",
+                "Select a process and press n to start or stop collection.",
+                ".NET Framework metrics are collected automatically.",
+            ] {
+                assert!(notice.contains(message), "{width}x{height}: {text}");
+            }
+            let (x, y) = find_text_position(&buffer, ".NET 8/9/10 runtime bug:").unwrap();
+            assert_eq!(ui::column_picker_index_at(screen, x, y, offset), None);
+            assert_blank_row_above_text(&buffer, "↑/↓ select  Space toggle  Enter/Esc close");
+        }
+        app.column_picker_index = MetricColumn::ALL
+            .iter()
+            .position(|c| *c == MetricColumn::DotNetHeapBytes)
+            .unwrap();
+        app.process_columns
+            .retain(|c| *c != MetricColumn::DotNetHeapBytes);
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.process_columns.contains(&MetricColumn::DotNetHeapBytes));
+        assert!(!app.sampling_worker.dotnet.enabled());
+        assert_eq!(app.sampling_worker.dotnet.generation(), 0);
+        let buffer = render_app_to_buffer(&app, width, height);
+        let (x, y) = find_text_position(&buffer, "Enter/Esc close").unwrap();
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert!(!app.show_column_picker);
+    }
 }

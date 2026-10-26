@@ -374,6 +374,7 @@ mod tests {
         start_time: u64,
     ) -> ProcessRow {
         ProcessRow {
+            dotnet_eventpipe: None,
             pid,
             parent_pid: None,
             name,

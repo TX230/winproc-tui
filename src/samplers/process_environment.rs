@@ -650,6 +650,7 @@ mod tests {
 
     fn process_row(pid: u32, name: String, start_time: u64) -> ProcessRow {
         ProcessRow {
+            dotnet_eventpipe: None,
             pid,
             parent_pid: None,
             name,

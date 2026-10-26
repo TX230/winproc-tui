@@ -1,7 +1,7 @@
 # winproc-tui Metrics Specification
 
 This document describes the metrics handled by `winproc-tui`, including display names, data sources, and display formats.
-In the current implementation, unavailable values are displayed as `--` in the UI. Schema-v3 fixed-order arrays encode unavailable positions as `null`; schema-v2 object fields were normally omitted when unavailable.
+Unavailable values normally display as `--`. Live Processes .NET cells additionally distinguish known disabled and initial-waiting states as described below. Schema-v3 fixed-order arrays encode unavailable positions as `null`; schema-v2 object fields were normally omitted when unavailable.
 
 ## Sampling Freshness
 
@@ -13,6 +13,24 @@ Live sampling is requested once per second. The header derives freshness from th
 - Log view does not display sampling freshness because it reads a saved log instead of live sampling.
 
 `DISPLAY PAUSED` freezes the displayed snapshot only. The current live snapshot, process/system histories, sampling freshness, and an active recording continue to update.
+
+## .NET collection control
+
+EventPipe metrics for .NET 8/9/10 default to disabled. Enable collection explicitly after target initialization using n on a selected supported live process, whether tracked or not. Tracking changes do not grant or revoke permission. The legacy Alt+N bulk dialog still selects Tracking List candidates. Newly started or restarted processes require a new authorization. Column visibility does not enable collection. The .NET Framework PDH collection path is unaffected by this EventPipe startup issue. Its supported counters continue to be collected automatically as before, without explicit enablement. State labels are presentation-only; missing schema-v3 measurements remain `null`, and retained history is not erased. See [collection lifecycle](dotnet-metrics-collection.md).
+
+### Live Processes missing .NET values
+
+Actual available values, including zero, keep their numeric formatting. Missing values use:
+
+| Display | Meaning |
+| --- | --- |
+| `OFF` | Confirmed .NET 8+ runtime with collection disabled for this lifetime |
+| `...` | Authorized collection waiting for its first successful interval; after 5 seconds without one, collection becomes unavailable (`--`) on the next sampling pass |
+| `--` | Unsupported metrics, unknown or undetected runtime, other CoreCLR versions, inaccessible or missing counters, collection failure, stale data, or an absent metric in an otherwise successful interval |
+
+Framework Heap, Gen1, Gen2, and LOH retain their PDH values or `--` on missing data. An undetected CLR is not proof that a process is native. GPU%, GPU D, and GPU S likewise retain `--` for unavailable data and numeric zero only when measured; missing counters do not prove GPU non-use. The additional OFF and ... labels are right-aligned and muted, without graph-value emphasis. Process Info retains collection error details.
+
+Log view, exited rows, tracked totals, and paused displays do not infer live collection labels from current authorization; their missing values remain `--`. These labels do not change sorting, aggregation, raw clipboard values, histories, or recording schemas.
 
 ## Process Table Columns
 
@@ -51,11 +69,11 @@ When the `Full Path` column is selected in the Process table, filtering matches 
 When it is not selected, filtering matches process name only.
 Compact byte formatting is used in the Processes table and for Graph Y-axis tick labels. Sorting and Graph data continue to use the raw numeric values.
 
-Modern .NET metrics are collected for every detected live process identity; its process name does not need to be in the Tracking List to display current values. Non-tracked processes keep only ordinary short Live history, while Recording remains limited to the session's fixed Tracking List scope.
+Modern .NET metrics are collected only for explicitly authorized supported live process identities; detection alone does not start collection. Tracking List membership is not required for per-process authorization or current value display. Non-tracked processes keep only ordinary short Live history, while Recording remains limited to the session's fixed Tracking List scope.
 
 .NET 9/10 uses the `System.Runtime` meter, .NET 8 uses `System.Runtime` EventCounters, and .NET Framework uses the legacy PDH query for its supported subset. Unsupported, inaccessible, stale, or incomplete values remain unavailable (`--`) instead of being estimated from a different runtime source. .NET 8 byte conversions are rounded, and its fragmentation byte value is derived from the reported heap size and fragmentation percentage.
 
-Diagnostics-pipe detection, complete-interval rules, freshness, retry, and shutdown behavior are defined in [.NET Runtime Metrics Collection](dotnet-metrics-collection.md).
+Loaded-module detection, authorized diagnostics IPC collection, complete-interval rules, freshness, retry, and shutdown behavior are defined in [.NET Runtime Metrics Collection](dotnet-metrics-collection.md).
 
 The `.NET` column preset selects `.NET Gen2`, `.NET LOH`, and `.NET POH` by default because those heaps are the highest-value first view for long-lived, large, and pinned object growth. Gen0 and Gen1 remain selectable, graphable, copyable, and recordable.
 
@@ -649,3 +667,7 @@ Process table clipboard output is TSV with fixed Tracked, PID, Process, State, a
 ## Reproducible workload validation
 
 The standalone [resource workload scenarios](resource-workloads.md) exercise CPU, memory, object counts, I/O, .NET heaps, and GPU resources for development tests and screenshot preparation. Requested payloads are not interchangeable with sampled OS metrics. Compare actual-work evidence over stable phases; the tool does not change collection, recording schemas, or metric semantics.
+
+### Live .NET process marker
+
+The Processes N marker is live status, not a recorded metric: gray indicates a confirmed .NET 8+ runtime without starting or fresh collection, while pink acknowledges an accepted start immediately and continues while collection is fresh. Failed or stale collection returns to gray. Press n on a selected process to toggle .NET 8+ collection, regardless of tracking membership. Runtime detection does not authorize collection. See [the collection specification](dotnet-metrics-collection.md) for detection and process-lifetime constraints. Recording fields and positional arrays are unchanged.

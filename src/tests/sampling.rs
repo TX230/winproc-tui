@@ -66,6 +66,7 @@ fn sampling_worker_disconnect_keeps_existing_snapshot() {
     let (result_tx, result_rx) = mpsc::channel::<CollectSnapshotResult>();
     drop(result_tx);
     let sampling_worker = SamplingWorker {
+        dotnet: Default::default(),
         request_tx,
         result_rx,
         join_handle: None,

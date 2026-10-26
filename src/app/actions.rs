@@ -100,6 +100,16 @@ impl App {
             return Ok(());
         }
 
+        if self.dotnet_confirmation.is_some() {
+            match key.code {
+                KeyCode::Char(' ') if key.modifiers.is_empty() => {
+                    self.toggle_dotnet_collection();
+                }
+                KeyCode::Enter | KeyCode::Esc => self.dotnet_confirmation = None,
+                _ => {}
+            }
+            return Ok(());
+        }
         if self.show_recording_stop_confirmation {
             match key.code {
                 KeyCode::Enter | KeyCode::Esc => self.cancel_recording_stop(),
@@ -780,6 +790,14 @@ impl App {
                 && !(self.file_users.visible
                     && (self.file_users.detail
                         || self.file_users.focus == super::file_users::FileUsersFocus::Query)));
+        if menu_input_available
+            && key.modifiers == KeyModifiers::ALT
+            && matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n'))
+        {
+            self.dismiss_main_menu();
+            self.toggle_dotnet();
+            return Ok(());
+        }
         if menu_input_available
             && key.modifiers == KeyModifiers::ALT
             && let KeyCode::Char(ch) = key.code
@@ -1556,6 +1574,13 @@ impl App {
             {
                 self.select_all_visible_processes();
             }
+            KeyCode::Char('n')
+                if self.focused_panel == FocusedPanel::Processes
+                    && key.modifiers.is_empty()
+                    && key.kind == KeyEventKind::Press =>
+            {
+                self.toggle_selected_dotnet();
+            }
             KeyCode::Char(' ')
                 if self.focused_panel == FocusedPanel::Processes
                     && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -1661,6 +1686,15 @@ impl App {
         {
             if let Err(error) = self.on_key(shortcut.key) {
                 self.status = format!("Action failed: {error}");
+            }
+            return;
+        }
+        if self.dotnet_confirmation.is_some() && !self.show_help {
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && crate::ui::header::dotnet_checkbox_area(screen_area)
+                    .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                self.toggle_dotnet_collection();
             }
             return;
         }

@@ -690,6 +690,7 @@ mod tests {
         ws_private: Option<u64>,
     ) -> ProcessRow {
         ProcessRow {
+            dotnet_eventpipe: None,
             pid,
             parent_pid: None,
             name: name.to_string(),
@@ -791,6 +792,7 @@ mod tests {
     #[test]
     fn raw_value_returns_unformatted_metric_values() {
         let row = ProcessRow {
+            dotnet_eventpipe: None,
             pid: 1,
             parent_pid: None,
             name: "app.exe".to_string(),

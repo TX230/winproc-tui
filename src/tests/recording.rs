@@ -862,7 +862,10 @@ fn live_header_omits_freshness_when_current() {
     let rendered = render_app_to_text(&app, 120, 45);
 
     assert!(rendered.contains("LIVE"), "{rendered}");
-    assert!(rendered.contains("File ▾"), "{rendered}");
+    assert!(
+        rendered.contains("File▾") || rendered.contains("File ▾"),
+        "{rendered}"
+    );
     assert!(rendered.contains("PF: none"), "{rendered}");
     assert!(!rendered.contains("fresh"), "{rendered}");
     assert!(!rendered.contains("STALE"), "{rendered}");
@@ -916,7 +919,10 @@ fn recording_header_shows_rec_spinner_and_path() {
     );
     assert!(!header.contains(&path.display().to_string()), "{header}");
     assert!(header.contains("PF: none"), "{header}");
-    assert!(rendered.contains("File ▾"), "{rendered}");
+    assert!(
+        rendered.contains("File▾") || rendered.contains("File ▾"),
+        "{rendered}"
+    );
     let buffer = render_app_to_buffer(&app, 140, 45);
     let (profile_x, profile_y) =
         find_text_position(&buffer, "PF: none").expect("profile badge should render");

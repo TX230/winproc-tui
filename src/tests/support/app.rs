@@ -161,6 +161,8 @@ pub(in crate::tests) fn make_test_app_with_workers(
             sampling_options: samplers::SamplingOptions::default(),
         },
         sampling_worker,
+        dotnet_confirmation: None,
+        dotnet_last_status: (false, false),
         process_info_worker,
         open_files_worker,
         process_modules_worker,
@@ -439,6 +441,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
 pub(in crate::tests) fn test_snapshot(row_count: usize) -> Snapshot {
     let processes = (0..row_count)
         .map(|index| ProcessRow {
+            dotnet_eventpipe: None,
             pid: index as u32,
             parent_pid: None,
             name: format!("proc-{index}"),
