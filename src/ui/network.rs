@@ -320,16 +320,8 @@ fn draw_content(
             .len()
             .saturating_sub(layout.rows.height.max(1) as usize),
     );
-    if entries.is_empty() && view.report.is_some() {
-        let text = if view
-            .report
-            .as_ref()
-            .is_some_and(|report| !report.failures.is_empty())
-        {
-            "No matching endpoints in the available tables (partial capture)."
-        } else {
-            "No matching endpoints."
-        };
+    if entries.is_empty() {
+        let text = empty_network_message(view);
         frame.render_widget(
             Paragraph::new(text).style(normal.fg(theme.muted)),
             layout.rows,
@@ -372,6 +364,41 @@ fn draw_content(
         frame.render_widget(Paragraph::new(lines).style(normal), layout.rows);
     }
     draw_scrollbar(frame, area, view, theme);
+}
+
+fn empty_network_message(view: &NetworkView) -> String {
+    let refresh = if view.target.is_some() { "Ctrl+U" } else { "r" };
+    if view.pending.is_some() {
+        return "Loading endpoints...".into();
+    }
+    let Some(report) = &view.report else {
+        return format!("No capture available. {refresh} Refresh");
+    };
+    if report.successful_tables == 0 {
+        return format!("Endpoint capture unavailable. {refresh} Refresh");
+    }
+    let partial = !report.failures.is_empty() || report.successful_tables < 4;
+    if report.endpoints.is_empty() {
+        return if partial {
+            format!("No endpoints in available tables (partial capture). {refresh} Refresh")
+        } else {
+            format!("No endpoints captured. {refresh} Refresh")
+        };
+    }
+    if !view.all
+        && !report
+            .endpoints
+            .iter()
+            .any(NetworkEndpoint::is_listener_or_udp)
+    {
+        let mode = if view.target.is_some() { "Alt+A" } else { "a" };
+        return format!("Endpoints hidden by mode. {mode} All endpoints");
+    }
+    if partial {
+        "No filter matches in available tables. / then Ctrl+U Clear filter".into()
+    } else {
+        "No filter matches. / then Ctrl+U Clear filter".into()
+    }
 }
 
 fn filter_window(view: &NetworkView, width: usize) -> (String, usize) {

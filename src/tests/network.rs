@@ -90,6 +90,89 @@ fn press(app: &mut App, code: KeyCode) {
     app.on_key(KeyEvent::new(code, KeyModifiers::NONE)).unwrap();
 }
 
+fn empty_test_view_mut(app: &mut App, global: bool) -> &mut crate::app::network::NetworkView {
+    if global {
+        &mut app.network_browser
+    } else {
+        &mut app.process_network
+    }
+}
+
+#[test]
+fn network_empty_states_distinguish_filter_mode_capture_and_failure() {
+    for global in [true, false] {
+        for (width, height) in [(80, 24), (120, 36), (160, 48)] {
+            let (mut app, requests, results) = setup();
+            if global {
+                open_network_list(&mut app);
+            } else {
+                press(&mut app, KeyCode::Enter);
+                app.activate_process_info_tab(ProcessInfoTab::Network)
+                    .unwrap();
+            }
+            let context = capture(&requests);
+            assert!(render_app_to_text(&app, width, height).contains("Loading endpoints"));
+            let snapshot = report(&app);
+            deliver(&mut app, &results, context, snapshot);
+            {
+                let view = empty_test_view_mut(&mut app, global);
+                view.filter = "no-such-endpoint".into();
+                view.cursor = view.filter.len();
+            }
+            let text = render_app_to_text(&app, width, height);
+            assert!(
+                text.contains("No filter matches. / then Ctrl+U Clear filter"),
+                "{text}"
+            );
+            if !global {
+                app.process_info_focus = ProcessInfoFocus::Content;
+            }
+            press(&mut app, KeyCode::Char('/'));
+            app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+                .unwrap();
+            assert!(app.network_view(global).filter.is_empty());
+            assert!(!app.network_view(global).entries().is_empty());
+            assert!(matches!(requests.try_recv(), Err(TryRecvError::Empty)));
+
+            let view = empty_test_view_mut(&mut app, global);
+            view.editing = false;
+            view.all = false;
+            view.report
+                .as_mut()
+                .unwrap()
+                .endpoints
+                .retain(|entry| !entry.is_listener_or_udp());
+            assert!(render_app_to_text(&app, width, height).contains("Endpoints hidden by mode."));
+            let view = empty_test_view_mut(&mut app, global);
+            view.report.as_mut().unwrap().endpoints.clear();
+            assert!(render_app_to_text(&app, width, height).contains("No endpoints captured."));
+            let view = empty_test_view_mut(&mut app, global);
+            let report = view.report.as_mut().unwrap();
+            report.successful_tables = 3;
+            report.failures.push("TCP6 unavailable".into());
+            let text = render_app_to_text(&app, width, height);
+            assert!(
+                text.contains("No endpoints in available tables (partial capture)."),
+                "{text}"
+            );
+            empty_test_view_mut(&mut app, global)
+                .report
+                .as_mut()
+                .unwrap()
+                .successful_tables = 0;
+            assert!(
+                render_app_to_text(&app, width, height).contains("Endpoint capture unavailable.")
+            );
+            let view = empty_test_view_mut(&mut app, global);
+            view.report = None;
+            view.notice = Some("Capture failed".into());
+            let text = render_app_to_text(&app, width, height);
+            assert!(text.contains("No capture available."));
+            assert!(text.contains("Capture failed"));
+        }
+    }
+}
+
 #[test]
 fn network_browser_retains_sessions_rejects_stale_results_and_deduplicates_refresh() {
     let (mut app, requests, results) = setup();

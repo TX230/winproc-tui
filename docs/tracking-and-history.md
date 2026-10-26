@@ -64,6 +64,8 @@ Dragging a column header boundary edits the same persisted width preference as k
 
 ## Exited-row visibility
 
+An empty Processes table provides contextual recovery guidance in a body row, or on its bottom border when a short terminal must also retain Tracked Total and a readable Graph. Filtered and Tracked-only empty states identify their display restrictions and offer existing clear-filter or show-all actions; hiding exited rows and an empty snapshot have separate messages. The message is presentation only and does not change tracking, selection, history, or activity state.
+
 Show exited is an independent, persisted app preference, enabled by default. It filters retained Ghost Rows in Flat and Tree views without deleting histories, changing Graphs, or changing Recording scope. It also filters any retained exited rows available from the displayed paused or Log-view state; it never starts live collection. Hiding the selected row clamps focus to a remaining row. Existing individual Ghost Row hiding remains separate: re-enabling Show exited does not restore individually dismissed rows.
 
 ## Live History Retention

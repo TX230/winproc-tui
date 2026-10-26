@@ -183,6 +183,10 @@ const GLOBAL_ROWS: &[HelpItem] = &[
 
 const PROCESSES_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "No processes shown",
+        label: "Check Filter and Tracked-only; the empty table shows a recovery shortcut",
+    },
+    HelpItem {
         key: "Tree indentation",
         label: "Fixed by depth; widen Process or press Enter for the full name",
     },

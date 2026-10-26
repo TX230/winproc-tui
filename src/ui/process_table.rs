@@ -63,7 +63,13 @@ pub(crate) fn draw_process_table(
     let process_name_width = column_rects.get(2).map_or(0, |rect| rect.width);
     let full_path_width = full_path_column_render_width(&visible_columns, &column_rects);
     let title = process_table_title(app, area.width, theme);
-    let block = process_table_block(title, overflow_indicator, app, theme);
+    let block = process_table_block(
+        title,
+        overflow_indicator,
+        app,
+        theme,
+        empty_message_in_border(area, app),
+    );
     let table_area = block.inner(area);
     frame.render_widget(block, area);
 
@@ -154,6 +160,19 @@ pub(crate) fn draw_process_table(
         .filter(|selected| *selected < visible_processes.len());
     state.select(selected);
     frame.render_stateful_widget(table, table_area, &mut state);
+    let message_offset = 1 + u16::from(layout.show_tracked_total);
+    if visible_process_count == 0 && table_area.height > message_offset {
+        let message_area = Rect::new(
+            table_area.x,
+            table_area.y + message_offset,
+            table_area.width,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(empty_process_message(app)).style(Style::default().fg(theme.muted)),
+            message_area,
+        );
+    }
     // Underline the full header cell, including alignment padding, so every
     // column has the same visible extent regardless of label alignment.
     for rect in column_rects.iter().skip(1).filter(|rect| rect.width > 0) {
@@ -180,12 +199,33 @@ pub(crate) fn draw_process_table(
     draw_process_resize_handle(frame, layout, app, theme);
 }
 
+fn empty_process_message(app: &App) -> &'static str {
+    match (
+        app.watch_enabled,
+        app.active_filter_text().trim().is_empty(),
+    ) {
+        (true, false) => "No tracked matches. Ctrl+F, Esc Clear filter; Shift+T Show all",
+        (true, true) => "No tracked processes shown. Shift+T Show all",
+        (false, false) => "No processes shown. Ctrl+F, Esc Clear filter",
+        (false, true) if !app.show_exited => "No processes shown. Shift+E Show exited",
+        _ => "No processes in this snapshot.",
+    }
+}
+
+fn empty_message_in_border(area: Rect, app: &App) -> bool {
+    app.visible_process_count() == 0
+        && area.height <= 3 + u16::from(app.has_visible_tracked_total_row())
+}
+
 fn draw_process_resize_handle(
     frame: &mut ratatui::Frame<'_>,
     layout: ProcessTableLayout,
     app: &App,
     theme: Theme,
 ) {
+    if empty_message_in_border(layout.area, app) {
+        return;
+    }
     if !app.process_panel_resize_hovered && app.process_panel_resize_drag.is_none() {
         return;
     }
@@ -381,6 +421,7 @@ fn process_table_block<'a>(
     overflow_indicator: Option<String>,
     app: &App,
     theme: Theme,
+    empty_in_border: bool,
 ) -> ratatui::widgets::Block<'a> {
     let input_active =
         (app.is_filter_editing() || app.is_process_jump_editing()) && !app.has_modal_focus();
@@ -406,18 +447,22 @@ fn process_table_block<'a>(
             .right_aligned(),
         );
     }
-    block = block.title_bottom(Line::from(vec![
-        Span::styled(column_width_label(app), Style::default().fg(theme.muted)),
-        Span::styled(
-            "[-]",
-            column_control_style(ColumnControl::Narrow, app, theme),
-        ),
-        Span::raw(" "),
-        Span::styled(
-            "[+]",
-            column_control_style(ColumnControl::Widen, app, theme),
-        ),
-    ]));
+    block = block.title_bottom(if empty_in_border {
+        Line::styled(empty_process_message(app), Style::default().fg(theme.muted))
+    } else {
+        Line::from(vec![
+            Span::styled(column_width_label(app), Style::default().fg(theme.muted)),
+            Span::styled(
+                "[-]",
+                column_control_style(ColumnControl::Narrow, app, theme),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                "[+]",
+                column_control_style(ColumnControl::Widen, app, theme),
+            ),
+        ])
+    });
     if input_active {
         block.border_style(Style::default().fg(theme.focus_border))
     } else {
@@ -1987,7 +2032,7 @@ pub(crate) fn column_control_areas(area: Rect, app: &App) -> Vec<(ColumnControl,
         }
     }
     let prefix_width = Line::from(column_width_label(app)).width() as u16;
-    if area.width >= prefix_width + 10 && area.height > 0 {
+    if !empty_message_in_border(area, app) && area.width >= prefix_width + 10 && area.height > 0 {
         controls.push((
             ColumnControl::Narrow,
             Rect::new(area.x + 1 + prefix_width, area.bottom() - 1, 3, 1),

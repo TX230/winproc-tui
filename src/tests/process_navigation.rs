@@ -1152,10 +1152,27 @@ fn tracked_total_is_rendered_when_it_is_the_only_process_row() {
         find_text_position(&buffer, "Tracked Total").expect("Tracked Total should render");
 
     assert_eq!(app.visible_process_count(), 0);
-    assert_eq!(panels.processes.area.height, 4);
-    assert_eq!(panels.processes.page_size, 0);
+    assert_eq!(panels.processes.area.height, 5);
+    assert_eq!(panels.processes.page_size, 1);
     assert!(panels.processes.show_tracked_total);
     assert_eq!(total_y, panels.processes.area.y + 2);
+    let (_, message_y) = find_text_position(&buffer, "No tracked matches.")
+        .expect("empty-state guidance should remain below Tracked Total");
+    assert_eq!(message_y, total_y + 1);
+    let compact = render_app_to_buffer(&app, 80, 24);
+    let text = super::support::buffer_to_text(&compact);
+    assert!(text.contains("Tracked Total"));
+    assert!(text.contains("No tracked matches. Ctrl+F, Esc Clear filter; Shift+T Show all"));
+    assert!(!text.contains("Enlarge terminal to view Graph"), "{text}");
+    let compact_area = main_panel_areas_for_app(Rect::new(0, 0, 80, 24), &app)
+        .processes
+        .area;
+    for (control, _) in ui::process_table::column_control_areas(compact_area, &app) {
+        assert!(!matches!(
+            control,
+            ui::process_table::ColumnControl::Narrow | ui::process_table::ColumnControl::Widen
+        ));
+    }
 }
 
 #[test]

@@ -15,6 +15,53 @@ use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 
 #[test]
+fn empty_process_states_offer_recovery_with_and_without_graphs() {
+    for (width, height) in [(80, 24), (120, 36), (160, 48)] {
+        for mode in [app::ProcessViewMode::Flat, app::ProcessViewMode::Tree] {
+            for graphs in [false, true] {
+                let mut app = make_test_app(2, 10);
+                app.show_details = graphs;
+                app.process_view_mode = mode;
+                app.filter_text = "no-such-process".into();
+                app.rebuild_visible_process_cache();
+                let text = render_app_to_text(&app, width, height);
+                assert!(
+                    text.contains("No processes shown. Ctrl+F, Esc Clear filter"),
+                    "{text}"
+                );
+                app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+                    .unwrap();
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                    .unwrap();
+                assert_eq!(app.visible_process_count(), 2);
+
+                track_process_name(&mut app, "not-running.exe");
+                assert!(
+                    render_app_to_text(&app, width, height)
+                        .contains("No tracked processes shown. Shift+T Show all")
+                );
+                app.on_key(KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT))
+                    .unwrap();
+                assert_eq!(app.visible_process_count(), 2);
+
+                track_process_name(&mut app, "proc-0");
+                app.filter_text = "no-such-process".into();
+                app.process_panel_height = app::ProcessPanelHeight::Manual(1);
+                app.rebuild_visible_process_cache();
+                let text = render_app_to_text(&app, width, height);
+                assert!(text.contains("Tracked Total"), "{text}");
+                assert!(
+                    text.contains("No tracked matches. Ctrl+F, Esc Clear filter; Shift+T Show all"),
+                    "{text}"
+                );
+            }
+        }
+    }
+    let app = make_test_app(0, 10);
+    assert!(render_app_to_text(&app, 80, 24).contains("No processes in this snapshot."));
+}
+
+#[test]
 fn process_selection_tracks_identity_after_rows_reorder() {
     let mut app = make_test_app(4, 10);
     app.select_process_index(2);

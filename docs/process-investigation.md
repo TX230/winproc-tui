@@ -105,6 +105,8 @@ Process Info comparisons resolve A, B, and displayed-current values by exact `Pr
 
 ## Network Endpoints
 
+Empty Network lists distinguish a text-filter mismatch, endpoints hidden by the local display mode, a successful capture with no endpoints, and unavailable or loading data. Recovery guidance uses existing filter, mode, and refresh operations without starting implicit collection. Partial captures retain their limited-coverage wording and warnings; an empty partial result never establishes that no endpoints exist outside the available tables.
+
 The global Network browser and Process Info Network tab share the same collector, endpoint model, filter, table, detail view, and clipboard format. The global browser defaults to TCP listeners plus bound UDP endpoints. The process tab defaults to all available endpoints for the dialog's fixed target, including connected TCP peers. Both can change the local display mode without collecting again.
 
 The Process Info Network tab follows the other filterable tabs: printable input edits the filter directly while content has focus, without requiring explicit editing; filter activation enters the shared explicit editor. Outside explicit editing, row navigation, refresh, opening details, and closing the dialog remain available during filtering. The global browser retains its explicit filter-editing mode. Contextual keys are defined in Help and the respective footers.

@@ -77,6 +77,8 @@ The vertical split above the Graph Workspace uses either `Auto` or a saved prefe
 
 Drawing and mouse hit testing consume one `GraphWorkspaceLayout` result for shared controls, the viewport, visible cards, plot regions, per-card `[RAW]` / `[MA]` mode actions, remove actions, the scrollbar, and Samples. The mode action is immediately before `[x]`; both remain separate when a title is truncated. Clicking it targets the owning stable `GraphId` without activating that card. Only visible cards perform series-rendering work; the active Samples series can still be resolved while its card is outside the viewport.
 
+An empty Processes table reserves one body row for contextual recovery guidance, including when Graphs are visible. If Tracked Total is also visible, both rows are requested even with a one-row preference. When a short terminal cannot fit both body rows without sacrificing the readable Graph, recovery guidance replaces the column-width controls on the Processes bottom border. Drawing and hit testing omit those replaced controls together. This minimum does not overwrite the saved split preference.
+
 ## Invariants
 
 - A non-empty workspace contains at most 16 unique sources and one valid active ID.

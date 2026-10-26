@@ -189,7 +189,9 @@ fn process_table_required_height(
     preference: ProcessPanelHeight,
     available_height: u16,
 ) -> u16 {
-    let content_rows = visible_process_rows.saturating_add(usize::from(has_tracked_total));
+    let content_rows = visible_process_rows
+        .max(1)
+        .saturating_add(usize::from(has_tracked_total));
     let preferred_rows = match preference {
         ProcessPanelHeight::Auto => {
             let usable = available_height.saturating_sub(PROCESS_TABLE_CHROME_HEIGHT);
@@ -204,7 +206,13 @@ fn process_table_required_height(
         }
         ProcessPanelHeight::Manual(rows) => usize::from(rows.max(1)),
     };
-    let rendered_rows = content_rows.min(preferred_rows);
+    // An empty table still needs one body row for its recovery guidance.
+    let minimum_rows = if visible_process_rows == 0 {
+        1 + usize::from(has_tracked_total)
+    } else {
+        1
+    };
+    let rendered_rows = content_rows.min(preferred_rows.max(minimum_rows));
     PROCESS_TABLE_CHROME_HEIGHT.saturating_add(rendered_rows as u16)
 }
 
@@ -770,11 +778,11 @@ mod tests {
     fn dynamic_process_height_matches_content_and_available_height() {
         let screen = Rect::new(0, 0, 120, 60);
         let cases = [
-            (0, false, 3, 0, false),
+            (0, false, 4, 1, false),
             (1, false, 4, 1, false),
             (4, false, 7, 4, false),
             (20, false, 21, 18, false),
-            (0, true, 4, 0, true),
+            (0, true, 5, 1, true),
             (1, true, 5, 1, true),
             (4, true, 8, 4, true),
             (20, true, 21, 17, true),
