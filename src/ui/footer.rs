@@ -87,12 +87,12 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                 (
                     "Space",
                     if app.selected_process_column_toggles_tracking() {
-                        "Track process name"
+                        "Track process"
                     } else {
                         "Graph"
                     },
                 ),
-                ("t", "Track process name"),
+                ("t", "Track process"),
                 ("n", ".NET metrics"),
                 ("c", "Columns"),
                 ("w/W", "Width"),
@@ -100,7 +100,6 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                 ("g", "Graphs"),
                 ("Ctrl+I", "Jump"),
                 ("Enter", "Process Info"),
-                ("f", "Files"),
                 (
                     "d",
                     if app.selected_process_identities.is_empty() {
@@ -156,7 +155,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     if app.focused_panel == FocusedPanel::Processes && app.watch_enabled {
         items.push(("Ctrl+A", "Select all"));
     }
-    if items.first() == Some(&("Space", "Track process name")) {
+    if items.first() == Some(&("Space", "Track process")) {
         items.retain(|(key, _)| *key != "t");
     }
     let primary_key = items.first().map(|(key, _)| *key);
@@ -198,25 +197,15 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     if app.activity() == AppActivity::Live {
         items.push(("Ctrl+S", "Save Profile"));
     }
-    items.push(("Shift+T", "Tracked-only"));
     if app.focused_panel == FocusedPanel::Processes {
         items.push(("Shift+E", "Show exited"));
     }
-    items.push(("Ctrl+T", "Profiles"));
     items.push(("F12", "Theme"));
-    items.push(("F1/?", "Help"));
-    if !matches!(
-        app.focused_panel,
-        FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-    ) {
-        items.push(("Tab", "Focus"));
-    }
     items.push(("Ctrl+↑↓←→", "Panel"));
 
     let mut prioritized = Vec::new();
     for key in [
         Some("ESC"),
-        Some("F1/?"),
         Some("Ctrl+R"),
         app.is_display_paused().then_some("Ctrl+P"),
         Some("Ctrl+B"),
@@ -224,21 +213,17 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         Some("Alt+←/→"),
         Some("PageUp/PageDown"),
         Some("a/b"),
-        Some("Tab"),
         Some("Ctrl+↑↓←→"),
         primary_key,
         Some("Ctrl+A"),
         (!app.selected_process_identities.is_empty()).then_some("d"),
         Some("Ctrl+F"),
         Some("Enter"),
-        Some("f"),
         Some("←/→"),
         Some("Del"),
         Some("Ctrl+P"),
         Some("i"),
         Some("g"),
-        Some("Shift+T"),
-        Some("Ctrl+T"),
     ]
     .into_iter()
     .flatten()

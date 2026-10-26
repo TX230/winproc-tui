@@ -1167,11 +1167,8 @@ fn tracked_total_is_rendered_when_it_is_the_only_process_row() {
     let compact_area = main_panel_areas_for_app(Rect::new(0, 0, 80, 24), &app)
         .processes
         .area;
-    for (control, _) in ui::process_table::column_control_areas(compact_area, &app) {
-        assert!(!matches!(
-            control,
-            ui::process_table::ColumnControl::Narrow | ui::process_table::ColumnControl::Widen
-        ));
+    for (_, area) in ui::process_table::column_control_areas(compact_area, &app) {
+        assert_ne!(area.y, compact_area.bottom() - 1);
     }
 }
 

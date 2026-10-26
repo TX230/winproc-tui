@@ -191,7 +191,7 @@ fn shift_t_works_in_every_main_panel_and_activity_without_changing_tracking_scop
                 assert_eq!(app.activity(), activity);
                 let rendered = render_app_to_text(&app, 500, 60);
                 assert!(
-                    rendered
+                    !rendered
                         .lines()
                         .last()
                         .unwrap()
@@ -269,7 +269,7 @@ fn log_view_tracking_inputs_and_pending_changes_preserve_live_history() {
     let footer = rendered.lines().last().unwrap();
     assert!(!footer.contains("t Track"));
     assert!(!footer.contains("Space Track"));
-    assert!(footer.contains("Shift+T Tracked-only"));
+    assert!(!footer.contains("Shift+T Tracked-only"));
 }
 
 #[test]
@@ -364,7 +364,7 @@ fn tracked_only_count_reports_visible_rows_not_stored_names() {
     assert_eq!(app.visible_tracked_process_count(), 0);
     assert!(app.status.contains("0 visible"));
     assert!(
-        rendered.contains("PROCESSES  · 0 visible · Flat(v) · [x] Tracked-only(Shift+T)"),
+        rendered.contains("PROCESSES  · 0 visible · [ ] Tree (Shift+V) · [x] Tracked (Shift+T)"),
         "{rendered}"
     );
 }
@@ -387,7 +387,7 @@ fn process_table_title_shows_concise_active_view_state() {
 
     assert!(
         rendered.contains(
-            "PROCESSES  · Filter(Ctrl+F) \"target\" · 1 visible · Flat(v) · [x] Tracked-only(Shift+T) · [x] Show exited(Shift+E)"
+            "PROCESSES  · Filter(Ctrl+F) \"target\" · 1 visible · [ ] Tree (Shift+V) · [x] Tracked (Shift+T) · [x] Exited (Shift+E)"
         ),
         "{rendered}"
     );
@@ -396,10 +396,10 @@ fn process_table_title_shows_concise_active_view_state() {
         "{rendered}"
     );
     assert!(!rendered.contains("Max samples: normal"), "{rendered}");
-    assert!(rendered.contains("[x] Show exited"), "{rendered}");
+    assert!(rendered.contains("[x] Exited"), "{rendered}");
     assert!(!rendered.contains("Custom"), "{rendered}");
 
-    let (state_x, state_y) = find_text_position(&buffer, "[x] Tracked-only(Shift+T)")
+    let (state_x, state_y) = find_text_position(&buffer, "[x] Tracked (Shift+T)")
         .expect("tracked-only state should be rendered");
     let state_cell = &buffer[(state_x, state_y)];
     assert_eq!(state_cell.fg, ui::THEMES[0].tracked);
@@ -407,8 +407,8 @@ fn process_table_title_shows_concise_active_view_state() {
     assert_eq!(state_cell.bg, ui::THEMES[0].panel);
     assert!(!state_cell.modifier.contains(Modifier::BOLD));
 
-    let (label_x, label_y) =
-        find_text_position(&buffer, "Tracked-only").expect("tracked-only label should be rendered");
+    let (label_x, label_y) = find_text_position(&buffer, "Tracked (Shift+T)")
+        .expect("tracked-only label should be rendered");
     assert_eq!(label_y, state_y);
     assert_eq!(buffer[(label_x, label_y)].fg, ui::THEMES[0].text);
     assert!(!buffer[(label_x, label_y)].modifier.contains(Modifier::BOLD));
@@ -437,7 +437,7 @@ fn process_table_view_mode_stays_muted_until_hovered() {
     app.rebuild_visible_process_cache();
 
     let buffer = render_app_to_buffer(&app, 100, 30);
-    let (x, y) = find_text_position(&buffer, "Tree(v)").expect("Tree view state");
+    let (x, y) = find_text_position(&buffer, "[x] Tree (Shift+V)").expect("Tree view state");
     assert_eq!(buffer[(x, y)].fg, app.theme().muted);
     assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
 }
@@ -450,7 +450,7 @@ fn process_table_title_omits_named_list_and_unsaved_marker() {
 
     let saved = render_app_to_text(&app, 120, 30);
     assert!(
-        saved.contains("PROCESSES  · 1 visible · Flat(v) · [ ] Tracked-only(Shift+T)"),
+        saved.contains("PROCESSES  · 1 visible · [ ] Tree (Shift+V) · [ ] Tracked (Shift+T)"),
         "{saved}"
     );
     assert!(!saved.contains("List \"API\""), "{saved}");
@@ -459,7 +459,7 @@ fn process_table_title_omits_named_list_and_unsaved_marker() {
     app.normalized_watch_names.insert("worker.exe".to_string());
     let dirty = render_app_to_text(&app, 120, 30);
     assert!(
-        dirty.contains("PROCESSES  · 1 visible · Flat(v) · [ ] Tracked-only(Shift+T)"),
+        dirty.contains("PROCESSES  · 1 visible · [ ] Tree (Shift+V) · [ ] Tracked (Shift+T)"),
         "{dirty}"
     );
     assert!(!dirty.contains("List \"API*\""), "{dirty}");
@@ -1207,7 +1207,7 @@ fn show_exited_mouse_matches_header_and_updates_paused_hover() {
     let screen = Rect::new(0, 0, 150, 40);
     app.toggle_display_pause();
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let (x, y) = find_text_position(&buffer, "[x] Show exited").unwrap();
+    let (x, y) = find_text_position(&buffer, "[x] Exited").unwrap();
     let outcome = app::handle_mouse_event(&mut app, super::support::mouse_move(x, y), screen);
     assert!(outcome.dirty);
     assert!(app.process_show_exited_hovered);

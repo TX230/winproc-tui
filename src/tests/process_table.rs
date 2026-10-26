@@ -1093,7 +1093,7 @@ fn process_table_tracked_only_title_checkbox_click_toggles_filter() {
 
     let screen = Rect::new(0, 0, 120, 45);
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let (x, y) = find_text_position(&buffer, "[ ] Tracked-only(Shift+T)")
+    let (x, y) = find_text_position(&buffer, "[ ] Tracked (Shift+T)")
         .expect("unchecked tracked-only control should render in the process title");
     assert_eq!(buffer[(x, y)].fg, ui::THEMES[0].muted);
     let (shortcut_x, shortcut_y) = find_text_position(&buffer, "(Shift+T)")
@@ -1120,7 +1120,7 @@ fn process_table_tracked_only_title_checkbox_click_toggles_filter() {
     );
 
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let (x, y) = find_text_position(&buffer, "[x] Tracked-only(Shift+T)")
+    let (x, y) = find_text_position(&buffer, "[x] Tracked (Shift+T)")
         .expect("checked tracked-only control should render in the process title");
 
     app.on_mouse(
@@ -1196,15 +1196,28 @@ fn process_columns_mouse_workflow_covers_picker_range_and_width() {
     assert_eq!(app.process_metric_column_offset, 0);
     app.selected_process_column_index = 1;
     let original = app.process_column_widths.resolved(SortColumn::ProcessName);
-    for (control, expected) in [
-        (ui::process_table::ColumnControl::Widen, original + 1),
-        (ui::process_table::ColumnControl::Narrow, original),
+    let bottom = area.bottom() - 1;
+    assert!(
+        ui::process_table::column_control_areas(area, &app)
+            .iter()
+            .all(|(_, rect)| rect.y != bottom)
+    );
+    for x in area.x..area.right() {
+        assert!(ui::process_table::column_control_at(area, &app, x, bottom).is_none());
+    }
+    let rendered = render_app_to_text(&app, 180, 60);
+    assert!(!rendered.contains("Width:"));
+    for (key, expected) in [
+        (
+            KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE),
+            original + 1,
+        ),
+        (
+            KeyEvent::new(KeyCode::Char('W'), KeyModifiers::SHIFT),
+            original,
+        ),
     ] {
-        let (_, rect) = ui::process_table::column_control_areas(area, &app)
-            .into_iter()
-            .find(|(candidate, _)| *candidate == control)
-            .unwrap();
-        app.on_mouse(super::support::left_click(rect.x, rect.y), screen);
+        app.on_key(key).unwrap();
         assert_eq!(
             app.process_column_widths.resolved(SortColumn::ProcessName),
             expected

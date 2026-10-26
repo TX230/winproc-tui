@@ -1452,7 +1452,7 @@ impl App {
             }
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'v')
-                    && key.modifiers.is_empty()
+                    && matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT)
                     && self.focused_panel == FocusedPanel::Processes =>
             {
                 self.toggle_process_view_mode();

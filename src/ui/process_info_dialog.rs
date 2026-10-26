@@ -28,11 +28,8 @@ use crate::{
 const PROCESS_INFO_MODAL: ScrollableModal = ScrollableModal::new("", 138, 20, 1);
 const TAB_HORIZONTAL_PADDING: u16 = 2;
 const IMAGE_LABEL_WIDTH: usize = 16;
-const METRIC_LABEL_WIDTH: usize = 22;
 const METRIC_VALUE_WIDTH: usize = 20;
 const METRIC_DELTA_WIDTH: usize = 24;
-const METRIC_WIDE_LAYOUT_WIDTH: u16 =
-    (METRIC_LABEL_WIDTH + METRIC_VALUE_WIDTH + METRIC_DELTA_WIDTH) as u16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProcessInfoDialogLayout {
@@ -405,6 +402,15 @@ fn process_info_metrics_lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'
             Style::default().fg(theme.muted),
         ))];
     };
+    // Reserve one shared label column plus a gap, including the longest labels.
+    let label_width = metrics
+        .rows
+        .iter()
+        .map(|row| row.label.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max("Metrics".len())
+        + 2;
     let mut lines = vec![Line::from(Span::styled(
         metrics.range,
         Style::default().fg(theme.accent),
@@ -412,6 +418,7 @@ fn process_info_metrics_lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'
     lines.push(metric_header_line(
         metrics.value_heading,
         metrics.delta_heading,
+        label_width,
         width,
         theme,
     ));
@@ -438,6 +445,7 @@ fn process_info_metrics_lines(app: &App, width: u16, theme: Theme) -> Vec<Line<'
             row.label,
             &row.value,
             row.delta.as_deref(),
+            label_width,
             width,
             theme,
         ));
@@ -547,15 +555,16 @@ fn info_value(value: Option<&InfoValue>) -> String {
 fn metric_header_line(
     value_heading: &str,
     delta_heading: Option<&str>,
+    label_width: usize,
     width: u16,
     theme: Theme,
 ) -> Line<'static> {
     let header_style = Style::default()
         .fg(theme.text)
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
-    if width >= METRIC_WIDE_LAYOUT_WIDTH {
+    if usize::from(width) >= label_width + METRIC_VALUE_WIDTH + METRIC_DELTA_WIDTH {
         let mut spans = vec![Span::styled("Metrics", header_style)];
-        spans.push(Span::raw(" ".repeat(METRIC_LABEL_WIDTH - "Metrics".len())));
+        spans.push(Span::raw(" ".repeat(label_width - "Metrics".len())));
         spans.push(Span::raw(
             " ".repeat(METRIC_VALUE_WIDTH.saturating_sub(value_heading.len())),
         ));
@@ -581,11 +590,11 @@ fn metric_value_line(
     label: &str,
     value: &str,
     delta: Option<&str>,
+    label_width: usize,
     width: u16,
     theme: Theme,
 ) -> Line<'static> {
-    let label_width = METRIC_LABEL_WIDTH;
-    let text = if width >= METRIC_WIDE_LAYOUT_WIDTH {
+    let text = if usize::from(width) >= label_width + METRIC_VALUE_WIDTH + METRIC_DELTA_WIDTH {
         let value_width = METRIC_VALUE_WIDTH;
         let delta_width = METRIC_DELTA_WIDTH;
         match delta {

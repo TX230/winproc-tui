@@ -8324,8 +8324,6 @@ impl App {
         use crate::ui::process_table::ColumnControl;
         self.focused_panel = FocusedPanel::Processes;
         match control {
-            ColumnControl::Narrow => self.narrow_selected_process_column(),
-            ColumnControl::Widen => self.widen_selected_process_column(),
             ColumnControl::Previous | ColumnControl::Next => {
                 let range = self.visible_process_metric_range();
                 let index = if control == ColumnControl::Previous {

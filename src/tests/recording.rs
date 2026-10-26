@@ -941,13 +941,7 @@ fn recording_header_shows_rec_spinner_and_path() {
 
     let narrow = render_app_to_text(&app, 80, 45);
     let footer = narrow.lines().last().unwrap();
-    for shortcut in [
-        "ESC Menu",
-        "F1/? Help",
-        "Ctrl+R Stop",
-        "Ctrl+P Resume",
-        "Tab Focus",
-    ] {
+    for shortcut in ["ESC Menu", "Ctrl+R Stop", "Ctrl+P Resume"] {
         assert!(footer.contains(shortcut), "{footer}");
     }
 

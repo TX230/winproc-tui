@@ -1836,3 +1836,65 @@ fn inspection_table_focus_headings_are_consistent_without_moving_columns() {
         }
     }
 }
+
+#[test]
+fn process_info_metric_values_share_right_edges_including_long_labels() {
+    let mut app = make_test_app(1, 10);
+    let at = app.snapshot.captured_at;
+    let mut process = app.snapshot.processes[0].clone();
+    process.workset_shareable_bytes = Some(316_400_000);
+    process.dotnet_gc_poh_bytes = Some(1_234_567);
+    app.process_history = ProcessHistory::default();
+    app.process_history
+        .record_snapshot_unbounded(at, std::slice::from_ref(&process));
+    app.open_selected_process_info_dialog().unwrap();
+    for comparison in [false, true] {
+        if comparison {
+            app.ab_comparison = Some(app::AbComparison {
+                a: Some(app::AbComparisonPoint { captured_at: at }),
+                b: Some(app::AbComparisonPoint { captured_at: at }),
+            });
+        }
+        for width in [80, 120, 180] {
+            let buffer = render_app_to_buffer(&app, width, 60);
+            let view = app.process_info_metrics_view().unwrap();
+            for label in ["Working Set - Shareable", ".NET Pinned Object Heap"] {
+                assert_ne!(
+                    view.rows
+                        .iter()
+                        .find(|row| row.label == label)
+                        .unwrap()
+                        .value,
+                    "--"
+                );
+            }
+            let mut content = ui::process_info_content_area_for_screen(
+                Rect::new(0, 0, width, 60),
+                app.process_info_height(),
+            );
+            content.y += 1;
+            content.height -= 1;
+            let (heading_x, heading_y) =
+                find_text_position_in_area(&buffer, content, view.value_heading).unwrap();
+            let right = heading_x + view.value_heading.len() as u16;
+            for row in &view.rows {
+                let (label_x, y) = find_text_position_in_area(&buffer, content, row.label).unwrap();
+                assert!(y > heading_y);
+                let start = right - row.value.len() as u16;
+                let rendered: String = (start..right).map(|x| buffer[(x, y)].symbol()).collect();
+                assert_eq!(rendered, row.value, "{} at {width}", row.label);
+                assert!(start >= label_x + row.label.len() as u16 + 2);
+                if let Some(delta) = &row.delta {
+                    let heading = view.delta_heading.unwrap();
+                    let (dx, _) = find_text_position_in_area(&buffer, content, heading).unwrap();
+                    let right = dx + heading.len() as u16;
+                    let expected = format!("({delta})");
+                    let rendered: String = (right - expected.len() as u16..right)
+                        .map(|x| buffer[(x, y)].symbol())
+                        .collect();
+                    assert_eq!(rendered, expected, "{} delta at {width}", row.label);
+                }
+            }
+        }
+    }
+}

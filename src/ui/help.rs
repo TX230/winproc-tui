@@ -223,7 +223,7 @@ const PROCESSES_ROWS: &[HelpItem] = &[
         label: "Kill selected processes, or the focused process; review progress/results",
     },
     HelpItem {
-        key: "v",
+        key: "v / Shift+V",
         label: "Toggle Flat / Tree view (Live and Recording)",
     },
     HelpItem {

@@ -517,7 +517,7 @@ fn mode_toggle_is_keyboard_and_mouse_accessible_and_tree_clipboard_stays_raw() {
 
     let screen = Rect::new(0, 0, 140, 45);
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let (mode_x, mode_y) = find_text_position(&buffer, "Flat(v)").unwrap();
+    let (mode_x, mode_y) = find_text_position(&buffer, "[ ] Tree (Shift+V)").unwrap();
     app.on_mouse(mouse_move(mode_x, mode_y), screen);
     let hovered = render_app_to_buffer(&app, screen.width, screen.height);
     assert_eq!(hovered[(mode_x, mode_y)].bg, app.theme().focus_surface);
@@ -792,4 +792,48 @@ fn tree_column_resize_keeps_name_and_disclosure_positions() {
     app.on_mouse(left_click(x - 2, y), screen);
     assert_eq!(app.visible_process_count(), 4);
     assert!(app.watch_list.is_empty());
+}
+
+#[test]
+fn shifted_view_toggle_preserves_focus_editing_and_log_restrictions() {
+    let mut app = make_tree_app();
+    app.focused_panel = FocusedPanel::Processes;
+    for ch in ['v', 'V'] {
+        app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::SHIFT))
+            .unwrap();
+        assert_eq!(app.process_view_mode, ProcessViewMode::Flat);
+        app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.process_view_mode, ProcessViewMode::Tree);
+    }
+    for modifiers in [
+        KeyModifiers::CONTROL,
+        KeyModifiers::ALT,
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    ] {
+        app.on_key(KeyEvent::new(KeyCode::Char('V'), modifiers))
+            .unwrap();
+        assert_eq!(app.process_view_mode, ProcessViewMode::Tree);
+    }
+    if app.is_main_menu_open() {
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+    }
+    app.focused_panel = FocusedPanel::Cpu;
+    app.on_key(KeyEvent::new(KeyCode::Char('V'), KeyModifiers::SHIFT))
+        .unwrap();
+    assert_eq!(app.process_view_mode, ProcessViewMode::Tree);
+    app.focused_panel = FocusedPanel::Processes;
+    app.begin_filter_edit();
+    app.on_key(KeyEvent::new(KeyCode::Char('V'), KeyModifiers::SHIFT))
+        .unwrap();
+    assert_eq!(app.active_filter_text(), "V");
+    assert_eq!(app.process_view_mode, ProcessViewMode::Tree);
+    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .unwrap();
+    app.log_view_path = Some("example.log".into());
+    app.on_key(KeyEvent::new(KeyCode::Char('V'), KeyModifiers::SHIFT))
+        .unwrap();
+    assert_eq!(app.effective_process_view_mode(), ProcessViewMode::Flat);
+    assert_eq!(app.process_view_mode, ProcessViewMode::Tree);
 }

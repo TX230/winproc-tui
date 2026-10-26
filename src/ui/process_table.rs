@@ -447,22 +447,12 @@ fn process_table_block<'a>(
             .right_aligned(),
         );
     }
-    block = block.title_bottom(if empty_in_border {
-        Line::styled(empty_process_message(app), Style::default().fg(theme.muted))
-    } else {
-        Line::from(vec![
-            Span::styled(column_width_label(app), Style::default().fg(theme.muted)),
-            Span::styled(
-                "[-]",
-                column_control_style(ColumnControl::Narrow, app, theme),
-            ),
-            Span::raw(" "),
-            Span::styled(
-                "[+]",
-                column_control_style(ColumnControl::Widen, app, theme),
-            ),
-        ])
-    });
+    if empty_in_border {
+        block = block.title_bottom(Line::styled(
+            empty_process_message(app),
+            Style::default().fg(theme.muted),
+        ));
+    }
     if input_active {
         block.border_style(Style::default().fg(theme.focus_border))
     } else {
@@ -1129,7 +1119,7 @@ fn process_table_state_segments(app: &App, width: u16) -> Vec<ProcessTitleSegmen
         ProcessTitleSegment {
             kind: ProcessTitleSegmentKind::ShowExited,
             label: format!(
-                "[{}] Show exited(Shift+E)",
+                "[{}] Exited (Shift+E)",
                 if app.show_exited { 'x' } else { ' ' }
             ),
         },
@@ -1208,7 +1198,14 @@ fn process_view_mode_label(app: &App) -> String {
     if app.activity() == AppActivity::LogView {
         "Flat (Tree unavailable in LOG)".to_string()
     } else {
-        format!("{}(v)", app.process_view_mode.label())
+        format!(
+            "[{}] Tree (Shift+V)",
+            if app.process_view_mode == ProcessViewMode::Tree {
+                'x'
+            } else {
+                ' '
+            }
+        )
     }
 }
 
@@ -1226,7 +1223,7 @@ fn process_tracked_only_title_spans(app: &App, theme: Theme) -> Vec<Span<'static
         let plain = |color| Style::default().fg(color).remove_modifier(Modifier::BOLD);
         return vec![
             Span::styled("[x]", plain(theme.tracked)),
-            Span::styled(" Tracked-only", plain(theme.text)),
+            Span::styled(" Tracked ", plain(theme.text)),
             Span::styled("(Shift+T)", plain(theme.muted)),
         ];
     }
@@ -1373,9 +1370,9 @@ fn process_title_control_area(
 
 fn process_tracked_only_label(app: &App) -> &'static str {
     if app.watch_enabled {
-        "[x] Tracked-only(Shift+T)"
+        "[x] Tracked (Shift+T)"
     } else {
-        "[ ] Tracked-only(Shift+T)"
+        "[ ] Tracked (Shift+T)"
     }
 }
 
@@ -1997,12 +1994,6 @@ mod tests {
 pub(crate) enum ColumnControl {
     Previous,
     Next,
-    Narrow,
-    Widen,
-}
-
-fn column_width_label(app: &App) -> String {
-    format!("Width: {} ", app.selected_process_column().label())
 }
 
 pub(crate) fn column_control_areas(area: Rect, app: &App) -> Vec<(ColumnControl, Rect)> {
@@ -2030,17 +2021,6 @@ pub(crate) fn column_control_areas(area: Rect, app: &App) -> Vec<(ColumnControl,
                 ));
             }
         }
-    }
-    let prefix_width = Line::from(column_width_label(app)).width() as u16;
-    if !empty_message_in_border(area, app) && area.width >= prefix_width + 10 && area.height > 0 {
-        controls.push((
-            ColumnControl::Narrow,
-            Rect::new(area.x + 1 + prefix_width, area.bottom() - 1, 3, 1),
-        ));
-        controls.push((
-            ColumnControl::Widen,
-            Rect::new(area.x + 5 + prefix_width, area.bottom() - 1, 3, 1),
-        ));
     }
     controls
 }

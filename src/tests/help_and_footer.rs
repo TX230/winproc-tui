@@ -385,7 +385,7 @@ fn footer_shows_process_context_on_one_row() {
     assert!(rendered.contains("PROCESSES"), "{rendered}");
     assert!(rendered.contains("Ctrl+P Pause"), "{rendered}");
     assert!(rendered.contains("Ctrl+S Save Profile"), "{rendered}");
-    assert!(rendered.contains("Ctrl+T Profiles"), "{rendered}");
+    assert!(!rendered.contains("Ctrl+T Profiles"), "{rendered}");
     assert!(rendered.contains("c Columns"), "{rendered}");
     assert!(rendered.contains("s Sort"), "{rendered}");
     assert!(rendered.contains("v Flat/Tree"), "{rendered}");
@@ -395,14 +395,14 @@ fn footer_shows_process_context_on_one_row() {
     assert!(!rendered.contains("Shift+←/→ Move column"), "{rendered}");
     assert!(rendered.contains("Space Graph"), "{rendered}");
     assert!(rendered.contains("Enter Process Info"), "{rendered}");
-    assert!(rendered.contains("t Track process name"), "{rendered}");
-    assert!(rendered.contains("Shift+T Tracked-only"), "{rendered}");
+    assert!(rendered.contains("t Track process"), "{rendered}");
+    assert!(!rendered.contains("Shift+T Tracked-only"), "{rendered}");
     assert!(rendered.contains("d Kill"), "{rendered}");
     assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
     assert!(rendered.contains("ESC Menu"), "{rendered}");
-    assert!(rendered.contains("Tab Focus"), "{rendered}");
+    assert!(!rendered.contains("Tab Focus"), "{rendered}");
     assert!(rendered.contains("F12 Theme"), "{rendered}");
-    assert!(rendered.contains("F1/? Help"), "{rendered}");
+    assert!(!rendered.contains("F1/? Help"), "{rendered}");
     assert!(!rendered.contains("Status  "), "{rendered}");
     assert!(rendered.contains("Copied row: proc-0"), "{rendered}");
     assert!(!rendered.contains("Up/Down Row"), "{rendered}");
@@ -450,7 +450,7 @@ fn footer_pause_label_tracks_display_pause_state() {
 }
 
 #[test]
-fn footer_keeps_menu_help_and_focus_visible_at_narrow_width() {
+fn footer_keeps_menu_visible_without_redundant_hints_at_narrow_width() {
     let app = make_test_app(3, 10);
     let buffer = render_app_to_buffer(&app, 30, 24);
     let footer = Rect::new(0, 23, 30, 1);
@@ -459,8 +459,8 @@ fn footer_keeps_menu_help_and_focus_visible_at_narrow_width() {
 
     assert_eq!(menu_x, 0);
     assert_eq!(menu_y, footer.y);
-    assert!(find_text_position_in_area(&buffer, footer, "F1/? Help").is_some());
-    assert!(find_text_position_in_area(&buffer, footer, "Tab Focus").is_some());
+    assert!(find_text_position_in_area(&buffer, footer, "F1/? Help").is_none());
+    assert!(find_text_position_in_area(&buffer, footer, "Tab Focus").is_none());
     assert!(find_text_position_in_area(&buffer, footer, "PROCESSES").is_none());
     assert!(find_text_position(&buffer, "Ctrl+O").is_none());
 }
@@ -472,7 +472,7 @@ fn process_footer_labels_space_for_the_selected_cell_action() {
 
     let identity_column = render_app_to_text(&app, 170, 30);
     assert!(
-        identity_column.contains("Space Track process name"),
+        identity_column.contains("Space Track process"),
         "{identity_column}"
     );
     assert!(
@@ -484,7 +484,7 @@ fn process_footer_labels_space_for_the_selected_cell_action() {
     let metric_column = render_app_to_text(&app, 170, 30);
     assert!(metric_column.contains("Space Graph"), "{metric_column}");
     assert!(
-        !metric_column.contains("Space Track process name"),
+        !metric_column.contains("Space Track process"),
         "{metric_column}"
     );
 }
@@ -583,14 +583,18 @@ fn footer_shows_pause_and_focus_for_every_focused_panel() {
             rendered.contains("Ctrl+P Pause"),
             "{focused_panel:?}: {rendered}"
         );
-        assert_eq!(
-            rendered.contains("Tab Focus"),
-            !matches!(
-                focused_panel,
-                FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
-            ),
-            "{focused_panel:?}: {rendered}"
-        );
+        for removed in [
+            "Tab Focus",
+            "F1/? Help",
+            "Ctrl+T Profiles",
+            "f Files",
+            "Shift+T Tracked-only",
+        ] {
+            assert!(
+                !rendered.lines().last().unwrap().contains(removed),
+                "{focused_panel:?}: {rendered}"
+            );
+        }
     }
 }
 
@@ -625,9 +629,8 @@ fn footer_fits_whole_shortcuts_and_preserves_essential_actions() {
                 if width >= 160 {
                     for required in [
                         "ESC Menu",
-                        "F1/? Help",
                         if panel == FocusedPanel::Processes {
-                            "Tab Focus"
+                            "Enter Process Info"
                         } else {
                             "Alt+←/→ Pan"
                         },
@@ -647,7 +650,7 @@ fn footer_fits_whole_shortcuts_and_preserves_essential_actions() {
     app.log_view_path = Some(std::path::PathBuf::from("sample.log"));
     let rendered = render_app_to_text(&app, 80, 48);
     let footer = rendered.lines().last().unwrap();
-    assert!(footer.contains("ESC Menu") && footer.contains("F1/? Help"));
+    assert!(footer.contains("ESC Menu") && !footer.contains("F1/? Help"));
     assert!(!footer.contains("Ctrl+P"));
 }
 
@@ -682,7 +685,7 @@ fn action_feedback_is_visible_without_adding_footer_height() {
         app.status = message.to_string();
         let text = render_app_to_text(&app, 120, 60);
         assert!(text.lines().nth(58).unwrap().contains(message), "{text}");
-        assert!(text.lines().last().unwrap().contains("F1/? Help"));
+        assert!(text.lines().last().unwrap().contains("ESC Menu"));
     }
 }
 
@@ -758,7 +761,7 @@ fn graph_time_shortcuts_fit_at_80_columns_in_each_activity() {
             }
             let rendered = render_app_to_text(&app, 80, 60);
             let footer = rendered.lines().last().unwrap();
-            for hint in ["ESC Menu", "F1/? Help", "Alt+←/→ Pan", "PageUp/PageDown"] {
+            for hint in ["ESC Menu", "Alt+←/→ Pan", "PageUp/PageDown"] {
                 assert!(footer.contains(hint), "{panel:?}, {activity}: {footer}");
             }
             assert!(!footer.contains("Tab Focus"), "{footer}");
@@ -884,7 +887,10 @@ fn click_visible_shortcut(app: &mut crate::App, text: &str) {
 #[test]
 fn visible_footer_actions_complete_mouse_dialog_workflows() {
     let mut app = make_test_app(3, 10);
-    click_visible_shortcut(&mut app, "F1/? Help");
+    let (worker, _requests, _results) = crate::samplers::open_files::OpenFilesWorker::test_pair();
+    app.open_files_worker = worker;
+    app.on_key(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE))
+        .unwrap();
     assert!(app.show_help);
     click_visible_shortcut(&mut app, "Esc/Enter/F1/? Close");
     assert!(!app.show_help);
@@ -907,7 +913,8 @@ fn visible_footer_actions_complete_mouse_dialog_workflows() {
     assert!(app.show_process_info_dialog);
     click_visible_shortcut(&mut app, "Esc close");
     assert!(!app.show_process_info_dialog);
-    click_visible_shortcut(&mut app, "f Files");
+    app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
+        .unwrap();
     assert!(app.show_process_info_dialog);
     assert_eq!(app.process_info_tab, crate::app::ProcessInfoTab::Files);
     click_visible_shortcut(&mut app, "Esc close");
@@ -956,7 +963,7 @@ fn menus_toggle_and_shortcut_hover_redraws_without_click_through() {
     app.on_mouse(super::support::left_click(179, 30), screen);
     assert!(!app.is_main_menu_open());
     let buffer = render_app_to_buffer(&app, 180, 60);
-    let (x, y) = find_text_position(&buffer, "F1/? Help").unwrap();
+    let (x, y) = find_text_position(&buffer, "ESC Menu").unwrap();
     assert!(
         crate::app::handle_mouse_event(&mut app, super::support::mouse_move(x + 7, y), screen)
             .dirty
@@ -1090,7 +1097,7 @@ fn latest_feedback_uses_paused_or_recorded_source_and_never_negative_zero() {
     let text = render_app_to_text(&app, 180, 60);
     assert_eq!(buffer.area, Rect::new(0, 0, 180, 60));
     assert!(text.lines().nth(58).unwrap().starts_with("Tracking added:"));
-    assert!(text.lines().last().unwrap().contains("F1/? Help"));
+    assert!(text.lines().last().unwrap().contains("ESC Menu"));
 }
 
 #[test]
