@@ -6,7 +6,9 @@
 
 Language: [English](README.md) | [日本語](README.ja.md)
 
-`winproc-tui` is a keyboard-first process monitor for Windows 11. It shows how an application's memory, handles, GUI resources, GPU memory, I/O, .NET runtime metrics, and other metrics change over time, directly in the terminal.
+`winproc-tui` is a lightweight process monitor for Windows 11, built in Rust for responsive monitoring with low CPU usage and a small memory footprint.
+
+Monitor multiple system-wide and per-process metrics, visualize resource trends, and investigate process behavior directly in the terminal. Track how an application's memory, handles, GUI resources, GPU memory, I/O, .NET runtime metrics, and other metrics change over time.
 
 Select the metrics that matter, keep up to 16 Graphs in one workspace, compare exact points with A/B markers, and record sessions for later inspection. The focus is fast, repeatable investigation of selected processes during development and testing—not broad system inspection.
 
@@ -105,14 +107,14 @@ _After pressing n: the selected process shows measurements; the other processes 
 
 ## Capabilities
 
-Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
-
+- **CSV export**: Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
 - **Live monitoring**: Shows system memory pressure, per-adapter GPU load and memory, network and disk activity, CPU activity, and detailed per-process metrics.
 - **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
 - **Graphs and A/B comparison**: Keeps up to 16 metrics in an ordered workspace with synchronized Samples, then compares metric values at two selected sample times.
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
 - **.NET metrics**: Collect .NET 8/9/10 metrics explicitly for individual processes; supported .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning and steps.
 - **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
+- **Find processes by file**: Search by file name or path to find processes that have a file open. Open a result in the Process Info Files tab to inspect its handles, access rights, and other details.
 - **Network endpoints**: Open **Investigation > Network endpoints** (**F3**) to inspect TCP/UDP addresses, ports, and owners across the system, then open Process Info for an owner. The workspace keeps its results and filter when switching views. Lists refresh on demand and are not recorded.
 - **Recording and Log view**: Records system metrics and matching processes as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
 
@@ -130,8 +132,6 @@ The last working Tracking List and app settings are restored on the next launch,
 - Find processes using a file by name or path through **Investigation > Find processes by file** (**F4**), then open the owner's Files tab. Search reports include partial-coverage information.
 - Compare resource usage before and after a specific operation or code change.
 - Record a target process and later inspect history around the time an issue occurred.
-
-Use Windows Performance Monitor (PerfMon) for arbitrary counters, remote monitoring, and managed Data Collector Sets. Use Process Explorer or System Informer for broad system inspection. Choose `winproc-tui` when the task is to follow selected processes and compare their recent behavior quickly and repeatedly.
 
 ## Recording and Log View
 
