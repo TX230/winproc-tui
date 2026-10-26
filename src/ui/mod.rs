@@ -77,8 +77,7 @@ pub(crate) use investigation_profiles::{
 pub(crate) use layout::main_panel_areas;
 #[cfg(test)]
 pub(crate) use layout::{
-    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_graph_area_for_app,
-    details_samples_area_for_app, details_shared_controls_area_for_app,
+    details_graph_area_for_app, details_samples_area_for_app, details_shared_controls_area_for_app,
 };
 pub(crate) use layout::{main_panel_areas_for_app, screen_layout};
 use log_list::{draw_log_dir_dialog, draw_log_list};

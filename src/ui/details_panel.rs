@@ -983,6 +983,18 @@ fn draw_graph_shared_controls(
     theme: Theme,
 ) {
     let controls = graph_shared_control_areas(area, app.show_samples_panel);
+    if let Some(area) = controls.auto_scroll {
+        let hovered = app.graph_hovered_target == Some(GraphHoverTarget::AutoScroll);
+        let style = graph_button_style(theme, hovered, true).fg(theme.text);
+        let label = if !app.graph_auto_scroll_available() {
+            "[Latest]"
+        } else if app.details_live {
+            "[x] Auto Scroll (End)"
+        } else {
+            "[ ] Auto Scroll (End)"
+        };
+        frame.render_widget(Paragraph::new(label).style(style), area);
+    }
     render_graph_toggle_mark(
         frame,
         controls.samples,

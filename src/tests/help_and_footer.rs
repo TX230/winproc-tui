@@ -524,7 +524,8 @@ fn footer_shortcuts_follow_the_focused_panel() {
     assert!(samples.contains("Del Remove"), "{samples}");
     assert!(samples.contains("m Raw/MA5"), "{samples}");
     assert!(samples.contains("PageUp/PageDown Scroll"), "{samples}");
-    assert!(samples.contains("Home/End Edge"), "{samples}");
+    assert!(samples.contains("Home Oldest"), "{samples}");
+    assert!(samples.contains("End Latest"), "{samples}");
     assert!(samples.contains("f/z Fit/Min 0"), "{samples}");
     assert!(samples.contains("Shift+A/B Jump A/B"), "{samples}");
     assert!(samples.contains("a/b A/B range"), "{samples}");

@@ -629,11 +629,19 @@ const GRAPH_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "f/z",
-        label: "Fit all / compact Min0",
+        label: "Fit all / compact Min0; Auto Scroll off fixes the current span",
     },
     HelpItem {
         key: "v/d/l",
         label: "Samples / Delta / layout",
+    },
+    HelpItem {
+        key: "Auto Scroll / End",
+        label: "Toggle: freeze / follow latest. Plot click: inspect while following.",
+    },
+    HelpItem {
+        key: "Latest",
+        label: "Paused/LOG: jump to frozen/recorded end; keep display paused.",
     },
     HelpItem {
         key: "Compact workspace",

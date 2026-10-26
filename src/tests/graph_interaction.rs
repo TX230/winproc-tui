@@ -11,8 +11,8 @@ use crate::samplers::process_info::ProcessInfoWorker;
 use crate::samplers::{CollectSnapshotResult, SamplingWorker};
 use crate::ui;
 use crate::ui::{
-    GRAPH_ALL_SAMPLES_TOGGLE_WIDTH, GRAPH_Y_AXIS_TOGGLE_WIDTH, details_graph_area_for_app,
-    details_samples_area_for_app, details_shared_controls_area_for_app, main_panel_areas_for_app,
+    details_graph_area_for_app, details_samples_area_for_app, details_shared_controls_area_for_app,
+    main_panel_areas_for_app,
 };
 use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -1229,7 +1229,7 @@ fn frozen_graph_window_uses_rounded_subsecond_sample_intervals() {
 }
 
 #[test]
-fn graph_cursor_movement_does_not_stop_graph_live_scroll() {
+fn graph_cursor_movement_stops_graph_auto_scroll() {
     let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
     let mut app = make_test_app_with_worker(1, 10, sampling_worker);
     assign_private_graph(&mut app);
@@ -1265,8 +1265,8 @@ fn graph_cursor_movement_does_not_stop_graph_live_scroll() {
         .unwrap();
     app.poll_sample_results().unwrap();
 
-    assert_eq!(app.graph_time_offset_seconds, 0);
-    assert!(app.graph_time_window_right_at.is_none());
+    assert_eq!(app.graph_time_offset_seconds, 1);
+    assert!(app.graph_time_window_right_at.is_some());
 }
 
 #[test]
@@ -1369,11 +1369,11 @@ fn graph_all_samples_checkbox_uses_full_sample_span() {
 
     let screen = Rect::new(0, 0, 120, 45);
     let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
-    let x = controls
-        .right()
-        .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
-        .saturating_sub(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH)
-        .saturating_add(1);
+    let x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+        .all_samples
+        .unwrap()
+        .x
+        + 1;
     let y = controls.y;
 
     app.on_mouse(
@@ -1544,10 +1544,11 @@ fn graph_y_axis_checkbox_click_toggles_scale_mode() {
 
     let screen = Rect::new(0, 0, 120, 45);
     let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
-    let x = controls
-        .right()
-        .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
-        .saturating_add(1);
+    let x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+        .y_axis
+        .unwrap()
+        .x
+        + 1;
     let y = controls.y;
 
     app.on_mouse(
@@ -1587,15 +1588,16 @@ fn graph_checkboxes_work_when_samples_panel_is_hidden() {
     let screen = Rect::new(0, 0, 120, 45);
     let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
     let y = controls.y;
-    let all_samples_x = controls
-        .right()
-        .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
-        .saturating_sub(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH)
-        .saturating_add(1);
-    let y_axis_x = controls
-        .right()
-        .saturating_sub(GRAPH_Y_AXIS_TOGGLE_WIDTH)
-        .saturating_add(1);
+    let all_samples_x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+        .all_samples
+        .unwrap()
+        .x
+        + 1;
+    let y_axis_x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+        .y_axis
+        .unwrap()
+        .x
+        + 1;
 
     app.on_mouse(
         MouseEvent {
@@ -2016,5 +2018,378 @@ fn samples_click_selects_one_scrolled_row_and_clears_keyboard_range() {
         assert!(app.sample_selection.is_none());
         assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 1);
         assert!(!app.details_live);
+    }
+}
+
+#[test]
+fn graph_auto_scroll_off_survives_samples_and_end_resumes_latest() {
+    for fit_all in [false, true] {
+        let (worker, _requests, results) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, worker);
+        assign_private_graph(&mut app);
+        let latest = app.snapshot.captured_at;
+        for seconds in [120, 60, 0] {
+            app.process_history.record_snapshot(
+                latest - chrono::Duration::seconds(seconds),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.graph_time_span_seconds = 60;
+        app.graph_show_all_samples = fit_all;
+        app.select_details_sample_latest();
+        let span = app.effective_graph_time_span_seconds();
+        app.set_ab_point_a();
+        let ab = app.ab_comparison.clone();
+        let id = app.active_graph_id;
+        app.activate_graph_auto_scroll();
+        assert!(!app.details_live);
+        assert!(!app.graph_show_all_samples);
+        assert_eq!(app.graph_time_span_seconds, span);
+        assert_eq!(app.graph_time_window_right_at, Some(latest));
+        assert!(app.graph_visible_range_includes_latest_sample());
+        for seconds in 1..=3 {
+            let mut snapshot = test_snapshot(1);
+            snapshot.captured_at = latest + chrono::Duration::seconds(seconds);
+            app.sampling_in_progress = true;
+            results
+                .send(CollectSnapshotResult {
+                    snapshot,
+                    warning: None,
+                })
+                .unwrap();
+            app.poll_sample_results().unwrap();
+            assert!(!app.details_live);
+            assert_eq!(app.graph_time_window_right_at, Some(latest));
+            assert_eq!(app.graph_time_offset_seconds, seconds as u32);
+        }
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert!(app.graph_time_window_right_at.is_none());
+        assert_eq!(app.effective_graph_time_span_seconds(), span);
+        assert_eq!(app.ab_comparison, ab);
+        assert_eq!(app.active_graph_id, id);
+        assert_eq!(app.details_sample_selected + 1, app.selected_sample_count());
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = latest + chrono::Duration::seconds(4);
+        app.sampling_in_progress = true;
+        results
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+        assert!(app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 0);
+    }
+}
+
+#[test]
+fn graph_auto_scroll_control_renders_clicks_and_hovers_at_compact_widths() {
+    for width in [40, 60, 80, 120, 180] {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at,
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+        let screen = Rect::new(0, 0, width, 45);
+        app::sync_layout_state(&mut app, screen);
+        let area = details_shared_controls_area_for_app(screen, &app).unwrap();
+        let controls = ui::layout::graph_shared_control_areas(area, app.show_samples_panel);
+        let control = controls.auto_scroll.unwrap();
+        assert_eq!(control.right(), area.right());
+        for other in [
+            controls.samples,
+            controls.delta,
+            controls.layout,
+            controls.all_samples,
+            controls.y_axis,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(other.right() < control.x);
+        }
+        assert!(render_app_to_text(&app, width, 45).contains("[x] Auto Scroll (End)"));
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: control.x + 5,
+                row: control.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(
+            app.graph_hovered_target,
+            Some(app::GraphHoverTarget::AutoScroll)
+        );
+        let buffer = render_app_to_buffer(&app, width, 45);
+        let cell = &buffer[(control.x + 5, control.y)];
+        assert_eq!(cell.bg, ui::THEMES[app.theme_index].focus_surface);
+        assert!(cell.modifier.contains(ratatui::style::Modifier::BOLD));
+        for expected in [false, true] {
+            app.on_mouse(
+                MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: control.x + 5,
+                    row: control.y,
+                    modifiers: KeyModifiers::NONE,
+                },
+                screen,
+            );
+            assert_eq!(app.details_live, expected);
+            let mark = if expected {
+                "[x] Auto Scroll (End)"
+            } else {
+                "[ ] Auto Scroll (End)"
+            };
+            assert!(render_app_to_text(&app, width, 45).contains(mark));
+        }
+    }
+}
+
+#[test]
+fn graph_auto_scroll_becomes_latest_for_paused_and_recorded_data() {
+    for paused in [true, false] {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        for seconds in [0, 60] {
+            app.process_history.record_snapshot(
+                app.snapshot.captured_at + chrono::Duration::seconds(seconds),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        if paused {
+            app.toggle_display_pause();
+        } else {
+            app.log_view_path = Some("recorded.jsonl".into());
+        }
+        app.select_details_sample_oldest();
+        assert!(!app.graph_auto_scroll_available());
+        let text = render_app_to_text(&app, 120, 45);
+        assert!(text.contains("[Latest]"));
+        assert!(!text.contains("Auto Scroll"));
+        app.activate_graph_auto_scroll();
+        assert!(app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, 0);
+        assert_eq!(app.is_display_paused(), paused);
+        assert_eq!(app.details_sample_selected + 1, app.selected_sample_count());
+        app.activate_graph_auto_scroll();
+        assert!(app.details_live);
+    }
+}
+
+#[test]
+fn graph_auto_scroll_end_uses_workspace_end_when_active_series_has_ended() {
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    let active = app.active_graph_id;
+    app.process_history.record_snapshot(
+        app.snapshot.captured_at,
+        &app.snapshot.processes,
+        &app.normalized_watch_names,
+    );
+    let mut snapshot = test_snapshot(1);
+    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(120);
+    app.system_history.record_snapshot(&snapshot);
+    app.add_or_reveal_graph_source(
+        GraphSlot::System {
+            metric: SystemMetric::CpuAverage,
+        },
+        FocusedPanel::DetailsGraph,
+    );
+    app.active_graph_id = active;
+    app.graph_time_span_seconds = 60;
+    app.set_graph_time_window_offset(60);
+    app.select_details_sample_latest();
+    assert!(app.details_live);
+    assert_eq!(app.graph_time_offset_seconds, 0);
+    assert_eq!(app.graph_time_reference_at(), Some(snapshot.captured_at));
+    assert_eq!(app.active_graph_id, active);
+}
+
+#[test]
+fn graph_auto_scroll_off_keeps_recording_and_can_freeze_maximum_span() {
+    let (worker, _requests, results) = SamplingWorker::test_pair();
+    let mut app = make_test_app_with_worker(1, 10, worker);
+    assign_private_graph(&mut app);
+    super::support::track_process_name(&mut app, "proc-0");
+    let path = super::support::unique_recording_path("auto-scroll");
+    app.recording_path_draft = path.display().to_string();
+    app.confirm_recording_path().unwrap();
+    let latest = app.snapshot.captured_at;
+    app.process_history.record_snapshot(
+        latest,
+        &app.snapshot.processes,
+        &app.normalized_watch_names,
+    );
+    app.graph_time_span_seconds = crate::model::TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY as u32;
+    app.activate_graph_auto_scroll();
+    for seconds in 1..=3 {
+        let mut snapshot = test_snapshot(1);
+        snapshot.captured_at = latest + chrono::Duration::seconds(seconds);
+        app.sampling_in_progress = true;
+        results
+            .send(CollectSnapshotResult {
+                snapshot,
+                warning: None,
+            })
+            .unwrap();
+        app.poll_sample_results().unwrap();
+        assert_eq!(app.activity(), app::AppActivity::Recording);
+        assert!(!app.details_live);
+        assert_eq!(app.graph_time_offset_seconds, seconds as u32);
+    }
+    app.activate_graph_auto_scroll();
+    assert!(app.details_live);
+    assert_eq!(app.activity(), app::AppActivity::Recording);
+    app.stop_recording().unwrap();
+    let log = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        log.lines().count() >= 5,
+        "recording must contain samples while scrolling is off"
+    );
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn graph_auto_scroll_right_drag_back_to_latest_checks_control() {
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    for seconds in 0..=120 {
+        app.process_history.record_snapshot(
+            app.snapshot.captured_at + chrono::Duration::seconds(seconds),
+            &app.snapshot.processes,
+            &app.normalized_watch_names,
+        );
+    }
+    app.graph_time_span_seconds = 60;
+    app.set_graph_time_window_offset(15);
+    assert!(!app.details_live);
+    let screen = Rect::new(0, 0, 120, 45);
+    let graph = details_graph_area_for_app(screen, &app).unwrap();
+    let x = graph.x + 50;
+    let y = graph.y + 5;
+    for (kind, column) in [
+        (MouseEventKind::Down(MouseButton::Right), x),
+        (MouseEventKind::Drag(MouseButton::Right), graph.x + 1),
+        (MouseEventKind::Up(MouseButton::Right), graph.x + 1),
+    ] {
+        app.on_mouse(
+            MouseEvent {
+                kind,
+                column,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+    }
+    assert!(app.details_live);
+    assert_eq!(app.graph_time_offset_seconds, 0);
+    assert!(render_app_to_text(&app, 120, 45).contains("[x] Auto Scroll (End)"));
+}
+
+#[test]
+fn graph_auto_scroll_off_survives_graph_switch_add_and_remove() {
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    app.process_history.record_snapshot(
+        app.snapshot.captured_at,
+        &app.snapshot.processes,
+        &app.normalized_watch_names,
+    );
+    app.system_history.record_snapshot(&app.snapshot);
+    let first = app.active_graph_id.unwrap();
+    app.activate_graph_auto_scroll();
+    let frozen = app.graph_time_window_right_at;
+    app.add_or_reveal_graph_source(
+        GraphSlot::System {
+            metric: SystemMetric::CpuAverage,
+        },
+        FocusedPanel::DetailsGraph,
+    );
+    let second = app.active_graph_id.unwrap();
+    assert!(!app.details_live);
+    assert_eq!(app.graph_time_window_right_at, frozen);
+    app.select_graph(first);
+    assert!(!app.details_live);
+    assert_eq!(app.graph_time_window_right_at, frozen);
+    app.remove_graph(first);
+    assert_eq!(app.active_graph_id, Some(second));
+    assert!(!app.details_live);
+    assert_eq!(app.graph_time_window_right_at, frozen);
+}
+
+#[test]
+fn graph_left_click_inspects_value_without_stopping_auto_scroll() {
+    for following in [false, true] {
+        let (worker, _requests, results) = SamplingWorker::test_pair();
+        let mut app = make_test_app_with_worker(1, 10, worker);
+        assign_private_graph(&mut app);
+        let latest = app.snapshot.captured_at;
+        for seconds in 0..=120 {
+            app.process_history.record_snapshot(
+                latest - chrono::Duration::seconds(120 - seconds),
+                &app.snapshot.processes,
+                &app.normalized_watch_names,
+            );
+        }
+        app.graph_time_span_seconds = 60;
+        app.select_details_sample_latest();
+        if !following {
+            app.activate_graph_auto_scroll();
+        }
+        let screen = Rect::new(0, 0, 120, 45);
+        app::sync_layout_state(&mut app, screen);
+        let graph = details_graph_area_for_app(screen, &app).unwrap();
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: graph.x + graph.width / 2,
+                row: graph.y + 5,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        assert_eq!(app.details_live, following);
+        let selected = app.selected_details_sample_time().unwrap();
+        assert!(selected < latest);
+        for seconds in 1..=3 {
+            let mut snapshot = test_snapshot(1);
+            snapshot.captured_at = latest + chrono::Duration::seconds(seconds);
+            app.sampling_in_progress = true;
+            results
+                .send(CollectSnapshotResult {
+                    snapshot,
+                    warning: None,
+                })
+                .unwrap();
+            app.poll_sample_results().unwrap();
+            assert_eq!(app.details_live, following);
+            if following {
+                assert_eq!(app.selected_details_sample_time(), Some(selected));
+            }
+            assert_eq!(
+                app.graph_time_offset_seconds,
+                if following { 0 } else { seconds as u32 }
+            );
+        }
+        app.focused_panel = FocusedPanel::DetailsGraph;
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.selected_details_sample_time(),
+            Some(latest + chrono::Duration::seconds(3))
+        );
+        assert!(app.details_live);
     }
 }

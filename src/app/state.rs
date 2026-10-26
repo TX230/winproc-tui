@@ -530,6 +530,7 @@ impl GraphDisplayMode {
 pub(crate) enum GraphHoverTarget {
     ZoomOut,
     ZoomIn,
+    AutoScroll,
     DisplayMode(GraphId),
     Remove(GraphId),
 }
@@ -2663,11 +2664,7 @@ impl App {
         } else if removed_active {
             let next_index = index.min(self.graph_entries.len() - 1);
             self.active_graph_id = Some(self.graph_entries[next_index].id);
-            if let Some(time) = selected_time {
-                self.align_details_sample_selection_to_time(time);
-            } else {
-                self.select_details_sample_latest();
-            }
+            self.align_details_sample_selection_to_time(selected_time);
         }
         if !self.graph_entries.is_empty() {
             self.sync_graph_layout_visibility();
@@ -3037,11 +3034,7 @@ impl App {
         let selected_time = self.selected_details_sample_time();
         self.sample_selection = None;
         self.active_graph_id = Some(id);
-        if let Some(time) = selected_time {
-            self.align_details_sample_selection_to_time(time);
-        } else {
-            self.select_details_sample_latest();
-        }
+        self.align_details_sample_selection_to_time(selected_time);
         self.show_details = true;
         self.sync_graph_layout_visibility();
         self.reveal_active_graph();
@@ -3303,11 +3296,7 @@ impl App {
         self.active_graph_id = Some(id);
         self.graph_return_focus = return_focus;
         self.show_details = true;
-        if let Some(time) = selected_time {
-            self.align_details_sample_selection_to_time(time);
-        } else {
-            self.select_details_sample_latest();
-        }
+        self.align_details_sample_selection_to_time(selected_time);
         self.sync_graph_layout_visibility();
         self.reveal_active_graph();
         self.status = format!("Graph added: {description}");
@@ -3910,11 +3899,12 @@ impl App {
     }
 
     pub(crate) fn select_details_sample_latest(&mut self) {
+        self.graph_time_offset_seconds = 0;
+        self.graph_time_window_right_at = None;
         self.sample_selection = None;
         self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
         self.scroll_details_samples_to_latest();
         self.details_live = true;
-        self.ensure_selected_sample_in_graph_window();
         self.status = format!("Samples: {}", self.sample_follow_label());
     }
 
@@ -3955,22 +3945,25 @@ impl App {
         }) else {
             return;
         };
-        self.set_details_sample_selected_manual(index);
+        // Inspect a value without changing shared scrolling or moving the range.
+        self.sample_selection = None;
+        self.details_sample_selected = index;
+        self.ensure_details_sample_visible();
+        self.status = format!("Samples selection: {}", index + 1);
     }
 
-    fn align_details_sample_selection_to_time(&mut self, captured_at: DateTime<Local>) {
+    fn align_details_sample_selection_to_time(&mut self, captured_at: Option<DateTime<Local>>) {
         let Some(slot) = self.active_graph_slot() else {
             return;
         };
         let samples = self.graph_slot_samples(slot);
-        let Some(index) = sample_index_nearest_time(&samples, captured_at) else {
-            return;
-        };
-        self.details_sample_selected = index;
+        self.details_sample_selected = captured_at
+            .and_then(|time| sample_index_nearest_time(&samples, time))
+            .unwrap_or_else(|| samples.len().saturating_sub(1));
         self.clamp_details_sample_selection();
         self.ensure_details_sample_visible();
-        self.details_live = self.details_sample_selected + 1 == self.selected_sample_count();
-        self.ensure_selected_sample_in_graph_window();
+        // Changing the active series aligns Samples, not the shared follow state
+        // or time window. Only explicit time navigation may resume Auto Scroll.
     }
 
     fn ensure_selected_sample_in_graph_window(&mut self) {
@@ -4293,6 +4286,19 @@ impl App {
         }
     }
 
+    pub(crate) fn graph_auto_scroll_available(&self) -> bool {
+        self.activity() != AppActivity::LogView && !self.is_display_paused()
+    }
+
+    pub(crate) fn activate_graph_auto_scroll(&mut self) {
+        if self.graph_auto_scroll_available() && self.details_live {
+            self.freeze_graph_time_window();
+            self.status = "Graph Auto Scroll: off".into();
+        } else {
+            self.enter_details_live_mode();
+        }
+    }
+
     pub(crate) fn enter_details_live_mode(&mut self) {
         self.show_details = true;
         self.graph_time_offset_seconds = 0;
@@ -4473,7 +4479,8 @@ impl App {
     fn freeze_graph_time_window(&mut self) {
         self.details_live = false;
         if self.graph_show_all_samples {
-            return;
+            self.graph_time_span_seconds = self.effective_graph_time_span_seconds();
+            self.graph_show_all_samples = false;
         }
         self.graph_time_window_right_at = self.graph_time_window_right_edge();
     }
@@ -4505,10 +4512,9 @@ impl App {
             return;
         };
         let offset = rounded_nonnegative_seconds_between(time_reference_at, right_edge);
-        let max_offset = self
-            .graph_time_max_seconds()
-            .saturating_sub(self.graph_time_span_seconds);
-        self.graph_time_offset_seconds = offset.min(max_offset);
+        // A frozen range may include blank space before retained history. In
+        // particular, a maximum-width Fit all range must still be able to stop.
+        self.graph_time_offset_seconds = offset;
     }
 
     fn nearest_graph_offset_with_visible_sample(&self, candidate: u32) -> Option<u32> {
@@ -7740,9 +7746,18 @@ Log load worker stopped",
         if self.activity() == AppActivity::LogView {
             return Ok(false);
         }
-        if self.details_live && !self.graph_visible_range_includes_latest_sample() {
+        if !self.is_display_paused()
+            && ((!self.details_live && self.graph_time_window_right_at.is_none())
+                || (self.details_live && !self.graph_visible_range_includes_latest_sample()))
+        {
             self.freeze_graph_time_window();
         }
+        // A clicked historical value remains selected while the viewport follows
+        // new samples. Capture its timestamp before history retention changes indices.
+        let inspected_time = (self.details_live
+            && self.details_sample_selected + 1 < self.selected_sample_count())
+        .then(|| self.selected_details_sample_time())
+        .flatten();
         let next_tracked_live_identities =
             tracked_live_identities(&collected.snapshot.processes, &self.normalized_watch_names);
         self.record_exited_tracked_rows(
@@ -7787,8 +7802,20 @@ Log load worker stopped",
             if self.details_live {
                 self.graph_time_offset_seconds = 0;
                 self.graph_time_window_right_at = None;
-                self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
-                self.scroll_details_samples_to_latest();
+                let inspected_index = inspected_time.and_then(|time| {
+                    self.active_graph_slot().and_then(|slot| {
+                        self.graph_slot_samples(slot)
+                            .iter()
+                            .position(|sample| sample.captured_at == time)
+                    })
+                });
+                if let Some(index) = inspected_index {
+                    self.details_sample_selected = index;
+                    self.ensure_details_sample_visible();
+                } else {
+                    self.details_sample_selected = self.selected_sample_count().saturating_sub(1);
+                    self.scroll_details_samples_to_latest();
+                }
             } else if !self.graph_show_all_samples {
                 self.restore_frozen_graph_time_window();
             }

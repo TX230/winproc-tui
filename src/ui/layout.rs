@@ -14,11 +14,12 @@ use crate::{
 pub(crate) const HEADER_HEIGHT: u16 = 1;
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
+const GRAPH_AUTO_SCROLL_WIDTH: u16 = 21;
 pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 16;
 pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 14;
-pub(crate) const GRAPH_LAYOUT_TOGGLE_WIDTH: u16 = 15;
-pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 16;
-pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 14;
+pub(crate) const GRAPH_LAYOUT_TOGGLE_WIDTH: u16 = 14;
+pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 15;
+pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 13;
 pub(crate) const DETAILS_SHARED_CONTROLS_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_HEADER_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT: u16 = 1;
@@ -579,6 +580,7 @@ pub(crate) fn details_graph_chart_area(area: Rect, left_padding: u16) -> Option<
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct GraphSharedControlAreas {
+    pub(crate) auto_scroll: Option<Rect>,
     pub(crate) samples: Option<Rect>,
     pub(crate) delta: Option<Rect>,
     pub(crate) layout: Option<Rect>,
@@ -590,8 +592,21 @@ pub(crate) fn graph_shared_control_areas(
     area: Rect,
     show_samples_panel: bool,
 ) -> GraphSharedControlAreas {
-    let mut right = area.right();
-    let mut remaining = area.width;
+    // Keep the recovery control available before less essential display options.
+    let auto_scroll = (area.width >= GRAPH_AUTO_SCROLL_WIDTH && area.height > 0).then(|| {
+        Rect::new(
+            area.right() - GRAPH_AUTO_SCROLL_WIDTH,
+            area.y,
+            GRAPH_AUTO_SCROLL_WIDTH,
+            1,
+        )
+    });
+    let mut right = auto_scroll.map_or(area.right(), |control| control.x.saturating_sub(1));
+    let mut remaining = area.width.saturating_sub(if auto_scroll.is_some() {
+        GRAPH_AUTO_SCROLL_WIDTH + 1
+    } else {
+        0
+    });
     let mut reserve = |width: u16| {
         if remaining < width {
             return None;
@@ -604,11 +619,20 @@ pub(crate) fn graph_shared_control_areas(
     let y_axis = reserve(GRAPH_Y_AXIS_TOGGLE_WIDTH);
     let all_samples = reserve(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH);
     let layout = reserve(GRAPH_LAYOUT_TOGGLE_WIDTH);
-    let delta = show_samples_panel
+    let delta = (show_samples_panel
+        && area.width
+            >= GRAPH_AUTO_SCROLL_WIDTH
+                + 1
+                + GRAPH_Y_AXIS_TOGGLE_WIDTH
+                + GRAPH_ALL_SAMPLES_TOGGLE_WIDTH
+                + GRAPH_LAYOUT_TOGGLE_WIDTH
+                + GRAPH_DELTA_TOGGLE_WIDTH
+                + GRAPH_SAMPLES_TOGGLE_WIDTH)
         .then(|| reserve(GRAPH_DELTA_TOGGLE_WIDTH))
         .flatten();
     let samples = reserve(GRAPH_SAMPLES_TOGGLE_WIDTH);
     GraphSharedControlAreas {
+        auto_scroll,
         samples,
         delta,
         layout,

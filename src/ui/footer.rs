@@ -116,6 +116,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         FocusedPanel::DetailsGraph => {
             vec![
                 ("↑/↓", "Slot"),
+                ("End", "Latest"),
                 ("←/→", "Sample"),
                 ("Shift+↑/↓", "Move"),
                 ("s", "Reorder"),
@@ -133,6 +134,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         FocusedPanel::DetailsSamples => {
             vec![
                 ("Shift+↑/↓", "Select"),
+                ("End", "Latest"),
                 ("Shift+PgUp/PgDn", "Select page"),
                 ("Ctrl+C", "Copy"),
                 ("s", "Reorder"),
@@ -142,7 +144,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                 ("a/b", "A/B range"),
                 ("PageUp/PageDown", "Scroll"),
                 ("Alt+←/→", "Pan"),
-                ("Home/End", "Edge"),
+                ("Home", "Oldest"),
                 ("f/z", "Fit/Min 0"),
                 ("Shift+A/B", "Jump A/B"),
                 ("x", "Clear A/B"),
@@ -212,6 +214,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
         (app.focused_panel == FocusedPanel::Processes).then_some("h/Shift+H"),
         Some("Alt+←/→"),
         Some("PageUp/PageDown"),
+        Some("End"),
         Some("a/b"),
         Some("Ctrl+↑↓←→"),
         primary_key,

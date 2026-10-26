@@ -2535,6 +2535,14 @@ impl App {
                 {
                     return;
                 }
+                if graph_shared_control_areas_for_app(self, screen_area)
+                    .auto_scroll
+                    .is_some_and(|area| contains_point(area, mouse.column, mouse.row))
+                {
+                    self.focused_panel = FocusedPanel::DetailsGraph;
+                    self.activate_graph_auto_scroll();
+                    return;
+                }
                 if self.toggle_graph_all_samples_at(mouse.column, mouse.row, screen_area) {
                     return;
                 }
@@ -3610,6 +3618,12 @@ fn graph_display_mode_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option
 
 fn graph_hover_target_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphHoverTarget> {
     let layout = graph_workspace_layout_for_app(app, screen_area)?;
+    if graph_shared_control_areas(layout.controls, app.show_samples_panel)
+        .auto_scroll
+        .is_some_and(|area| contains_point(area, x, y))
+    {
+        return Some(GraphHoverTarget::AutoScroll);
+    }
     if app.can_zoom_graph_time_span(false)
         && layout
             .span_controls
