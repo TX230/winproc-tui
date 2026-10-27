@@ -47,7 +47,7 @@ jobs:
       - name: Install Rust 1.95.0
         shell: pwsh
         run: |
-          rustup toolchain install 1.95.0 --profile minimal
+          rustup toolchain install 1.95.0 --profile minimal --component clippy
           rustup default 1.95.0
 
       - name: Install cargo-audit 0.22.2

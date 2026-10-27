@@ -111,7 +111,7 @@ Replace `X.Y.Z` with the actual release version (for example `0.1.0`).
 
 ### Packaging Helper Script
 
-The repository also provides a helper script for the test, source-package verification, build, zip, and checksum steps:
+The repository also provides a helper script for the Clippy, test, source-package verification, build, zip, and checksum steps:
 
 ```powershell
 .\scripts\package-release.ps1 -Version 0.1.0
@@ -120,14 +120,14 @@ The repository also provides a helper script for the test, source-package verifi
 If `-Version` is omitted, the script uses the package version from `Cargo.toml`.
 The script creates `target\package\winproc-tui-X.Y.Z.crate`, `dist\winproc-tui-X.Y.Z-windows-x64.zip`, and `dist\winproc-tui-X.Y.Z-windows-x64.zip.sha256`.
 The `.crate` file is a locally verified source package for crates.io; do not attach it to the GitHub Release.
-Before packaging, it verifies that the executable does not dynamically import Microsoft C runtime DLLs.
+The helper always runs `cargo clippy --all-targets --all-features -- -D warnings` before tests and package creation, including when `-SkipTests` or `-SkipBuild` is supplied. Install the Clippy component with `rustup component add clippy` if it is missing. Before packaging, it also verifies that the executable does not dynamically import Microsoft C runtime DLLs.
 Tag creation and GitHub Release creation remain explicit manual steps so that the maintainer can confirm the exact source commit and draft release contents before publishing.
 
 ### CI Release-candidate Verification
 
 The `Release verification` workflow runs the same packaging helper from a clean GitHub-hosted Windows checkout. It runs automatically when a pull request or a push to `main` changes a packaging input, and it can be started manually with `workflow_dispatch` for a release-candidate commit. Changes unrelated to the packaged source, runtime binary, packaging policy, or workflow do not start this release build.
 
-The workflow must pass before publication preparation proceeds. Before packaging, it runs the pinned `cargo-audit` version with `cargo audit --deny warnings`, so known vulnerabilities and advisory warnings both block a release candidate. It then runs the helper's tests, locked Cargo package creation, release build, static Microsoft C runtime check, exact runtime-only ZIP-content check, and SHA-256 generation. It retains the versioned `.crate`, `.zip`, and `.sha256` files together as the `release-candidate-<commit>` workflow artifact for 14 days. Download the artifact and confirm that all three filenames use the version from the candidate's `Cargo.toml`.
+The workflow must pass before publication preparation proceeds. Before packaging, it runs the pinned `cargo-audit` version with `cargo audit --deny warnings`, so known vulnerabilities and advisory warnings both block a release candidate. It installs the Clippy component and then runs the helper's Clippy check with warnings denied, tests, locked Cargo package creation, release build, static Microsoft C runtime check, exact runtime-only ZIP-content check, and SHA-256 generation. It retains the versioned `.crate`, `.zip`, and `.sha256` files together as the `release-candidate-<commit>` workflow artifact for 14 days. Download the artifact and confirm that all three filenames use the version from the candidate's `Cargo.toml`.
 
 This workflow only supplies clean-build verification evidence. It does not create a tag, publish a GitHub Release or crate, or modify Scoop or WinGet state. A successful run is not publication approval and does not replace the commit, tag, asset, metadata, and explicit-approval checks below.
 
@@ -168,9 +168,12 @@ git status
 The release tag should be created from the commit that is intended to become the release.
 If there are uncommitted changes, either commit them first or intentionally leave them out of the release.
 
-### 4. Run Tests
+### 4. Run Clippy and Tests
+
+Run the same Clippy command used by CI against the release candidate; warnings block packaging.
 
 ```powershell
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
@@ -178,6 +181,7 @@ If the normal target directory is blocked because an executable is locked, use a
 
 ```powershell
 $env:CARGO_TARGET_DIR = "target/codex-build"
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
@@ -197,7 +201,7 @@ target\release\winproc-tui.exe
 
 ### 6. Create the Distribution Package and Checksum
 
-After completing the test and build steps manually, use the packaging helper without rerunning them. This command verifies the crates.io source package, then creates the release zip and its `.sha256` checksum file:
+After completing the test and build steps manually, use the packaging helper without rerunning them. This command reruns Clippy, verifies the crates.io source package, then creates the release zip and its `.sha256` checksum file:
 
 ```powershell
 .\scripts\package-release.ps1 -Version $Version -SkipTests -SkipBuild

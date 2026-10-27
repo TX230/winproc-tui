@@ -145,6 +145,8 @@ $PackageEntries = @(
 
 Push-Location $RepoRoot
 try {
+    Invoke-CheckedNativeCommand -Command cargo -Arguments @('clippy', '--all-targets', '--all-features', '--', '-D', 'warnings')
+
     if (-not $SkipTests) {
         Invoke-CheckedNativeCommand cargo test
     }
