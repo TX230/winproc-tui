@@ -89,6 +89,13 @@ pub(crate) fn run_helper(argument: &str) -> Result<()> {
         Ok(())
     };
     let result = match request {
+        FileUsersRequest::CaptureAll => scan(
+            FileSearchQuery {
+                text: String::new(),
+                mode: FileSearchMode::Path,
+            },
+            &mut emit,
+        ),
         FileUsersRequest::Search(query) => query
             .validate()
             .map_err(|e| anyhow!(e))

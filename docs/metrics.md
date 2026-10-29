@@ -289,9 +289,9 @@ Each TSV row contains the full path, original handle in hexadecimal, Type, Cache
 
 ## File User Search
 
-Find processes by file captures open disk-file handles on an explicit search. It obtains `SystemExtendedHandleInformation` once per scan, duplicates handles from held source process lifetimes, checks `GetFileType(FILE_TYPE_DISK)`, and resolves paths with `GetFinalPathNameByHandleW`. This is a capture interval, not an atomic filesystem snapshot. Multiple handles from one process lifetime to the same returned path produce one result with a handle count. Native creation times verify process ownership and subsequent navigation.
+Find processes by file captures open disk-file handles on dialog opening or explicit refresh, then filters the retained capture locally. Empty Query shows the entire captured list. It obtains `SystemExtendedHandleInformation` once per scan, duplicates handles from held source process lifetimes, checks `GetFileType(FILE_TYPE_DISK)`, and resolves paths with `GetFinalPathNameByHandleW`. This is a capture interval, not an atomic filesystem snapshot. Multiple handles from one process lifetime to the same returned path produce one result with a handle count. Native creation times verify process ownership and subsequent navigation.
 
-Matching is case-insensitive text matching with Unicode lowercase conversion and `/` normalized to `\`. Extended `\\?\` and `\\?\UNC\` path prefixes are normalized to drive and UNC paths. The global file-user search always searches the whole returned path for a substring, including filenames and directory components. It does not resolve symlinks, hard links, short filenames, device-path aliases, or filesystem-specific case-sensitive identity. Query input is limited to 4,096 UTF-16 units.
+Matching is case-insensitive text matching with Unicode lowercase conversion and `/` normalized to `\`. Extended `\\?\` and `\\?\UNC\` path prefixes are normalized to drive and UNC paths. The global file-user filter always searches the whole captured path for every query term, including filenames and directory components. Whitespace-separated terms use AND matching; double quotes preserve a phrase with literal spaces. It does not resolve symlinks, hard links, short filenames, device-path aliases, or filesystem-specific case-sensitive identity. Query input is limited to 4,096 UTF-16 units.
 
 Coverage counts use explicit units: processes in the table, inspected processes, access-denied processes, exited processes, otherwise unavailable/unverified processes; total handles, attempted handle inspections, unreadable handles, unnamed disk-file handles, skipped handles belonging to unavailable processes, and handles not reached. Unreadable handles may include non-file objects whose type could not be determined. Successful inspection is limited to named disk-file handles and excludes memory-mapped-only use. Partial zero results are not evidence that a file is unused.
 
@@ -312,7 +312,7 @@ The global Network browser and Process Info `Network` tab show on-demand endpoin
 | PID | Owning PID reported by the table, retained even if the process name cannot be verified. |
 | Process | Name resolved for a verified process lifetime, otherwise `--`. |
 
-Windows network-order ports are converted before display. Columns size to the filtered endpoint values and available space, with numeric endpoints taking priority over long executable names when space is limited. The global browser expands on wider terminals. Narrow tables omit the remote column; the detail view and clipboard retain complete IPv6 addresses, scopes, peers, and names. Filtering searches the full protocol, local/remote endpoint, state, PID, and process name, case-insensitively. Clipboard output is one raw tab-separated row in that order, without a header. TCP state labels are identical in the table, detail view, filter, and clipboard output.
+Windows network-order ports are converted before display. Columns size to the filtered endpoint values and available space, with numeric endpoints taking priority over long executable names when space is limited. The global browser expands on wider terminals. Narrow tables omit the remote column; the detail view and clipboard retain complete IPv6 addresses, scopes, peers, and names. Filtering matches all whitespace-separated terms across the full protocol, local/remote endpoint, state, PID, and process name, case-insensitively. Double quotes group phrases. Clipboard output is one raw tab-separated row in that order, without a header. TCP state labels are identical in the table, detail view, filter, and clipboard output.
 
 Capture metadata includes start/end times, successful-table count, and per-table failures. Missing tables are not interpreted as zero endpoints. An unverified name does not mean that the endpoint lacks an owning process. These reports and metadata are not sampled, recorded, or exported. Lifecycle and navigation rules are defined in [Process Investigation](process-investigation.md).
 
@@ -322,13 +322,13 @@ The Process Info `DLLs` tab displays a point-in-time snapshot of DLL modules loa
 
 The table exposes `DLL`, `Company`, `Product Version`, `File Version`, `Modified`, and `Directory`. Version-resource or file-metadata failures remain per-file values such as `<not available>` or `<missing>` and do not remove that DLL from the list. Narrow layouts prioritize DLL name, file version, modified time, and directory; the selected-row detail retains every full value.
 
-The filter searches every displayed field. Clipboard output contains only the selected DLL's full path. Collection and Log-view lifecycle are defined in [Process Investigation](process-investigation.md).
+The DLL filter uses case-insensitive AND terms against the complete path; double quotes group phrases. Clipboard output contains only the selected DLL's full path. Collection and Log-view lifecycle are defined in [Process Investigation](process-investigation.md).
 
 ## Process Environment
 
 The Process Info `Environment` tab displays a best-effort snapshot of the fixed live target's remote environment block. Environment values are not metrics and never enter normal sampling, recording, export, or Log view.
 
-Entries are split at the first `=`. Windows per-drive entries such as `=C:=C:\work` keep `=C:` as the name by using the second separator. Empty values are valid; rows without a separator are counted and skipped. Names are sorted case-insensitively. The filter searches both names and values, and clipboard output contains only the selected `NAME=value` without a header. Status and error text never includes an environment value.
+Entries are split at the first `=`. Windows per-drive entries such as `=C:=C:\work` keep `=C:` as the name by using the second separator. Empty values are valid; rows without a separator are counted and skipped. Names are sorted case-insensitively. Each filter term must match the name or value of the same row (case-insensitive AND); double quotes group phrases, and clipboard output contains only the selected `NAME=value` without a header. Status and error text never includes an environment value.
 
 Log view displays `This information is not included in recording logs.` and does not open a process or read remote memory. Recording and export schemas do not include Environment results.
 

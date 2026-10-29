@@ -57,7 +57,7 @@ fn help_dialog_buffer_shows_two_column_layout() {
     let mut app = make_test_app(3, 10);
     app.show_help = true;
 
-    let rendered = render_app_to_text(&app, 240, 120);
+    let rendered = render_app_to_text(&app, 240, 160);
     let rendered_lower = rendered.to_ascii_lowercase();
 
     assert!(rendered.contains("Keyboard shortcuts"), "{rendered}");

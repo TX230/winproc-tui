@@ -8,6 +8,7 @@ pub(crate) mod process_environment;
 pub(crate) mod process_module;
 pub(crate) mod process_tree;
 pub(crate) mod scheduling;
+pub(crate) mod search;
 pub(crate) mod snapshot;
 pub(crate) mod system;
 pub(crate) mod threads;

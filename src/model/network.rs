@@ -109,11 +109,10 @@ impl NetworkEndpoint {
     }
 
     pub(crate) fn matches(&self, filter: &str) -> bool {
-        filter.is_empty()
-            || self
-                .plain_text()
-                .to_lowercase()
-                .contains(&filter.to_lowercase())
+        let text = self.plain_text().to_lowercase();
+        super::search::terms(filter)
+            .iter()
+            .all(|term| text.contains(term))
     }
 }
 

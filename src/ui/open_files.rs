@@ -231,13 +231,19 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
         lines.push(Line::from(Span::styled(
             if has_match_filter(app) {
                 "Original match unavailable in this capture."
-            } else if app.open_files_filter.is_empty() {
+            } else if report.entries.is_empty() {
                 "No named disk file handles."
             } else {
                 "No matching paths."
             },
             Style::default().fg(theme.muted),
         )));
+
+        if !has_match_filter(app) && !report.entries.is_empty() {
+            lines.extend(super::process_info_dialog::filter_recovery_lines(
+                app, width, theme,
+            ));
+        }
     } else {
         lines.push(super::process_info_dialog::table_header(
             open_files_table_header(theme, width),
@@ -359,7 +365,7 @@ pub(crate) fn filtered_entries(app: &App) -> Vec<&OpenFileEntry> {
         .iter()
         .filter(|entry| {
             let path = entry.path.to_lowercase();
-            terms.iter().any(|term| path.contains(term))
+            terms.iter().all(|term| path.contains(term))
         })
         .collect()
 }
@@ -369,7 +375,7 @@ pub(crate) fn has_match_filter(app: &App) -> bool {
 }
 
 fn filter_terms(filter: &str) -> Vec<String> {
-    filter.split_whitespace().map(str::to_lowercase).collect()
+    crate::model::search::terms(filter)
 }
 
 fn filter_input_text(app: &App, width: usize) -> String {

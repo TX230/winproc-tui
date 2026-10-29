@@ -21,7 +21,6 @@ pub(crate) struct FileUsersView {
     pub(crate) visible: bool,
     pub(crate) draft: String,
     pub(crate) cursor: usize,
-    pub(crate) searched: Option<FileSearchQuery>,
     pub(crate) report: FileSearchReport,
     pub(crate) focus: FileUsersFocus,
     pub(crate) selected: usize,
@@ -34,8 +33,26 @@ pub(crate) struct FileUsersView {
 }
 
 impl FileUsersView {
+    pub(crate) fn filtered_entries(&self) -> impl Iterator<Item = &FileUserMatch> {
+        let terms = crate::model::search::terms(&self.draft)
+            .iter()
+            .map(|term| normalize_search_path(term))
+            .collect::<Vec<_>>();
+        self.report.matches.iter().filter(move |entry| {
+            if terms.is_empty() {
+                return true;
+            }
+            let path = normalize_search_path(&entry.path);
+            terms.iter().all(|term| path.contains(term))
+        })
+    }
+
+    pub(crate) fn filtered_count(&self) -> usize {
+        self.filtered_entries().count()
+    }
+
     pub(crate) fn selected_entry(&self) -> Option<&FileUserMatch> {
-        self.report.matches.get(self.selected)
+        self.filtered_entries().nth(self.selected)
     }
 }
 
@@ -44,11 +61,15 @@ impl App {
         if self.activity() == AppActivity::LogView {
             return;
         }
+        let opening = !self.file_users.visible;
         self.network_browser.visible = false;
         self.file_users.visible = true;
         self.file_users.detail = false;
         self.file_users.focus = FileUsersFocus::Query;
         self.file_users.cursor = self.file_users.draft.len();
+        if opening {
+            self.start_file_search();
+        }
     }
 
     pub(crate) fn close_file_users(&mut self) {
@@ -66,30 +87,20 @@ impl App {
         {
             return;
         }
-        let query = FileSearchQuery {
-            text: self.file_users.draft.clone(),
-            mode: FileSearchMode::Path,
-        };
-        if let Err(error) = query.validate() {
-            self.file_users.notice = Some(error);
-            return;
-        }
         self.file_users_next_id = self.file_users_next_id.wrapping_add(1).max(1);
         let id = self.file_users_next_id;
         match self
             .file_users_worker
-            .request(id, FileUsersRequest::Search(query.clone()))
+            .request(id, FileUsersRequest::CaptureAll)
         {
             Ok(()) => {
                 let view = &mut self.file_users;
-                view.searched = Some(query);
                 view.report = FileSearchReport::default();
                 view.pending = Some(id);
                 view.verifying = false;
                 view.selected = 0;
                 view.detail = false;
                 view.scroll.reset();
-                view.focus = FileUsersFocus::Results;
                 view.notice = None;
             }
             Err(error) => self.file_users.notice = Some(error.to_string()),
@@ -151,15 +162,14 @@ impl App {
                 .map(|e| (e.path.clone(), e.owner.pid, e.owner.creation_time));
             self.file_users.report = update.report;
             if let Some((path, pid, created)) = key {
-                self.file_users.selected = self
+                let selected = self
                     .file_users
-                    .report
-                    .matches
-                    .iter()
+                    .filtered_entries()
                     .position(|e| {
                         e.path == path && e.owner.pid == pid && e.owner.creation_time == created
                     })
                     .unwrap_or(0);
+                self.file_users.selected = selected;
             }
             if finished {
                 self.file_users.pending = None;
@@ -175,7 +185,7 @@ impl App {
     fn open_file_user_owner(&mut self) {
         if self.file_users.pending.is_some() {
             self.file_users.notice =
-                Some("Finish or cancel the search before opening a process".into());
+                Some("Finish or cancel collection before opening a process".into());
             return;
         }
         let Some(entry) = self.file_users.selected_entry() else {
@@ -205,7 +215,7 @@ impl App {
         let total = if view.detail {
             ui::detail_lines(view, area.width).len()
         } else {
-            view.report.matches.len()
+            view.filtered_count()
         };
         let rows = if view.detail {
             area.height
@@ -235,7 +245,7 @@ impl App {
             }
             return Ok(());
         }
-        if matches!(key.code, KeyCode::Char('u' | 'U'))
+        if matches!(key.code, KeyCode::Char('r' | 'R'))
             && key.modifiers.contains(KeyModifiers::CONTROL)
         {
             self.start_file_search();
@@ -281,8 +291,14 @@ impl App {
                 return Ok(());
             }
         } else if view.focus == FileUsersFocus::Query {
+            let previous_draft = view.draft.clone();
+            let selected = view.selected_entry().cloned();
             match key.code {
-                KeyCode::Enter => self.start_file_search(),
+                KeyCode::Enter => view.focus = FileUsersFocus::Results,
+                KeyCode::Char('u' | 'U') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    view.draft.clear();
+                    view.cursor = 0;
+                }
                 KeyCode::Left => {
                     view.cursor = view.draft[..view.cursor]
                         .char_indices()
@@ -323,6 +339,17 @@ impl App {
                 }
                 _ => {}
             }
+            if previous_draft != view.draft {
+                view.selected = selected
+                    .and_then(|selected| {
+                        view.filtered_entries().position(|entry| {
+                            entry.path == selected.path && entry.owner == selected.owner
+                        })
+                    })
+                    .unwrap_or(0);
+                view.scroll.reset();
+                self.sync_file_users_layout(self.last_screen_area);
+            }
             return Ok(());
         } else {
             match key.code {
@@ -343,7 +370,7 @@ impl App {
         let total = if view.detail {
             ui::detail_lines(view, area.width).len()
         } else {
-            view.report.matches.len()
+            view.filtered_count()
         };
         let amount = if matches!(key.code, KeyCode::PageUp | KeyCode::PageDown) {
             view.scroll.page_size.max(1)
@@ -381,7 +408,7 @@ impl App {
         let total = if view.detail {
             ui::detail_lines(view, area.width).len()
         } else {
-            view.report.matches.len()
+            view.filtered_count()
         };
         let bar = ui::scrollbar_area(area, view);
         match mouse.kind {

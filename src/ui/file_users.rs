@@ -67,7 +67,7 @@ pub(crate) fn scrollbar_area(area: Rect, view: &FileUsersView) -> Option<Rect> {
     let total = if view.detail {
         detail_lines(view, area.width).len()
     } else {
-        view.report.matches.len()
+        view.filtered_count()
     };
     (rows.width > 0 && rows.height > 0 && total > rows.height as usize)
         .then(|| Rect::new(rows.right() - 1, rows.y, 1, rows.height))
@@ -77,7 +77,7 @@ fn status(view: &FileUsersView) -> String {
     let state = if view.verifying {
         "Verifying owner"
     } else if view.pending.is_some() {
-        "Searching"
+        "Collecting file list..."
     } else {
         view.report
             .end
@@ -91,8 +91,9 @@ fn status(view: &FileUsersView) -> String {
             .as_ref()
             .is_some_and(|end| *end != FileSearchEnd::Complete);
     format!(
-        "{state}{} · {} matches",
+        "{state}{} · {}/{} matches",
         if partial { " (partial results)" } else { "" },
+        view.filtered_count(),
         view.report.matches.len()
     )
 }
@@ -108,9 +109,7 @@ pub(crate) fn detail_lines(view: &FileUsersView, width: u16) -> Vec<String> {
         ]);
     }
     lines.push(status(view));
-    if let Some(query) = &view.searched {
-        lines.push(format!("{}: {}", query.mode.label(), query.text));
-    }
+    lines.push(format!("Query: {}", view.draft));
     let p = &view.report.progress;
     lines.extend([
         format!("Processes in handle table: {}", p.total_processes),
@@ -264,19 +263,27 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
                 normal
             }
         };
-        let (query, cursor) = query_window(view, content.query.width.saturating_sub(7) as usize);
+        let label = "Query: ";
+        let label_width = label.len() as u16;
+        let (query, cursor) = query_window(
+            view,
+            content.query.width.saturating_sub(label_width) as usize,
+        );
         frame.render_widget(
-            Paragraph::new(format!("Query: {query}")).style(control_style(FileUsersFocus::Query)),
+            Paragraph::new(format!("{label}{query}")).style(control_style(FileUsersFocus::Query)),
             content.query,
         );
         if view.focus == FileUsersFocus::Query
             && !app.show_process_info_dialog
-            && content.query.width > 7
+            && content.query.width > label_width
             && content.query.height > 0
         {
             crate::ui::request_cursor(
                 app,
-                Position::new(content.query.x + 7 + cursor as u16, content.query.y),
+                Position::new(
+                    content.query.x + label_width + cursor as u16,
+                    content.query.y,
+                ),
             );
         }
         frame.render_widget(Paragraph::new(status(view)).style(normal), content.status);
@@ -297,17 +304,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
                 Some(FileSearchEnd::Failed(error)) => Some(error.as_str()),
                 _ => None,
             })
-            .unwrap_or_else(|| {
-                if view
-                    .searched
-                    .as_ref()
-                    .is_some_and(|query| query.text != view.draft)
-                {
-                    "Query changed; start a search to update results"
-                } else {
-                    ""
-                }
-            });
+            .unwrap_or("");
         frame.render_widget(
             Paragraph::new(notice).style(normal.fg(theme.warning)),
             content.notice,
@@ -330,11 +327,11 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
             )),
             content.header,
         );
-        if view.report.matches.is_empty() {
-            let text = if view.searched.is_none() {
-                "Enter a filename or path, then start a search."
-            } else if view.pending.is_some() {
-                "No matches yet in the inspected scope."
+        if view.filtered_count() == 0 {
+            let text = if view.pending.is_some() {
+                "Collecting file list..."
+            } else if !view.report.matches.is_empty() {
+                "No matches for Query. Edit or clear Query (Ctrl+U)."
             } else {
                 "No matches found in the inspected scope."
             };
@@ -344,9 +341,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
             );
         } else {
             let rows = view
-                .report
-                .matches
-                .iter()
+                .filtered_entries()
                 .enumerate()
                 .skip(view.scroll.offset)
                 .take(content.rows.height as usize)
@@ -377,7 +372,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
         let total = if view.detail {
             detail_lines(view, area.width).len()
         } else {
-            view.report.matches.len()
+            view.filtered_count()
         };
         let max_offset = total.saturating_sub(bar.height as usize);
         let position = (view.scroll.offset.min(max_offset) * total.saturating_sub(1))
@@ -401,7 +396,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
         "back"
     } else {
         match view.focus {
-            FileUsersFocus::Query => "search",
+            FileUsersFocus::Query => "results",
             FileUsersFocus::Results => "info",
         }
     };
@@ -417,7 +412,7 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
             ("Enter", enter),
             ("Esc", escape),
             ("Tab", "focus"),
-            ("Ctrl+U", "search"),
+            ("Ctrl+R", "refresh"),
         ],
         theme,
     );
@@ -427,7 +422,14 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
             theme,
         )
     } else if view.focus == FileUsersFocus::Query {
-        super::footer::shortcut_spans(&[("←/→", "cursor"), ("Backspace/Delete", "edit")], theme)
+        super::footer::shortcut_spans(
+            &[
+                ("←/→", "cursor"),
+                ("Backspace/Delete", "edit"),
+                ("Ctrl+U", "clear"),
+            ],
+            theme,
+        )
     } else {
         super::footer::shortcut_spans(
             &[

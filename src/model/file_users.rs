@@ -15,16 +15,6 @@ pub(crate) enum FileSearchMode {
     ExactPath,
 }
 
-impl FileSearchMode {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::FileName => "Filename contains",
-            Self::Path => "Path contains",
-            Self::ExactPath => "Exact path",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct FileSearchQuery {
     pub(crate) text: String,
@@ -33,7 +23,7 @@ pub(crate) struct FileSearchQuery {
 
 impl FileSearchQuery {
     pub(crate) fn validate(&self) -> Result<(), String> {
-        if self.text.trim().trim_matches('"').is_empty() {
+        if super::search::terms(&self.text).is_empty() {
             return Err("Enter a filename or path".into());
         }
         if self.text.encode_utf16().count() > MAX_QUERY_UNITS
@@ -56,8 +46,16 @@ impl FileSearchQuery {
         let path = normalize_search_path(path);
         let query = normalize_search_path(&self.text);
         match self.mode {
-            FileSearchMode::FileName => path.rsplit('\\').next().unwrap_or(&path).contains(&query),
-            FileSearchMode::Path => path.contains(&query),
+            FileSearchMode::FileName | FileSearchMode::Path => {
+                let text = if self.mode == FileSearchMode::FileName {
+                    path.rsplit('\\').next().unwrap_or(&path)
+                } else {
+                    &path
+                };
+                super::search::terms(&self.text)
+                    .iter()
+                    .all(|term| text.contains(&normalize_search_path(term)))
+            }
             FileSearchMode::ExactPath => {
                 normalize_exact_path(&path) == normalize_exact_path(&query)
             }
@@ -204,6 +202,7 @@ pub(crate) struct FileSearchReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum FileUsersRequest {
+    CaptureAll,
     Search(FileSearchQuery),
     Verify(FileUserOwner),
 }

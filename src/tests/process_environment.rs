@@ -81,6 +81,8 @@ fn environment_refresh_preserves_snapshot_filters_values_and_copies_one_entry() 
     for ch in " missing-term".chars() {
         app.push_process_environment_filter_char(ch);
     }
+    assert!(ui::process_environment::filtered_entries(&app).is_empty());
+    app.process_environment_filter = "TOKEN value-for-filter".into();
     assert_eq!(ui::process_environment::filtered_entries(&app).len(), 1);
     app.copy_selected_process_environment_to_clipboard()
         .unwrap();

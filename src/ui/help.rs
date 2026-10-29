@@ -38,7 +38,7 @@ struct HelpSection {
 const FILE_USERS_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "/ (Results)",
-        label: "Edit Query; opening file search focuses Query",
+        label: "Edit Query; opening file search captures files asynchronously",
     },
     HelpItem {
         key: "F3 / F4 or Investigation",
@@ -49,8 +49,12 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
         label: "Focus Query or Results",
     },
     HelpItem {
-        key: "Enter / Ctrl+U (file search)",
-        label: "Search path substring from Query / repeat search",
+        key: "Enter / Ctrl+R (file search)",
+        label: "Focus results / refresh captured file list",
+    },
+    HelpItem {
+        key: "Query changes",
+        label: "AND terms filter captured paths; quote phrases; Ctrl+U clears",
     },
     HelpItem {
         key: "Enter (file results)",
@@ -58,7 +62,7 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Space (file results)",
-        label: "Show the full path and search coverage",
+        label: "Show the full path and capture coverage",
     },
     HelpItem {
         key: "Esc (file search)",
@@ -343,7 +347,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Type (Files)",
-        label: "Filter full paths; one row per handle",
+        label: "Filter path AND terms; quote phrases; one row per handle",
     },
     HelpItem {
         key: "↑/↓, PgUp/PgDn (Files)",
@@ -414,12 +418,16 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Table / tabs / table; retain text",
     },
     HelpItem {
+        key: "No matches (Info lists)",
+        label: "Ctrl+F edits Filter; Ctrl+U clears while editing",
+    },
+    HelpItem {
         key: "Home/End, ←/→ (filter)",
         label: "Move text cursor; Ctrl+U clears text; ↑/↓ keep row",
     },
     HelpItem {
         key: "Type (DLL / Environment)",
-        label: "Filter names and values; F1 opens Help without editing text",
+        label: "AND terms across name/value; quote phrases; F1 Help",
     },
     HelpItem {
         key: "Enter / Esc",
@@ -824,7 +832,7 @@ const NETWORK_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Type (Info)",
-        label: "Filter directly; / or Ctrl+F starts explicit editing",
+        label: "Filter AND terms; quote phrases; / or Ctrl+F edits",
     },
     HelpItem {
         key: "/ or Ctrl+F (global list)",

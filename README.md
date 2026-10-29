@@ -94,7 +94,7 @@ The list is captured when you first open the view. Press `r` while the list has 
 ### Find Processes That Have a File Open
 
 1. Open **Investigation > Find processes by file** or press `F4` to open file search.
-2. Enter a file name or any part of its path in Query, then press `Enter` to start searching. Opening the view alone does not start a search.
+2. The view collects accessible open files automatically. Enter a file name or path terms in Query to filter the list immediately (AND matching), then press `Enter` to focus results. Use `Ctrl+R` to refresh the capture.
 3. Select a result with `↑` / `↓` and press `Enter` to open that process's Files tab in Process Info. Inspect the matching file's handles, access rights, and other details.
 
 Results also report uninspected scope, such as inaccessible processes. No matches does not guarantee that no process has the file open.

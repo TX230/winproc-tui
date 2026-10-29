@@ -20,6 +20,15 @@ fn setup() -> (App, Receiver<(u64, FileUsersRequest)>, Updates) {
     app.file_users_worker = worker;
     (app, requests, updates)
 }
+// Establish an empty completed capture for tests of post-capture interactions.
+fn open_ready(app: &mut App, requests: &Receiver<(u64, FileUsersRequest)>) {
+    app.open_file_users();
+    if let Ok((_, request)) = requests.try_recv() {
+        assert!(matches!(request, FileUsersRequest::CaptureAll));
+        app.file_users.pending = None;
+        app.file_users.report.end = Some(FileSearchEnd::Complete);
+    }
+}
 fn press(app: &mut App, code: KeyCode) {
     app.on_key(KeyEvent::new(code, KeyModifiers::NONE)).unwrap();
 }
@@ -88,29 +97,16 @@ fn file_users_matching_handles_unicode_unc_and_extended_paths() {
 }
 
 #[test]
-fn file_users_search_is_explicit_and_independent_of_process_filters() {
+fn file_users_collects_on_open_and_filters_without_new_requests() {
     let (mut app, requests, updates) = setup();
-    app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
-        .unwrap();
-    for ch in "not-the-file-owner".chars() {
-        press(&mut app, KeyCode::Char(ch));
-    }
-    press(&mut app, KeyCode::Enter);
-    app.toggle_watch_list();
+    app.filter_text = "not-the-file-owner".into();
     app.open_file_users();
-    assert!(requests.try_recv().is_err());
-    for ch in "映像 / test.mxf".chars() {
+    let (id, request) = requests.try_recv().unwrap();
+    assert!(matches!(request, FileUsersRequest::CaptureAll));
+    assert!(render_app_to_text(&app, 120, 35).contains("Collecting file list..."));
+    for ch in "MEDIA 映像-1".chars() {
         press(&mut app, KeyCode::Char(ch));
     }
-    assert_eq!(app.file_users.draft, "映像 / test.mxf");
-    assert!(requests.try_recv().is_err());
-    press(&mut app, KeyCode::Enter);
-    let (id, request) = requests.try_recv().unwrap();
-    let FileUsersRequest::Search(query) = request else {
-        panic!("search expected")
-    };
-    assert_eq!(query.text, "映像 / test.mxf");
-    assert_eq!(query.mode, FileSearchMode::Path);
     app.start_file_search();
     assert!(requests.try_recv().is_err());
     deliver(
@@ -118,23 +114,45 @@ fn file_users_search_is_explicit_and_independent_of_process_filters() {
         &updates,
         id,
         FileSearchReport {
-            matches: vec![entry(0)],
+            matches: vec![entry(0), entry(1), entry(2)],
             end: Some(FileSearchEnd::Complete),
-            ..FileSearchReport::default()
+            ..Default::default()
         },
         None,
     );
-    assert_eq!(app.file_users.report.matches.len(), 1);
-    press(&mut app, KeyCode::Tab);
-    press(&mut app, KeyCode::Char('x'));
-    assert_eq!(app.file_users.searched.as_ref().unwrap().text, query.text);
+    assert_eq!(app.file_users.filtered_count(), 1);
+    assert_eq!(app.file_users.selected_entry().unwrap().path, entry(1).path);
+    assert_eq!(app.file_users.focus, FileUsersFocus::Query);
+    assert!(render_app_to_text(&app, 120, 35).contains("1/3 matches"));
+    press(&mut app, KeyCode::Backspace);
+    assert_eq!(app.file_users.filtered_count(), 3);
+    assert_eq!(app.file_users.selected_entry().unwrap().path, entry(1).path);
+    app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert!(app.file_users.draft.is_empty());
+    assert_eq!(app.file_users.filtered_count(), 3);
     assert!(requests.try_recv().is_err());
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.file_users.focus, FileUsersFocus::Results);
+    assert!(requests.try_recv().is_err());
+    app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert!(matches!(
+        requests.try_recv().unwrap().1,
+        FileUsersRequest::CaptureAll
+    ));
+    app.close_file_users();
+    app.open_file_users();
+    assert!(matches!(
+        requests.try_recv().unwrap().1,
+        FileUsersRequest::CaptureAll
+    ));
 }
 
 #[test]
 fn file_users_cancellation_retains_partial_results_and_rejects_stale_updates() {
     let (mut app, requests, updates) = setup();
-    app.open_file_users();
+    open_ready(&mut app, &requests);
     app.file_users.draft = "mxf".into();
     app.file_users.cursor = 3;
     app.start_file_search();
@@ -184,13 +202,48 @@ fn file_users_cancellation_retains_partial_results_and_rejects_stale_updates() {
 }
 
 #[test]
+fn file_users_filtered_rows_drive_mouse_copy_and_partial_empty_feedback() {
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
+    app.file_users.report.matches = (0..40).map(entry).collect();
+    app.file_users.report.end = Some(FileSearchEnd::ResultLimit);
+    for ch in "MEDIA 映像-2".chars() {
+        press(&mut app, KeyCode::Char(ch));
+    }
+    assert_eq!(app.file_users.filtered_count(), 11);
+    let screen = Rect::new(0, 0, 120, 35);
+    let buffer = render_app_to_buffer(&app, 120, 35);
+    let rows = ui::file_users::content_layout(ui::file_users::browser_layout(screen).content).rows;
+    let (x, y) = super::support::find_text_position_in_area(&buffer, rows, "1254").unwrap();
+    app.on_mouse(left_click(x, y), screen);
+    assert_eq!(
+        app.file_users.selected_entry().unwrap().path,
+        entry(20).path
+    );
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().unwrap(),
+        entry(20).plain_text()
+    );
+    press(&mut app, KeyCode::Char('/'));
+    press(&mut app, KeyCode::Char('x'));
+    assert!(app.file_users.selected_entry().is_none());
+    let text = render_app_to_text(&app, 120, 35);
+    assert!(text.contains("Result limit reached (partial results)"));
+    assert!(text.contains("0/40 matches"));
+    assert!(text.contains("No matches for Query"));
+    app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert_eq!(app.file_users.filtered_count(), 40);
+    assert_eq!(app.file_users.selected, 0);
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
 fn file_users_partial_zero_results_show_coverage_and_full_diagnostics() {
-    let (mut app, _, _) = setup();
-    app.open_file_users();
-    app.file_users.searched = Some(FileSearchQuery {
-        text: "missing.mxf".into(),
-        mode: FileSearchMode::FileName,
-    });
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
     app.file_users.report = FileSearchReport {
         progress: FileSearchProgress {
             total_processes: 10,
@@ -214,8 +267,8 @@ fn file_users_partial_zero_results_show_coverage_and_full_diagnostics() {
 
 #[test]
 fn file_users_selection_details_and_mouse_share_responsive_geometry() {
-    let (mut app, _, _) = setup();
-    app.open_file_users();
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
     app.file_users.focus = FileUsersFocus::Results;
     app.file_users.report.matches = (0..40).map(entry).collect();
     for (width, height) in [(160, 35), (80, 24), (60, 18), (160, 35)] {
@@ -247,7 +300,7 @@ fn file_users_selection_details_and_mouse_share_responsive_geometry() {
 #[test]
 fn file_users_verified_navigation_retains_search_and_opens_files() {
     let (mut app, requests, updates) = setup();
-    app.open_file_users();
+    open_ready(&mut app, &requests);
     app.file_users.focus = FileUsersFocus::Results;
     let entry = entry(0);
     let (files_worker, files_requests, _) =
@@ -310,14 +363,17 @@ fn file_users_verified_navigation_retains_search_and_opens_files() {
 }
 
 #[test]
-fn file_users_menu_is_live_only_and_does_not_start_a_scan() {
+fn file_users_menu_collects_only_in_live_mode() {
     let (mut app, requests, _) = setup();
     app.activate_header_action(ui::header::HeaderAction::FileUsers);
     assert!(app.file_users.visible);
-    assert!(requests.try_recv().is_err());
+    assert!(matches!(
+        requests.try_recv().unwrap().1,
+        FileUsersRequest::CaptureAll
+    ));
     app.close_file_users();
     app.log_view_path = Some(PathBuf::from("example.jsonl"));
-    app.open_file_users();
+    open_ready(&mut app, &requests);
     assert!(!app.file_users.visible);
     assert!(requests.try_recv().is_err());
 }
@@ -331,7 +387,7 @@ fn file_users_queries_and_results_stay_outside_recordings() {
     app.recording_path_cursor = app.recording_path_draft.len();
     app.show_recording_path_dialog = true;
     app.confirm_recording_path().unwrap();
-    app.open_file_users();
+    open_ready(&mut app, &requests);
     app.file_users.draft = "private-search-query.mxf".into();
     app.start_file_search();
     let (id, _) = requests.try_recv().unwrap();
@@ -362,6 +418,7 @@ fn file_users_queries_and_results_stay_outside_recordings() {
 #[test]
 fn file_search_reopens_at_query_and_slash_focuses_from_mode_or_results() {
     let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
     app.file_users.draft = "映像".into();
     app.file_users.report.matches = vec![entry(0), entry(1)];
     app.file_users.selected = 1;
@@ -390,9 +447,11 @@ fn file_search_reopens_at_query_and_slash_focuses_from_mode_or_results() {
     press(&mut app, KeyCode::F(2));
     press(&mut app, KeyCode::F(4));
     assert_eq!(app.file_users.focus, FileUsersFocus::Query);
-    assert_eq!(app.file_users.report.matches.len(), 2);
-    assert_eq!(app.file_users.selected, 1);
-    assert!(requests.try_recv().is_err());
+    assert!(matches!(
+        requests.try_recv().unwrap().1,
+        FileUsersRequest::CaptureAll
+    ));
+    assert!(app.file_users.pending.is_some());
 }
 
 #[test]
@@ -401,7 +460,7 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
     let (mut app, requests, updates) = setup();
     let (worker, captures, results) = OpenFilesWorker::test_pair();
     app.open_files_worker = worker;
-    app.open_file_users();
+    open_ready(&mut app, &requests);
     app.file_users.draft = "media".into();
     app.file_users.focus = FileUsersFocus::Results;
     let original = entry(0);
@@ -493,7 +552,7 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
 #[test]
 fn file_users_has_only_query_and_results_controls() {
     let (mut app, requests, _) = setup();
-    app.open_file_users();
+    open_ready(&mut app, &requests);
     for key in [KeyCode::Tab, KeyCode::BackTab] {
         press(&mut app, key);
         assert_eq!(app.file_users.focus, FileUsersFocus::Results);
@@ -510,7 +569,7 @@ fn file_user_query_and_results_use_matching_focus_colors() {
     use ratatui::style::Modifier;
     for width in [65, 140] {
         let mut app = make_test_app(1, 10);
-        app.open_file_users();
+        app.file_users.visible = true;
         for focus in [FileUsersFocus::Query, FileUsersFocus::Results] {
             app.file_users.focus = focus;
             let buffer = render_app_to_buffer(&app, width, 40);
@@ -532,4 +591,87 @@ fn file_user_query_and_results_use_matching_focus_colors() {
             }
         }
     }
+}
+
+#[test]
+fn file_users_and_terms_and_quoted_paths() {
+    let query = |text: &str| FileSearchQuery {
+        text: text.into(),
+        mode: FileSearchMode::Path,
+    };
+    let path = r"C:\Program Files\映像 player\clip.mxf";
+    assert!(query(r#""Program Files" 映像 .MXF"#).matches(path));
+    assert!(!query("Program missing").matches(path));
+    assert!(!query(r#""Files Program""#).matches(path));
+    assert!(query(r#""C:\Program Files\映像 player\clip.mxf""#).matches(path));
+    assert!(query(r#"  ""  "#).validate().is_err());
+}
+
+#[test]
+fn query_contains_only_editable_text_during_draft_changes_and_notices() {
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
+    app.file_users.draft = "new".into();
+    app.file_users.cursor = 3;
+    app.file_users.report.matches = vec![entry(0)];
+    app.file_users.report.end = Some(FileSearchEnd::Complete);
+    app.file_users.focus = FileUsersFocus::Results;
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .unwrap();
+    for notice in ["Copied file user", "Clipboard failed", "Cancelling..."] {
+        app.file_users.notice = Some(notice.into());
+        for width in [40, 60, 160] {
+            let text = render_app_to_text(&app, width, 24);
+            assert!(text.contains("Query: new"), "{text}");
+            assert!(!text.contains("[unsearched]"), "{text}");
+            assert!(text.contains(notice), "{text}");
+        }
+    }
+    assert!(requests.try_recv().is_err());
+    app.file_users.focus = FileUsersFocus::Query;
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Backspace);
+    }
+    assert!(app.file_users.draft.is_empty());
+    assert!(!render_app_to_text(&app, 60, 24).contains("[unsearched]"));
+    press(&mut app, KeyCode::Char('x'));
+    assert_eq!(app.file_users.draft, "x");
+    assert!(render_app_to_text(&app, 60, 24).contains("Query: x"));
+    app.file_users.draft = "old".into();
+    assert!(!render_app_to_text(&app, 60, 24).contains("[unsearched]"));
+    app.file_users.draft = "new".into();
+    app.start_file_search();
+    assert!(requests.try_recv().is_ok());
+    assert!(!render_app_to_text(&app, 60, 24).contains("[unsearched]"));
+}
+
+#[test]
+fn empty_query_never_shows_change_guidance_before_or_after_search() {
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
+    let guidance = "Query changed; start a search to update results";
+    assert!(!render_app_to_text(&app, 120, 24).contains(guidance));
+    press(&mut app, KeyCode::Char('x'));
+    assert!(!render_app_to_text(&app, 120, 24).contains(guidance));
+    app.file_users.report.end = Some(FileSearchEnd::Complete);
+    assert!(!render_app_to_text(&app, 120, 24).contains(guidance));
+    press(&mut app, KeyCode::Char('y'));
+    assert!(!render_app_to_text(&app, 120, 24).contains(guidance));
+    press(&mut app, KeyCode::Backspace);
+    press(&mut app, KeyCode::Backspace);
+    assert!(app.file_users.draft.is_empty());
+    for draft in ["", "   ", "　"] {
+        app.file_users.draft = draft.into();
+        app.file_users.cursor = draft.len();
+        assert!(!render_app_to_text(&app, 120, 24).contains(guidance));
+        assert!(
+            !ui::file_users::detail_lines(&app.file_users, 120)
+                .iter()
+                .any(|line| line.contains("Draft query not searched"))
+        );
+    }
+    app.close_file_users();
+    open_ready(&mut app, &requests);
+    assert!(!render_app_to_text(&app, 120, 24).contains(guidance));
+    assert!(requests.try_recv().is_err());
 }

@@ -1219,3 +1219,14 @@ fn network_footer_text(app: &App, width: u16, height: u16, global: bool) -> Stri
     }
     text
 }
+
+#[test]
+fn network_and_terms_match_across_endpoint_fields() {
+    let app = make_test_app(2, 10);
+    let report = report(&app);
+    let endpoint = &report.endpoints[0];
+    assert!(endpoint.matches("TCP 8080"));
+    assert!(!endpoint.matches("TCP 5353"));
+    assert!(endpoint.matches("   "));
+    assert!(endpoint.matches(r#""127.0.0.1:8080" TCP"#));
+}

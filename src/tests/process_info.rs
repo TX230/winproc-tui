@@ -1898,3 +1898,56 @@ fn process_info_metric_values_share_right_edges_including_long_labels() {
         }
     }
 }
+
+#[test]
+fn inspection_empty_filters_offer_recovery_only_for_hidden_rows() {
+    use super::support::{
+        show_process_info_files_tab, test_open_files_report, test_process_environment_report,
+    };
+    use crate::model::ProcessEnvironmentEntry;
+    let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
+    app.open_files_result = Some(test_open_files_report("proc-0", 0, "fixture.txt"));
+    app.process_modules_result = Some(test_process_modules_report(
+        "proc-0",
+        0,
+        vec![test_process_module_entry("fixture.dll", "test")],
+    ));
+    app.process_environment_result = Some(test_process_environment_report(
+        "proc-0",
+        0,
+        vec![ProcessEnvironmentEntry {
+            name: "FIXTURE".into(),
+            value: "test".into(),
+        }],
+    ));
+    for tab in [
+        app::ProcessInfoTab::Files,
+        app::ProcessInfoTab::Dlls,
+        app::ProcessInfoTab::Environment,
+    ] {
+        app.process_info_tab = tab;
+        app.open_files_filter = "absent".into();
+        app.process_modules_filter = "absent".into();
+        app.process_environment_filter = "absent".into();
+        app.process_info_filter_editing = false;
+        let text = render_app_to_text(&app, 60, 24);
+        assert!(text.contains("No matching"), "{text}");
+        assert!(text.contains("Ctrl+F edit; then Ctrl+U clear."), "{text}");
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert!(render_app_to_text(&app, 60, 24).contains("Ctrl+U clear; Enter table."));
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert!(!render_app_to_text(&app, 60, 24).contains("Ctrl+U clear; Enter table."));
+    }
+    app.process_info_tab = app::ProcessInfoTab::Files;
+    app.open_files_filter = "absent".into();
+    app.open_files_match_path = Some("absent".into());
+    assert!(render_app_to_text(&app, 60, 24).contains("Original match unavailable"));
+    assert!(!render_app_to_text(&app, 60, 24).contains("then Ctrl+U clear"));
+    app.open_files_match_path = None;
+    app.open_files_result.as_mut().unwrap().entries.clear();
+    assert!(render_app_to_text(&app, 60, 24).contains("No named disk file handles."));
+    assert!(!render_app_to_text(&app, 60, 24).contains("Ctrl+U clear; Enter table."));
+}

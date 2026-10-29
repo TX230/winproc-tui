@@ -89,11 +89,7 @@ pub(crate) fn filtered_entries(app: &App) -> Vec<&ProcessModuleEntry> {
     let Some(report) = &app.process_modules_result else {
         return Vec::new();
     };
-    let terms = app
-        .process_modules_filter
-        .split_whitespace()
-        .map(str::to_lowercase)
-        .collect::<Vec<_>>();
+    let terms = crate::model::search::terms(&app.process_modules_filter);
     if terms.is_empty() {
         return report.entries.iter().collect();
     }
@@ -184,13 +180,19 @@ fn process_module_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'stat
 
     if entries.is_empty() {
         lines.push(Line::from(Span::styled(
-            if app.process_modules_filter.is_empty() {
+            if report.entries.is_empty() {
                 "No loaded DLLs."
             } else {
                 "No matching DLLs."
             },
             Style::default().fg(theme.muted),
         )));
+
+        if !report.entries.is_empty() {
+            lines.extend(super::process_info_dialog::filter_recovery_lines(
+                app, width, theme,
+            ));
+        }
         return lines;
     }
 

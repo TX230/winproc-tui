@@ -39,6 +39,18 @@ pub(crate) struct ProcessInfoDialogLayout {
     pub(crate) footer: Rect,
 }
 
+pub(crate) fn filter_recovery_lines(app: &App, width: usize, theme: Theme) -> Vec<Line<'static>> {
+    let text = if app.process_info_filter_editing {
+        "Ctrl+U clear; Enter table."
+    } else {
+        "Ctrl+F edit; then Ctrl+U clear."
+    };
+    wrap_display_width(text, width.max(1))
+        .into_iter()
+        .map(|text| Line::from(Span::styled(text, Style::default().fg(theme.muted))))
+        .collect()
+}
+
 pub(crate) fn table_has_focus(app: &App) -> bool {
     !(app.process_info_focus != ProcessInfoFocus::Content
         || app.process_info_filter_editing
