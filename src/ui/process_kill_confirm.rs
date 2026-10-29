@@ -103,7 +103,7 @@ fn draw_results(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Th
         widgets::Wrap,
     };
     let job = app.process_kill_job.as_ref().unwrap();
-    let popup = process_kill_results_area(area);
+    let popup = process_kill_results_area(area, app);
     frame.render_widget(Clear, popup);
     frame.render_widget(
         confirm_dialog::warning_block(
@@ -121,7 +121,7 @@ fn draw_results(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Th
         vertical: 1,
     });
     let regions = Layout::vertical([
-        Constraint::Length(2),
+        Constraint::Length(summary_rows(app, inner.width)),
         Constraint::Min(0),
         Constraint::Length(2),
     ])
@@ -132,25 +132,13 @@ fn draw_results(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Th
             .wrap(Wrap { trim: false }),
         regions[0],
     );
-    let mut lines = Vec::new();
-    for (index, target) in app
-        .process_kill_targets
-        .iter()
-        .enumerate()
-        .skip(app.process_kill_scroll)
-    {
-        lines.push(Line::from(format!("{} ({})", target.pid, target.name)));
-        lines.push(Line::from(
-            job.outcomes[index]
-                .as_ref()
-                .map_or_else(|| "Pending".into(), |outcome| outcome.text()),
-        ));
-        lines.push(Line::from(""));
-    }
+    let lines = result_lines(app, inner.width)
+        .into_iter()
+        .skip(app.process_kill_scroll.min(result_scroll_end(area, app)))
+        .map(Line::from)
+        .collect::<Vec<_>>();
     frame.render_widget(
-        Paragraph::new(lines)
-            .style(Style::default().fg(theme.text))
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(lines).style(Style::default().fg(theme.text)),
         regions[1],
     );
     let shortcuts = if job.finished() {
@@ -173,9 +161,51 @@ fn draw_results(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Th
     );
 }
 
-pub(crate) fn process_kill_results_area(area: Rect) -> Rect {
+pub(crate) fn result_lines(app: &App, width: u16) -> Vec<String> {
+    let Some(job) = app.process_kill_job.as_ref() else {
+        return Vec::new();
+    };
+    app.process_kill_targets
+        .iter()
+        .enumerate()
+        .flat_map(|(index, target)| {
+            let outcome = job.outcomes[index]
+                .as_ref()
+                .map_or_else(|| "Pending".into(), |outcome| outcome.text());
+            let text = format!("{} (PID: {}) {}", target.name, target.pid, outcome);
+            text.lines()
+                .flat_map(|line| {
+                    super::process_info_dialog::wrap_display_width(line, width.max(1) as usize)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn summary_rows(app: &App, width: u16) -> u16 {
+    app.process_kill_job.as_ref().map_or(1, |job| {
+        super::process_info_dialog::wrap_display_width(&job.summary(), width.max(1) as usize)
+            .len()
+            .min(u16::MAX as usize) as u16
+    })
+}
+
+pub(crate) fn result_scroll_end(area: Rect, app: &App) -> usize {
+    result_lines(app, area.width.min(100).saturating_sub(2))
+        .len()
+        .saturating_sub(1)
+}
+
+pub(crate) fn process_kill_results_area(area: Rect, app: &App) -> Rect {
     let width = area.width.min(100);
-    let height = area.height.min(22);
+    let content_width = width.saturating_sub(2);
+    let rows = result_lines(app, content_width)
+        .len()
+        .min(u16::MAX as usize) as u16;
+    let height = area.height.min(22).min(
+        rows.saturating_add(summary_rows(app, content_width))
+            .saturating_add(4),
+    );
     Rect::new(
         area.x + area.width.saturating_sub(width) / 2,
         area.y + area.height.saturating_sub(height) / 2,

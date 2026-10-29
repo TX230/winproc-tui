@@ -105,3 +105,62 @@ fn process_kill_slow_batch_keeps_input_rendering_and_fixed_targets() {
     assert!(!app.show_process_kill_confirmation);
     assert!(app.process_kill_job.is_none());
 }
+
+#[test]
+fn compact_kill_results_keep_outcomes_and_long_failure_details_accessible() {
+    let mut app = make_test_app(1, 10);
+    assert!(app.request_process_kill_confirmation());
+    let original = app.process_kill_targets[0].clone();
+    app.process_kill_targets = (0..4)
+        .map(|pid| {
+            let mut t = original.clone();
+            t.pid = pid;
+            t.name = format!("fixture-{pid}.exe");
+            t
+        })
+        .collect();
+    app.process_kill_job = Some(KillJob::spawn_with(
+        app.process_kill_targets.clone(),
+        |target| match target.pid {
+            0 => KillOutcome::Killed,
+            1 => KillOutcome::Exited,
+            2 => KillOutcome::PendingExit,
+            _ => KillOutcome::Failed("日本語 failure ".repeat(30) + "END OF REASON"),
+        },
+    ));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !app.process_kill_job.as_ref().unwrap().finished() {
+        app.poll_process_kill();
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    let text = render_app_to_text(&app, 120, 40);
+    assert!(text.contains("fixture-0.exe (PID: 0) Killed"));
+    assert!(text.contains("fixture-1.exe (PID: 1) Already exited"));
+    assert!(text.contains("fixture-2.exe (PID: 2) Termination requested; exit not confirmed"));
+    let screen = Rect::new(0, 0, 40, 18);
+    app.set_screen_area(screen);
+    let max = crate::ui::process_kill_confirm::result_scroll_end(screen, &app);
+    let mut all = String::new();
+    for offset in 0..=max {
+        app.process_kill_scroll = offset;
+        all.push_str(&render_app_to_text(&app, 40, 18));
+    }
+    let wrapped = crate::ui::process_kill_confirm::result_lines(&app, 38);
+    assert!(
+        wrapped
+            .join("")
+            .contains(&("日本語 failure ".repeat(30) + "END OF REASON"))
+    );
+    assert!(all.contains(wrapped.last().unwrap().trim()));
+    app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.process_kill_scroll, max);
+    app.process_kill_targets.truncate(1);
+    app.process_kill_job.as_mut().unwrap().outcomes.truncate(1);
+    app.process_kill_scroll = 0;
+    let popup =
+        crate::ui::process_kill_confirm::process_kill_results_area(Rect::new(0, 0, 120, 40), &app);
+    assert!(popup.height <= 7);
+    assert!(render_app_to_text(&app, 120, 40).contains("fixture-0.exe (PID: 0) Killed"));
+}

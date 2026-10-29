@@ -289,12 +289,20 @@ impl App {
                         self.process_kill_scroll = self.process_kill_scroll.saturating_sub(1)
                     }
                     KeyCode::Down => {
-                        self.process_kill_scroll = (self.process_kill_scroll + 1)
-                            .min(self.process_kill_targets.len().saturating_sub(1))
+                        self.process_kill_scroll = (self.process_kill_scroll + 1).min(
+                            crate::ui::process_kill_confirm::result_scroll_end(
+                                self.last_screen_area,
+                                self,
+                            ),
+                        )
                     }
                     KeyCode::Home => self.process_kill_scroll = 0,
                     KeyCode::End => {
-                        self.process_kill_scroll = self.process_kill_targets.len().saturating_sub(1)
+                        self.process_kill_scroll =
+                            crate::ui::process_kill_confirm::result_scroll_end(
+                                self.last_screen_area,
+                                self,
+                            )
                     }
                     _ => {}
                 }
@@ -2410,7 +2418,7 @@ impl App {
         if self.show_process_kill_confirmation {
             if self.process_kill_job.is_some()
                 && contains_point(
-                    crate::ui::process_kill_confirm::process_kill_results_area(screen_area),
+                    crate::ui::process_kill_confirm::process_kill_results_area(screen_area, self),
                     mouse.column,
                     mouse.row,
                 )
@@ -2420,8 +2428,12 @@ impl App {
                         self.process_kill_scroll = self.process_kill_scroll.saturating_sub(1)
                     }
                     MouseEventKind::ScrollDown => {
-                        self.process_kill_scroll = (self.process_kill_scroll + 1)
-                            .min(self.process_kill_targets.len().saturating_sub(1))
+                        self.process_kill_scroll = (self.process_kill_scroll + 1).min(
+                            crate::ui::process_kill_confirm::result_scroll_end(
+                                self.last_screen_area,
+                                self,
+                            ),
+                        )
                     }
                     _ => {}
                 }
