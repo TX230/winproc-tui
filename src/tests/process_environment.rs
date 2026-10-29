@@ -333,3 +333,54 @@ fn stale_environment_result_cannot_replace_reopened_dialog_request() {
         "NEW"
     );
 }
+
+#[test]
+fn environment_value_copy_preserves_raw_and_empty_values_without_status_leak() {
+    let mut app = make_test_app(1, 10);
+    app.open_selected_process_info_dialog().unwrap();
+    activate_process_environment_tab(&mut app);
+    app.process_info_focus = app::ProcessInfoFocus::Content;
+    app.process_environment_result = Some(test_process_environment_report(
+        "proc-0",
+        0,
+        vec![
+            ProcessEnvironmentEntry {
+                name: "EMPTY".into(),
+                value: String::new(),
+            },
+            ProcessEnvironmentEntry {
+                name: "DUMMY".into(),
+                value: "日本語=value\nnext".into(),
+            },
+        ],
+    ));
+    app.process_environment_selected = 1;
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::ALT))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().as_deref(),
+        Some("日本語=value\nnext")
+    );
+    assert_eq!(app.status, "Copied environment value");
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().as_deref(),
+        Some("DUMMY=日本語=value\nnext")
+    );
+    app.process_environment_selected = 0;
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::ALT))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().as_deref(),
+        Some("")
+    );
+    app.process_info_filter_editing = true;
+    app.process_environment_selected = 1;
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::ALT))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().as_deref(),
+        Some("")
+    );
+}

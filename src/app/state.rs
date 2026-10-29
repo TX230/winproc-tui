@@ -1794,6 +1794,9 @@ impl App {
     }
 
     pub(crate) fn has_workspace_overlay(&self) -> bool {
+        if self.file_action.is_some() {
+            return true;
+        }
         if self.dotnet_confirmation.is_some() {
             return true;
         }

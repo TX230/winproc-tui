@@ -33,6 +33,9 @@ impl App {
             return;
         };
         let path = PathBuf::from(&entry.path);
+        self.open_path_actions(path);
+    }
+    pub(crate) fn open_path_actions(&mut self, path: PathBuf) {
         self.file_action_generation = self.file_action_generation.wrapping_add(1);
         self.file_action = Some(FileActionView {
             path,
@@ -43,6 +46,45 @@ impl App {
             generation: self.file_action_generation,
             pending: false,
         });
+    }
+    pub(crate) fn direct_file_action_key(&mut self, key: KeyEvent) -> bool {
+        if key.modifiers != KeyModifiers::CONTROL || self.activity() == AppActivity::LogView {
+            return false;
+        }
+        let action = match key.code {
+            KeyCode::Char('e' | 'E') => 0,
+            KeyCode::Char('o' | 'O') => 1,
+            _ => return false,
+        };
+        let path = if self.show_process_info_dialog {
+            if self.process_info_filter_editing
+                || self.process_info_focus != super::ProcessInfoFocus::Content
+            {
+                return false;
+            }
+            match self.process_info_tab {
+                super::ProcessInfoTab::Files => {
+                    crate::ui::open_files::selected_entry(self).map(|entry| entry.path.clone())
+                }
+                super::ProcessInfoTab::Dlls if action == 0 => {
+                    crate::ui::process_modules::selected_entry(self).map(|entry| entry.path.clone())
+                }
+                _ => return false,
+            }
+        } else if self.file_users.visible
+            && self.file_users.focus == super::file_users::FileUsersFocus::Results
+        {
+            self.file_users
+                .selected_entry()
+                .map(|entry| entry.path.clone())
+        } else {
+            return false;
+        };
+        if let Some(path) = path {
+            self.open_path_actions(PathBuf::from(path));
+            self.launch_file_action(action);
+        }
+        true
     }
     pub(crate) fn launch_file_action(&mut self, selected: usize) {
         if self.activity() == AppActivity::LogView {

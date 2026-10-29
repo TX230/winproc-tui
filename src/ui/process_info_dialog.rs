@@ -796,6 +796,8 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             ProcessInfoTab::Files => vec![
                 ("Enter", "details"),
                 ("F4", "actions"),
+                ("Ctrl+O", "open"),
+                ("Ctrl+E", "folder"),
                 ("/ or Ctrl+F", "filter"),
                 ("Ctrl+U", "refresh now"),
                 ("Ctrl+C", "copy rows"),
@@ -809,6 +811,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("Enter", "details"),
                 ("Ctrl+U", "refresh"),
                 ("Ctrl+C", "copy path"),
+                ("Ctrl+E", "folder"),
                 ("↑/↓", "select"),
                 ("Ctrl+←/→", "tabs"),
                 ("Tab", "next"),
@@ -818,7 +821,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("/ or Ctrl+F", "filter"),
                 ("Enter", "details"),
                 ("Ctrl+U", "refresh"),
-                ("Ctrl+C", "copy"),
+                ("Ctrl+C", "copy variable"),
                 ("↑/↓", "select"),
                 ("Ctrl+←/→", "tabs"),
                 ("Tab", "next"),
@@ -830,7 +833,26 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         && (app.activity() == crate::app::AppActivity::LogView
             || super::open_files::selected_entry(app).is_none())
     {
-        items.retain(|(_, label)| !matches!(*label, "actions" | "details"));
+        items.retain(|(_, label)| !matches!(*label, "actions" | "open" | "folder" | "details"));
+    }
+    if app.process_info_tab == ProcessInfoTab::Dlls
+        && (app.activity() == crate::app::AppActivity::LogView
+            || super::process_modules::selected_entry(app).is_none())
+    {
+        items.retain(|(_, label)| *label != "folder");
+    }
+    if app.process_info_focus == ProcessInfoFocus::Content
+        && !app.process_info_filter_editing
+        && app.activity() != crate::app::AppActivity::LogView
+    {
+        let label = match app.process_info_tab {
+            ProcessInfoTab::Files => Some("copy path"),
+            ProcessInfoTab::Environment => Some("copy value"),
+            _ => None,
+        };
+        if let Some(label) = label {
+            items.insert(items.len().min(4), ("Alt+C", label));
+        }
     }
     if !app.scheduling.applying {
         items.push(("h/Shift+H", "height"));

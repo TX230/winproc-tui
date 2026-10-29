@@ -437,6 +437,8 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
                 ("↑/↓", "select"),
                 ("Space", "details"),
                 ("Ctrl+C", "copy"),
+                ("Ctrl+O", "open"),
+                ("Ctrl+E", "folder"),
             ],
             theme,
         )

@@ -375,7 +375,7 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Ctrl+E / Ctrl+O (file actions)",
-        label: "Open containing folder / Open with default app",
+        label: "Direct folder / default app from Files and file-user results; Ctrl+E in DLLs",
     },
     HelpItem {
         key: "Esc (file actions)",
@@ -392,6 +392,14 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Ctrl+U (Threads)",
         label: "Refresh thread CPU time, base priority, and Ideal CPU",
+    },
+    HelpItem {
+        key: "Alt+C (Files / Environment)",
+        label: "Copy selected full path / raw value; empty value clears clipboard",
+    },
+    HelpItem {
+        key: "Ctrl+C (Environment)",
+        label: "Copy selected name=value from list or detail",
     },
     HelpItem {
         key: "Ctrl+C (Files)",

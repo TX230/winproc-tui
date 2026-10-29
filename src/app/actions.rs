@@ -446,13 +446,11 @@ impl App {
             return Ok(());
         }
 
+        if self.file_action.is_some() {
+            self.file_action_key(key);
+            return Ok(());
+        }
         if self.show_process_info_dialog {
-            if self.file_action.is_some()
-                && self.process_info_tab == crate::app::ProcessInfoTab::Files
-            {
-                self.file_action_key(key);
-                return Ok(());
-            }
             if !self.scheduling.applying {
                 if key.modifiers == KeyModifiers::CONTROL
                     && matches!(key.code, KeyCode::Left | KeyCode::Right)
@@ -479,6 +477,9 @@ impl App {
                 }
             }
             if self.on_inspection_filter_key(key) {
+                return Ok(());
+            }
+            if self.direct_file_action_key(key) {
                 return Ok(());
             }
             if self.scheduling.applying {
@@ -603,6 +604,13 @@ impl App {
                     self.scroll_process_info_end()
                 }
                 _ if self.process_info_focus != ProcessInfoFocus::Content => {}
+                KeyCode::Char(ch)
+                    if ch.eq_ignore_ascii_case(&'c')
+                        && key.modifiers == KeyModifiers::ALT
+                        && self.process_info_tab == crate::app::ProcessInfoTab::Environment =>
+                {
+                    self.copy_selected_investigation_value()?;
+                }
                 KeyCode::Up
                     if self.process_info_tab == crate::app::ProcessInfoTab::Dlls
                         && !self.process_modules_show_detail =>
@@ -2103,12 +2111,11 @@ impl App {
             return;
         }
 
+        if self.file_action.is_some() {
+            self.file_action_mouse(mouse, screen_area);
+            return;
+        }
         if self.show_process_info_dialog {
-            if self.file_action.is_some() {
-                self.file_action_mouse(mouse, screen_area);
-                return;
-            }
-
             let tab_click = matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
                 && process_info_tab_at(
                     screen_area,

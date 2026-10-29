@@ -231,6 +231,9 @@ impl App {
 
     pub(crate) fn on_file_users_key(&mut self, key: KeyEvent) -> Result<()> {
         self.sync_file_users_layout(self.last_screen_area);
+        if self.direct_file_action_key(key) {
+            return Ok(());
+        }
         if key.code == KeyCode::Esc {
             if self.file_users.detail {
                 self.file_users.detail = false;

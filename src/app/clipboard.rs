@@ -12,6 +12,31 @@ use crate::{
 };
 
 impl App {
+    pub(crate) fn copy_selected_investigation_value(&mut self) -> Result<()> {
+        let (text, success, missing) = match self.process_info_tab {
+            super::ProcessInfoTab::Files => (
+                crate::ui::open_files::selected_entry(self).map(|entry| entry.path.clone()),
+                "Copied file path",
+                "No file selected",
+            ),
+            super::ProcessInfoTab::Environment => (
+                crate::ui::process_environment::selected_entry(self)
+                    .map(|entry| entry.value.clone()),
+                "Copied environment value",
+                "No environment variable selected",
+            ),
+            _ => return Ok(()),
+        };
+        self.status = match text {
+            Some(text) => match copy_text_to_clipboard(&text) {
+                Ok(()) => success.into(),
+                Err(_) => "Clipboard copy failed".into(),
+            },
+            None => missing.into(),
+        };
+        Ok(())
+    }
+
     pub(crate) fn copy_focused_cell_to_clipboard(&mut self) -> Result<()> {
         match self.focused_panel {
             FocusedPanel::System => self.copy_selected_system_row_to_clipboard(),

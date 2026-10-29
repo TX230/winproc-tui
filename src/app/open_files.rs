@@ -101,6 +101,11 @@ impl App {
             return Ok(());
         }
         match key.code {
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'c') && key.modifiers == KeyModifiers::ALT =>
+            {
+                self.copy_selected_investigation_value()?;
+            }
             KeyCode::F(4) => self.open_file_actions(),
             KeyCode::Esc if self.close_process_info_detail() => {}
             KeyCode::Esc => self.close_process_info_dialog(),

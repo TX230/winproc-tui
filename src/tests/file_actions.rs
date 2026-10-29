@@ -206,3 +206,46 @@ fn file_actions_modal_preserves_parent_scroll_and_blocks_background_mouse() {
         assert!(app.show_process_info_dialog);
     }
 }
+
+#[test]
+fn direct_file_shortcuts_freeze_targets_and_respect_pending_and_editor() {
+    let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
+    app.open_files_result = Some(test_open_files_report("proc-0", 0, "one.txt"));
+    app.open_file_actions();
+    let _pending = app.inject_pending_file_action();
+    key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    key(&mut app, KeyCode::Char('o'), KeyModifiers::CONTROL);
+    assert!(
+        app.file_action
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("previous file action")
+    );
+    let captured = app.file_action.as_ref().unwrap().path.clone();
+    app.open_files_result = Some(test_open_files_report("proc-0", 0, "two.txt"));
+    assert_eq!(app.file_action.as_ref().unwrap().path, captured);
+    key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    app.process_info_tab = crate::app::ProcessInfoTab::Dlls;
+    app.process_modules_result = Some(super::support::test_process_modules_report(
+        "proc-0",
+        0,
+        vec![super::support::test_process_module_entry(
+            "test.dll", "test",
+        )],
+    ));
+    key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+    assert!(
+        app.file_action
+            .as_ref()
+            .unwrap()
+            .path
+            .to_string_lossy()
+            .contains("test.dll")
+    );
+    key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    app.process_info_filter_editing = true;
+    key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+    assert!(app.file_action.is_none());
+}

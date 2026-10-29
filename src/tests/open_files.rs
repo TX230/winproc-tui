@@ -1345,3 +1345,43 @@ fn files_and_terms_preserve_phrase_and_exact_handoff() {
     app.open_files_match_path = Some(app.open_files_filter.clone());
     assert_eq!(ui::open_files::filtered_entries(&app).len(), 1);
 }
+
+#[test]
+fn selected_path_copy_is_raw_and_distinct_from_handle_rows() {
+    let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
+    let mut report = test_open_files_report("proc-0", 0, "same.bin");
+    report.entries = vec![
+        mode_entry(r"C:\映像 space\first.bin", 1, Ok(1), Ok(0)),
+        mode_entry(r"C:\映像 space\second.bin", 2, Ok(1), Ok(0)),
+    ];
+    app.open_files_result = Some(report);
+    app.select_open_file(1);
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::ALT))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().as_deref(),
+        Some(r"C:\映像 space\second.bin")
+    );
+    app.open_files_filter = "first".into();
+    app.select_open_file(0);
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::ALT))
+        .unwrap();
+    assert_eq!(
+        crate::app::clipboard::last_copied_text().as_deref(),
+        Some(r"C:\映像 space\first.bin")
+    );
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert!(
+        crate::app::clipboard::last_copied_text()
+            .unwrap()
+            .contains("\t0x1\t")
+    );
+    let previous = crate::app::clipboard::last_copied_text();
+    app.open_files_filter = "missing".into();
+    app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::ALT))
+        .unwrap();
+    assert_eq!(crate::app::clipboard::last_copied_text(), previous);
+    assert_eq!(app.status, "No file selected");
+}

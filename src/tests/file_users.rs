@@ -608,6 +608,31 @@ fn file_users_and_terms_and_quoted_paths() {
 }
 
 #[test]
+fn file_users_direct_actions_preserve_query_priority_and_parent() {
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
+    app.file_users.report.matches = vec![entry(0)];
+    app.on_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert!(app.file_action.is_none());
+    app.open_path_actions(PathBuf::from("previous"));
+    let _pending = app.inject_pending_file_action();
+    app.file_action = None;
+    app.file_users.focus = FileUsersFocus::Results;
+    app.on_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert_eq!(
+        app.file_action.as_ref().unwrap().path,
+        PathBuf::from(entry(0).path)
+    );
+    assert!(render_app_to_text(&app, 160, 48).contains("FILE ACTIONS"));
+    press(&mut app, KeyCode::Esc);
+    assert!(app.file_action.is_none());
+    assert!(app.file_users.visible);
+    assert_eq!(app.file_users.selected, 0);
+}
+
+#[test]
 fn query_contains_only_editable_text_during_draft_changes_and_notices() {
     let (mut app, requests, _) = setup();
     open_ready(&mut app, &requests);
