@@ -342,6 +342,10 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Refresh Info tab",
     },
     HelpItem {
+        key: "Filter matches",
+        label: "Matching AND terms are highlighted in searchable table cells",
+    },
+    HelpItem {
         key: "Table / Filter focus",
         label: "Accent bold heading/label means focus; row highlight retains selection",
     },

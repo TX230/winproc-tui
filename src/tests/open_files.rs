@@ -1331,6 +1331,7 @@ fn files_type_column_preserves_unknown_rows_in_wide_and_compact_layouts() {
 #[test]
 fn files_and_terms_preserve_phrase_without_hidden_handoff_filter() {
     let mut app = make_test_app(1, 10);
+    show_process_info_files_tab(&mut app);
     let mut report = test_open_files_report("proc-0", 0, "one");
     report.entries = vec![
         mode_entry(r"C:\Program Files\映像.mxf", 1, Ok(1), Ok(0)),
@@ -1339,6 +1340,15 @@ fn files_and_terms_preserve_phrase_without_hidden_handoff_filter() {
     app.open_files_result = Some(report);
     app.open_files_filter = r#""Program Files" 映像"#.into();
     assert_eq!(ui::open_files::filtered_entries(&app).len(), 1);
+    let buffer = super::support::render_app_to_buffer(&app, 120, 30);
+    let (x, y) = super::support::find_text_position(&buffer, r"C:\Program Files\").unwrap();
+    for offset in 3..16 {
+        assert_eq!(buffer[(x + offset, y)].fg, app.theme().warning);
+        assert_eq!(
+            buffer[(x + offset, y)].bg,
+            app.theme().table_selection_surface
+        );
+    }
     app.open_files_filter = "Program missing".into();
     assert!(ui::open_files::filtered_entries(&app).is_empty());
     app.open_files_filter = r"C:\Program Files\映像.mxf".into();

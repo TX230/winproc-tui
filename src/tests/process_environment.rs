@@ -15,6 +15,33 @@ use ratatui::layout::{Position, Rect};
 use std::sync::mpsc::TryRecvError;
 
 #[test]
+fn environment_table_highlights_terms_across_columns() {
+    let mut app = make_test_app(1, 10);
+    app.open_selected_process_info_dialog().unwrap();
+    app.process_info_tab = app::ProcessInfoTab::Environment;
+    app.process_environment_result = Some(test_process_environment_report(
+        "proc-0",
+        0,
+        vec![ProcessEnvironmentEntry {
+            name: "HIGHLIGHT_NAME".into(),
+            value: "ababa".into(),
+        }],
+    ));
+    app.process_environment_filter = "highlight aba".into();
+    let buffer = super::support::render_app_to_buffer(&app, 120, 30);
+    for (text, length) in [("HIGHLIGHT_NAME", 9), ("ababa", 5)] {
+        let (x, y) = find_text_position(&buffer, text).unwrap();
+        for offset in 0..length {
+            assert_eq!(buffer[(x + offset, y)].fg, app.theme().warning);
+            assert_eq!(
+                buffer[(x + offset, y)].bg,
+                app.theme().table_selection_surface
+            );
+        }
+    }
+}
+
+#[test]
 fn environment_tab_lazy_loads_once_for_the_fixed_dialog_target() {
     let (worker, request_rx, _) = ProcessEnvironmentWorker::test_pair();
     let mut app = make_test_app(2, 10);

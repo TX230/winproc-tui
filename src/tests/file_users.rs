@@ -616,6 +616,34 @@ fn file_users_and_terms_and_quoted_paths() {
 }
 
 #[test]
+fn file_users_table_highlights_and_terms_and_clears_them() {
+    let (mut app, requests, _) = setup();
+    open_ready(&mut app, &requests);
+    let mut row = entry(0);
+    row.path = r"C:\highlight\ababa.txt".into();
+    app.file_users.report.matches = vec![row];
+    app.file_users.draft = "highlight/ aba".into();
+    app.file_users.cursor = app.file_users.draft.len();
+    for width in [80, 120] {
+        let buffer = render_app_to_buffer(&app, width, 30);
+        let (x, y) = super::support::find_text_position(&buffer, "ababa.txt").unwrap();
+        for offset in 0..5 {
+            assert_eq!(buffer[(x + offset, y)].fg, app.theme().warning);
+            assert_eq!(
+                buffer[(x + offset, y)].bg,
+                app.theme().table_selection_surface
+            );
+        }
+        assert_ne!(buffer[(x + 5, y)].fg, app.theme().warning);
+    }
+    app.file_users.draft.clear();
+    app.file_users.cursor = 0;
+    let buffer = render_app_to_buffer(&app, 120, 30);
+    let (x, y) = super::support::find_text_position(&buffer, "ababa.txt").unwrap();
+    assert_eq!(buffer[(x, y)].fg, app.theme().text);
+}
+
+#[test]
 fn file_users_direct_actions_preserve_query_priority_and_parent() {
     let (mut app, requests, _) = setup();
     open_ready(&mut app, &requests);

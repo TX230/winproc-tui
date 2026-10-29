@@ -246,6 +246,7 @@ fn open_files_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>>
                 theme,
                 width,
                 index == app.open_files_selected,
+                &app.open_files_filter,
             ));
         }
     }
@@ -412,6 +413,7 @@ fn open_files_table_rows(
     theme: Theme,
     width: usize,
     selected: bool,
+    query: &str,
 ) -> Vec<Line<'static>> {
     let mut style = Style::default().fg(theme.text).bg(if selected {
         theme.table_selection_surface
@@ -421,32 +423,34 @@ fn open_files_table_rows(
     if selected {
         style = style.add_modifier(Modifier::BOLD);
     }
+    let path = super::search_highlight::fit(
+        super::search_highlight::line(&entry.path, query, style, theme),
+        width.saturating_sub(HANDLE_COLUMN_WIDTH + 6),
+        true,
+        "...",
+        true,
+    );
     vec![
-        Line::from(vec![
-            Span::styled(
-                fit_cell(&format!("0x{:X}", entry.handle.value), HANDLE_COLUMN_WIDTH),
-                style.fg(theme.accent),
-            ),
-            Span::raw(" "),
-            Span::styled(fit_cell(entry.handle.kind_label(), 4), style),
-            Span::raw(" "),
-            Span::styled(
-                fit_cell_start(&entry.path, width.saturating_sub(HANDLE_COLUMN_WIDTH + 6)),
-                style,
-            ),
-        ])
+        Line::from(
+            vec![
+                Span::styled(
+                    fit_cell(&format!("0x{:X}", entry.handle.value), HANDLE_COLUMN_WIDTH),
+                    style.fg(theme.accent),
+                ),
+                Span::raw(" "),
+                Span::styled(fit_cell(entry.handle.kind_label(), 4), style),
+                Span::raw(" "),
+            ]
+            .into_iter()
+            .chain(path.spans)
+            .collect::<Vec<_>>(),
+        )
         .style(style),
     ]
 }
 
 fn fit_cell(value: &str, width: usize) -> String {
     let truncated = truncate_end(value, width);
-    let padding = width.saturating_sub(Span::raw(&truncated).width());
-    format!("{truncated}{}", " ".repeat(padding))
-}
-
-fn fit_cell_start(value: &str, width: usize) -> String {
-    let truncated = truncate_path_start(value, width);
     let padding = width.saturating_sub(Span::raw(&truncated).width());
     format!("{truncated}{}", " ".repeat(padding))
 }
@@ -469,28 +473,6 @@ fn truncate_end(value: &str, width: usize) -> String {
     format!("{head}...")
 }
 
-fn truncate_path_start(path: &str, width: usize) -> String {
-    if Span::raw(path).width() <= width {
-        return path.to_string();
-    }
-    if width <= 3 {
-        return ".".repeat(width);
-    }
-    let mut used = 0;
-    let tail = path
-        .chars()
-        .rev()
-        .take_while(|ch| {
-            used += Span::raw(ch.to_string()).width();
-            used <= width - 3
-        })
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<String>();
-    format!("...{tail}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,7 +480,14 @@ mod tests {
     #[test]
     fn truncate_path_start_keeps_file_name_side() {
         assert_eq!(
-            truncate_path_start(r"C:\very\long\path\app.log", 14),
+            super::super::search_highlight::fit(
+                Line::raw(r"C:\very\long\path\app.log"),
+                14,
+                true,
+                "...",
+                false
+            )
+            .to_string(),
             r"...ath\app.log"
         );
     }

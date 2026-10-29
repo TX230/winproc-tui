@@ -339,18 +339,14 @@ fn draw_content(
                     .remote
                     .map_or_else(|| "--".into(), |address| address.to_string());
                 let pid = entry.key.pid.to_string();
-                let line = table_line(
-                    &[
-                        entry.key.protocol.label(),
-                        &local,
-                        &remote,
-                        entry.state_label(),
-                        &pid,
-                        entry.process_name(),
-                    ],
-                    &columns,
-                    width,
-                );
+                let values = [
+                    entry.key.protocol.label(),
+                    &local,
+                    &remote,
+                    entry.state_label(),
+                    &pid,
+                    entry.process_name(),
+                ];
                 let style = if index == view.selected {
                     normal
                         .bg(theme.table_selection_surface)
@@ -358,7 +354,30 @@ fn draw_content(
                 } else {
                     normal
                 };
-                Line::styled(line, style)
+                let mut line = Line::default().style(style);
+                for (value, column_width) in values.iter().zip(columns) {
+                    if column_width == 0 {
+                        continue;
+                    }
+                    if !line.spans.is_empty() {
+                        line.spans.push(Span::styled(" ", style));
+                    }
+                    let value = value
+                        .chars()
+                        .map(|ch| if ch.is_control() { ' ' } else { ch })
+                        .collect::<String>();
+                    line.spans.extend(
+                        super::search_highlight::fit(
+                            super::search_highlight::line(&value, &view.filter, style, theme),
+                            column_width,
+                            false,
+                            "…",
+                            true,
+                        )
+                        .spans,
+                    );
+                }
+                super::search_highlight::fit(line, width as usize, false, "…", false)
             })
             .collect();
         frame.render_widget(Paragraph::new(lines).style(normal), layout.rows);

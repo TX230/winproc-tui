@@ -207,6 +207,7 @@ fn process_module_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'stat
             width,
             index == app.process_modules_selected,
             theme,
+            &app.process_modules_filter,
         ));
     }
     lines
@@ -255,16 +256,20 @@ fn path_row(
     width: usize,
     selected: bool,
     theme: Theme,
+    query: &str,
 ) -> Line<'static> {
     let style = Style::default().fg(theme.text).bg(if selected {
         theme.table_selection_surface
     } else {
         theme.panel
     });
-    Line::from(Span::styled(
-        truncate_display(&entry.path, width.max(1), true),
-        style,
-    ))
+    super::search_highlight::fit(
+        super::search_highlight::line(&entry.path, query, style, theme),
+        width.max(1),
+        true,
+        "...",
+        false,
+    )
 }
 
 fn detail_lines(label: &str, value: &str, width: usize, theme: Theme) -> Vec<Line<'static>> {

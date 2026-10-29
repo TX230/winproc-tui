@@ -1235,6 +1235,28 @@ fn network_and_terms_match_across_endpoint_fields() {
 }
 
 #[test]
+fn network_tables_highlight_terms_across_columns() {
+    for global in [true, false] {
+        let (mut app, requests, results) = setup();
+        if global {
+            open_network_list(&mut app);
+        } else {
+            app.open_selected_process_info_dialog().unwrap();
+            app.activate_process_info_tab(ProcessInfoTab::Network)
+                .unwrap();
+        }
+        let snapshot = report(&app);
+        deliver(&mut app, &results, capture(&requests), snapshot);
+        empty_test_view_mut(&mut app, global).filter = "TCP 8080".into();
+        let buffer = render_app_to_buffer(&app, 120, 36);
+        let (x, y) = find_text_position(&buffer, "127.0.0.1:8080").unwrap();
+        for offset in 10..14 {
+            assert_eq!(buffer[(x + offset, y)].fg, app.theme().warning);
+        }
+    }
+}
+
+#[test]
 fn network_handoff_freezes_endpoint_and_reports_disappearance_without_focus_theft() {
     let (mut app, requests, results) = setup();
     let snapshot = report(&app);

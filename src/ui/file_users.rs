@@ -214,13 +214,18 @@ fn query_window(view: &FileUsersView, width: usize) -> (String, usize) {
     )
 }
 
-fn table_line(pid: &str, process: &str, count: &str, path: &str, width: usize) -> String {
+fn table_widths(width: usize) -> [usize; 4] {
     let pid_width = 8.min(width);
     let process_width = (width / 4)
         .clamp(8, 24)
         .min(width.saturating_sub(pid_width + 2));
     let count_width = 7.min(width.saturating_sub(pid_width + process_width + 3));
     let path_width = width.saturating_sub(pid_width + process_width + count_width + 3);
+    [pid_width, process_width, count_width, path_width]
+}
+
+fn table_line(pid: &str, process: &str, count: &str, path: &str, width: usize) -> String {
+    let [pid_width, process_width, count_width, path_width] = table_widths(width);
     format!(
         "{} {} {} {}",
         fit(pid, pid_width, false),
@@ -353,16 +358,32 @@ pub(crate) fn draw_browser(frame: &mut ratatui::Frame<'_>, screen: Rect, app: &A
                     } else {
                         normal
                     };
-                    Line::styled(
-                        table_line(
-                            &entry.owner.pid.to_string(),
-                            &entry.owner.name,
-                            &entry.handle_count.to_string(),
-                            &entry.path,
-                            width,
+                    let [pid_width, process_width, count_width, path_width] = table_widths(width);
+                    let mut line = Line::styled(
+                        format!(
+                            "{} {} {} ",
+                            fit(&entry.owner.pid.to_string(), pid_width, false),
+                            fit(&entry.owner.name, process_width, false),
+                            fit(&entry.handle_count.to_string(), count_width, false)
                         ),
                         style,
-                    )
+                    );
+                    let path = entry
+                        .path
+                        .chars()
+                        .map(|ch| if ch.is_control() { ' ' } else { ch })
+                        .collect::<String>();
+                    line.spans.extend(
+                        super::search_highlight::fit(
+                            super::search_highlight::path_line(&path, &view.draft, style, theme),
+                            path_width,
+                            true,
+                            "…",
+                            true,
+                        )
+                        .spans,
+                    );
+                    line
                 })
                 .collect::<Vec<_>>();
             frame.render_widget(Paragraph::new(rows), content.rows);

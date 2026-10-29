@@ -27,6 +27,7 @@ pub(crate) mod process_table;
 pub(crate) mod quit_confirm;
 pub(crate) mod recording_dialog;
 pub(crate) mod scheduling;
+mod search_highlight;
 pub(crate) mod system_panel;
 pub(crate) mod theme;
 pub(crate) mod threads;

@@ -229,11 +229,35 @@ fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>
                 } else {
                     theme.panel
                 });
-        lines.push(Line::from(vec![
-            Span::styled(fit_cell(&entry.name, name_width), style.fg(theme.accent)),
-            Span::styled(" ", style),
-            Span::styled(fit_cell(&entry.value, value_width), style),
-        ]));
+        let mut name = super::search_highlight::fit(
+            super::search_highlight::line(
+                &entry.name,
+                &app.process_environment_filter,
+                style.fg(theme.accent),
+                theme,
+            ),
+            name_width,
+            false,
+            "...",
+            true,
+        );
+        name.spans.push(Span::styled(" ", style));
+        name.spans.extend(
+            super::search_highlight::fit(
+                super::search_highlight::line(
+                    &entry.value,
+                    &app.process_environment_filter,
+                    style,
+                    theme,
+                ),
+                value_width,
+                false,
+                "...",
+                true,
+            )
+            .spans,
+        );
+        lines.push(name);
     }
 
     lines

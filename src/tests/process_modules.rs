@@ -12,6 +12,29 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc::TryRecvError;
 
 #[test]
+fn dll_table_highlights_each_and_term() {
+    let mut app = make_test_app(1, 10);
+    app.open_selected_process_info_dialog().unwrap();
+    app.process_info_tab = app::ProcessInfoTab::Dlls;
+    app.process_modules_result = Some(test_process_modules_report(
+        "proc-0",
+        0,
+        vec![test_process_module_entry("ababa.dll", "Test")],
+    ));
+    app.process_modules_filter = "aba DLL".into();
+    let buffer = super::support::render_app_to_buffer(&app, 80, 30);
+    let (x, y) = super::support::find_text_position(&buffer, "ababa.dll").unwrap();
+    for offset in [0, 1, 2, 3, 4, 6, 7, 8] {
+        assert_eq!(buffer[(x + offset, y)].fg, app.theme().warning);
+        assert_eq!(
+            buffer[(x + offset, y)].bg,
+            app.theme().table_selection_surface
+        );
+    }
+    assert_eq!(buffer[(x + 5, y)].fg, app.theme().text);
+}
+
+#[test]
 fn dlls_tab_lazy_loads_once_for_the_fixed_dialog_target() {
     let (worker, request_rx, _) = ProcessModulesWorker::test_pair();
     let mut app = make_test_app(2, 10);
