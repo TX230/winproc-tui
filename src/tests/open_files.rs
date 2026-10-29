@@ -1329,7 +1329,7 @@ fn files_type_column_preserves_unknown_rows_in_wide_and_compact_layouts() {
 }
 
 #[test]
-fn files_and_terms_preserve_phrase_and_exact_handoff() {
+fn files_and_terms_preserve_phrase_without_hidden_handoff_filter() {
     let mut app = make_test_app(1, 10);
     let mut report = test_open_files_report("proc-0", 0, "one");
     report.entries = vec![
@@ -1343,7 +1343,8 @@ fn files_and_terms_preserve_phrase_and_exact_handoff() {
     assert!(ui::open_files::filtered_entries(&app).is_empty());
     app.open_files_filter = r"C:\Program Files\映像.mxf".into();
     app.open_files_match_path = Some(app.open_files_filter.clone());
-    assert_eq!(ui::open_files::filtered_entries(&app).len(), 1);
+    app.open_files_filter.clear();
+    assert_eq!(ui::open_files::filtered_entries(&app).len(), 2);
 }
 
 #[test]

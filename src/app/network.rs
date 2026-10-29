@@ -5,7 +5,7 @@ use ratatui::layout::{Position, Rect};
 use crate::{
     model::{
         ProcessIdentity,
-        network::{NetworkEndpoint, NetworkReport},
+        network::{NetworkEndpoint, NetworkEndpointKey, NetworkReport},
     },
     samplers::network::{NetworkContext, NetworkPayload, NetworkRequest},
     ui::{network as ui, widgets::scrollable_modal::ScrollableModalState},
@@ -32,6 +32,8 @@ pub(crate) struct NetworkView {
     pub(crate) selected: usize,
     pub(crate) detail: bool,
     pub(crate) detail_entry: Option<NetworkEndpoint>,
+    pub(crate) navigation_key: Option<NetworkEndpointKey>,
+    pub(crate) matched_key: Option<NetworkEndpointKey>,
     pub(crate) scroll: ScrollableModalState,
 }
 
@@ -40,6 +42,11 @@ impl NetworkView {
         self.report
             .iter()
             .flat_map(|report| &report.endpoints)
+            .filter(|entry| {
+                self.matched_key
+                    .as_ref()
+                    .is_none_or(|key| &entry.key == key)
+            })
             .filter(|entry| (self.all || entry.is_listener_or_udp()) && entry.matches(&self.filter))
             .collect()
     }
@@ -52,6 +59,9 @@ impl NetworkView {
     }
 
     pub(crate) fn reset_selection(&mut self) {
+        if self.matched_key.take().is_some() {
+            self.notice = None;
+        }
         self.selected = 0;
         self.detail = false;
         self.detail_entry = None;
@@ -193,7 +203,14 @@ impl App {
                     view.selected = selected_key
                         .and_then(|key| view.entries().iter().position(|entry| entry.key == key))
                         .unwrap_or(0);
-                    view.notice = None;
+                    view.notice = view.matched_key.as_ref().map(|_| {
+                        if view.entries().is_empty() {
+                            "Original endpoint unavailable in this capture."
+                        } else {
+                            "Matched endpoint (edit Filter to clear)"
+                        }
+                        .into()
+                    });
                     view.scroll
                         .ensure_visible(view.selected, view.entries().len());
                 }
@@ -201,6 +218,7 @@ impl App {
                     view.notice = Some(error)
                 }
                 NetworkPayload::Owner(Ok(owner)) => {
+                    let matched_key = self.network_view_mut(global).navigation_key.take();
                     if global && (!self.network_browser.visible || self.has_workspace_overlay()) {
                         continue;
                     }
@@ -227,6 +245,9 @@ impl App {
                         },
                     ) {
                         self.network_browser.notice = Some(error.to_string());
+                    } else if global {
+                        self.process_network.matched_key = matched_key;
+                        self.process_info_focus = ProcessInfoFocus::Content;
                     }
                 }
             }
@@ -247,7 +268,14 @@ impl App {
                 Some("Owner unavailable or unverified; refresh to try again".into());
             return;
         };
+        let key = self
+            .network_browser
+            .selected_entry()
+            .map(|entry| entry.key.clone());
         self.verify_network_owner(owner, true);
+        if self.network_browser.pending.is_some() {
+            self.network_browser.navigation_key = key;
+        }
     }
 
     pub(crate) fn verify_network_owner(
@@ -261,6 +289,7 @@ impl App {
         {
             return;
         }
+        self.network_view_mut(global).navigation_key = None;
         let context = self.next_network_context(global);
         match self
             .network_worker

@@ -1196,6 +1196,7 @@ pub(crate) struct App {
     pub(crate) open_files_refresh: super::open_files::OpenFilesRefresh,
     pub(crate) open_files_filter: String,
     pub(crate) open_files_match_path: Option<String>,
+    pub(crate) open_files_match_unavailable: bool,
     pub(crate) open_files_filter_cursor: usize,
     pub(crate) open_files_selected: usize,
     pub(crate) open_files_show_detail: bool,
@@ -1510,6 +1511,7 @@ impl App {
             open_files_refresh: super::open_files::OpenFilesRefresh::default(),
             open_files_filter: String::new(),
             open_files_match_path: None,
+            open_files_match_unavailable: false,
             open_files_filter_cursor: 0,
             open_files_selected: 0,
             open_files_show_detail: false,
@@ -5649,6 +5651,7 @@ impl App {
         self.file_action = None;
         self.open_files_filter.clear();
         self.open_files_match_path = None;
+        self.open_files_match_unavailable = false;
         self.open_files_filter_cursor = 0;
         self.open_files_result = None;
         self.open_files_result_identity = None;
@@ -5863,13 +5866,22 @@ impl App {
             .map(|entry| (entry.path.clone(), entry.handle.value));
         self.open_files_result_identity = Some(result.identity);
         self.open_files_result = Some(result.report);
+        // Consume the navigation target once, after identity/generation validation.
+        // Later refreshes retain the user's selected handle instead of reapplying the handoff.
+        let reveal_path = self.open_files_match_path.take();
         let entries = crate::ui::open_files::filtered_entries(self);
+        let revealed = reveal_path
+            .as_ref()
+            .and_then(|path| entries.iter().position(|entry| entry.path == *path));
         let retained = selected_handle.and_then(|(path, handle)| {
             entries
                 .iter()
                 .position(|entry| entry.path == path && entry.handle.value == handle)
         });
-        self.open_files_selected = retained.unwrap_or(0);
+        if reveal_path.is_some() {
+            self.open_files_match_unavailable = revealed.is_none();
+        }
+        self.open_files_selected = revealed.or(retained).unwrap_or(0);
         if retained.is_none() {
             self.open_files_show_detail = false;
         }
@@ -5877,6 +5889,19 @@ impl App {
             self.open_files_scroll.page_size,
             self.open_files_total_rows(),
         );
+        if revealed.is_some() {
+            let area = crate::ui::process_info_content_area_for_screen(
+                self.last_screen_area,
+                self.process_info_height(),
+            );
+            let (_, body) = crate::ui::process_info_dialog::inspection_table_areas(
+                area,
+                crate::ui::open_files::fixed_header_rows(self),
+            );
+            self.open_files_scroll
+                .set_page_size(body.height as usize, self.open_files_total_rows());
+            self.ensure_open_file_visible();
+        }
         true
     }
 
@@ -6174,10 +6199,23 @@ impl App {
             Ok(report) => {
                 let count = report.entries.len();
                 let process_name = report.process_name.clone();
+                let selected = crate::ui::process_modules::selected_entry(self)
+                    .map(|entry| entry.path.clone());
                 self.process_modules_result_identity = Some(result.identity);
                 self.process_modules_result = Some(report);
                 self.process_modules_error = None;
-                self.clamp_process_modules_selection();
+                let retained = selected.as_ref().and_then(|identity| {
+                    crate::ui::process_modules::filtered_entries(self)
+                        .iter()
+                        .position(|entry| &entry.path == identity)
+                });
+                self.process_modules_selected = retained.unwrap_or(0);
+                if retained.is_none() {
+                    self.process_modules_show_detail = false;
+                }
+                if !self.process_modules_show_detail {
+                    self.ensure_selected_process_module_visible();
+                }
                 self.status = format!("Loaded {count} DLLs for {process_name}");
             }
             Err(error) => {
@@ -6232,12 +6270,6 @@ impl App {
             self.process_modules_selected = index;
             self.ensure_selected_process_module_visible();
         }
-    }
-
-    fn clamp_process_modules_selection(&mut self) {
-        let count = crate::ui::process_modules::filtered_entries(self).len();
-        self.process_modules_selected = self.process_modules_selected.min(count.saturating_sub(1));
-        self.ensure_selected_process_module_visible();
     }
 
     fn ensure_selected_process_module_visible(&mut self) {
@@ -6476,10 +6508,23 @@ impl App {
             Ok(report) => {
                 let count = report.entries.len();
                 let process_name = report.process_name.clone();
+                let selected = crate::ui::process_environment::selected_entry(self)
+                    .map(|entry| entry.name.clone());
                 self.process_environment_result_identity = Some(result.identity);
                 self.process_environment_result = Some(report);
                 self.process_environment_error = None;
-                self.clamp_process_environment_selection();
+                let retained = selected.as_ref().and_then(|identity| {
+                    crate::ui::process_environment::filtered_entries(self)
+                        .iter()
+                        .position(|entry| &entry.name == identity)
+                });
+                self.process_environment_selected = retained.unwrap_or(0);
+                if retained.is_none() {
+                    self.process_environment_show_detail = false;
+                }
+                if !self.process_environment_show_detail {
+                    self.ensure_selected_process_environment_visible();
+                }
                 self.status = format!("Loaded {count} environment variables for {process_name}");
             }
             Err(error) => {
@@ -6535,14 +6580,6 @@ impl App {
             self.process_environment_selected = index;
             self.ensure_selected_process_environment_visible();
         }
-    }
-
-    fn clamp_process_environment_selection(&mut self) {
-        let count = crate::ui::process_environment::filtered_entries(self).len();
-        self.process_environment_selected = self
-            .process_environment_selected
-            .min(count.saturating_sub(1));
-        self.ensure_selected_process_environment_visible();
     }
 
     fn ensure_selected_process_environment_visible(&mut self) {

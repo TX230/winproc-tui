@@ -1943,10 +1943,10 @@ fn inspection_empty_filters_offer_recovery_only_for_hidden_rows() {
     }
     app.process_info_tab = app::ProcessInfoTab::Files;
     app.open_files_filter = "absent".into();
-    app.open_files_match_path = Some("absent".into());
+    app.open_files_match_unavailable = true;
     assert!(render_app_to_text(&app, 60, 24).contains("Original match unavailable"));
     assert!(!render_app_to_text(&app, 60, 24).contains("then Ctrl+U clear"));
-    app.open_files_match_path = None;
+    app.open_files_match_unavailable = false;
     app.open_files_result.as_mut().unwrap().entries.clear();
     assert!(render_app_to_text(&app, 60, 24).contains("No named disk file handles."));
     assert!(!render_app_to_text(&app, 60, 24).contains("Ctrl+U clear; Enter table."));

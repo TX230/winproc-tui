@@ -62,6 +62,75 @@ impl Fixture {
 }
 
 #[test]
+fn files_handoff_reveals_offscreen_target_once_without_stealing_focus() {
+    let mut f = Fixture::new();
+    let mut report = test_open_files_report("proc-0", 0, "base.txt");
+    let template = report.entries[0].clone();
+    report.entries = (0..60)
+        .map(|i| {
+            let mut entry = template.clone();
+            entry.path = format!(r"C:\files\file-{i:02}.txt");
+            entry.handle.value = i;
+            entry
+        })
+        .collect();
+    f.app.open_files_match_path = Some(report.entries[50].path.clone());
+    let screen = ratatui::layout::Rect::new(0, 0, 100, 24);
+    crate::app::sync_layout_state(&mut f.app, screen);
+    f.app.process_info_focus = crate::app::ProcessInfoFocus::Tabs;
+    assert!(f.deliver(10, report.clone()));
+    assert!(f.app.open_files_filter.is_empty());
+    assert_eq!(ui::open_files::filtered_entries(&f.app).len(), 60);
+    assert_eq!(f.app.open_files_selected, 50);
+    assert!(f.app.open_files_scroll.offset > 0);
+    assert!(render_app_to_text(&f.app, 100, 24).contains("file-50.txt"));
+    assert_eq!(f.app.process_info_focus, crate::app::ProcessInfoFocus::Tabs);
+    f.app.select_open_file(3);
+    let offset = f.app.open_files_scroll.offset;
+    f.due();
+    assert!(f.deliver(10, report));
+    assert_eq!(f.app.open_files_selected, 3);
+    assert_eq!(f.app.open_files_scroll.offset, offset);
+}
+
+#[test]
+fn files_missing_handoff_keeps_other_rows_and_reports_failure() {
+    for failed in [false, true] {
+        let mut f = Fixture::new();
+        f.app.open_files_match_path = Some(r"C:\absent.txt".into());
+        let mut report = test_open_files_report("proc-0", 0, "other.txt");
+        if failed {
+            report.error = Some(OpenFilesError::AccessDenied);
+        }
+        assert!(f.deliver(10, report));
+        assert!(f.app.open_files_match_unavailable);
+        assert!(render_app_to_text(&f.app, 120, 35).contains("Original match unavailable"));
+        if !failed {
+            assert_eq!(ui::open_files::filtered_entries(&f.app).len(), 1);
+            assert!(render_app_to_text(&f.app, 120, 35).contains("other.txt"));
+        }
+    }
+}
+
+#[test]
+fn files_filter_edit_before_capture_cancels_initial_reveal() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut f = Fixture::new();
+    f.app.open_files_match_path = Some(r"C:\absent.txt".into());
+    f.app
+        .on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL))
+        .unwrap();
+    f.app
+        .on_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(f.app.open_files_match_path.is_none());
+    assert!(f.deliver(10, test_open_files_report("proc-0", 0, "other.txt")));
+    assert_eq!(f.app.open_files_filter, "o");
+    assert!(!f.app.open_files_match_unavailable);
+    assert!(f.app.process_info_filter_editing);
+}
+
+#[test]
 fn files_auto_refresh_is_serial_and_preserves_filter_selection_and_status() {
     let mut f = Fixture::new();
     let mut report = test_open_files_report("proc-0", 0, "keep.log");

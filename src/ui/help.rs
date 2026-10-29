@@ -58,7 +58,7 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter (file results)",
-        label: "Open Files filtered to this exact path; edit Filter to clear",
+        label: "Select and reveal the matching Files row; Filter stays empty",
     },
     HelpItem {
         key: "Space (file results)",
@@ -396,6 +396,10 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     HelpItem {
         key: "Alt+C (Files / Environment)",
         label: "Copy selected full path / raw value; empty value clears clipboard",
+    },
+    HelpItem {
+        key: "Ctrl+U (Environment detail)",
+        label: "Refresh the same variable; in Filter, Ctrl+U clears text",
     },
     HelpItem {
         key: "Ctrl+C (Environment)",
@@ -868,7 +872,7 @@ const NETWORK_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter (global list)",
-        label: "Open Process Info for the process using this endpoint",
+        label: "Focus this endpoint in Process Info; edit Filter to show all",
     },
     HelpItem {
         key: "Space (global), Enter (Info)",

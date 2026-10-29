@@ -270,3 +270,66 @@ fn stale_dll_result_cannot_replace_reopened_dialog_request() {
         "new.dll"
     );
 }
+
+#[test]
+fn refresh_retains_modules_identity_across_insertion_reorder_and_removal() {
+    let (worker, requests, results) = ProcessModulesWorker::test_pair();
+    let mut app = make_test_app(1, 10);
+    app.process_modules_worker = worker;
+    app.open_selected_process_info_dialog().unwrap();
+    activate_process_modules_tab(&mut app);
+    let deliver = |app: &mut crate::App, names: &[&str]| {
+        let ProcessModulesRequest::Collect {
+            generation,
+            request_id,
+            identity,
+            ..
+        } = requests.try_recv().unwrap()
+        else {
+            panic!()
+        };
+        let entries = names
+            .iter()
+            .map(|&name| test_process_module_entry(name, "test"))
+            .collect();
+        let report = test_process_modules_report(&identity.name, identity.pid, entries);
+        results
+            .send(ProcessModulesResult {
+                generation,
+                request_id,
+                identity,
+                outcome: Ok(report),
+            })
+            .unwrap();
+        assert!(app.poll_process_modules_results().unwrap());
+    };
+    deliver(&mut app, &["BETA", "DELTA"]);
+    app.process_modules_selected = 1;
+    app.open_selected_process_info_detail();
+    let original = ui::process_modules::selected_entry(&app)
+        .unwrap()
+        .path
+        .clone();
+    app.refresh_process_modules().unwrap();
+    deliver(&mut app, &["ALPHA", "BETA", "DELTA"]);
+    assert_eq!(app.process_modules_selected, 2);
+    assert!(app.process_modules_show_detail);
+    assert_eq!(
+        ui::process_modules::selected_entry(&app).unwrap().path,
+        original
+    );
+    app.refresh_process_modules().unwrap();
+    deliver(&mut app, &["DELTA", "BETA", "ALPHA"]);
+    assert_eq!(app.process_modules_selected, 0);
+    assert!(app.process_modules_show_detail);
+    app.refresh_process_modules().unwrap();
+    deliver(&mut app, &["BETA", "ALPHA"]);
+    assert!(!app.process_modules_show_detail);
+    app.process_modules_filter = "BETA".into();
+    app.process_modules_selected = 0;
+    app.open_selected_process_info_detail();
+    app.refresh_process_modules().unwrap();
+    deliver(&mut app, &["DELTA"]);
+    assert!(!app.process_modules_show_detail);
+    assert!(ui::process_modules::selected_entry(&app).is_none());
+}

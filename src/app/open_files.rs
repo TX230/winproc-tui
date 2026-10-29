@@ -63,12 +63,16 @@ impl App {
     }
 
     pub(crate) fn reset_open_file_selection(&mut self) {
+        self.open_files_match_path = None;
+        self.open_files_match_unavailable = false;
         self.open_files_selected = 0;
         self.open_files_show_detail = false;
         self.open_files_scroll.scroll_home();
     }
 
     pub(crate) fn select_open_file(&mut self, index: usize) {
+        self.open_files_match_path = None;
+        self.open_files_match_unavailable = false;
         let count = open_files::filtered_entries(self).len();
         self.open_files_selected = index.min(count.saturating_sub(1));
         self.ensure_open_file_visible();
@@ -237,6 +241,8 @@ impl App {
 
     fn select_open_file_at_scroll_offset(&mut self, area: Rect) {
         if !self.open_files_show_detail {
+            self.open_files_match_path = None;
+            self.open_files_match_unavailable = false;
             let stride = open_files::entry_row_height(area.width.saturating_sub(1) as usize);
             let index = self.open_files_scroll.offset.div_ceil(stride);
             self.open_files_selected =

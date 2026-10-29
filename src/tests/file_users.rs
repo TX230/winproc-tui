@@ -455,7 +455,7 @@ fn file_search_reopens_at_query_and_slash_focuses_from_mode_or_results() {
 }
 
 #[test]
-fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
+fn file_users_handoff_reveals_path_without_filtering_duplicate_handles() {
     use crate::samplers::open_files::{OpenFilesRequest, OpenFilesResult, OpenFilesWorker};
     let (mut app, requests, updates) = setup();
     let (worker, captures, results) = OpenFilesWorker::test_pair();
@@ -463,6 +463,7 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
     open_ready(&mut app, &requests);
     app.file_users.draft = "media".into();
     app.file_users.focus = FileUsersFocus::Results;
+    app.open_files_filter = "old filter".into();
     let original = entry(0);
     app.file_users.report.matches = vec![original.clone(), entry(1)];
     app.file_users.report.progress.denied_processes = 3;
@@ -479,7 +480,7 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
         },
         Some(original.owner.clone()),
     );
-    assert_eq!(app.open_files_filter, original.path);
+    assert!(app.open_files_filter.is_empty());
     assert_eq!(app.file_users.selected, 1);
     let OpenFilesRequest::Collect {
         generation,
@@ -514,7 +515,11 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
     assert!(!app.poll_open_files_results().unwrap());
     send(report.clone(), generation, identity.clone());
     assert!(app.poll_open_files_results().unwrap());
-    assert_eq!(ui::open_files::filtered_entries(&app).len(), 2);
+    assert_eq!(ui::open_files::filtered_entries(&app).len(), 4);
+    assert_eq!(
+        app.process_info_focus,
+        crate::app::ProcessInfoFocus::Content
+    );
     let rendered = render_app_to_text(&app, 180, 42);
     assert!(rendered.contains("Filter: "));
     assert!(!rendered.contains("Exact:"));
@@ -522,7 +527,10 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
         ui::open_files::selected_entry(&app).unwrap().path,
         original.path
     );
-    assert!(render_app_to_text(&app, 180, 42).contains("matched handles 2"));
+    assert_eq!(app.open_files_selected, 2);
+    assert!(app.open_files_match_path.is_none());
+    assert!(!render_app_to_text(&app, 180, 42).contains("matched handles"));
+    app.select_open_file(0);
     app.refresh_open_files().unwrap();
     let OpenFilesRequest::Collect {
         generation,
@@ -535,8 +543,8 @@ fn file_users_handoff_freezes_path_and_filters_duplicate_handles() {
     report.entries.truncate(1);
     send(report, generation, identity);
     assert!(app.poll_open_files_results().unwrap());
-    assert!(ui::open_files::selected_entry(&app).is_none());
-    assert!(render_app_to_text(&app, 180, 42).contains("Original match unavailable"));
+    assert_eq!(app.open_files_selected, 0);
+    assert!(ui::open_files::selected_entry(&app).is_some());
     press(&mut app, KeyCode::Char('/'));
     app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
         .unwrap();

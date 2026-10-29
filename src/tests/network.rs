@@ -259,6 +259,8 @@ fn network_owner_navigation_is_verified_and_returns_to_retained_results() {
     assert!(app.process_network.all);
     let process_capture = capture(&requests);
     assert_eq!(process_capture.target.as_ref(), Some(&expected_identity));
+    assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);
+    press(&mut app, KeyCode::Esc);
     press(&mut app, KeyCode::Esc);
     assert!(!app.show_process_info_dialog);
     assert!(app.network_browser.visible);
@@ -903,6 +905,7 @@ fn network_footer_mouse_opens_verified_owner_refreshes_and_returns() {
         .unwrap();
     assert!(app.poll_network_results());
     assert!(app.show_process_info_dialog);
+    click(&mut app, "Esc tabs");
     click(&mut app, "Esc close");
     assert!(!app.show_process_info_dialog);
     assert!(app.network_browser.visible);
@@ -1229,4 +1232,46 @@ fn network_and_terms_match_across_endpoint_fields() {
     assert!(!endpoint.matches("TCP 5353"));
     assert!(endpoint.matches("   "));
     assert!(endpoint.matches(r#""127.0.0.1:8080" TCP"#));
+}
+
+#[test]
+fn network_handoff_freezes_endpoint_and_reports_disappearance_without_focus_theft() {
+    let (mut app, requests, results) = setup();
+    let snapshot = report(&app);
+    let original = snapshot.endpoints[0].key.clone();
+    open_network_list(&mut app);
+    deliver(&mut app, &results, capture(&requests), snapshot.clone());
+    press(&mut app, KeyCode::Enter);
+    let NetworkRequest::Verify(context, owner) = requests.try_recv().unwrap() else {
+        panic!()
+    };
+    app.network_browser.selected = 1;
+    results
+        .send(NetworkResult {
+            context,
+            payload: NetworkPayload::Owner(Ok(owner)),
+        })
+        .unwrap();
+    assert!(app.poll_network_results());
+    assert_eq!(app.process_network.matched_key, Some(original.clone()));
+    assert_eq!(app.process_info_focus, ProcessInfoFocus::Content);
+    // A delayed capture must not take focus back from the tab row.
+    app.process_info_focus = ProcessInfoFocus::Tabs;
+    deliver(&mut app, &results, capture(&requests), snapshot.clone());
+    assert_eq!(app.process_info_focus, ProcessInfoFocus::Tabs);
+    assert_eq!(app.process_network.selected_entry().unwrap().key, original);
+    app.refresh_network(false);
+    let mut missing = snapshot.clone();
+    missing.endpoints.remove(0);
+    deliver(&mut app, &results, capture(&requests), missing);
+    assert!(app.process_network.selected_entry().is_none());
+    assert!(
+        app.process_network
+            .notice
+            .as_deref()
+            .unwrap()
+            .contains("Original endpoint unavailable")
+    );
+    app.process_network.reset_selection();
+    assert!(!app.process_network.entries().is_empty());
 }

@@ -149,9 +149,10 @@ impl App {
                     {
                         self.file_users.notice = Some(error.to_string());
                     } else {
-                        self.open_files_filter = matched.path.clone();
-                        self.open_files_filter_cursor = self.open_files_filter.len();
+                        self.open_files_filter.clear();
+                        self.open_files_filter_cursor = 0;
                         self.open_files_match_path = Some(matched.path);
+                        self.process_info_focus = super::ProcessInfoFocus::Content;
                     }
                 }
             }

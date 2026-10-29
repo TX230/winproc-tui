@@ -384,3 +384,111 @@ fn environment_value_copy_preserves_raw_and_empty_values_without_status_leak() {
         Some("")
     );
 }
+
+#[test]
+fn refresh_retains_environment_identity_across_insertion_reorder_and_removal() {
+    let (worker, requests, results) = ProcessEnvironmentWorker::test_pair();
+    let mut app = make_test_app(1, 10);
+    app.process_environment_worker = worker;
+    app.open_selected_process_info_dialog().unwrap();
+    activate_process_environment_tab(&mut app);
+    let deliver = |app: &mut crate::App, names: &[&str]| {
+        let ProcessEnvironmentRequest::Collect {
+            generation,
+            request_id,
+            identity,
+            ..
+        } = requests.try_recv().unwrap()
+        else {
+            panic!()
+        };
+        let entries = names
+            .iter()
+            .map(|&name| ProcessEnvironmentEntry {
+                name: name.into(),
+                value: "dummy".repeat(100),
+            })
+            .collect();
+        let report = test_process_environment_report(&identity.name, identity.pid, entries);
+        results
+            .send(ProcessEnvironmentResult {
+                generation,
+                request_id,
+                identity,
+                outcome: Ok(report),
+            })
+            .unwrap();
+        assert!(app.poll_process_environment_results().unwrap());
+    };
+    deliver(&mut app, &["BETA", "DELTA"]);
+    app.process_environment_selected = 1;
+    app.open_selected_process_info_detail();
+    let original = ui::process_environment::selected_entry(&app)
+        .unwrap()
+        .name
+        .clone();
+    app.refresh_process_environment().unwrap();
+    deliver(&mut app, &["ALPHA", "BETA", "DELTA"]);
+    assert_eq!(app.process_environment_selected, 2);
+    assert!(app.process_environment_show_detail);
+    assert_eq!(
+        ui::process_environment::selected_entry(&app).unwrap().name,
+        original
+    );
+    app.refresh_process_environment().unwrap();
+    deliver(&mut app, &["DELTA", "BETA", "ALPHA"]);
+    assert_eq!(app.process_environment_selected, 0);
+    assert!(app.process_environment_show_detail);
+    app.refresh_process_environment().unwrap();
+    deliver(&mut app, &["BETA", "ALPHA"]);
+    assert!(!app.process_environment_show_detail);
+    app.process_environment_filter = "BETA".into();
+    app.process_environment_selected = 0;
+    app.open_selected_process_info_detail();
+    app.refresh_process_environment().unwrap();
+    deliver(&mut app, &["DELTA"]);
+    assert!(!app.process_environment_show_detail);
+    assert!(ui::process_environment::selected_entry(&app).is_none());
+}
+
+#[test]
+fn environment_detail_footer_refresh_is_clickable_and_filter_clear_stays_local() {
+    let (worker, requests, _) = ProcessEnvironmentWorker::test_pair();
+    let mut app = make_test_app(1, 10);
+    app.process_environment_worker = worker;
+    app.open_selected_process_info_dialog().unwrap();
+    app.process_info_tab = app::ProcessInfoTab::Environment;
+    app.process_info_focus = app::ProcessInfoFocus::Content;
+    app.process_environment_result = Some(test_process_environment_report(
+        "proc-0",
+        0,
+        vec![ProcessEnvironmentEntry {
+            name: "DUMMY".into(),
+            value: "dummy".into(),
+        }],
+    ));
+    app.open_selected_process_info_detail();
+    for width in [40, 60, 160] {
+        let text = render_app_to_text(&app, width, 24);
+        assert!(text.contains("Esc/Enter back"), "{text}");
+        assert!(text.contains("Ctrl+U refresh"), "{text}");
+    }
+    let screen = Rect::new(0, 0, 60, 24);
+    app::sync_layout_state(&mut app, screen);
+    let buffer = super::support::render_app_to_buffer(&app, 60, 24);
+    let (x, y) = find_text_position(&buffer, "Ctrl+U refresh").unwrap();
+    app.on_mouse(left_click(x, y), screen);
+    assert!(matches!(
+        requests.try_recv(),
+        Ok(ProcessEnvironmentRequest::Collect { .. })
+    ));
+    assert!(!render_app_to_text(&app, 60, 24).contains("Ctrl+U refresh"));
+    app.close_process_info_detail();
+    app.process_environment_filter = "DUMMY".into();
+    app.process_environment_filter_cursor = 5;
+    app.process_info_filter_editing = true;
+    app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+        .unwrap();
+    assert!(app.process_environment_filter.is_empty());
+    assert!(requests.try_recv().is_err());
+}

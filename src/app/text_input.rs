@@ -172,6 +172,9 @@ impl App {
         self.process_modules_selected = 0;
         self.process_environment_selected = 0;
         self.open_files_selected = 0;
+        if self.process_info_tab == ProcessInfoTab::Files {
+            self.reset_open_file_selection();
+        }
         self.process_network.reset_selection();
         self.process_info_dlls_scroll.scroll_home();
         self.process_info_environment_scroll.scroll_home();

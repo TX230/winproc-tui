@@ -854,6 +854,15 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             items.insert(items.len().min(4), ("Alt+C", label));
         }
     }
+    if app.process_info_tab == ProcessInfoTab::Environment
+        && app.process_info_focus == ProcessInfoFocus::Content
+        && app.process_environment_show_detail
+        && app.activity() != crate::app::AppActivity::LogView
+        && app.process_info_target_is_currently_live()
+        && app.process_environment_in_flight.is_none()
+    {
+        items.insert(0, ("Ctrl+U", "refresh"));
+    }
     if !app.scheduling.applying {
         items.push(("h/Shift+H", "height"));
         items.push(("Alt+0", "auto"));
