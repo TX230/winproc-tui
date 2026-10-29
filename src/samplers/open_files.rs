@@ -12,11 +12,11 @@ use anyhow::{Context, Result, anyhow};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use winapi::{
     shared::{
-        minwindef::{DWORD, FALSE, LPVOID, ULONG},
-        ntdef::HANDLE,
+        minwindef::{DWORD, FALSE, FILETIME, LPVOID, ULONG},
+        ntdef::{HANDLE, LARGE_INTEGER},
     },
     um::{
-        fileapi::{GetFileType, GetFinalPathNameByHandleW},
+        fileapi::{GetFileSizeEx, GetFileTime, GetFileType, GetFinalPathNameByHandleW},
         handleapi::{CloseHandle, DuplicateHandle},
         processthreadsapi::{GetCurrentProcess, OpenProcess},
         winnt::{DUPLICATE_SAME_ACCESS, PROCESS_DUP_HANDLE},
@@ -24,7 +24,9 @@ use winapi::{
 };
 
 pub(crate) use crate::model::open_files::OpenFileEntry;
-use crate::model::open_files::{FileAttributeError, OpenFileHandle};
+use crate::model::open_files::{
+    FileAttributeError, OpenFileHandle, OpenFileKind, OpenFileMetadata,
+};
 use crate::model::{ProcessIdentity, ProcessRow};
 
 const SYSTEM_EXTENDED_HANDLE_INFORMATION: ULONG = 64;
@@ -303,10 +305,13 @@ pub(crate) fn collect_open_files_for_process(process: &ProcessRow) -> OpenFilesR
                 }
                 file_handles += 1;
                 if let Some(path) = final_path_for_handle(handle.0) {
+                    let kind = query_file_kind(handle.0);
+                    let metadata = query_file_metadata(handle.0, &kind);
                     paths.push((
                         path,
                         OpenFileHandle {
-                            kind: query_file_kind(handle.0),
+                            metadata,
+                            kind,
                             value: entry.handle_value,
                             access: query_file_attribute(handle.0, 8),
                             mode: query_file_attribute(handle.0, 16),
@@ -501,6 +506,52 @@ struct FileStandardInformation {
     directory: u8,
 }
 
+fn query_file_metadata(
+    handle: HANDLE,
+    kind: &Result<OpenFileKind, FileAttributeError>,
+) -> OpenFileMetadata {
+    let mut created = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let mut modified = created;
+    // SAFETY: the caller holds the duplicated disk-file handle; both distinct FILETIME
+    // outputs remain writable for this synchronous call. No pathname is reopened.
+    let times = if unsafe { GetFileTime(handle, &mut created, null_mut(), &mut modified) } == 0 {
+        Err(FileAttributeError::Win32(
+            std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+        ))
+    } else {
+        Ok(())
+    };
+    let ticks =
+        |time: FILETIME| (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+    let size = match kind {
+        Ok(OpenFileKind::Directory) => Ok(None),
+        Err(error) => Err(error.clone()),
+        Ok(OpenFileKind::File) => {
+            // SAFETY: zero is a valid initial LARGE_INTEGER; GetFileSizeEx writes its
+            // signed QuadPart through a live output while the duplicate remains held.
+            let mut size: LARGE_INTEGER = unsafe { std::mem::zeroed() };
+            if unsafe { GetFileSizeEx(handle, &mut size) } == 0 {
+                Err(FileAttributeError::Win32(
+                    std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+                ))
+            } else {
+                // SAFETY: successful GetFileSizeEx initialized the QuadPart union member.
+                u64::try_from(unsafe { *size.QuadPart() })
+                    .map(Some)
+                    .map_err(|_| FileAttributeError::ShortReply)
+            }
+        }
+    };
+    OpenFileMetadata {
+        created: times.clone().map(|()| ticks(created)),
+        modified: times.map(|()| ticks(modified)),
+        size,
+    }
+}
+
 fn query_file_kind(
     handle: HANDLE,
 ) -> Result<crate::model::open_files::OpenFileKind, FileAttributeError> {
@@ -658,6 +709,16 @@ mod tests {
 
     #[test]
     fn file_attribute_queries_preserve_native_failure_codes() {
+        let metadata = query_file_metadata(null_mut(), &Ok(OpenFileKind::File));
+        assert!(matches!(
+            metadata.created,
+            Err(FileAttributeError::Win32(_))
+        ));
+        assert!(matches!(
+            metadata.modified,
+            Err(FileAttributeError::Win32(_))
+        ));
+        assert!(matches!(metadata.size, Err(FileAttributeError::Win32(_))));
         assert_eq!(
             query_file_kind(null_mut()),
             Err(FileAttributeError::NtStatus(0xc0000008u32 as i32))
@@ -668,6 +729,82 @@ mod tests {
                 Err(FileAttributeError::NtStatus(0xc0000008u32 as i32))
             );
         }
+    }
+
+    #[test]
+    fn file_metadata_uses_held_object_and_refreshes_size_and_times() {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+        use winapi::um::{fileapi::SetFileTime, winbase::FILE_FLAG_BACKUP_SEMANTICS};
+        let root = std::env::temp_dir().join(format!(
+            "winproc-metadata-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("original.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(12345).unwrap();
+        let created = FILETIME {
+            dwLowDateTime: 0x12345678,
+            dwHighDateTime: 0x01db0000,
+        };
+        let modified = FILETIME {
+            dwLowDateTime: 0x23456789,
+            dwHighDateTime: 0x01dc0000,
+        };
+        // SAFETY: file owns a valid handle, and both timestamp pointers remain live.
+        assert_ne!(
+            unsafe {
+                SetFileTime(
+                    file.as_raw_handle() as HANDLE,
+                    &created,
+                    null_mut(),
+                    &modified,
+                )
+            },
+            0
+        );
+        // SAFETY: GetCurrentProcess returns the current-process pseudo handle for duplication.
+        let duplicate = duplicate_process_handle(
+            unsafe { GetCurrentProcess() },
+            file.as_raw_handle() as usize,
+        )
+        .unwrap();
+        std::fs::rename(&path, root.join("renamed.bin")).unwrap();
+        std::fs::write(&path, b"replacement").unwrap();
+        let metadata = query_file_metadata(duplicate.0, &query_file_kind(duplicate.0));
+        assert_eq!(metadata.size, Ok(Some(12345)));
+        assert_eq!(
+            metadata.created,
+            Ok((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
+        );
+        assert_eq!(
+            metadata.modified,
+            Ok((u64::from(modified.dwHighDateTime) << 32) | u64::from(modified.dwLowDateTime))
+        );
+        file.set_len(54321).unwrap();
+        assert_eq!(
+            query_file_metadata(duplicate.0, &Ok(OpenFileKind::File)).size,
+            Ok(Some(54321))
+        );
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(&root)
+            .unwrap();
+        let directory_metadata = query_file_metadata(
+            directory.as_raw_handle() as HANDLE,
+            &Ok(OpenFileKind::Directory),
+        );
+        assert_eq!(directory_metadata.size, Ok(None));
+        assert!(directory_metadata.created.is_ok());
+        drop(directory);
+        drop(duplicate);
+        drop(file);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -696,6 +833,7 @@ mod tests {
                     (
                         path.to_string(),
                         OpenFileHandle {
+                            metadata: Default::default(),
                             kind: Ok(crate::model::open_files::OpenFileKind::File),
                             value,
                             access: Ok(1),

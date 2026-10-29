@@ -8,32 +8,17 @@ use ratatui::{
 use crate::{
     App,
     app::{AppActivity, ProcessInfoFocus},
-    model::open_files::FileAttribute,
     samplers::open_files::OpenFileEntry,
     ui::Theme,
 };
 
 const HANDLE_COLUMN_WIDTH: usize = 10;
-const ATTRIBUTE_COLUMNS: [(FileAttribute, usize); 4] = [
-    (FileAttribute::Cache, 6),
-    (FileAttribute::IoMode, 5),
-    (FileAttribute::Access, 6),
-    (FileAttribute::WriteThrough, 6),
-];
-
 pub(crate) fn selected_entry(app: &App) -> Option<&OpenFileEntry> {
     filtered_entries(app).get(app.open_files_selected).copied()
 }
 
-pub(crate) fn entry_row_height(width: usize) -> usize {
-    if width < 72 {
-        // Reserve enough wrapped lines for the longest labels, including unavailable fields.
-        1 + "Cached: --  Async: --  Access: RWA  W-Thru: --"
-            .len()
-            .div_ceil(width.max(1))
-    } else {
-        1
-    }
+pub(crate) fn entry_row_height(_width: usize) -> usize {
+    1
 }
 
 pub(crate) fn entry_row_prefix(app: &App) -> usize {
@@ -412,51 +397,20 @@ fn filter_input_view(value: &str, cursor: usize, width: usize) -> (String, usize
     (visible, cursor_x)
 }
 
-fn file_name(path: &str) -> &str {
-    path.rsplit(['\\', '/']).next().unwrap_or(path)
-}
-
-fn directory_name(path: &str) -> &str {
-    path.rfind(['\\', '/'])
-        .map(|index| &path[..index])
-        .unwrap_or("")
-}
-
-fn column_widths(width: usize) -> (usize, usize) {
-    let attributes = if entry_row_height(width) == 1 {
-        ATTRIBUTE_COLUMNS.iter().map(|(_, size)| size + 1).sum()
-    } else {
-        0
-    };
-    let remaining = width.saturating_sub(HANDLE_COLUMN_WIDTH + 7 + attributes);
-    let file = (remaining / 2).max(8).min(remaining);
-    (file, remaining.saturating_sub(file))
-}
-
 fn open_files_table_header(theme: Theme, width: usize) -> Line<'static> {
-    let header_style = Style::default()
+    let style = Style::default()
         .fg(theme.accent)
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
-    let (file, directory) = column_widths(width);
-    let mut spans = vec![
-        Span::styled(fit_cell("Handle", HANDLE_COLUMN_WIDTH), header_style),
+    Line::from(vec![
+        Span::styled(fit_cell("Handle", HANDLE_COLUMN_WIDTH), style),
         Span::raw(" "),
-        Span::styled(fit_cell("Type", 4), header_style),
+        Span::styled(fit_cell("Type", 4), style),
         Span::raw(" "),
-        Span::styled(fit_cell("File", file), header_style),
-    ];
-    if entry_row_height(width) == 1 {
-        for (attribute, size) in ATTRIBUTE_COLUMNS {
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled(
-                fit_cell(attribute.label(), size),
-                header_style,
-            ));
-        }
-    }
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(fit_cell("Directory", directory), header_style));
-    Line::from(spans)
+        Span::styled(
+            fit_cell("Path", width.saturating_sub(HANDLE_COLUMN_WIDTH + 6)),
+            style,
+        ),
+    ])
 }
 
 fn open_files_table_rows(
@@ -465,61 +419,30 @@ fn open_files_table_rows(
     width: usize,
     selected: bool,
 ) -> Vec<Line<'static>> {
-    let style = Style::default().fg(theme.text).bg(if selected {
+    let mut style = Style::default().fg(theme.text).bg(if selected {
         theme.table_selection_surface
     } else {
         theme.panel_alt
     });
-    let style = if selected {
-        style.add_modifier(Modifier::BOLD)
-    } else {
-        style
-    };
-    let (file, directory) = column_widths(width);
-    let mut spans = vec![
-        Span::styled(
-            fit_cell(&format!("0x{:X}", entry.handle.value), HANDLE_COLUMN_WIDTH),
-            style.fg(theme.accent),
-        ),
-        Span::raw(" "),
-        Span::styled(fit_cell(entry.handle.kind_label(), 4), style),
-        Span::raw(" "),
-        Span::styled(fit_cell_start(file_name(&entry.path), file), style),
-    ];
-    if entry_row_height(width) == 1 {
-        for (attribute, size) in ATTRIBUTE_COLUMNS {
-            spans.push(Span::styled(
-                format!(" {}", fit_cell(&entry.attribute(attribute), size)),
+    if selected {
+        style = style.add_modifier(Modifier::BOLD);
+    }
+    vec![
+        Line::from(vec![
+            Span::styled(
+                fit_cell(&format!("0x{:X}", entry.handle.value), HANDLE_COLUMN_WIDTH),
+                style.fg(theme.accent),
+            ),
+            Span::raw(" "),
+            Span::styled(fit_cell(entry.handle.kind_label(), 4), style),
+            Span::raw(" "),
+            Span::styled(
+                fit_cell_start(&entry.path, width.saturating_sub(HANDLE_COLUMN_WIDTH + 6)),
                 style,
-            ));
-        }
-    }
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(
-        fit_cell_start(directory_name(&entry.path), directory),
-        style.fg(theme.muted),
-    ));
-    if entry_row_height(width) == 1 {
-        vec![Line::from(spans).style(style)]
-    } else {
-        let mut rows = vec![Line::from(spans).style(style)];
-        let compact = format!(
-            "Cached: {}  Async: {}  Access: {}  W-Thru: {}",
-            entry.attribute(FileAttribute::Cache),
-            entry.attribute(FileAttribute::IoMode),
-            entry.attribute(FileAttribute::Access),
-            entry.attribute(FileAttribute::WriteThrough)
-        );
-        rows.extend(
-            super::process_info_dialog::wrap_display_width(&compact, width.max(1))
-                .into_iter()
-                .map(|line| Line::from(Span::styled(line, style))),
-        );
-        rows.resize_with(entry_row_height(width), || {
-            Line::from(Span::styled("", style))
-        });
-        rows
-    }
+            ),
+        ])
+        .style(style),
+    ]
 }
 
 fn fit_cell(value: &str, width: usize) -> String {
@@ -577,12 +500,6 @@ fn truncate_path_start(path: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn file_name_uses_last_path_segment() {
-        assert_eq!(file_name(r"C:\tmp\app.log"), "app.log");
-        assert_eq!(file_name("/tmp/app.log"), "app.log");
-    }
 
     #[test]
     fn truncate_path_start_keeps_file_name_side() {

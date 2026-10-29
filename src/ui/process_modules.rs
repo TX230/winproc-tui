@@ -261,7 +261,10 @@ fn path_row(
     } else {
         theme.panel
     });
-    Line::from(Span::styled(fit_cell(&entry.path, width.max(1)), style))
+    Line::from(Span::styled(
+        truncate_display(&entry.path, width.max(1), true),
+        style,
+    ))
 }
 
 fn detail_lines(label: &str, value: &str, width: usize, theme: Theme) -> Vec<Line<'static>> {
@@ -438,10 +441,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn path_truncation_keeps_path_start() {
+    fn path_truncation_keeps_filename() {
         assert_eq!(
-            truncate_end(r"C:\very\long\path\module.dll", 16),
-            "C:\\very\\long\\..."
+            truncate_display(r"C:\very\long\path\module.dll", 16, true),
+            "...th\\module.dll"
         );
     }
 }

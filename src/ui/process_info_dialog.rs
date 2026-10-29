@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-const PROCESS_INFO_MODAL: ScrollableModal = ScrollableModal::new("", 138, 20, 1);
+const PROCESS_INFO_MODAL: ScrollableModal = ScrollableModal::new("", u16::MAX, 20, 1);
 const TAB_HORIZONTAL_PADDING: u16 = 2;
 const IMAGE_LABEL_WIDTH: usize = 16;
 const METRIC_VALUE_WIDTH: usize = 20;
@@ -794,7 +794,8 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
                 ("Esc", "tabs"),
             ],
             ProcessInfoTab::Files => vec![
-                ("Enter", "actions"),
+                ("Enter", "details"),
+                ("F4", "actions"),
                 ("/ or Ctrl+F", "filter"),
                 ("Ctrl+U", "refresh now"),
                 ("Ctrl+C", "copy rows"),
@@ -829,7 +830,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         && (app.activity() == crate::app::AppActivity::LogView
             || super::open_files::selected_entry(app).is_none())
     {
-        items.retain(|(_, label)| *label != "actions");
+        items.retain(|(_, label)| !matches!(*label, "actions" | "details"));
     }
     if !app.scheduling.applying {
         items.push(("h/Shift+H", "height"));
@@ -953,13 +954,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn large_screen_uses_centered_maximum_outer_size_below_header() {
+    fn large_screen_uses_full_width_below_header() {
         let layout = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 60), 40);
 
-        assert_eq!(layout.area.width, 142);
+        assert_eq!(layout.area.width, 200);
         assert_eq!(layout.area.height, 44);
         assert!(layout.area.y >= 1);
-        assert_eq!(layout.area.x, 29);
+        assert_eq!(layout.area.x, 0);
     }
 
     #[test]
@@ -968,7 +969,7 @@ mod tests {
         assert_eq!((narrow.area.width, narrow.area.height), (100, 44));
 
         let short = process_info_dialog_layout_for_screen(Rect::new(0, 0, 200, 24), 40);
-        assert_eq!((short.area.width, short.area.height), (142, 21));
+        assert_eq!((short.area.width, short.area.height), (200, 21));
     }
 
     #[test]

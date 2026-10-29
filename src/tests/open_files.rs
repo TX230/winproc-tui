@@ -27,12 +27,51 @@ fn mode_entry(
     OpenFileEntry {
         path: path.into(),
         handle: OpenFileHandle {
+            metadata: Default::default(),
             kind: Ok(crate::model::open_files::OpenFileKind::File),
             value,
             access,
             mode,
         },
     }
+}
+
+#[test]
+fn file_metadata_details_keep_independent_values_and_existing_clipboard() {
+    let mut entry = mode_entry(r"C:\file.bin", 42, Ok(1), Ok(0));
+    let clipboard = entry.plain_text();
+    entry.handle.metadata = crate::model::open_files::OpenFileMetadata {
+        created: Ok(116_444_736_000_000_000),
+        modified: Err(FileAttributeError::Win32(5)),
+        size: Ok(Some(12345)),
+    };
+    let details = entry.detail_text().join("\n");
+    let expected = chrono::DateTime::from_timestamp(0, 0)
+        .unwrap()
+        .with_timezone(&chrono::Local)
+        .format("%Y-%m-%d %H:%M:%S%.3f %:z")
+        .to_string();
+    assert!(details.contains(&format!("Created: {expected}")));
+    assert!(details.contains("Modified: -- (Windows error 5)"));
+    assert!(details.contains("Size: 12.35 KB (12345 bytes)"));
+    assert_eq!(entry.plain_text(), clipboard);
+    entry.handle.metadata.created = Ok(0);
+    entry.handle.metadata.size = Ok(None);
+    assert!(entry.detail_text().contains(&"Created: --".into()));
+    assert!(entry.detail_text().contains(&"Size: --".into()));
+    entry.handle.metadata.size = Ok(Some(0));
+    assert!(
+        entry
+            .detail_text()
+            .contains(&"Size: 0.00 B (0 bytes)".into())
+    );
+    entry.handle.metadata.size = Ok(Some(u64::MAX));
+    assert!(
+        entry
+            .detail_text()
+            .join("\n")
+            .contains("18446744073709551615 bytes")
+    );
 }
 
 #[test]
@@ -79,7 +118,7 @@ fn open_file_modes_keep_each_handle_and_each_unknown_attribute_independent() {
     let rendered = render_app_to_text(&app, screen.width, screen.height);
     assert_eq!(rendered.matches("same.bin").count(), 4);
     assert!(!rendered.contains("Mixed"));
-    for value in ["0x40", "0x44", "0x48", "0x4C", "WA", "--"] {
+    for value in ["0x40", "0x44", "0x48", "0x4C"] {
         assert!(rendered.contains(value), "{value}: {rendered}");
     }
     app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
@@ -128,12 +167,6 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
         let (x, y) = super::support::find_text_position_in_area(&buffer, area, "0xDC")
             .expect("last handle visible");
         assert_eq!(buffer[(x, y)].bg, app.theme().table_selection_surface);
-        if width == 60 {
-            let rendered = buffer_to_text(&buffer);
-            assert!(rendered.contains("Cached: N  Async: Y  Access: RWA  W-Thru: Y"));
-            app.on_mouse(super::support::left_click(x, y + 1), screen);
-            assert_eq!(app.open_files_selected, 39);
-        }
         app.on_mouse(super::support::left_click(x, y), screen);
         assert_eq!(app.open_files_selected, 39);
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
@@ -158,7 +191,7 @@ fn open_file_modes_selection_filter_details_and_resize_share_row_geometry() {
 }
 
 #[test]
-fn open_file_modes_unicode_names_do_not_shift_attribute_columns() {
+fn open_file_paths_keep_unicode_filename_and_enter_opens_details() {
     let mut app = make_test_app(1, 10);
     show_process_info_files_tab(&mut app);
     let mut report = test_open_files_report("proc-0", 0, "file.bin");
@@ -169,45 +202,26 @@ fn open_file_modes_unicode_names_do_not_shift_attribute_columns() {
         Ok(0xa),
     )];
     app.open_files_result = Some(report);
-    for width in [80, 112, 160] {
+    for width in [60, 80, 112, 160, 220] {
         let screen = Rect::new(0, 0, width, 35);
         app::sync_layout_state(&mut app, screen);
-        let area = ui::process_info_content_area_for_screen(screen, app.process_info_height());
-        let buffer = render_app_to_buffer(&app, width, 35);
-        let mut previous_x = area.x;
-        for (heading, value) in [
-            ("Cached", "N"),
-            ("Async", "Y"),
-            ("Access", "RWA"),
-            ("W-Thru", "Y"),
-        ] {
-            let (x, y) = super::support::find_text_position_in_area(&buffer, area, heading)
-                .unwrap_or_else(|| panic!("{heading} at width {width}"));
-            assert!(x > previous_x, "column order at width {width}");
-            previous_x = x;
-            for (offset, ch) in value.chars().enumerate() {
-                assert_eq!(buffer[(x + offset as u16, y + 1)].symbol(), ch.to_string());
-            }
-            assert_eq!(buffer[(x, y + 1)].bg, app.theme().table_selection_surface);
-        }
-        let (directory_x, header_y) =
-            super::support::find_text_position_in_area(&buffer, area, "Directory").unwrap();
-        assert!(
-            directory_x > previous_x,
-            "Directory is last at width {width}"
+        let layout = ui::process_info_dialog::process_info_dialog_layout_for_screen(
+            screen,
+            app.process_info_height(),
         );
-        let mut directory_text = String::new();
-        let mut x = directory_x;
-        while x < area.right().saturating_sub(1) {
-            let symbol = buffer[(x, header_y + 1)].symbol();
-            directory_text.push_str(symbol);
-            // Skip the trailing buffer cell occupied by each full-width character.
-            x += ratatui::text::Span::raw(symbol).width().max(1) as u16;
-        }
-        assert!(
-            directory_text.trim_end().ends_with("ディレクトリ"),
-            "Directory at width {width}: {directory_text}"
-        );
+        assert_eq!(layout.area.width, width);
+        let text = render_app_to_text(&app, width, 35);
+        assert!(text.replace(' ', "").contains("映像ファイル.bin"), "{text}");
+        assert!(!text.contains("W-Thru"));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.open_files_show_detail);
+        assert!(app.file_action.is_none());
+        let text = render_app_to_text(&app, width, 35);
+        assert!(text.contains("Cached"));
+        assert!(text.contains("W-Thru"));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
     }
 }
 
@@ -549,6 +563,7 @@ fn ctrl_u_refreshes_open_files_for_selected_process() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.log".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                metadata: Default::default(),
                 kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
@@ -612,6 +627,7 @@ fn open_files_result_updates_modal_state() {
                 entries: vec![OpenFileEntry {
                     path: r"C:\tmp\a.log".to_string(),
                     handle: crate::model::open_files::OpenFileHandle {
+                        metadata: Default::default(),
                         kind: Ok(crate::model::open_files::OpenFileKind::File),
                         value: 2,
                         access: Ok(1),
@@ -643,6 +659,7 @@ fn open_files_clipboard_is_raw_handle_rows_without_header() {
             OpenFileEntry {
                 path: r"C:\tmp\a.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -652,6 +669,7 @@ fn open_files_clipboard_is_raw_handle_rows_without_header() {
             OpenFileEntry {
                 path: r"C:\tmp\b.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 2,
                     access: Ok(1),
@@ -685,6 +703,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
             OpenFileEntry {
                 path: r"C:\tmp\a.wav".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -694,6 +713,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
             OpenFileEntry {
                 path: r"C:\exports\b.MXF".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 2,
                     access: Ok(1),
@@ -703,6 +723,7 @@ fn open_files_clipboard_filter_matches_full_paths() {
             OpenFileEntry {
                 path: r"C:\media\c.mp4".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -775,6 +796,7 @@ fn open_files_filter_shows_colon_and_terminal_cursor() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.mp4".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                metadata: Default::default(),
                 kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
@@ -815,6 +837,7 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
             OpenFileEntry {
                 path: r"C:\tmp\a.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -824,6 +847,7 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
             OpenFileEntry {
                 path: r"C:\tmp\b.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -833,6 +857,7 @@ fn open_files_modal_size_stays_fixed_while_filtering() {
             OpenFileEntry {
                 path: r"C:\tmp\c.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -866,6 +891,7 @@ fn open_files_modal_renders_table_columns() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.log".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                metadata: Default::default(),
                 kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
@@ -877,15 +903,7 @@ fn open_files_modal_renders_table_columns() {
 
     let rendered = render_app_to_text(&app, 160, 45);
 
-    for heading in [
-        "Handle",
-        "File",
-        "Cached",
-        "Async",
-        "Access",
-        "W-Thru",
-        "Directory",
-    ] {
+    for heading in ["Handle", "Type", "Path"] {
         assert!(rendered.contains(heading), "{heading}: {rendered}");
     }
     assert!(rendered.contains("a.log"), "{rendered}");
@@ -909,6 +927,7 @@ fn open_files_filter_matches_directory_and_shows_filtered_total() {
             OpenFileEntry {
                 path: r"C:\Windows\Fonts\a.ttf".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -918,6 +937,7 @@ fn open_files_filter_matches_directory_and_shows_filtered_total() {
             OpenFileEntry {
                 path: r"C:\tmp\b.log".to_string(),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),
@@ -949,6 +969,7 @@ fn open_files_table_column_names_are_underlined() {
         entries: vec![OpenFileEntry {
             path: r"C:\tmp\a.log".to_string(),
             handle: crate::model::open_files::OpenFileHandle {
+                metadata: Default::default(),
                 kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),
@@ -982,6 +1003,7 @@ fn open_files_scroll_offset_changes_rendered_rows() {
             .map(|index| OpenFileEntry {
                 path: format!(r"C:\tmp\file-{index:02}.log"),
                 handle: crate::model::open_files::OpenFileHandle {
+                    metadata: Default::default(),
                     kind: Ok(crate::model::open_files::OpenFileKind::File),
                     value: 1,
                     access: Ok(1),

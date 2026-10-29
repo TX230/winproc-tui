@@ -7,12 +7,14 @@ pub(crate) const FILE_SYNCHRONOUS_IO_NONALERT: u32 = 0x0000_0020;
 pub(crate) enum FileAttributeError {
     NtStatus(i32),
     ShortReply,
+    Win32(i32),
 }
 
 impl std::fmt::Display for FileAttributeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NtStatus(status) => write!(f, "NTSTATUS 0x{:08X}", *status as u32),
+            Self::Win32(code) => write!(f, "Windows error {code}"),
             Self::ShortReply => f.write_str("Incomplete reply"),
         }
     }
@@ -25,7 +27,60 @@ pub(crate) enum OpenFileKind {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct OpenFileMetadata {
+    pub(crate) created: Result<u64, FileAttributeError>,
+    pub(crate) modified: Result<u64, FileAttributeError>,
+    pub(crate) size: Result<Option<u64>, FileAttributeError>,
+}
+
+impl Default for OpenFileMetadata {
+    fn default() -> Self {
+        Self {
+            created: Err(FileAttributeError::ShortReply),
+            modified: Err(FileAttributeError::ShortReply),
+            size: Err(FileAttributeError::ShortReply),
+        }
+    }
+}
+
+pub(crate) fn file_timestamp(value: &Result<u64, FileAttributeError>) -> String {
+    match value {
+        Ok(0) => "--".into(),
+        Ok(ticks) => {
+            let seconds = (ticks / 10_000_000) as i64 - 11_644_473_600;
+            let nanos = ((ticks % 10_000_000) * 100) as u32;
+            chrono::DateTime::from_timestamp(seconds, nanos)
+                .map(|time| {
+                    time.with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d %H:%M:%S%.3f %:z")
+                        .to_string()
+                })
+                .unwrap_or_else(|| "-- (Invalid timestamp)".into())
+        }
+        Err(error) => format!("-- ({error})"),
+    }
+}
+
+fn file_size(value: &Result<Option<u64>, FileAttributeError>) -> String {
+    match value {
+        Ok(Some(bytes)) => {
+            let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+            let mut value = *bytes as f64;
+            let mut index = 0;
+            while value >= 1000.0 && index + 1 < units.len() {
+                value /= 1000.0;
+                index += 1;
+            }
+            format!("{value:.2} {} ({bytes} bytes)", units[index])
+        }
+        Ok(None) => "--".into(),
+        Err(error) => format!("-- ({error})"),
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct OpenFileHandle {
+    pub(crate) metadata: OpenFileMetadata,
     pub(crate) value: usize,
     pub(crate) kind: Result<OpenFileKind, FileAttributeError>,
     pub(crate) access: Result<u32, FileAttributeError>,
@@ -149,6 +204,15 @@ impl OpenFileEntry {
                 Err(error) => format!("Type: -- ({error})"),
             },
         ];
+        lines.push(format!(
+            "Created: {}",
+            file_timestamp(&self.handle.metadata.created)
+        ));
+        lines.push(format!(
+            "Modified: {}",
+            file_timestamp(&self.handle.metadata.modified)
+        ));
+        lines.push(format!("Size: {}", file_size(&self.handle.metadata.size)));
         for attribute in FileAttribute::ALL {
             lines.push(format!(
                 "{}: {}",

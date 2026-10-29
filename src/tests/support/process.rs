@@ -51,6 +51,7 @@ pub(in crate::tests) fn test_open_files_report(
         entries: vec![OpenFileEntry {
             path: format!(r"C:\tmp\{file_name}"),
             handle: crate::model::open_files::OpenFileHandle {
+                metadata: Default::default(),
                 kind: Ok(crate::model::open_files::OpenFileKind::File),
                 value: 1,
                 access: Ok(1),

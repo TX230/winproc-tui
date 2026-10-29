@@ -363,11 +363,11 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Enter (Files)",
-        label: "Open file actions directly",
+        label: "Open handle details and complete path",
     },
     HelpItem {
         key: "Space (Files)",
-        label: "Full path, type (F file / D directory / -- unknown), I/O attributes",
+        label: "Full path, type, creation/modified times, size, I/O attributes",
     },
     HelpItem {
         key: "F4 (Files list/detail)",

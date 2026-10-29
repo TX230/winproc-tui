@@ -131,7 +131,10 @@ fn dlls_tab_lists_full_paths_and_enter_opens_selected_detail() {
 
     let list = render_app_to_text(&app, 68, 26);
     assert!(list.contains("DLL path"), "{list}");
-    assert!(list.contains(r"C:\Program Files\Test"), "{list}");
+    assert!(
+        list.contains("a-very-long-module-name-that-does-not-fit.dll"),
+        "{list}"
+    );
     assert!(!list.contains("Product Version"), "{list}");
 
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))

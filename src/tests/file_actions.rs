@@ -10,7 +10,7 @@ fn key(app: &mut crate::App, code: KeyCode, modifiers: KeyModifiers) {
     app.on_key(KeyEvent::new(code, modifiers)).unwrap();
 }
 #[test]
-fn file_actions_enter_opens_modal_directly_and_preserves_editor_priority() {
+fn file_actions_f4_opens_modal_directly_and_preserves_editor_priority() {
     let mut app = make_test_app(1, 10);
     show_process_info_files_tab(&mut app);
     app.open_files_result = Some(test_open_files_report(
@@ -22,7 +22,7 @@ fn file_actions_enter_opens_modal_directly_and_preserves_editor_priority() {
         .unwrap()
         .path
         .clone();
-    key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
     assert!(!app.open_files_show_detail);
     assert!(app.file_action.is_some());
     assert_eq!(
@@ -41,7 +41,7 @@ fn file_actions_enter_opens_modal_directly_and_preserves_editor_priority() {
     key(&mut app, KeyCode::Char('o'), KeyModifiers::CONTROL);
     assert!(app.file_action.is_none());
     assert!(app.process_info_filter_editing);
-    assert!(!render_app_to_text(&app, 100, 30).contains("Enter actions"));
+    assert!(!render_app_to_text(&app, 100, 30).contains("F4 actions"));
 }
 #[test]
 fn file_actions_narrow_footer_and_mouse_share_action_path_and_errors() {
@@ -55,7 +55,7 @@ fn file_actions_narrow_footer_and_mouse_share_action_path_and_errors() {
     let screen = Rect::new(0, 0, 60, 24);
     app::sync_layout_state(&mut app, screen);
     let buffer = render_app_to_buffer(&app, 60, 24);
-    let (x, y) = find_text_position(&buffer, "Enter actions").unwrap();
+    let (x, y) = find_text_position(&buffer, "F4 actions").unwrap();
     app.on_mouse(
         MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -153,7 +153,7 @@ fn file_actions_log_view_rejects_actions_and_hides_shortcut() {
     key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
     assert!(app.file_action.is_none());
     assert!(app.file_action_worker.is_none());
-    assert!(!render_app_to_text(&app, 100, 30).contains("Enter actions"));
+    assert!(!render_app_to_text(&app, 100, 30).contains("F4 actions"));
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn file_actions_modal_preserves_parent_scroll_and_blocks_background_mouse() {
             app.process_info_height(),
         )
         .area;
-        key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+        key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
         let modal = crate::ui::file_actions::layout(screen);
         assert!(modal.area.height < parent.height);
         assert!(!app.open_files_show_detail);
