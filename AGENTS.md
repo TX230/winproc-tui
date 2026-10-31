@@ -55,8 +55,19 @@ If the specifications and implementation conflict, inspect the implementation fi
 - Keep exact key lists, colors, emphasis, cell widths, marker shapes, focus order, and drawing positions in Help, Footer, implementation, and tests rather than expanding design documents with rendering details.
 - If release contents, packaging checks, tagging, or publishing steps change, update `scripts/package-release.ps1` and `docs/release-workflow.md` together.
 - After implementation, perform a documentation-impact check and update only the canonical owners affected by the change in the same work item.
-- If a technical choice needs durable context, keep it in the related specification, architecture document, or GitHub Issue.
+- Record significant architectural decisions using the ADR Workflow below. Keep smaller technical explanations in the related specification, architecture document, or GitHub Issue.
 - Do not create or update repository-local backlog files under `docs/backlog/`; use GitHub Issues for backlog tracking.
+
+## ADR Workflow
+
+- Create an Architecture Decision Record (ADR) for significant technical decisions with lasting consequences and meaningful alternatives, such as responsibility boundaries, data ownership, or persistence strategies. Do not require an ADR for minor fixes, display adjustments, or routine implementation within an existing design.
+- Store ADRs as Git-managed English Markdown files under `docs/adr/`, using sequential numbers and descriptive names such as `0001-recording-scope.md`.
+- Keep each ADR concise. Include status, date, context and constraints, decision, alternatives and why they were not selected, consequences (benefits and limitations), and links to related Issues and canonical specifications where applicable.
+- Use `Proposed` for an unresolved decision and `Accepted` once the decision is made within the authorized scope. An ADR records a decision; it does not itself authorize additional work.
+- When an ADR is needed for a requested change, create or update it as part of the same work item without requesting separate approval for the ADR itself. This does not waive existing approval requirements for Issue creation or changes outside the authorized scope.
+- Keep the existing specifications under `docs/` authoritative for current behavior. ADRs explain the rationale and tradeoffs; link to the owning specifications instead of duplicating them. Include necessary ADRs and affected canonical documentation in the same commit as the related implementation change.
+- When an accepted decision changes, create a replacement ADR, mark the old ADR `Superseded`, and link both records to each other. Preserve the historical decision and its rationale; factual or typographical corrections may be made in place.
+- Do not create retrospective ADRs in bulk. Record an older decision only when useful to the current work and supported by available evidence; explicitly identify unknown rationale rather than presenting inferred reasons as historical fact.
 
 ## Commit Rules
 
