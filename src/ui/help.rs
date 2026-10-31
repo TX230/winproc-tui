@@ -374,16 +374,8 @@ const PROCESS_INFO_ROWS: &[HelpItem] = &[
         label: "Full path, type, creation/modified times, size, I/O attributes",
     },
     HelpItem {
-        key: "F4 (Files list/detail)",
-        label: "Current-path actions (outside filter editing; Live only)",
-    },
-    HelpItem {
         key: "Ctrl+E / Ctrl+O (file actions)",
         label: "Direct folder / default app from Files and file-user results; Ctrl+E in DLLs",
-    },
-    HelpItem {
-        key: "Esc (file actions)",
-        label: "Back, including while pending; wheel/scrollbar scroll errors",
     },
     HelpItem {
         key: "Esc/Enter (file detail)",

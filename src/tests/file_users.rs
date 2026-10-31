@@ -650,20 +650,16 @@ fn file_users_direct_actions_preserve_query_priority_and_parent() {
     app.file_users.report.matches = vec![entry(0)];
     app.on_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL))
         .unwrap();
-    assert!(app.file_action.is_none());
-    app.open_path_actions(PathBuf::from("previous"));
-    let _pending = app.inject_pending_file_action();
-    app.file_action = None;
+    assert!(app.file_action_worker.is_none());
     app.file_users.focus = FileUsersFocus::Results;
+    app.file_users.report.matches[0].path = r"C:\missing-direct-action-fixture\file.txt".into();
     app.on_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL))
         .unwrap();
     assert_eq!(
-        app.file_action.as_ref().unwrap().path,
-        PathBuf::from(entry(0).path)
+        app.file_action_worker.as_ref().unwrap().path,
+        PathBuf::from(&app.file_users.report.matches[0].path)
     );
-    assert!(render_app_to_text(&app, 160, 48).contains("FILE ACTIONS"));
-    press(&mut app, KeyCode::Esc);
-    assert!(app.file_action.is_none());
+    assert!(!render_app_to_text(&app, 160, 48).contains("FILE ACTIONS"));
     assert!(app.file_users.visible);
     assert_eq!(app.file_users.selected, 0);
 }

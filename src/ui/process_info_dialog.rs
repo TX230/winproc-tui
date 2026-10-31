@@ -56,7 +56,6 @@ pub(crate) fn table_has_focus(app: &App) -> bool {
         || app.process_info_filter_editing
         || app.show_help
         || (app.process_info_tab == ProcessInfoTab::Network && app.process_network.editing)
-        || app.file_action.is_some()
         || app.context_menu.is_some())
 }
 
@@ -83,7 +82,6 @@ pub(crate) fn table_header(mut line: Line<'static>, focused: bool, theme: Theme)
 pub(crate) fn filter_label_style(app: &App, theme: Theme) -> Style {
     if app.process_info_focus == ProcessInfoFocus::Content
         && app.process_info_filter_editing
-        && app.file_action.is_none()
         && app.context_menu.is_none()
     {
         Style::default()
@@ -795,7 +793,6 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
             ],
             ProcessInfoTab::Files => vec![
                 ("Enter", "details"),
-                ("F4", "actions"),
                 ("Ctrl+O", "open"),
                 ("Ctrl+E", "folder"),
                 ("/ or Ctrl+F", "filter"),
@@ -833,7 +830,7 @@ fn shortcut_spans(app: &App, width: u16, theme: Theme) -> Vec<Span<'static>> {
         && (app.activity() == crate::app::AppActivity::LogView
             || super::open_files::selected_entry(app).is_none())
     {
-        items.retain(|(_, label)| !matches!(*label, "actions" | "open" | "folder" | "details"));
+        items.retain(|(_, label)| !matches!(*label, "open" | "folder" | "details"));
     }
     if app.process_info_tab == ProcessInfoTab::Dlls
         && (app.activity() == crate::app::AppActivity::LogView

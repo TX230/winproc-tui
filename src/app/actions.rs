@@ -454,10 +454,6 @@ impl App {
             return Ok(());
         }
 
-        if self.file_action.is_some() {
-            self.file_action_key(key);
-            return Ok(());
-        }
         if self.show_process_info_dialog {
             if !self.scheduling.applying {
                 if key.modifiers == KeyModifiers::CONTROL
@@ -2119,10 +2115,6 @@ impl App {
             return;
         }
 
-        if self.file_action.is_some() {
-            self.file_action_mouse(mouse, screen_area);
-            return;
-        }
         if self.show_process_info_dialog {
             let tab_click = matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
                 && process_info_tab_at(

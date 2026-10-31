@@ -216,7 +216,7 @@ fn open_file_paths_keep_unicode_filename_and_enter_opens_details() {
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
         assert!(app.open_files_show_detail);
-        assert!(app.file_action.is_none());
+        assert!(app.file_action_worker.is_none());
         let text = render_app_to_text(&app, width, 35);
         assert!(text.contains("Cached"));
         assert!(text.contains("W-Thru"));

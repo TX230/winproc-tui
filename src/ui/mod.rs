@@ -4,7 +4,6 @@ mod cpu_core_dialog;
 mod cpu_panel;
 pub(crate) mod details_panel;
 pub(crate) mod executable_location;
-pub(crate) mod file_actions;
 pub(crate) mod file_users;
 pub(crate) mod footer;
 pub(crate) mod format;
@@ -221,11 +220,6 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
     if app.show_process_info_dialog {
         begin_input_layer(app);
         draw_process_info_dialog(frame, area, app, theme);
-    }
-    if app.file_action.is_some() {
-        frame.render_widget(ModalScrim::new(theme, ModalScrimStrength::Dialog), area);
-        begin_input_layer(app);
-        file_actions::draw(frame, area, app, theme);
     }
     if app.show_cpu_core_dialog {
         begin_input_layer(app);
