@@ -152,6 +152,18 @@ const GLOBAL_ROWS: &[HelpItem] = &[
         label: "F1: Help over any dialog at current task; ?: outside text input",
     },
     HelpItem {
+        key: "MCP badge",
+        label: "Yellow MCP beside LIVE/REC/LOG: at least one authenticated client is connected",
+    },
+    HelpItem {
+        key: "MCP confirm",
+        label: "Enter confirms / Esc cancels; recording stop uses y; arrows scroll; expires in 60s",
+    },
+    HelpItem {
+        key: "Settings",
+        label: "Disable MCP connections: stop external access; sampling and Recording continue",
+    },
+    HelpItem {
         key: "F12",
         label: "Cycle theme; Settings selects theme and contrast directly",
     },

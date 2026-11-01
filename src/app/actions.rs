@@ -48,6 +48,39 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return Ok(());
         }
+        if let Some((action, _)) = &self.mcp_state.confirmation {
+            let stop = action.method == "winproc_stop_recording";
+            let (modal, _) = crate::ui::mcp_confirm::content(self.last_screen_area, self);
+            let page = modal.page_size(self.last_screen_area);
+            let max = modal.max_offset_for_page_size(page);
+            match key.code {
+                KeyCode::Up => {
+                    self.mcp_state.confirmation_scroll =
+                        self.mcp_state.confirmation_scroll.saturating_sub(1)
+                }
+                KeyCode::Down => {
+                    self.mcp_state.confirmation_scroll =
+                        (self.mcp_state.confirmation_scroll + 1).min(max)
+                }
+                KeyCode::PageUp => {
+                    self.mcp_state.confirmation_scroll =
+                        self.mcp_state.confirmation_scroll.saturating_sub(page)
+                }
+                KeyCode::PageDown => {
+                    self.mcp_state.confirmation_scroll =
+                        (self.mcp_state.confirmation_scroll + page).min(max)
+                }
+                KeyCode::Home => self.mcp_state.confirmation_scroll = 0,
+                KeyCode::End => self.mcp_state.confirmation_scroll = max,
+                KeyCode::Char('y') if stop => self.resolve_mcp_confirmation(true),
+                KeyCode::Enter if !stop => self.resolve_mcp_confirmation(true),
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('n') => {
+                    self.resolve_mcp_confirmation(false)
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
         self.shortcut_map.borrow_mut().regions.clear();
         self.shortcut_hovered = None;
         self.clear_source_cell_click();
@@ -1681,6 +1714,18 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, mouse: MouseEvent, screen_area: Rect) {
+        if self.mcp_state.confirmation.is_some() {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    let _ = self.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+                }
+                MouseEventKind::ScrollDown => {
+                    let _ = self.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                }
+                _ => {}
+            }
+            return;
+        }
         let shortcut = {
             let map = self.shortcut_map.borrow();
             (map.screen == screen_area)

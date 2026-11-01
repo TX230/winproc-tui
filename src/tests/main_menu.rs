@@ -216,7 +216,7 @@ fn categories_contain_only_their_own_activity_specific_actions() {
     assert!(menu_labels(&app).contains(&"Select columns…".to_string()));
     assert!(!menu_labels(&app).contains(&"Quit".to_string()));
     alt(&mut app, 't');
-    assert_eq!(menu_labels(&app).len(), 6);
+    assert_eq!(menu_labels(&app).len(), 7);
     assert_eq!(menu_labels(&app).last().unwrap(), "Startup Behavior");
     app.dismiss_main_menu();
     let path = start_recording(&mut app, "menu-categories");
@@ -1170,4 +1170,86 @@ fn help_access_key_opens_menu_without_changing_manual_height() {
         assert!(app.show_process_info_dialog);
     }
     assert_eq!(HeaderAction::Help.shortcut(), "Alt+H");
+}
+
+#[test]
+fn disabling_mcp_in_settings_preserves_recording_and_log_activity() {
+    use crate::app::state::MainMenuAction;
+    let mut app = make_test_app(1, 10);
+    let path = start_recording(&mut app, "mcp-settings-recording");
+    app.mcp_connected = true;
+    alt(&mut app, 't');
+    choose(&mut app, MainMenuAction::ToggleMcp);
+    assert!(app.mcp_connections_disabled);
+    assert!(!app.mcp_connected);
+    assert_eq!(app.activity(), AppActivity::Recording);
+    assert!(app.recording_session.is_some());
+    app.stop_recording().unwrap();
+    std::fs::remove_file(path).unwrap();
+    app.log_view_path = Some(PathBuf::from("example.log"));
+    alt(&mut app, 't');
+    choose(&mut app, MainMenuAction::ToggleMcp);
+    assert!(!app.mcp_connections_disabled);
+    assert_eq!(app.activity(), AppActivity::LogView);
+}
+
+#[test]
+fn mcp_badge_precedes_activity_in_yellow_and_preserves_header_geometry() {
+    let mut app = make_test_app(1, 10);
+    app.snapshot.captured_at = chrono::Local::now();
+    for theme in 0..ui::THEMES.len() {
+        app.theme_index = theme;
+        for width in [50, 80, 120] {
+            let area = Rect::new(0, 0, width, 1);
+            app.mcp_connected = false;
+            let actions = ui::header::header_actions(area, &app);
+            assert!(
+                !render_app_to_text(&app, width, 24)
+                    .lines()
+                    .next()
+                    .unwrap()
+                    .contains("MCP")
+            );
+            app.mcp_connected = true;
+            for log_view in [false, true] {
+                app.log_view_path = log_view.then(|| PathBuf::from("example.log"));
+                let buffer = render_app_to_buffer(&app, width, 24);
+                let (x, y) = find_text_position(&buffer, "MCP").unwrap();
+                let (activity_x, activity_y) =
+                    find_text_position(&buffer, if log_view { "LOG" } else { "LIVE" }).unwrap();
+                assert_eq!(y, 0);
+                assert_eq!(activity_y, y);
+                assert!(x < activity_x);
+                for dx in 0..3 {
+                    assert_eq!(buffer[(x + dx, y)].bg, ui::header::MCP_BACKGROUND);
+                }
+                assert_eq!(ui::header::header_actions(area, &app), actions);
+            }
+            app.log_view_path = None;
+        }
+    }
+    app.mcp_connected = false;
+    assert!(
+        !render_app_to_text(&app, 120, 24)
+            .lines()
+            .next()
+            .unwrap()
+            .contains("MCP")
+    );
+}
+
+#[test]
+fn mcp_badge_survives_recording_pause_and_stale_status() {
+    let mut app = make_test_app(1, 10);
+    let path = start_recording(&mut app, "mcp-badge-recording");
+    app.mcp_connected = true;
+    app.snapshot.captured_at = chrono::Local::now() - chrono::Duration::seconds(4);
+    app.toggle_display_pause();
+    let text = render_app_to_text(&app, 80, 24);
+    let header = text.lines().next().unwrap();
+    for label in ["MCP", "REC", "STALE", "DISPLAY PAUSED"] {
+        assert!(header.contains(label), "{header}");
+    }
+    app.stop_recording().unwrap();
+    std::fs::remove_file(path).unwrap();
 }

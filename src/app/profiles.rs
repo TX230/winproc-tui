@@ -601,7 +601,7 @@ impl App {
         }
     }
 
-    fn persist_investigation_profile_changes(&mut self) -> bool {
+    pub(super) fn persist_investigation_profile_changes(&mut self) -> bool {
         let Some(path) = self.runtime.config_path.clone() else {
             return true;
         };

@@ -200,3 +200,9 @@ File-user search displays only editable text after the fixed Query label. Result
 Environment detail guidance exposes refresh when the target is live and no capture is pending, ahead of secondary sizing controls while keeping Back available. The footer uses the same key-dispatch and hit-test path as keyboard input. Filter editing continues to interpret its clear shortcut as text editing, never as a capture request.
 
 Termination results keep each executable name, PID, and outcome together in a compact summary line when width permits. Long names and failure reasons wrap without extra blank rows; scrolling advances through rendered lines so every reason remains accessible. The result dialog uses content-sized height up to its terminal-bounded maximum. Confirmed termination, already exited, failure, pending work, and unconfirmed exit remain distinct, and running batches retain their input and target-safety rules.
+
+MCP capture jobs use independent session identities and do not reuse Process Info dialog generations. A shared scan guard permits only one file-user helper scan across TUI and MCP workers; competing scans report busy/failure rather than running a second global scan.
+
+## MCP inspection boundary
+
+MCP process metadata is an independent bounded job with a held, revalidated process handle. Default fields are image and version; command line and user require explicit selection. Signature verification is currently reported as unavailable. Read-only parent relationships use snapshot parent PIDs only when a unique parent with a known strictly earlier creation time is present; ambiguous ancestry remains unknown. File-user captures issue connection-owned references from verified owner identities. No MCP read opens or retargets a Process Info dialog.

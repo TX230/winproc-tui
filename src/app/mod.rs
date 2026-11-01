@@ -11,6 +11,7 @@ pub(crate) mod graph_csv;
 pub(crate) mod help;
 pub(crate) mod log_format;
 pub(crate) mod logs;
+pub(crate) mod mcp;
 pub(crate) mod navigation;
 pub(crate) mod network;
 pub(crate) mod open_files;
@@ -129,6 +130,7 @@ pub(crate) fn run_tui(terminal: &mut AppTerminal, app: &mut App) -> Result<()> {
         dirty |= app.poll_graph_csv();
         dirty |= app.poll_threads();
         dirty |= app.poll_log_workers();
+        dirty |= app.poll_mcp();
         dirty |= app.request_due_process_info()?;
         dirty |= app.request_due_open_files_at(Instant::now())?;
         dirty |= app.refresh_status_feedback(Instant::now());

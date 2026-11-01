@@ -266,3 +266,7 @@ When changing this collector:
 - [.NET runtime metrics](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics-runtime)
 - [Well-known .NET EventCounters](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters)
 - [Mapping .NET Framework performance counters to modern metrics](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/migrate-from-windows-performance-counters)
+
+## MCP collection control
+
+MCP enable requests require the detected supported runtime and a local confirmation of target initialization. The confirmation captures one process lifetime and rechecks authorization revision and activity before applying. It cannot be bypassed with a client confirmation flag. Status distinguishes disabled, waiting, collecting, unavailable, and stopping; pending reader removal is exposed per target. Revocation uses the same worker cleanup as the per-process TUI action. Accepted authorization survives bridge disconnection, while restarted processes need fresh authorization.

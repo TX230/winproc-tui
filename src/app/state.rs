@@ -983,6 +983,7 @@ impl MainMenuSection {
                 SetTheme(2),
                 SetTheme(3),
                 ToggleContrast,
+                ToggleMcp,
                 OpenStartupBehavior,
             ],
             (Self::Help, _) => &[OpenKeyboardShortcuts, OpenVersionInfo],
@@ -1015,6 +1016,7 @@ pub(crate) enum MainMenuAction {
     OpenStartupBehavior,
     SetTheme(usize),
     ToggleContrast,
+    ToggleMcp,
     QuitImmediately,
     QuitWithConfirmation,
 }
@@ -1044,6 +1046,7 @@ impl MainMenuAction {
             Self::OpenStartupBehavior => "Startup Behavior",
             Self::SetTheme(index) => THEMES[index].name,
             Self::ToggleContrast => "High contrast",
+            Self::ToggleMcp => "Disable MCP connections",
             Self::QuitImmediately => "Quit",
             Self::QuitWithConfirmation => "Quit",
         }
@@ -1096,6 +1099,12 @@ pub(crate) enum SampleFreshness {
 }
 
 pub(crate) struct App {
+    pub(crate) mcp: Option<crate::mcp::backend::Backend>,
+    pub(crate) mcp_state: super::mcp::ControlState,
+    pub(crate) mcp_connections_disabled: bool,
+    pub(crate) mcp_started: bool,
+    pub(crate) mcp_status: String,
+    pub(crate) mcp_connected: bool,
     pub(crate) runtime: RuntimeConfig,
     pub(crate) sampling_worker: SamplingWorker,
     pub(crate) dotnet_confirmation: Option<Vec<ProcessIdentity>>,
@@ -1397,6 +1406,12 @@ impl App {
         let process_view_mode = runtime.initial_process_view_mode;
         let mut app = Self {
             theme_index: theme_index_by_name(&runtime.initial_theme),
+            mcp: None,
+            mcp_state: super::mcp::ControlState::default(),
+            mcp_connections_disabled: runtime.initial_mcp_connections_disabled,
+            mcp_started: false,
+            mcp_status: String::new(),
+            mcp_connected: false,
             high_contrast: runtime.initial_high_contrast,
             runtime,
             sampling_worker,
@@ -1792,6 +1807,9 @@ impl App {
     }
 
     pub(crate) fn has_workspace_overlay(&self) -> bool {
+        if self.mcp_state.confirmation.is_some() {
+            return true;
+        }
         if self.dotnet_confirmation.is_some() {
             return true;
         }
@@ -6757,6 +6775,15 @@ impl App {
                 if self.theme_index == index { '*' } else { ' ' },
                 THEMES[index].name
             ),
+            MainMenuItem::Action(MainMenuAction::ToggleMcp) => format!(
+                "[{}] Disable MCP connections ({})",
+                if self.mcp_connections_disabled {
+                    'x'
+                } else {
+                    ' '
+                },
+                self.mcp_status
+            ),
             MainMenuItem::Action(MainMenuAction::ToggleContrast) => format!(
                 "[{}] High contrast",
                 if self.high_contrast { 'x' } else { ' ' }
@@ -6934,6 +6961,18 @@ impl App {
                 self.theme_index = index;
             }
             MainMenuAction::ToggleContrast => self.high_contrast = !self.high_contrast,
+            MainMenuAction::ToggleMcp => {
+                self.mcp_connections_disabled = !self.mcp_connections_disabled;
+                self.mcp = None;
+                self.mcp_started = false;
+                self.mcp_connected = false;
+                self.mcp_status = if self.mcp_connections_disabled {
+                    "Disabled"
+                } else {
+                    "Starting"
+                }
+                .into();
+            }
             _ => return false,
         }
         true
@@ -7026,7 +7065,8 @@ impl App {
             | MainMenuAction::ToggleDelta
             | MainMenuAction::CycleGraphLayout
             | MainMenuAction::SetTheme(_)
-            | MainMenuAction::ToggleContrast => unreachable!(),
+            | MainMenuAction::ToggleContrast
+            | MainMenuAction::ToggleMcp => unreachable!(),
             MainMenuAction::StartRecording => self.toggle_recording(),
             MainMenuAction::StopRecording => {
                 self.request_recording_stop();

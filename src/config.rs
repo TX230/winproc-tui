@@ -44,6 +44,7 @@ pub(crate) struct GeneralConfig {
     pub(crate) mouse: bool,
     pub(crate) theme: String,
     pub(crate) high_contrast: bool,
+    pub(crate) mcp_connections_disabled: bool,
 }
 
 impl Default for GeneralConfig {
@@ -52,6 +53,7 @@ impl Default for GeneralConfig {
             mouse: true,
             theme: "Green".to_string(),
             high_contrast: false,
+            mcp_connections_disabled: false,
         }
     }
 }
@@ -257,6 +259,7 @@ pub(crate) struct RuntimeConfig {
     pub(crate) recording_last_dir: Option<PathBuf>,
     pub(crate) initial_theme: String,
     pub(crate) initial_high_contrast: bool,
+    pub(crate) initial_mcp_connections_disabled: bool,
     pub(crate) initial_graph_slot_layout: GraphSlotLayout,
     pub(crate) initial_graph_time_span_seconds: u32,
     pub(crate) initial_graph_y_axis_zero_min: bool,
@@ -487,6 +490,7 @@ pub(crate) fn build_runtime_config(mut config: AppConfig) -> Result<RuntimeConfi
         recording_last_dir: config.recording.last_dir,
         initial_theme: config.general.theme,
         initial_high_contrast: config.general.high_contrast,
+        initial_mcp_connections_disabled: config.general.mcp_connections_disabled,
         initial_graph_slot_layout: match config.graphs.columns.unwrap_or_default() {
             1 => GraphSlotLayout::OneColumn,
             2 => GraphSlotLayout::TwoColumns,
@@ -549,6 +553,7 @@ pub(crate) fn write_app_config(path: &Path, app: &App) -> Result<()> {
             mouse: app.runtime.mouse,
             theme: app.theme().name.to_string(),
             high_contrast: app.high_contrast,
+            mcp_connections_disabled: app.mcp_connections_disabled,
         },
         graphs: GraphConfig {
             columns: Some(app.graph_slot_layout.columns()),

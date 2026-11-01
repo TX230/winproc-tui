@@ -129,6 +129,12 @@ pub(in crate::tests) fn make_test_app_with_workers(
         .map(model::ProcessIdentity::from_row);
 
     App {
+        mcp: None,
+        mcp_state: Default::default(),
+        mcp_connections_disabled: false,
+        mcp_started: false,
+        mcp_status: String::new(),
+        mcp_connected: false,
         threads: crate::app::threads::ThreadsView::default(),
         threads_worker: crate::samplers::threads::ThreadWorker::spawn(),
         runtime: RuntimeConfig {
@@ -137,6 +143,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
             recording_last_dir: None,
             initial_theme: "Green".to_string(),
             initial_high_contrast: false,
+            initial_mcp_connections_disabled: false,
             initial_graph_slot_layout: GraphSlotLayout::Auto,
             initial_graph_time_span_seconds: 60,
             initial_graph_y_axis_zero_min: true,

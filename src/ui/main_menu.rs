@@ -186,7 +186,8 @@ fn display_rows(app: &App) -> Vec<Option<usize>> {
                 | OpenColumns
                 | SetTheme(_) => 0,
                 OpenProfiles | SaveProfile | SaveProfileAs | ExportGraphsCsv
-                | ToggleTrackedOnly | ToggleShowExited | ToggleTreeView | ToggleContrast => 1,
+                | ToggleTrackedOnly | ToggleShowExited | ToggleTreeView | ToggleContrast
+                | ToggleMcp => 1,
                 ToggleGraphs | ToggleSamples | ToggleDelta | QuitImmediately
                 | QuitWithConfirmation | OpenStartupBehavior => 2,
                 OpenVersionInfo | OpenKeyboardShortcuts => 0,

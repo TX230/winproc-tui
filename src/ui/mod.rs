@@ -317,6 +317,10 @@ pub(crate) fn draw(frame: &mut ratatui::Frame<'_>, app: &App) {
         begin_input_layer(app);
         draw_help(frame, area, app, theme);
     }
+    if app.mcp_state.confirmation.is_some() {
+        begin_input_layer(app);
+        mcp_confirm::draw(frame, area, app, theme);
+    }
     footer::draw_shortcut_hover(frame, app);
     if let Some(position) = app.draw_cursor.get() {
         frame.set_cursor_position(position);
@@ -441,3 +445,5 @@ fn draw_no_graph_metrics_warning(
     );
     frame.render_widget(dialog, popup);
 }
+
+pub(crate) mod mcp_confirm;

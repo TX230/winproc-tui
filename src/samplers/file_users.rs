@@ -111,6 +111,8 @@ fn publish(latest: &Latest, update: FileUsersUpdate) {
     }
 }
 
+static SCAN_LOCK: Mutex<()> = Mutex::new(());
+
 fn worker_loop(requests: Receiver<Work>, active: Arc<AtomicU64>, latest: Latest) {
     while let Ok((id, request)) = requests.recv() {
         if active.load(Ordering::Acquire) != id {
@@ -125,6 +127,15 @@ fn worker_loop(requests: Receiver<Work>, active: Arc<AtomicU64>, latest: Latest)
             },
         );
         let result = (|| {
+            let _scan = if matches!(&request, FileUsersRequest::Verify(_)) {
+                None
+            } else {
+                Some(
+                    SCAN_LOCK
+                        .try_lock()
+                        .map_err(|_| anyhow!("Another file-user scan is active"))?,
+                )
+            };
             let mut command = Command::new(std::env::current_exe()?);
             command
                 .arg("--file-users-helper")

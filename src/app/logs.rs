@@ -352,14 +352,16 @@ where
     let mut line_index = 0_usize;
     loop {
         line.clear();
-        if reader
-            .read_until(b'\n', &mut line)
+        if bounded_read_line(&mut reader, &mut line)
             .with_context(|| format!("failed to read {} line {}", path.display(), line_index + 1))?
             == 0
         {
             break;
         }
         line_index += 1;
+        if !mcp_accept_line(&line)? {
+            break;
+        }
         let line = trim_ascii_whitespace(&line);
         if line.is_empty() {
             continue;
@@ -527,14 +529,16 @@ where
     let mut line_index = 0_usize;
     loop {
         line.clear();
-        if reader
-            .read_until(b'\n', &mut line)
+        if bounded_read_line(&mut reader, &mut line)
             .with_context(|| format!("failed to read {} line {}", path.display(), line_index + 1))?
             == 0
         {
             break;
         }
         line_index += 1;
+        if !mcp_accept_line(&line)? {
+            break;
+        }
         let line = trim_ascii_whitespace(&line);
         if line.is_empty() {
             continue;
@@ -576,7 +580,14 @@ fn empty_summary(path: &Path) -> LogSummary {
 
 fn read_first_json_line(path: &Path) -> Result<Value> {
     let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-    let reader = BufReader::new(file);
+    let limit = MCP_LOAD.with(|b| {
+        if b.borrow().is_some() {
+            4 * 1024 * 1024
+        } else {
+            u64::MAX
+        }
+    });
+    let reader = BufReader::new(file.take(limit));
     for (line_index, line) in reader.lines().enumerate() {
         let line = line.with_context(|| {
             format!("failed to read {} line {}", path.display(), line_index + 1)
@@ -1862,4 +1873,131 @@ mod preview_tests {
         );
         assert_eq!(legacy.interval_seconds, None);
     }
+}
+
+// The bounded external loader shares schema reconstruction with Log view, while
+// enforcing an independent conservative allocation reservation before each record.
+struct McpLoadBudget {
+    definitions: HashMap<String, usize>,
+    session_cost: usize,
+    used: usize,
+    limit: usize,
+    deadline: std::time::Instant,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    clean_end: bool,
+    truncated: bool,
+}
+thread_local! {static MCP_LOAD:std::cell::RefCell<Option<McpLoadBudget>>=const{std::cell::RefCell::new(None)};}
+fn bounded_read_line(reader: &mut impl BufRead, line: &mut Vec<u8>) -> std::io::Result<usize> {
+    let limited = MCP_LOAD.with(|b| b.borrow().is_some());
+    if limited {
+        reader.take(4 * 1024 * 1024 + 1).read_until(b'\n', line)
+    } else {
+        reader.read_until(b'\n', line)
+    }
+}
+fn mcp_accept_line(line: &[u8]) -> Result<bool> {
+    MCP_LOAD.with(|cell| {
+        let mut state = cell.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return Ok(true);
+        };
+        if state.cancel.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(anyhow!("CANCELLED"));
+        }
+        if state.deadline.elapsed().as_secs() >= 60 {
+            return Err(anyhow!("TIMEOUT"));
+        }
+        state.used = state
+            .used
+            .saturating_add(line.len().saturating_mul(32))
+            .saturating_add(4096);
+        if state.used > state.limit || line.len() > 4 * 1024 * 1024 {
+            return Err(anyhow!("RESULT_TOO_LARGE"));
+        }
+        if line.iter().all(u8::is_ascii_whitespace) {
+            return Ok(true);
+        }
+        match serde_json::from_slice::<Value>(line) {
+            Ok(value) => {
+                for kind in ["p", "g"] {
+                    if let Some(id) = value[kind][0].as_u64() {
+                        state
+                            .definitions
+                            .insert(format!("{kind}:{id}"), line.len().saturating_mul(8));
+                    }
+                }
+                if value["record_type"] == "session" {
+                    state.session_cost = line.len().saturating_mul(8);
+                }
+                let mut expansion = 0usize;
+                if let Some(samples) = value["f"][2].as_array() {
+                    for sample in samples {
+                        if let Some(id) = sample[0].as_u64() {
+                            expansion = expansion.saturating_add(
+                                *state.definitions.get(&format!("p:{id}")).unwrap_or(&0),
+                            );
+                        }
+                    }
+                }
+                if let Some(samples) = value["f"][1][2].as_array() {
+                    for sample in samples {
+                        if let Some(id) = sample[0].as_u64() {
+                            expansion = expansion.saturating_add(
+                                *state.definitions.get(&format!("g:{id}")).unwrap_or(&0),
+                            );
+                        }
+                    }
+                }
+                if value["record_type"] == "frame" {
+                    expansion = expansion.saturating_add(state.session_cost);
+                }
+                state.used = state.used.saturating_add(expansion);
+                if state.used > state.limit {
+                    return Err(anyhow!("RESULT_TOO_LARGE"));
+                }
+                if value.get("e").is_some() || value["record_type"] == "end" {
+                    state.clean_end = true;
+                }
+                Ok(true)
+            }
+            Err(_) if !line.ends_with(b"\n") => {
+                state.truncated = true;
+                Ok(false)
+            }
+            Err(_) => Err(anyhow!("Invalid complete recording record")),
+        }
+    })
+}
+pub(crate) fn load_mcp_log(
+    path: &Path,
+    limit: usize,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<(LoadedLog, usize, bool)> {
+    MCP_LOAD.with(|b| {
+        *b.borrow_mut() = Some(McpLoadBudget {
+            definitions: HashMap::new(),
+            session_cost: 0,
+            used: 1024 * 1024,
+            limit,
+            deadline: std::time::Instant::now(),
+            cancel,
+            clean_end: false,
+            truncated: false,
+        })
+    });
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            MCP_LOAD.with(|b| *b.borrow_mut() = None);
+        }
+    }
+    let _reset = Reset;
+    let result = load_log(path, SortSpec::default())?;
+    let (used, partial) = MCP_LOAD.with(|b| {
+        let b = b.borrow();
+        let b = b.as_ref().unwrap();
+        (b.used, !b.clean_end || b.truncated)
+    });
+    Ok((result, used, partial))
 }

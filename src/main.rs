@@ -15,6 +15,7 @@ use ratatui::Terminal;
 mod app;
 mod cli;
 mod config;
+mod mcp;
 mod model;
 mod platform;
 mod samplers;
@@ -33,6 +34,9 @@ use terminal::{AppTerminal, buffered_backend};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if matches!(cli.command, Some(cli::Command::McpBridge)) {
+        return mcp::bridge::run();
+    }
     if let Some(request) = cli.file_users_helper {
         return samplers::file_users_scan::run_helper(&request);
     }

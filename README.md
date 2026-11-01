@@ -210,3 +210,9 @@ This is a personal project and does not accept unsolicited pull requests from ex
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+### Local MCP integration (under development)
+
+The `mcp-bridge` subcommand serves standard MCP over stdio and connects to WinProc TUI through a local Windows named pipe. Configure your MCP client to run `winproc-tui mcp-bridge`. If the TUI is absent, the first valid tool call opens it in a new Windows Terminal window and waits up to 12 seconds for readiness. Windows Terminal and its `wt.exe` app execution alias are required for automatic startup; you can also start the TUI manually. Both processes must use the same Windows logon session and integrity level. The TUI stays open after the MCP client disconnects. If MCP is saved as disabled, start the TUI manually to enable it; a startup profile-selection dialog also requires human input before retrying. Settings → **Disable MCP connections** disables external access without stopping sampling or Recording; connections are enabled by default.
+
+This integration is under development in [Issue #202](https://github.com/TX230/winproc-tui/issues/202). Use `tools/list` to discover the currently implemented tools. All 26 tools are connected: metrics/history, process and file investigation, tracking/profiles, Recording, independent saved-log analysis, explicit .NET control, and condition waits. Configure the Recording directory locally before using Recording/log tools; required approvals appear in the TUI. See the [specification](docs/mcp-integration-specification.md) and [verification results](docs/mcp-system-testing.md). MCP communication uses no TCP/IP; investigating files on network shares remains supported under normal Windows permissions.

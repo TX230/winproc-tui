@@ -17,3 +17,7 @@ When a schema-v3 field or array position changes, update all of the following to
 2. `docs/metrics.md`;
 3. `docs/schemas/recording-v3-line.schema.json`;
 4. writer, reader, and schema-parity tests.
+
+## MCP tool contracts
+
+[`mcp-tools.json`](mcp-tools.json) records the input schemas and common success/error output-envelope schemas for Issue #202. Tool-specific success data remains an unconstrained object; the catalog does not yet define every result field or capture-row shape. The bridge loads this catalog and advertises all 26 implemented adapters. These definitions are not a released compatibility promise. The complete contract and conformance requirements are owned by [MCP integration](../mcp-integration-specification.md).

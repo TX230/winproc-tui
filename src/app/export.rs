@@ -254,7 +254,7 @@ pub(crate) struct RecordingSession {
     pub(crate) path: PathBuf,
     session_id: String,
     started_at: DateTime<Local>,
-    started_at_instant: Instant,
+    pub(super) started_at_instant: Instant,
     host: String,
     tracked_names: Vec<String>,
     normalized_tracked_names: HashSet<String>,
@@ -798,7 +798,7 @@ impl App {
         self.enforce_recording_duration_limit_at(now)
     }
 
-    fn start_recording(&mut self, path: PathBuf, overwrite: bool) -> Result<()> {
+    pub(super) fn start_recording(&mut self, path: PathBuf, overwrite: bool) -> Result<()> {
         let recording_last_dir = match recording_parent_dir(&path) {
             Ok(parent) => parent,
             Err(error) => {

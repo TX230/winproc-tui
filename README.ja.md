@@ -210,3 +210,9 @@ cargo install --path . --locked
 ## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。
+
+### ローカルMCP連携（開発中）
+
+`mcp-bridge` サブコマンドは標準のMCPをstdioで受け付け、WinProc TUIにWindowsの名前付きパイプで接続します。MCPクライアントには `winproc-tui mcp-bridge` を登録してください。TUIが未起動なら、最初の有効なツール呼び出しでWindows Terminalの新しいウィンドウに起動し、接続できるまで最大12秒待ちます。自動起動にはWindows Terminalと `wt.exe` のアプリ実行エイリアスが必要です。TUIを手動で起動しておくこともできます。本体とブリッジは同じWindowsログオンセッション、同じ権限レベルで実行します。MCPクライアントの切断後もTUIは開いたままです。保存済み設定でMCPが無効な場合は、TUIを手動で起動して有効にしてください。起動時にプロファイル選択画面が表示された場合も、人間が選択を終えてから再試行します。Settingsの **Disable MCP connections** をオンにすると、サンプリングや記録を続けたまま外部からの接続を無効にできます。初期設定では接続が有効です。
+
+この連携は [Issue #202](https://github.com/TX230/winproc-tui/issues/202) で開発中です。現在利用できる機能は `tools/list` で確認できます。メトリクスと履歴、プロセス・ファイル調査、追跡とプロファイル、記録、保存ログの独立した分析、.NET収集の操作、条件待機の全26ツールを実装しています。記録・ログ関連機能を使う前に、TUIで記録先を設定してください。確認が必要な操作はTUIに表示されます。[仕様書](docs/mcp-integration-specification.md) と [検証結果](docs/mcp-system-testing.md) も参照してください。MCP通信にTCP/IPは使用しません。調査対象のファイルがネットワーク共有にある場合は、通常のWindowsの権限に従ってアクセスできます。

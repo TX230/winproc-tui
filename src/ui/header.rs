@@ -13,6 +13,8 @@ use ratatui::{
 pub(crate) const DOTNET_BACKGROUND: ratatui::style::Color =
     ratatui::style::Color::Rgb(238, 153, 190);
 
+pub(crate) const MCP_BACKGROUND: ratatui::style::Color = ratatui::style::Color::Rgb(239, 209, 116);
+
 const PRODUCT_LABEL: &str = " winproc-tui ";
 
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
@@ -269,6 +271,23 @@ fn header_status_spans(app: &App, theme: Theme, budget: usize) -> Vec<Span<'stat
     if app.is_display_paused() && activity != AppActivity::LogView {
         spans.push(Span::raw("  "));
         spans.push(mode_span("DISPLAY PAUSED", theme.warning, theme));
+    }
+    // Keep the activity visible even when the terminal cannot fit both badges.
+    let compact_width = spans
+        .iter()
+        .map(|span| {
+            if span.content.trim().is_empty() {
+                1
+            } else if span.style.bg.is_some() {
+                Span::raw(span.content.trim()).width()
+            } else {
+                span.width()
+            }
+        })
+        .sum::<usize>();
+    if app.mcp_connected && !app.mcp_connections_disabled && compact_width + 4 <= budget {
+        spans.insert(0, Span::raw(" "));
+        spans.insert(0, mode_span("MCP", MCP_BACKGROUND, theme));
     }
     // Long stale durations can consume the reserved width. Drop badge padding and
     // redundant spacing before allowing any critical label to be clipped.

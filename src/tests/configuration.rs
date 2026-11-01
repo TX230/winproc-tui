@@ -1125,3 +1125,17 @@ fn show_exited_round_trips_with_session_state() {
     let _ = std::fs::remove_file(path);
     assert!(!runtime.initial_show_exited);
 }
+
+#[test]
+fn mcp_is_enabled_for_old_configs_and_disabled_preference_round_trips() {
+    let older: AppConfig = toml::from_str("[general]\nmouse = true\n").unwrap();
+    assert!(!older.general.mcp_connections_disabled);
+    let runtime = build_runtime_config(older).unwrap();
+    assert!(!runtime.initial_mcp_connections_disabled);
+    let path = unique_config_path("mcp-setting");
+    let mut app = make_test_app(1, 10);
+    app.mcp_connections_disabled = true;
+    write_app_config(&path, &app).unwrap();
+    assert!(load_config(&path).unwrap().general.mcp_connections_disabled);
+    std::fs::remove_file(path).unwrap();
+}

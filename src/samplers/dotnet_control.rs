@@ -257,6 +257,14 @@ impl DotNetControl {
         failures
     }
 
+    pub(crate) fn target_stopping(&self, id: &ProcessIdentity) -> bool {
+        let state = self.state.lock().unwrap();
+        state.pending_removal.contains(id)
+            || state
+                .draining
+                .get(id)
+                .is_some_and(|weak| weak.strong_count() > 0)
+    }
     pub(crate) fn status(&self, id: &ProcessIdentity) -> String {
         let state = self.state.lock().unwrap();
         if !state.enabled {

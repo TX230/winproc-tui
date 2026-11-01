@@ -1,0 +1,3770 @@
+[
+  {
+    "name": "winproc_get_status",
+    "description": "Read application activity, backend availability, limits and sampling freshness. Obtain state revisions from tracking, profile or .NET collection getters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_system_info",
+    "description": "Read cached Windows version/build and architecture, plus CPU name/topology/cache and total memory from the published snapshot. No GPU inventory or fresh collection is performed. In TUI Log view, fields remain from the last Live sample, not the displayed recording.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_list_metrics",
+    "description": "Describe metric identifiers, exact units, representations and availability.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_kind": {
+          "type": "string",
+          "enum": [
+            "process",
+            "system"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_list_processes",
+    "description": "Discover process lifetime references in a frozen snapshot or retained history, independent of TUI filters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "live",
+            "log"
+          ]
+        },
+        "log_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "live",
+            "retained",
+            "all"
+          ]
+        },
+        "filter": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "pid": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "name",
+            "pid"
+          ]
+        },
+        "projection": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "process_ref",
+              "pid",
+              "name",
+              "path",
+              "start_time",
+              "lifecycle",
+              "last_seen_at",
+              "history_from",
+              "history_to",
+              "parent"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "log"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "log_ref"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_process_info",
+    "description": "Inspect static image metadata for a verified live process lifetime. Returns a bounded asynchronous job; poll winproc_get_job and read the resulting capture. Signature verification, when requested, is explicitly unavailable. Default fields are image and version; command_line and user require explicit opt-in.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "process_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image",
+              "command_line",
+              "user",
+              "version",
+              "signature"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "process_ref"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_metrics",
+    "description": "Read current raw metric values; integer quantities are decimal strings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "live",
+            "log"
+          ]
+        },
+        "log_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "process_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "system": {
+                "const": true
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": [
+                  "process_ref"
+                ]
+              },
+              {
+                "required": [
+                  "system"
+                ]
+              }
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "metric_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "source",
+        "targets",
+        "metric_ids"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "log"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "log_ref"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_history",
+    "description": "Read retained samples or summaries. Missing counts describe stored samples only.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "live",
+            "log"
+          ]
+        },
+        "log_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "process_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "system": {
+              "const": true
+            }
+          },
+          "required": [],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "process_ref"
+              ]
+            },
+            {
+              "required": [
+                "system"
+              ]
+            }
+          ]
+        },
+        "metric_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "summary"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "source",
+        "target",
+        "metric_ids",
+        "from",
+        "to",
+        "mode"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "log"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "log_ref"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_start_capture",
+    "description": "Start read-only asynchronous file, module, endpoint, thread or scheduling inspection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "file_users",
+            "open_files",
+            "modules",
+            "network",
+            "threads",
+            "scheduling"
+          ]
+        },
+        "process_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "open_files",
+                  "modules",
+                  "threads",
+                  "scheduling"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "process_ref"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_job",
+    "description": "Read running/terminal state and outcome of a connection-owned asynchronous job; no percentage progress is reported. Inspect state and result.error even when the getter itself succeeds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_read_capture",
+    "description": "Page a frozen capture; path filtering does not rescan files.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "capture_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "filter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "projection": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "capture_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_cancel_job",
+    "description": "Cancel a connection-owned job without rolling back accepted application state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_release_capture",
+    "description": "Release a connection-owned frozen capture.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "capture_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "capture_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_tracking",
+    "description": "Read current name-based tracking intent and revision. Matching rows come from the last Live sample, independent of the displayed recording; they are not a fresh OS liveness check in TUI Log view.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_update_tracking",
+    "description": "Explicitly add or remove an executable name. All current and future matching lifetimes are affected; history loss requires local confirmation. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "add",
+            "remove"
+          ]
+        },
+        "process_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "process_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expected_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "action",
+        "operation_id",
+        "expected_revision"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "process_name"
+          ],
+          "not": {
+            "required": [
+              "process_ref"
+            ]
+          }
+        },
+        {
+          "required": [
+            "process_ref"
+          ],
+          "not": {
+            "required": [
+              "process_name"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_list_profiles",
+    "description": "Read saved Investigation Profiles without loading them.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_update_profile",
+    "description": "Explicitly load, save, create, rename or delete a profile. Loading replaces working tracking intent only. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "load",
+            "save",
+            "save_as",
+            "rename",
+            "delete"
+          ]
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expected_profile_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expected_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "action",
+        "operation_id",
+        "expected_revision"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "save_as"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "name"
+            ]
+          },
+          "else": {
+            "required": [
+              "profile_id",
+              "expected_profile_revision"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "rename"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "name"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_recording",
+    "description": "Read active recording session identity, scope, interval and state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_start_recording",
+    "description": "Record current tracked names using the locally configured output directory. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "interval_seconds": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            5,
+            10
+          ]
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expected_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "interval_seconds",
+        "operation_id",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_stop_recording",
+    "description": "Request local confirmation to stop this exact recording session; completion follows flush and close. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "recording_session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "recording_session_id",
+        "operation_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_list_logs",
+    "description": "List regular .log files in the locally configured recording directory, optionally filtered by filename. Poll the returned job, then page its capture with winproc_read_capture for log IDs and names. Recording format is validated when opening, not listing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_open_log",
+    "description": "Start a bounded read-only load of a server-issued log ID without changing TUI activity. Poll the load job for log_ref. Source files are read with a conservative allocation reservation and a 60-second deadline; incomplete trailing records are reported as partial.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "log_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "log_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_close_log",
+    "description": "Release an independent loaded log and its references.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "log_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "log_ref"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_dotnet_collection",
+    "description": "Read per-lifetime .NET collection authorization, state and revision.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "process_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "process_ref"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_set_dotnet_collection",
+    "description": "Explicitly request per-lifetime EventPipe authorization or revocation; enabling requires local readiness confirmation. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "process_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expected_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "process_ref",
+        "enabled",
+        "operation_id",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_wait_condition",
+    "description": "Wait for process-name presence or a metric comparison in a fresh sample newer than the request, or verify process exit through a held handle. Presence and threshold checks do not require a transition from the previous state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string",
+          "enum": [
+            "process_appeared",
+            "process_exited",
+            "metric_threshold"
+          ]
+        },
+        "process_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "process_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "system": {
+              "const": true
+            }
+          },
+          "required": [],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "process_ref"
+              ]
+            },
+            {
+              "required": [
+                "system"
+              ]
+            }
+          ]
+        },
+        "metric_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "comparison": {
+          "type": "string",
+          "enum": [
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "eq"
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        }
+      },
+      "required": [
+        "condition",
+        "timeout_ms"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "condition": {
+                "const": "process_appeared"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "process_name"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "condition": {
+                "const": "process_exited"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "target"
+            ],
+            "properties": {
+              "target": {
+                "required": [
+                  "process_ref"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "condition": {
+                "const": "metric_threshold"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "target",
+              "metric_id",
+              "comparison",
+              "threshold"
+            ]
+          }
+        }
+      ]
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_get_operation",
+    "description": "Read retained application-owned mutation status, including after reconnecting.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "api_version",
+            "backend_instance_id",
+            "source",
+            "status",
+            "warnings",
+            "data"
+          ],
+          "properties": {
+            "api_version": {
+              "const": "1.0"
+            },
+            "backend_instance_id": {
+              "type": "string"
+            },
+            "source": {
+              "enum": [
+                "live",
+                "log"
+              ]
+            },
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captured_at": {
+              "type": "string"
+            },
+            "capture_started_at": {
+              "type": "string"
+            },
+            "capture_finished_at": {
+              "type": "string"
+            },
+            "log_ref": {
+              "type": "string"
+            },
+            "interval_seconds": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "native_error_code": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "constraint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  }
+]

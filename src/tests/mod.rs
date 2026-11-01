@@ -35,3 +35,5 @@ mod terminal_performance;
 mod tracking_history;
 
 mod graph_csv;
+
+mod mcp_actions;

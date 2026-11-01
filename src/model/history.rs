@@ -328,6 +328,10 @@ pub(crate) struct ProcessHistory {
 }
 
 impl ProcessHistory {
+    pub(crate) fn identities(&self) -> impl Iterator<Item = &ProcessIdentity> {
+        self.samples.keys()
+    }
+
     pub(crate) fn record_snapshot(
         &mut self,
         captured_at: DateTime<Local>,

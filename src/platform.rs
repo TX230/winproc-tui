@@ -1,6 +1,9 @@
 use std::{
     ffi::OsStr,
-    os::windows::ffi::OsStrExt,
+    os::windows::{
+        ffi::OsStrExt,
+        io::{FromRawHandle, OwnedHandle},
+    },
     ptr,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
@@ -9,18 +12,18 @@ use std::{
 use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE, WORD},
-        ntdef::HANDLE,
-        winerror::ERROR_ALREADY_EXISTS,
+        winerror::{ERROR_ALREADY_EXISTS, ERROR_FILE_NOT_FOUND},
     },
     um::{
         consoleapi::SetConsoleCtrlHandler,
         errhandlingapi::{GetLastError, SetLastError},
         handleapi::CloseHandle,
-        synchapi::CreateMutexW,
+        synchapi::{CreateMutexW, OpenMutexW},
         wincon::{
             CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT,
             CTRL_SHUTDOWN_EVENT,
         },
+        winnt::SYNCHRONIZE,
         winuser::{
             GetAsyncKeyState, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
             VK_CONTROL, VK_OEM_MINUS, VK_OEM_PLUS,
@@ -39,17 +42,32 @@ const CONSOLE_CLOSE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const CONTROL_NOT_HANDLED: BOOL = 0;
 
 pub(crate) struct SingleInstanceGuard {
-    handle: HANDLE,
+    _handle: OwnedHandle,
 }
 
-impl Drop for SingleInstanceGuard {
-    fn drop(&mut self) {
-        // SAFETY: the guard is created only for a non-null mutex handle returned by
-        // `CreateMutexW` and is its sole owner, so this closes the handle exactly once.
-        unsafe {
-            CloseHandle(self.handle);
-        }
+pub(crate) fn single_instance_running() -> std::io::Result<bool> {
+    named_mutex_exists(SINGLE_INSTANCE_MUTEX_NAME)
+}
+
+fn named_mutex_exists(name: &str) -> std::io::Result<bool> {
+    let name = to_wide(name);
+    // SAFETY: name is NUL terminated; no mutex ownership or wait is requested.
+    let handle = unsafe { OpenMutexW(SYNCHRONIZE, FALSE, name.as_ptr()) };
+    if handle.is_null() {
+        let error = std::io::Error::last_os_error();
+        return if error.raw_os_error() == Some(ERROR_FILE_NOT_FOUND as i32) {
+            Ok(false)
+        } else {
+            Err(error)
+        };
     }
+    // SAFETY: OpenMutexW returned an owned non-null handle; close it exactly once.
+    drop(unsafe { OwnedHandle::from_raw_handle(handle.cast()) });
+    Ok(true)
+}
+
+pub(crate) fn acquire_mcp_launch_guard() -> std::io::Result<Option<SingleInstanceGuard>> {
+    acquire_named_mutex("Local\\TX230.winproc-tui.McpLaunch")
 }
 
 pub(crate) fn acquire_single_instance() -> std::io::Result<Option<SingleInstanceGuard>> {
@@ -80,7 +98,10 @@ fn acquire_named_mutex(name: &str) -> std::io::Result<Option<SingleInstanceGuard
         }
         Ok(None)
     } else {
-        Ok(Some(SingleInstanceGuard { handle }))
+        // SAFETY: CreateMutexW returned an owned non-null handle, transferred once.
+        Ok(Some(SingleInstanceGuard {
+            _handle: unsafe { OwnedHandle::from_raw_handle(handle.cast()) },
+        }))
     }
 }
 
@@ -201,7 +222,20 @@ fn keyboard_input(vk: WORD, flags: u32) -> INPUT {
 
 #[cfg(test)]
 mod tests {
-    use super::acquire_named_mutex;
+    use super::{acquire_named_mutex, named_mutex_exists};
+
+    #[test]
+    fn probing_a_mutex_does_not_create_it_or_keep_it_alive() {
+        let name = format!(
+            "Local\\TX230.winproc-tui.Test.Probe.{}",
+            uuid::Uuid::new_v4()
+        );
+        assert!(!named_mutex_exists(&name).unwrap());
+        let guard = acquire_named_mutex(&name).unwrap().unwrap();
+        assert!(named_mutex_exists(&name).unwrap());
+        drop(guard);
+        assert!(!named_mutex_exists(&name).unwrap());
+    }
 
     #[test]
     fn named_mutex_rejects_a_duplicate_and_allows_reacquisition_after_drop() {

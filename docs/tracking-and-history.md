@@ -124,3 +124,7 @@ Process context menus capture the full process identity and displayed row when o
 Full-table copy is available through the Processes context menu, including keyboard context-menu navigation; it has no dedicated shortcut. Process table copy respects visible-entry order, filters, Tracked-only, Show exited, and Tree collapse, including rows beyond the viewport. Selected-row copy intersects the current visible entries with the selected process identities; copying never expands selection or changes kill eligibility. Both operations read the displayed snapshot, including frozen and Log-view data.
 
 Full Path uses available extra width until a width is explicitly set. A manually sized Full Path column keeps that exact width, including across restart; dragging starts from its rendered width.
+
+## MCP actions
+
+MCP add/remove requests use the same name-based Current Investigation. Adding by a process reference resolves its captured name and reports all matching current/future instances. Explicit profile actions preserve Graphs, filters, and display preferences. Revisions detect intervening TUI/client edits. Removal and profile loading that discard older samples require local confirmation; profile loading also confirms unsaved investigation changes, and deletion confirms the named profile. Profile persistence failure is reported without accepting the requested definition change. See [MCP integration](mcp-integration-specification.md).
