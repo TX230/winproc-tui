@@ -34,16 +34,20 @@ pub(crate) fn draw_tracked_remove_confirm(
         .alignment(Alignment::Center),
         Line::from(""),
         Line::from(Span::styled(
-            format!("{} has {total} in-memory samples.", app.tracked_remove_name),
-            Style::default().fg(theme.text),
-        )),
-        Line::from(Span::styled(
             format!(
-                "This will keep the latest {retained} samples and discard {discarded} older samples."
+                "{}: {total} samples in affected processes.",
+                app.tracked_remove_name
             ),
             Style::default().fg(theme.text),
         )),
-        Line::from(Span::styled("Continue?", Style::default().fg(theme.text))),
+        Line::from(Span::styled(
+            format!("Keep {retained} per lifetime; discard {discarded} older samples."),
+            Style::default().fg(theme.text),
+        )),
+        Line::from(Span::styled(
+            "Includes descendants losing tracking. Continue?",
+            Style::default().fg(theme.text),
+        )),
         Line::from(""),
         Line::from(warning_shortcut_spans(
             &[("Enter", "Remove"), ("Esc", "Cancel")],

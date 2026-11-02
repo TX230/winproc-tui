@@ -586,11 +586,11 @@ fn removing_tracked_process_with_long_history_opens_confirm() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("target.exe has 121 in-memory samples."),
+        rendered.contains("target.exe: 121 samples in affected processes."),
         "{rendered}"
     );
     assert!(
-        rendered.contains("This will keep the latest 120 samples and discard 1 older samples."),
+        rendered.contains("Keep 120 per lifetime; discard 1 older samples."),
         "{rendered}"
     );
     assert!(rendered.contains("Continue?"), "{rendered}");

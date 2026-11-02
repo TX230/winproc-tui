@@ -708,6 +708,11 @@ fn dotnet_missing_label(
 fn tracked_and_dotnet_cell(row: &VisibleProcessRow<'_>, app: &App, theme: Theme) -> Cell<'static> {
     let tracked_style = if row.filter_context {
         Style::default().fg(theme.muted)
+    } else if row.tracked && !app.is_tracked_process_name(&row.process.name) {
+        Style::default()
+            .fg(ratatui::style::Color::Black)
+            .bg(ratatui::style::Color::Gray)
+            .remove_modifier(Modifier::BOLD)
     } else if row.tracked {
         tracked_marker_style(&row.lifecycle, theme)
     } else {
@@ -1022,7 +1027,11 @@ fn process_metric_overflow_indicator(
 }
 
 fn process_text_style(row: &VisibleProcessRow<'_>, theme: Theme) -> Style {
-    if matches!(row.lifecycle, ProcessLifecycle::Exited { .. }) {
+    if row.is_tracked_total {
+        Style::default()
+            .fg(ratatui::style::Color::Yellow)
+            .remove_modifier(Modifier::BOLD)
+    } else if matches!(row.lifecycle, ProcessLifecycle::Exited { .. }) {
         Style::default().fg(theme.exited)
     } else if row.filter_context {
         Style::default().fg(theme.muted)
@@ -1761,7 +1770,7 @@ mod tests {
     }
 
     #[test]
-    fn tracked_total_text_style_uses_neutral_text_color() {
+    fn tracked_total_text_style_uses_yellow_without_bold() {
         let theme = crate::ui::theme::THEMES[0];
         let process = ProcessRow {
             dotnet_eventpipe: None,
@@ -1806,7 +1815,15 @@ mod tests {
             filter_context: false,
         };
 
-        assert_eq!(process_text_style(&row, theme).fg, Some(theme.text));
+        assert_eq!(
+            process_text_style(&row, theme).fg,
+            Some(ratatui::style::Color::Yellow)
+        );
+        assert!(
+            !process_text_style(&row, theme)
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
         assert_eq!(process_row_style(false, false, theme).fg, Some(theme.text));
         assert_eq!(process_row_style(true, false, theme).fg, Some(theme.text));
     }

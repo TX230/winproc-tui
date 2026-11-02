@@ -569,8 +569,12 @@ const CPU_ROWS: &[HelpItem] = &[
 
 const TRACKING_ROWS: &[HelpItem] = &[
     HelpItem {
+        key: "T badge",
+        label: "Theme background: explicit name; gray: inherited. Actions edit explicit names",
+    },
+    HelpItem {
         key: "Tracking scope",
-        label: "Tracking applies to all processes with the same process name, including those started later.",
+        label: "Matching names and descendants, including later starts; parent exit preserves tracking.",
     },
     HelpItem {
         key: "Profiles",

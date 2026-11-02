@@ -22,54 +22,49 @@ $valid = @($presets.verify.workloads) + @($presets.screenshot.workloads) + @('th
 foreach ($item in $Workload) { if ($item -notin $valid) { throw "Unknown workload: $item" } }
 if (@($Workload | Select-Object -Unique).Count -ne $Workload.Count) { throw 'Duplicate workloads are not allowed.' }
 if ($Background -and $Mode -eq 'verify' -and $Workload.Count -gt 1) { throw 'Background verification accepts one workload; use screenshot for concurrent loads.' }
-if (-not (Test-Path (Join-Path $bin 'demo-workload.exe'))) { throw 'Run build.ps1 first.' }
+if (-not (Test-Path (Join-Path $bin 'demo-main.exe'))) { throw 'Run build.ps1 first.' }
 if (-not $Output) { $Output = Join-Path $root ("logs/workloads/{0}-{1}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), [Guid]::NewGuid().ToString('N').Substring(0,8)) }
 $Output = [IO.Path]::GetFullPath($Output)
 if (Test-Path -LiteralPath $Output) { throw 'Output must be a new directory to prevent mixing runs.' }
 New-Item -ItemType Directory -Path $Output | Out-Null
 $stop = Join-Path $Output 'stop.request'
-$children = [Collections.Generic.List[Diagnostics.Process]]::new()
-$manifest = [Collections.Generic.List[object]]::new()
-$failed = $false
+# ProcessStartInfo.ArgumentList preserves Unicode, spaces, quotes and trailing backslashes.
+$start = [Diagnostics.ProcessStartInfo]::new((Join-Path $bin 'demo-main.exe'))
+$start.UseShellExecute = $false
+$start.CreateNoWindow = $true
+$start.WorkingDirectory = $bin
+$argsList = @('--workloads', ($Workload -join ','), '--mode', $Mode,
+    '--scale', $Scale.ToString([Globalization.CultureInfo]::InvariantCulture),
+    '--time-scale', $TimeScale.ToString([Globalization.CultureInfo]::InvariantCulture), '--seconds', "$Seconds",
+    '--adapter', "$Adapter", '--force-gc', (!$NaturalGc -and $preset.forceGc).ToString().ToLowerInvariant(),
+    '--output', $Output, '--stop-file', $stop)
+foreach ($argument in $argsList) { $start.ArgumentList.Add($argument) }
+$launcher = $null
 $launched = $false
 try {
-    foreach ($item in $Workload) {
-        $alias = if ($item.StartsWith('dotnet')) { 'dotnet' } elseif ($item.StartsWith('gpu')) { 'gpu' } elseif ($item -in 'user','gdi') { 'objects' } else { $item }
-        $exe = Join-Path $bin "demo-$alias.exe"
-        $log = Join-Path $Output $item
-        $argsList = @('--workload', $item, '--mode', $Mode, '--scale', $Scale.ToString([Globalization.CultureInfo]::InvariantCulture),
-            '--time-scale', $TimeScale.ToString([Globalization.CultureInfo]::InvariantCulture), '--seconds', "$Seconds",
-            '--adapter', "$Adapter", '--force-gc', (!$NaturalGc -and $preset.forceGc).ToString().ToLowerInvariant(),
-            '--output', "`"$log`"", '--stop-file', "`"$stop`"")
-        $child = Start-Process -FilePath $exe -ArgumentList $argsList -WindowStyle Hidden -PassThru -WorkingDirectory $bin `
-            -RedirectStandardOutput (Join-Path $Output "$item.stdout.txt") -RedirectStandardError (Join-Path $Output "$item.stderr.txt")
-        $children.Add($child)
-        $manifest.Add([pscustomobject]@{ workload = $item; pid = $child.Id; name = [IO.Path]::GetFileName($exe); evidence = $log })
-        $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $Output 'processes.json')
-        Write-Host "$item : PID $($child.Id) ($([IO.Path]::GetFileName($exe)))"
-        if ($Mode -eq 'verify' -and -not $Background) {
-            while (-not $child.WaitForExit(250)) { }
-            if ($child.ExitCode -ne 0) { $failed = $true; break }
-        }
-    }
+    $launcher = [Diagnostics.Process]::Start($start)
+    Write-Host "demo-main.exe : PID $($launcher.Id)"
     Write-Host "Evidence: $Output"
     Write-Host "Cooperative stop: New-Item -ItemType File -Path '$stop'"
-    $launched = $true
-    if (-not $Background -and $Mode -eq 'screenshot') {
-        while (@($children | Where-Object { -not $_.HasExited }).Count -gt 0) {
-            if (@($children | Where-Object { $_.HasExited -and $_.ExitCode -ne 0 }).Count -gt 0) { $failed = $true; break }
-            Start-Sleep -Milliseconds 250
+    if ($Background) {
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        while (-not (Test-Path (Join-Path $Output 'main.ready')) -and -not $launcher.HasExited) {
+            if ([DateTime]::UtcNow -gt $deadline) { throw 'Demo launcher did not become ready.' }
+            Start-Sleep -Milliseconds 50
         }
-        if (@($children | Where-Object { $_.HasExited -and $_.ExitCode -ne 0 }).Count -gt 0) { $failed = $true }
+        if ($launcher.HasExited -and $launcher.ExitCode -ne 0) { throw 'Demo launcher failed; inspect JSONL evidence.' }
+    } else {
+        while (-not $launcher.WaitForExit(250)) { }
+        if ($launcher.ExitCode -ne 0) { throw 'A demo failed; inspect JSONL evidence.' }
     }
+    $launched = $true
 }
 finally {
-    if (-not $Background -or -not $launched) {
-        [IO.File]::WriteAllText($stop, 'stop')
-        foreach ($child in $children) {
-            if (-not $child.WaitForExit(10000)) { Write-Warning "PID $($child.Id) is still cleaning up; no forced termination was attempted." }
+    if ($launcher) {
+        if (-not $Background -or -not $launched) {
+            [IO.File]::WriteAllText($stop, 'stop')
+            if (-not $launcher.WaitForExit(10000)) { Write-Warning "PID $($launcher.Id) is still cleaning up; no forced termination was attempted." }
         }
+        $launcher.Dispose()
     }
-    foreach ($child in $children) { $child.Dispose() }
 }
-if ($failed) { throw "A workload failed. Inspect *.stderr.txt and JSONL evidence in $Output" }

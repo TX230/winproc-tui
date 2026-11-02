@@ -396,7 +396,7 @@ fn footer_shows_process_context_on_one_row() {
     assert!(!rendered.contains("Shift+←/→ Move column"), "{rendered}");
     assert!(rendered.contains("Space Graph"), "{rendered}");
     assert!(rendered.contains("Enter Process Info"), "{rendered}");
-    assert!(rendered.contains("t Track process"), "{rendered}");
+    assert!(rendered.contains("t Track name"), "{rendered}");
     assert!(!rendered.contains("Shift+T Tracked-only"), "{rendered}");
     assert!(rendered.contains("d Kill"), "{rendered}");
     assert!(rendered.contains("Ctrl+F Filter"), "{rendered}");
@@ -473,7 +473,7 @@ fn process_footer_labels_space_for_the_selected_cell_action() {
 
     let identity_column = render_app_to_text(&app, 170, 30);
     assert!(
-        identity_column.contains("Space Track process"),
+        identity_column.contains("Space Track name"),
         "{identity_column}"
     );
     assert!(
@@ -485,7 +485,7 @@ fn process_footer_labels_space_for_the_selected_cell_action() {
     let metric_column = render_app_to_text(&app, 170, 30);
     assert!(metric_column.contains("Space Graph"), "{metric_column}");
     assert!(
-        !metric_column.contains("Space Track process"),
+        !metric_column.contains("Space Track name"),
         "{metric_column}"
     );
 }

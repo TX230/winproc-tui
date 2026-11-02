@@ -122,7 +122,7 @@ Each `run_tui` iteration:
 4. Dispatches input to `App`; resize invalidates layout.
 5. Requests the next sample when due, unless one is already in flight or Log view is active.
 
-Applying a Live sample updates the aggregate `Snapshot`, process and system histories, exited-process state, visible-row caches when needed, and an active Recording accumulator. A warning may accompany an otherwise usable snapshot.
+Applying a Live sample first updates model-owned `TrackingScope` provenance from the complete snapshot. `App` uses its effective identities for history, exited rows, totals and MCP publication; paused displays clone the scope, and Recording owns an independent scope seeded from live membership. See [ADR 0005](adr/0005-descendant-tracking-scope.md). Applying the sample then updates the aggregate `Snapshot`, process and system histories, exited-process state, visible-row caches when needed, and an active Recording accumulator. A warning may accompany an otherwise usable snapshot.
 
 ### 4.3 Sampling cycle
 

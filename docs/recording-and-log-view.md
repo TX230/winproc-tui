@@ -40,9 +40,9 @@ Starting Recording requires at least one process name in the working Tracking Li
 
 The start dialog shows the fixed tracked names and the matching-process count from the latest Live sample, independently of display pause, filters, and Tracked-only. The names can be inspected with vertical and horizontal scrolling, including long names and lists. It explains that visible rows do not define scope and that zero matches still records system metrics and includes matching processes appearing later. Inspection and starting preserve display preferences.
 
-`RecordingSession` owns a copy of the working Tracking List and its normalized lookup set. Session metadata records that scope once, and every frame filters process samples through it. Tracking List edits are rejected until the session ends; Tracked-only remains available because it changes only the display.
+`RecordingSession` owns a copy of the explicit root names, their normalized lookup set, and an independent identity-based tracking scope. It seeds membership from already observed live members, including descendants whose ancestors have exited. Each sample extends membership to matching roots and observed descendants, using the rules in [Tracking and Live History](tracking-and-history.md#effective-tracking-scope). Session metadata records only the fixed explicit names; frames contain effective member identities. Exited membership is released after aggregation, while serialized definitions and samples preserve recorded lifetimes. Tracking List edits are rejected until the session ends; Tracked-only remains available because it changes only the display.
 
-When no process name in the session's Tracking List matches a live process, frames still contain system metrics and an empty process array. A tracked process name, a currently matching process, and one `(PID, name, start_time)` identity must remain distinct.
+When no effective member is live, frames still contain system metrics and an empty process array. Surviving inherited descendants remain in scope even when no explicit root is live. A tracked process name, a currently matching process, and one `(PID, name, start_time)` identity must remain distinct.
 
 ## Aggregation
 
@@ -83,6 +83,8 @@ The loader retains the session interval and complete frame-time sequence so Log 
 ## Log View Semantics
 
 Log view is not frame playback. Processes shows the final process snapshot, while Graphs, Samples, Process Info, and A/B comparison inspect histories reconstructed from all complete frames.
+
+All process identities present in recorded frames are in Log-view scope, including descendants absent from the session root-name metadata. Root-name metadata distinguishes explicit and inherited indicators; no parentage is reconstructed, and Log view remains Flat.
 
 Log view does not allow Tracking List edits or pruning of the hidden Live history. Tracked-only filtering remains available and does not change the Live Tracking List or recorded tracking scope.
 

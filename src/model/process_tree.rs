@@ -149,7 +149,6 @@ impl ProcessForest {
         flattened
     }
 
-    #[cfg(test)]
     pub(crate) fn parent_row_index(&self, row_index: usize) -> Option<usize> {
         let node_index = self.row_to_node.get(&row_index).copied()?;
         self.nodes[node_index]

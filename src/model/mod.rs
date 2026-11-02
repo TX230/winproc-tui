@@ -12,6 +12,8 @@ pub(crate) mod search;
 pub(crate) mod snapshot;
 pub(crate) mod system;
 pub(crate) mod threads;
+pub(crate) mod tracking;
+pub(crate) use tracking::TrackingScope;
 
 pub(crate) use columns::{
     ColumnPreset, MetricColumn, ProcessColumnWidths, SortColumn, SortDirection, SortSpec,

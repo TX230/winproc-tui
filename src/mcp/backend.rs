@@ -24,6 +24,7 @@ pub(crate) struct View {
     pub(crate) system: SystemHistory,
     pub(crate) activity: String,
     pub(crate) tracked_names: Vec<String>,
+    pub(crate) tracked_identities: HashSet<ProcessIdentity>,
     pub(crate) host: Value,
     pub(crate) control: Value,
     pub(crate) log_root: Option<std::path::PathBuf>,
@@ -542,8 +543,8 @@ fn dispatch(session: &mut Session, view: &View, method: &str, args: &Value) -> V
         "winproc_get_system_info" => return view.host.clone(),
         "winproc_list_metrics" => return metrics::catalog(args["target_kind"].as_str()),
         "winproc_get_tracking" => {
-            let matching:Vec<_>=view.snapshot.processes.iter().filter(|p|view.tracked_names.iter().any(|n|n.eq_ignore_ascii_case(&p.name))).map(|p|json!({"pid":p.pid,"name":p.name,"process_ref":session.reference(&ProcessIdentity::from_row(p))})).collect();
-            return json!({"tracked_names":view.tracked_names,"revision":view.control["revision"],"matching_processes":matching,"scope":"all current and future matching executable names"});
+            let matching:Vec<_>=view.snapshot.processes.iter().filter(|p|view.tracked_identities.contains(&ProcessIdentity::from_row(p))).map(|p|json!({"pid":p.pid,"name":p.name,"process_ref":session.reference(&ProcessIdentity::from_row(p))})).collect();
+            return json!({"tracked_names":view.tracked_names,"revision":view.control["revision"],"matching_processes":matching,"scope":"matching executable names and their observed descendants"});
         },
         "winproc_list_profiles" => return json!({"profiles":view.control["profiles"],"active_profile":view.control["active_profile"],"revision":view.control["revision"]}),
         "winproc_get_recording" => return view.control["recording"].clone(),
@@ -1364,6 +1365,7 @@ fn open_log(session: &mut Session, view: &View, args: &Value) -> Value {
                 let interval = log.interval_seconds;
                 let loaded = Loaded {
                     view: View {
+                        tracked_identities: log.process_history.identities().cloned().collect(),
                         snapshot: log.snapshot,
                         processes: log.process_history,
                         system: log.system_history,
@@ -1544,6 +1546,7 @@ mod tests {
             system: SystemHistory::default(),
             activity: "live".into(),
             tracked_names: Vec::new(),
+            tracked_identities: HashSet::new(),
             host: json!({}),
             control: json!({}),
             log_root: None,

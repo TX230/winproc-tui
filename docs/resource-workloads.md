@@ -1,10 +1,10 @@
 # Resource workload scenarios
 
-`tools/resource-workloads/` is a standalone Windows 11 x64 developer tool for metric validation and screenshot preparation (Issue #160). It is not part of the application, runtime zip, or crates.io package. It never edits application configuration or starts Recording automatically.
+`tools/resource-workloads/` is a standalone Windows 11 x64 developer tool for metric validation and screenshot preparation (Issues #160 and #203). It is not part of the application, runtime zip, or crates.io package. It never edits application configuration or starts Recording automatically.
 
 ## Build and run
 
-Requirements: PowerShell 7, .NET 10 SDK/runtime, and Visual Studio C++ Build Tools with the Windows SDK. No third-party NuGet packages are required. The Direct3D 11 helper uses hardware only and statically links the MSVC CRT.
+Requirements: PowerShell 7, .NET 10 SDK/runtime, and Visual Studio C++ Build Tools with the Windows SDK. No third-party NuGet packages are required. The native C++ executables statically link the MSVC CRT; the Direct3D 11 workload uses hardware only. Only `demo-dotnet.exe` requires the .NET runtime at execution time.
 
 From this checkout:
 
@@ -17,19 +17,46 @@ From this checkout:
 # All verification scenarios, sequentially (about 32 minutes).
 ./tools/resource-workloads/run.ps1 -Mode verify
 
-# Six concurrent processes, ten minutes, half-scale resource sizes.
+# Six concurrent workloads under a native process tree, ten minutes, half-scale sizes.
 ./tools/resource-workloads/run.ps1 -Mode screenshot -Background
 
 # Short mechanical checks, including hardware GPU tests.
 ./tools/resource-workloads/test.ps1
 ./tools/resource-workloads/test-comparison.ps1
+./tools/resource-workloads/test-tree.ps1
+./tools/resource-workloads/test-staircase.ps1
 ```
 
-Build outputs are under `target/resource-workloads/`. All `demo-*.exe` apphosts use the same managed assembly and runtime configuration; keep the publish directory together. **All workloads run inside .NET**, including native-memory, CPU and GPU modes. Their managed runtime, logging allocations and driver overhead are part of the baseline. These programs cannot validate native-process `.NET --` behavior.
+Build outputs are under `target/resource-workloads/publish/`. `demo-dotnet.exe` is the only managed executable; keep its DLL, runtime configuration and dependency metadata beside it. All other `demo-*.exe` files are native C++ programs, including `demo-main.exe` and `demo-worker.exe`. Native processes do not load the .NET runtime and can be used to check unavailable .NET metrics. Driver and logging overhead still contribute to their baseline. The build checks the native executable's direct PE imports for dynamic MSVC CRT and CLR dependencies.
 
-The launcher prints process names, PIDs, evidence directory and a cooperative stop command. `processes.json` records the names and PIDs. Outputs go to a new `logs/workloads/<run>/` directory. `-Output` must name a new directory; existing runs are not overwritten. Screenshot mode runs concurrently; verification runs sequentially. `-Workload` selects a subset.
+`run.ps1` starts `demo-main.exe`, which remains alive while its children run. The default screenshot tree is:
 
-A foreground launcher requests cleanup on interruption. A background run returns immediately; create its printed `stop.request` file to stop it. Individual executables also support Ctrl+C. There is no forced termination. Every child has its own duration limit, including when its launcher exits. Background launch success is not completion success: inspect every `end` record.
+```text
+demo-main.exe
+├─ demo-cpu.exe
+├─ demo-memory.exe
+├─ demo-gpu.exe
+└─ demo-worker.exe
+   ├─ demo-dotnet.exe
+   ├─ demo-io-write.exe
+   └─ demo-objects.exe
+```
+
+Managed allocation, I/O and USER/GDI workloads go under `demo-worker.exe`; CPU, memory, threads, handles, held files and GPU workloads are direct children. The worker is omitted when no selected workload needs it. Screenshot mode runs concurrently. Verification runs one workload at a time, first direct children, then the worker's children. Each launcher waits for its own children, preserving ancestry throughout their lifetimes.
+
+The PowerShell wrapper prints the root PID, evidence directory and a cooperative stop command. `processes.json` records the root's immediate children; `worker-processes.json` records grandchildren, including each child's parent PID and evidence directory. Launcher `child` records also preserve this relationship. Outputs go to a new `logs/workloads/<run>/` directory. `-Output` must name a new directory; existing runs are not overwritten. `-Workload` selects a subset.
+
+The native launcher can also be invoked directly, for example:
+
+```powershell
+./target/resource-workloads/publish/demo-main.exe --mode screenshot --scale 0.5
+./target/resource-workloads/publish/demo-memory.exe --mode verify --scale 0.25
+./target/resource-workloads/publish/demo-dotnet.exe --workload dotnet-loh --scale 0.25
+```
+
+Direct `demo-main.exe` invocation defaults to the six screenshot workload names with verification timing; use `--workloads cpu,memory,dotnet` to choose a subset. Leaf executables default to the workload in their name. `demo-gpu.exe --workload gpu-active` and `demo-objects.exe --workload user` select variants. `demo-dotnet.exe` rejects native workloads, and native executables reject managed workloads.
+
+A foreground wrapper requests cleanup on interruption. A background run returns after launcher startup; create its printed `stop.request` file to stop the tree. Individual executables also support Ctrl+C. All descendants share the stop request; a child failure stops its concurrent siblings and produces a nonzero ancestor exit code. There is no forced termination. Every workload has its own duration limit, including when its launcher exits unexpectedly. Background launch success is not completion success: inspect every `end` record. Launcher readiness files indicate startup only, not that every workload has initialized successfully.
 
 ## Bounds and timing
 
@@ -76,9 +103,9 @@ Private Bytes and Working Set measure different things. Resident bytes need not 
 
 The default processes are `demo-cpu.exe`, `demo-memory.exe`, `demo-dotnet.exe`, `demo-gpu.exe`, `demo-io-write.exe`, and `demo-objects.exe`. Use `-Workload` to include threads, handles, held files or read I/O.
 
-After 15 seconds of baseline, activity follows low/high/high/low levels in ten-second steps. Retained resources reach their high plateau at 45 seconds and stay there until shutdown. `capture` begins at 135 seconds, after two minutes of active history. CPU, allocation, GPU refresh and I/O continue cycling during capture. Memory stays steady after warmup; use verification mode for staircase/release screenshots.
+After 15 seconds of baseline, activity follows low/high/high/low levels in ten-second steps. Retained resources reach their high plateau at 45 seconds and stay there until shutdown. `capture` begins at 135 seconds, after two minutes of active history. CPU, allocation, GPU refresh and I/O continue cycling during capture. The native memory workload instead repeats a staircase after its 15-second baseline: 256 → 512 → 768 → 512 → 256 → 0 MiB of committed and touched payload, holding each step for 30 seconds at scale 1. The screenshot default scale of 0.5 gives 128 → 256 → 384 → 256 → 128 → 0 MiB. This produces rising and falling Private Bytes plateaus; process overhead remains above zero even at the released step. `TimeScale` multiplies step duration. Verification retains its separate commit/touch/grow/release scenario.
 
-1. Register executable names in Tracking before the run, or during the initial baseline. Select columns and start Recording at `1s`.
+1. Register only `demo-main.exe` in Tracking before the run, or during the initial baseline. Its observed children and grandchildren inherit tracking; unrelated instances of their executable names remain outside this scope. Enable Tree and Tracked-only to inspect the hierarchy and Tracked Total. Select columns and start Recording at `1s`.
 2. Launch the screenshot preset and check evidence for failures.
 3. Wait for `capture`, then select Graphs such as CPU%, PrivBytes, .NET Gen2/LOH/POH, GPU D/S and I/O.
 4. Capture the live terminal. DISPLAY PAUSED can freeze the display while collection and Recording continue.
@@ -89,9 +116,9 @@ These are real resource changes, not fake displayed values. Scheduler, driver an
 
 ## Evidence and Recording alignment
 
-Workload JSONL schema 1 is independent of recording schema 3. Records include `start`, `phase`, `sample`, optional `adapter`/`setup`/`gc-request`, `error`, `cleanup` and `end`. Every record has UTC time, monotonic elapsed time, PID and workload. Start metadata includes process start time, options, runtime and CPU count.
+Workload JSONL schema 1 is independent of recording schema 3. Records include `start`, `phase`, `sample`, optional `adapter`/`setup`/`gc-request`, `error`, `cleanup` and `end`. Every record has UTC time, monotonic elapsed time, PID and workload. Launchers emit start/child/error/cleanup/end evidence in the run root; leaf evidence lives in workload subdirectories. Start metadata includes process start time, options, runtime and CPU count.
 
-`actual` contains successful resource counts, retained payload and cumulative work. `observed` contains process CPU time, memory, thread/handle/USER/GDI counts, runtime allocation totals and after-GC generation sizes. Divide counter differences by actual elapsed time for rates. Tool overhead means these are not independent measurements. Generation sizes and heap totals describe the last GC; payload excludes object headers.
+`actual` contains successful resource counts, retained payload and cumulative work. `observed` contains process CPU time, memory, thread/handle/USER/GDI counts, and, for the managed demo only, runtime allocation totals and after-GC generation sizes. Native evidence omits GC fields rather than fabricating zero values. Divide counter differences by actual elapsed time for rates. Tool overhead means these are not independent measurements. Generation sizes and heap totals describe the last GC; payload excludes object headers.
 
 GPU batches are bounded and waited on with a two-second timeout. Completed passes increase only after success. Device/allocation/query failures produce error evidence and nonzero exit. Ordinary stop/failure releases native pointers, windows, GDI objects, streams and GPU state. Only a unique, owned scratch directory within the output root is removed; evidence remains.
 
@@ -108,7 +135,7 @@ Pairs are review evidence, not automatic accuracy verdicts. Compare stable phase
 
 ## Validation boundaries
 
-`test.ps1` runs 16 scenarios at one-eighth scale and 40x shortened time, checks phase/resource/work evidence and cleanup, tests invalid GPU selection, and stops screenshot retention cooperatively. `-SkipGpu` explicitly omits hardware cases. `test-comparison.ps1` uses synthetic fixtures for mapping, missing values, stale evidence and PID-reuse rejection.
+`test.ps1` runs 16 scenarios at one-eighth scale and 40x shortened time, checks phase/resource/work evidence and cleanup, tests invalid GPU selection, and stops screenshot retention cooperatively. `test-tree.ps1` checks real parent and grandparent PIDs, loaded modules (CoreCLR only in `demo-dotnet.exe`), cooperative tree shutdown, background verification, argument validation, child-failure propagation, and Unicode/space-containing output paths. `test-staircase.ps1` checks the screenshot staircase payload sequence and corresponding OS Private Bytes changes, plus the original verification memory stages. `-SkipGpu` explicitly omits hardware cases in both workload and tree tests. `test-comparison.ps1` uses synthetic fixtures for mapping, missing values, stale evidence and PID-reuse rejection.
 
 These checks validate the generator and comparison mechanics, not end-to-end TUI sampling accuracy or visual quality. For those, run at normal speed, inspect the application, and retain both logs and screenshots. Separate no-monitoring, collection and terminal-display conditions when measuring observer overhead.
 

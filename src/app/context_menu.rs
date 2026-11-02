@@ -116,7 +116,7 @@ impl App {
             if self.is_tracked_process_name(&target.identity.name) {
                 "Untrack process"
             } else {
-                "Track process"
+                "Track name"
             },
             ContextAction::Track(target.identity.name.clone()),
             self.activity() == AppActivity::Live,

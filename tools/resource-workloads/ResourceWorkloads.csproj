@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AssemblyName>demo-workload</AssemblyName>
+    <AssemblyName>demo-dotnet</AssemblyName>
     <BaseOutputPath>../../target/resource-workloads/bin/</BaseOutputPath>
   </PropertyGroup>
 </Project>

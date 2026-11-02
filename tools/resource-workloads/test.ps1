@@ -2,7 +2,7 @@
 param([switch]$SkipGpu)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$exe = Join-Path $root 'target/resource-workloads/publish/demo-workload.exe'
+$exe = Join-Path $root 'target/resource-workloads/publish/demo-dotnet.exe'
 & $exe --self-test
 if ($LASTEXITCODE -ne 0) { throw 'Self-test failed' }
 $out = Join-Path $root ("logs/workloads/smoke-{0}" -f [Guid]::NewGuid().ToString('N'))
@@ -57,7 +57,7 @@ $results = foreach ($item in $workloads) {
 }
 # An invalid adapter must fail visibly and still produce a clean terminal record.
 if (-not $SkipGpu) {
-    & $exe --workload gpu --adapter 15 --seconds 1 --output (Join-Path $out 'gpu-failure') 2>$null
+    & (Join-Path $root 'target/resource-workloads/publish/demo-gpu.exe') --workload gpu --adapter 15 --seconds 1 --output (Join-Path $out 'gpu-failure') 2>$null
     if ($LASTEXITCODE -ne 1) { throw 'Invalid adapter did not report failure' }
     $failure = Get-Content (Get-ChildItem (Join-Path $out 'gpu-failure') -Filter '*.jsonl')[0].FullName | ForEach-Object { $_ | ConvertFrom-Json }
     if ($failure[-1].data.success -ne $false) { throw 'Failure end record missing' }
@@ -69,7 +69,7 @@ Start-Sleep -Seconds 4
 [IO.File]::WriteAllText((Join-Path $photo 'stop.request'), 'stop')
 $deadline = [DateTime]::UtcNow.AddSeconds(10)
 do {
-    $ends = @(Get-ChildItem $photo -Recurse -Filter '*.jsonl' | ForEach-Object {
+    $ends = @(Get-ChildItem (Join-Path $photo 'memory'), (Join-Path $photo 'dotnet') -Filter '*.jsonl' | ForEach-Object {
         Get-Content $_.FullName -Tail 1 | ConvertFrom-Json
     } | Where-Object { $_.kind -eq 'end' -and $_.data.reason -eq 'stop-request' -and $_.data.success })
     if ($ends.Count -eq 2) { break }

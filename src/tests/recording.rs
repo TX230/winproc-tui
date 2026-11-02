@@ -453,7 +453,7 @@ fn tracked_remove_confirmation_is_compact_left_aligned_and_uses_footer_shortcuts
     assert_eq!(popup.height, 9);
 
     let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-    let message = "target.exe has 143 in-memory samples.";
+    let message = "target.exe: 143 samples in affected processes.";
     let (message_x, _) =
         find_text_position(&buffer, message).expect("confirmation message should render");
     assert_eq!(

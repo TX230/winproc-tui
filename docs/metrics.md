@@ -32,6 +32,10 @@ Framework Heap, Gen1, Gen2, and LOH retain their PDH values or `--` on missing d
 
 Log view, exited rows, tracked totals, and paused displays do not infer live collection labels from current authorization; their missing values remain `--`. These labels do not change sorting, aggregation, raw clipboard values, histories, or recording schemas.
 
+## Tracked totals and scope
+
+Tracked Total sums available values from every effective tracked live identity exactly once, including inherited descendants. Overlapping explicit roots do not duplicate a process contribution. These are sums of per-process measurements; shared working-set pages can still occur in multiple processes. Filters and collapsed subtrees do not restrict the total. Scope and retention provenance are defined in [Tracking and Live History](tracking-and-history.md#effective-tracking-scope).
+
 ## Process Table Columns
 
 The Process table can select the 24 columns included in `MetricColumn::ALL`. Fresh configurations select CPU, private bytes, private working set, threads, handles, GPU usage and dedicated memory, and read/write I/O rates. The remaining columns, including .NET metrics, remain explicitly selectable; saved column selections are retained.
@@ -442,10 +446,12 @@ The session payload uses these fields:
 | `host` | string | `COMPUTERNAME` or `HOSTNAME`. |
 | `start` | integer | Session start as Unix milliseconds. |
 | `interval` | number | Recording aggregation interval in seconds: `1`, `2`, `5`, or `10`. |
-| `tracked` | string array | Fixed Tracking List copied at recording start. |
+| `tracked` | string array | Fixed explicit root-name Tracking List copied at recording start; observed descendants are included in frames without adding their names here. |
 | `columns` | string array | Process metric columns displayed at recording start. |
 | `sort` | two-element string array | Sort column and `asc` or `desc`. |
 | `system` | object | Optional `cpu`, `cpu_mhz`, `topology`, and `cache` metadata. |
+
+Frames include matching root processes and inherited descendants. Their presence establishes recorded membership independently of session root-name metadata. This changes scope semantics without adding fields or array positions to schema v3; parentage and provenance are not serialized.
 
 A process definition is `[process_id, pid, name, start_time, path]`. `process_id` is a monotonically assigned session-local integer. `start_time` and `path` may be `null`. A definition with the same ID may be emitted again before a later frame if its path becomes available or changes.
 

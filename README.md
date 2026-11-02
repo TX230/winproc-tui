@@ -129,12 +129,13 @@ _After pressing n: the selected process shows measurements; the other processes 
 - **Live monitoring**: Shows system memory pressure, per-adapter GPU load and memory, network and disk activity, CPU activity, and detailed per-process metrics.
 - **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
 - **Graphs and A/B comparison**: Keeps up to 16 metrics in an ordered workspace with synchronized Samples, then compares metric values at two selected sample times.
+- **Process-group tracking**: Track an application name to include its observed children and deeper descendants in totals, history, and recordings. Unrelated processes with descendant names stay outside the scope.
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
 - **.NET metrics**: Collect .NET 8/9/10 metrics explicitly for individual processes; supported .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning and steps.
 - **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
 - **Find processes by file**: Find processes by file name or path and inspect their open-file details. See [Find Processes That Have a File Open](#find-processes-that-have-a-file-open) for the steps.
 - **Network endpoints**: Inspect TCP/UDP addresses, ports, and the processes using them across the system. See [Inspect Network Addresses and Ports](#inspect-network-addresses-and-ports) for the steps.
-- **Recording and Log view**: Records system metrics and matching processes as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
+- **Recording and Log view**: Records system metrics, matching processes, and their observed descendants as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
 
 The last working Tracking List and app settings are restored on the next launch, or startup can choose a saved Investigation Profile or an empty Tracking List. Graphs start empty each time the app starts; filter input and runtime process identities are not saved.
 
@@ -153,7 +154,7 @@ The last working Tracking List and app settings are restored on the next launch,
 
 ## Recording and Log View
 
-Recording captures the names in the working Tracking List when the session starts. If none currently match a live process, the log still records system memory, per-adapter GPU, aggregate CPU, and network/disk activity; only the process list remains empty.
+Recording captures the names in the working Tracking List when the session starts. The session also includes observed descendants, even after their ancestor exits. If no effective member is live, the log still records system memory, per-adapter GPU, aggregate CPU, and network/disk activity; only the process list remains empty.
 
 Live collection and Live history remain at one-second resolution. Longer recording intervals average available samples, reducing file size and Log-view loading work while smoothing short spikes. A recording lasts for at most 24 hours and returns to Live automatically at the limit.
 

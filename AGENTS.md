@@ -181,8 +181,8 @@ git -C <main-worktree> commit -m "<message> (Issue #n)" -m "<concise summary of 
 - `DISPLAY PAUSED` freezes only the displayed snapshot. Sampling and Recording continue, and display pause is unavailable in Log view.
 - `Recording` and `Log view` are mutually exclusive.
 - Starting recording requires at least one configured Tracking List entry.
-- Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array until a matching process appears.
-- Starting recording must copy the working Tracking List into session-owned recording scope. Session metadata, every frame's `tracked_names`, and process filtering must use that fixed copy.
+- Recording may start even when no configured tracked name currently matches a live process; frames still record system metrics and use an empty `processes` array when no effective member is live. Observed descendants remain members after ancestor exit.
+- Starting recording must copy the working Tracking List into session-owned recording scope. Session metadata and root-name lookups must use that fixed copy. Process filtering includes matching roots and their observed identity-scoped descendants; do not add descendant names to the saved list.
 - Recording aggregation is session-owned and selectable as `1s`, `2s`, `5s`, or `10s`; Live collection and Live history remain fixed at one second.
 - Aggregated Recording frames average only available values, keep process identities independent, use the final sample timestamp, and flush a partial final window before an explicit stop, quit, or the 24-hour limit.
 - While Recording is active, `t` and tracking-cell `Space` must reject Tracking List changes with a visible notice. `Ctrl+T` still opens Investigation Profiles, but saving or loading investigation state is unavailable; rename and delete remain allowed. `Shift+T` remains available because it changes only the independent Tracked-only display.

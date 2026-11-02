@@ -28,6 +28,13 @@ impl App {
             processes: self.process_history.clone(),
             system: self.system_history.clone(),
             tracked_names: self.watch_list.clone(),
+            tracked_identities: self
+                .snapshot
+                .processes
+                .iter()
+                .filter(|p| self.is_live_tracked_process(p))
+                .map(crate::model::ProcessIdentity::from_row)
+                .collect(),
             control: self.mcp_control(),
             log_root: self.recording_last_dir.clone(),
             host: serde_json::json!({"windows_version":self.system_info_host.windows_version,"windows_build":self.system_info_host.windows_build,"architecture":self.system_info_host.architecture,"cpu_name":self.snapshot.cpu_name,"cpu_topology":self.snapshot.cpu_topology,"cpu_cache":self.snapshot.cpu_cache,"total_memory_bytes":self.snapshot.total_memory.to_string()}),
@@ -276,7 +283,7 @@ impl App {
                 }
                 self.apply_tracked_list_switch(pending);
                 self.refresh_mcp_control();
-                json!({"tracked_names":self.watch_list,"revision":self.mcp_revision(),"scope":"all current and future matching executable names"})
+                json!({"tracked_names":self.watch_list,"revision":self.mcp_revision(),"scope":"matching executable names and their observed descendants"})
             }
             "winproc_update_profile" => self.apply_mcp_profile(action, confirmed),
             "winproc_start_recording" => {

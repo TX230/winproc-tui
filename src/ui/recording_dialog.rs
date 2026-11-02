@@ -150,7 +150,7 @@ pub(crate) fn draw_recording_path_dialog(
         if count == 0 {
             "System metrics recorded; later matching processes included.".to_string()
         } else {
-            "System metrics and all matching processes are recorded.".to_string()
+            "System metrics, matching names and descendants are recorded.".to_string()
         },
         format!(
             "Names {}/{} (Tab to inspect; arrows scroll)",

@@ -185,6 +185,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         file_users_next_id: 0,
         sampling_in_progress: false,
         snapshot,
+        tracking_scope: Default::default(),
         system_info_host: app::system_info::SystemInfoHost::default(),
         process_table_state: table_state,
         process_page_size: page_size,

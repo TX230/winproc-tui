@@ -6,8 +6,7 @@ using System.Text.Json;
 internal sealed record Options(string Workload, string Mode, double Scale, double TimeScale,
     int Seconds, int Adapter, bool ForceGc, string Output, string? StopFile, int CpuWorkers)
 {
-    public static readonly string[] Workloads = ["cpu", "memory", "threads", "handles", "files", "io-read", "io-write",
-        "dotnet", "dotnet-short", "dotnet-gen2", "dotnet-loh", "dotnet-poh", "dotnet-frag", "gpu", "gpu-active", "objects", "user", "gdi"];
+    public static readonly string[] Workloads = ["dotnet", "dotnet-short", "dotnet-gen2", "dotnet-loh", "dotnet-poh", "dotnet-frag"];
     public static Options Parse(string[] args)
     {
         var values = new Dictionary<string, string>();
@@ -19,7 +18,7 @@ internal sealed record Options(string Workload, string Mode, double Scale, doubl
         }
         string Get(string key, string fallback) => values.GetValueOrDefault(key, fallback);
         double Number(string key, string fallback) => double.Parse(Get(key, fallback), CultureInfo.InvariantCulture);
-        string workload = Get("workload", "cpu"), mode = Get("mode", "verify");
+        string workload = Get("workload", "dotnet"), mode = Get("mode", "verify");
         double scale = Number("scale", "1"), timeScale = Number("time-scale", "1");
         int seconds = int.Parse(Get("seconds", mode == "verify" ? "120" : "600"), CultureInfo.InvariantCulture);
         int workers = int.Parse(Get("cpu-workers", "1"), CultureInfo.InvariantCulture);
@@ -48,10 +47,6 @@ internal static class Schedule
             // Retained resources stay at the high level once the warmup has completed.
             return new(t < 135 ? "warmup" : "capture", level, t < 45 ? 2 : 3);
         }
-        if (o.Workload == "memory") return t switch {
-            < 15 => new("baseline", 0, 0), < 35 => new("commit", 1, 1),
-            < 55 => new("touch", 1, 2), < 75 => new("grow", 2, 3),
-            < 95 => new("partial-release", 1, 2), _ => new("released", 0, 0) };
         return t switch { < 15 => new("baseline", 0, 0), < 45 => new("low", 1, 2),
             < 75 => new("high", 2, 3), < 105 => new("released", 0, 0), _ => new("settled", 0, 0) };
     }
@@ -87,8 +82,8 @@ internal static class Program
                 "--mode verify|screenshot --scale 0.0625..1 --time-scale 0.025..1\n" +
                 "--seconds 1..3600 (scenario seconds; multiplied by time-scale) --adapter 0..15\n" +
                 "--force-gc true|false --cpu-workers 1..min(16,logical CPUs) --output DIRECTORY --stop-file PATH\n" +
-                "Ctrl+C or the stop file requests cleanup. Default: CPU verify, 120 seconds.\n" +
-                "All executables are managed; native-resource modes also have .NET runtime overhead.");
+                "Ctrl+C or the stop file requests cleanup. Default: .NET verify, 120 seconds.\n" +
+                "This executable runs only .NET workloads. Other demo executables are native.");
             return 0;
         }
         if (args.SequenceEqual(new[] { "--self-test" })) return SelfTest();
@@ -171,12 +166,6 @@ internal static class Program
         Check(Schedule.At(o, 15).Level == 1);
         Check(Schedule.At(o, 45).Level == 2);
         Check(Schedule.At(o, 75).Level == 0);
-        var memory = o with { Workload = "memory" };
-        Check(Schedule.At(memory, 20).MemoryStage == 1);
-        Check(Schedule.At(memory, 40).MemoryStage == 2);
-        Check(Schedule.At(memory, 60).MemoryStage == 3);
-        Check(Schedule.At(memory, 80).MemoryStage == 2);
-        Check(Schedule.At(memory, 100).MemoryStage == 0);
         var photo = o with { Mode = "screenshot" };
         Check(Schedule.At(photo, 150).Name == "capture");
         Check(Schedule.At(photo, 150).MemoryStage == 3);

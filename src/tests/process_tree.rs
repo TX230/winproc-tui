@@ -444,6 +444,7 @@ fn recording_keeps_tree_available_and_log_view_forces_flat() {
 
     app.log_view_path = Some(PathBuf::from("test.log"));
     app.log_view_display = Some(PausedDisplay {
+        tracking_scope: Default::default(),
         snapshot: app.snapshot.clone(),
         exited_tracked_rows: Default::default(),
         process_history: ProcessHistory::default(),

@@ -87,12 +87,12 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
                 (
                     "Space",
                     if app.selected_process_column_toggles_tracking() {
-                        "Track process"
+                        "Track name"
                     } else {
                         "Graph"
                     },
                 ),
-                ("t", "Track process"),
+                ("t", "Track name"),
                 ("n", ".NET metrics"),
                 ("c", "Columns"),
                 ("w/W", "Width"),
@@ -157,7 +157,7 @@ fn context_shortcuts(app: &App, theme: Theme, width: usize) -> Vec<Span<'static>
     if app.focused_panel == FocusedPanel::Processes && app.watch_enabled {
         items.push(("Ctrl+A", "Select all"));
     }
-    if items.first() == Some(&("Space", "Track process")) {
+    if items.first() == Some(&("Space", "Track name")) {
         items.retain(|(key, _)| *key != "t");
     }
     let primary_key = items.first().map(|(key, _)| *key);

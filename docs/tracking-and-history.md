@@ -6,7 +6,7 @@ This document defines how `winproc-tui` represents investigation state, tracking
 
 | Concept | Meaning |
 |---|---|
-| Tracking List entry | A case-insensitive process name expressing what the user wants to retain or record. |
+| Tracking List entry | An explicit case-insensitive root process name expressing what the user wants to retain or record, including observed descendants. |
 | `ProcessIdentity` | One process lifetime identified by PID, process name, and start time. |
 | Current Investigation | The mutable working Tracking List and optional active-profile binding used by the current Live session. |
 | Working Tracking List | The list of process names currently tracked by the Current Investigation. It is not an independently named object. |
@@ -19,6 +19,22 @@ Tracking List edits are available only in Live. The Investigation menu exposes a
 Tracking intent uses process names because PIDs change across restarts and one process name can have several live instances. Histories, selections, Process Info targets, and process Graphs use full `ProcessIdentity` values so a reused PID or restarted process never inherits another lifetime's samples.
 
 System history is independent from Tracking Lists. MEM, GPU, System Activity, and aggregate CPU histories are retained without adding a process name to the Tracking List.
+
+## Effective tracking scope
+
+A live process is tracked when its name matches an explicit Tracking List entry or it descends from a matching process. Existing descendants are discovered when a name is added; later matching processes and descendants are discovered at each sample. Descendant membership is keyed by full `ProcessIdentity`, never by adding descendant names to the list. Unrelated same-name processes are excluded unless that name is explicitly configured.
+
+The model resolves parent edges from the full, unfiltered snapshot using the cycle-safe forest. Inheritance additionally requires known parent and child start times with the parent no younger than the child. Missing, ambiguous, self-referential, cyclic, or unverifiable edges do not infer ancestry. Processes that start and exit between samples cannot be discovered. This uses existing snapshot data, not extra Windows calls.
+
+Each member retains its supporting explicit root names. Observed membership survives ancestor exit for that lifetime; newly observed children of surviving members also inherit it. PID reuse cannot inherit another lifetime's membership. Removing a root or opening a profile drops that root's provenance, recomputes current membership, and preserves support from remaining roots. Re-adding a removed root cannot reconstruct unobserved historical parentage. Runtime provenance is pruned with retained identities and is never persisted in profiles.
+
+Tracking actions add or remove explicit names. Removing an explicit descendant name leaves inherited membership when another root supports it. Individual inherited exclusions are not supported. Indicators distinguish explicit from inherited membership with distinct badge backgrounds. Tracked Total has stronger emphasis than ordinary process rows. Exact markers and colors belong in Help and implementation.
+
+Tracked-only, Tracked Total, long Live history, Ghost Rows, Recording, and MCP matching identities share this effective scope. Display filtering, Tree collapse, and Flat/Tree preference do not affect scope. Display pause freezes displayed membership with the snapshot while live membership and Recording continue. Explicit list changes also recompute membership against the frozen snapshot without borrowing newer ancestry.
+
+Before removing roots or loading a profile, confirmation counts older samples for every identity losing tracking, including descendants. Protected membership from another root is not pruned. Confirmed removal keeps the latest general-retention samples per affected lifetime. Existing generation limits and Ghost Row selection by name remain unchanged.
+
+See [ADR 0005](adr/0005-descendant-tracking-scope.md) for the ownership decision.
 
 ## Current Investigation and Profiles
 
@@ -109,7 +125,7 @@ Starting a Recording copies the working Tracking List into session-owned scope. 
 
 Opening a profile also confirms before discarding unsaved changes to the working Tracking List, including reopening the active profile. The same confirmation describes any retained-history removal; cancellation preserves the list, binding, and histories. Equivalent case-insensitive sets of process names do not prompt.
 
-Tracking guidance identifies process names as its scope, including same-name processes started later. Profile and startup guidance distinguish the working tracking list, saved profiles, app settings, and Graphs that start empty on each run. Profile counts describe process names rather than live instances. The empty profile browser provides a direct Save As route for the current tracking list.
+Tracking guidance identifies explicit process names and inherited descendants as its scope, including processes started later. Profile and startup guidance distinguish the working tracking list, saved profiles, app settings, and Graphs that start empty on each run. Profile counts describe process names rather than live instances. The empty profile browser provides a direct Save As route for the current tracking list.
 
 ### Keyboard focus and process selection
 
@@ -127,4 +143,4 @@ Full Path uses available extra width until a width is explicitly set. A manually
 
 ## MCP actions
 
-MCP add/remove requests use the same name-based Current Investigation. Adding by a process reference resolves its captured name and reports all matching current/future instances. Explicit profile actions preserve Graphs, filters, and display preferences. Revisions detect intervening TUI/client edits. Removal and profile loading that discard older samples require local confirmation; profile loading also confirms unsaved investigation changes, and deletion confirms the named profile. Profile persistence failure is reported without accepting the requested definition change. See [MCP integration](mcp-integration-specification.md).
+MCP add/remove requests use the same name-based Current Investigation. Adding by a process reference resolves its captured name and reports matching current/future instances and their observed descendants. Explicit profile actions preserve Graphs, filters, and display preferences. Revisions detect intervening TUI/client edits. Removal and profile loading that discard older samples require local confirmation; profile loading also confirms unsaved investigation changes, and deletion confirms the named profile. Profile persistence failure is reported without accepting the requested definition change. See [MCP integration](mcp-integration-specification.md).

@@ -468,6 +468,7 @@ fn process_info_uses_paused_history_and_log_view_starts_no_live_worker() {
     let mut paused_history = ProcessHistory::default();
     paused_history.record_snapshot_unbounded(paused_at, &paused_snapshot.processes);
     app.paused_display = Some(app::state::PausedDisplay {
+        tracking_scope: Default::default(),
         snapshot: paused_snapshot,
         exited_tracked_rows: std::collections::HashMap::new(),
         process_history: paused_history,

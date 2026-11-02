@@ -20,7 +20,7 @@ use crate::{
         ProcessColumnWidths, ProcessEnvironmentError, ProcessEnvironmentReport, ProcessForest,
         ProcessHistory, ProcessIdentity, ProcessInfo, ProcessModulesError, ProcessModulesReport,
         ProcessRow, ProcessSample, Snapshot, SortColumn, SortDirection, SortSpec, SystemHistory,
-        SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY, compare_process_rows,
+        SystemMetric, TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY, TrackingScope, compare_process_rows,
         sort_process_rows,
     },
     samplers::{
@@ -162,6 +162,7 @@ pub(crate) struct PendingProcessInfo {
 #[derive(Debug, Clone)]
 pub(crate) struct PausedDisplay {
     pub(crate) snapshot: Snapshot,
+    pub(crate) tracking_scope: TrackingScope,
     pub(crate) exited_tracked_rows: HashMap<ProcessIdentity, ExitedTrackedRow>,
     pub(crate) process_history: ProcessHistory,
     pub(crate) system_history: SystemHistory,
@@ -1126,6 +1127,7 @@ pub(crate) struct App {
     pub(crate) file_users_next_id: u64,
     pub(crate) sampling_in_progress: bool,
     pub(crate) snapshot: Snapshot,
+    pub(crate) tracking_scope: TrackingScope,
     pub(crate) system_info_host: SystemInfoHost,
     pub(crate) process_table_state: TableState,
     pub(crate) process_page_size: usize,
@@ -1361,10 +1363,12 @@ impl App {
         let watch_enabled = runtime.initial_tracked_only;
         let show_exited = runtime.initial_show_exited;
         let mut process_history = ProcessHistory::default();
-        process_history.record_snapshot(
+        let mut tracking_scope = TrackingScope::default();
+        tracking_scope.update(&initial.snapshot.processes, &normalized_watch_names);
+        process_history.record_tracked_snapshot(
             initial.snapshot.captured_at,
             &initial.snapshot.processes,
-            &normalized_watch_names,
+            &tracking_scope.identities(),
         );
         let mut system_history = SystemHistory::default();
         system_history.record_snapshot(&initial.snapshot);
@@ -1391,7 +1395,7 @@ impl App {
             .and_then(|index| initial.snapshot.processes.get(index))
             .map(ProcessIdentity::from_row);
         let last_tracked_live_identities =
-            tracked_live_identities(&initial.snapshot.processes, &normalized_watch_names);
+            tracked_live_identities(&initial.snapshot.processes, &tracking_scope);
         let graph_slot_layout = runtime.initial_graph_slot_layout;
         let show_samples_panel = runtime.initial_show_samples_panel;
         let show_sample_delta = runtime.initial_show_sample_delta;
@@ -1434,6 +1438,7 @@ impl App {
             file_users_next_id: 0,
             sampling_in_progress: false,
             snapshot: initial.snapshot,
+            tracking_scope,
             system_info_host: SystemInfoHost::collect(),
             process_table_state,
             process_page_size: 1,
@@ -1922,7 +1927,7 @@ impl App {
                     self.tree_state_for_visible_entry(entry);
                 Some(VisibleProcessRow {
                     process,
-                    tracked: self.is_tracked_process_name(&process.name),
+                    tracked: self.is_tracked_process(process),
                     lifecycle: self.lifecycle_for_visible_entry(entry),
                     multi_selected: has_multi_selection
                         && self
@@ -2056,7 +2061,7 @@ impl App {
         self.visible_process_entries
             .iter()
             .filter_map(|entry| self.process_for_visible_entry(entry))
-            .filter(|process| self.is_tracked_process_name(&process.name))
+            .filter(|process| self.is_tracked_process(process))
             .count()
     }
 
@@ -2091,7 +2096,22 @@ impl App {
     pub(crate) fn rebuild_visible_process_cache(&mut self) {
         let filter = self.active_filter_text().trim().to_ascii_lowercase();
         let filter_includes_path = self.process_columns.contains(&MetricColumn::FullPath);
-        let normalized_watch_names = self.active_normalized_watch_names().clone();
+        if self.activity() != AppActivity::LogView {
+            self.tracking_scope
+                .update(&self.snapshot.processes, &self.normalized_watch_names);
+            if let Some(display) = &mut self.paused_display {
+                display
+                    .tracking_scope
+                    .update(&display.snapshot.processes, &self.normalized_watch_names);
+            }
+        }
+        let tracked = self
+            .display_snapshot()
+            .processes
+            .iter()
+            .filter(|process| self.is_tracked_process(process))
+            .map(ProcessIdentity::from_row)
+            .collect::<HashSet<_>>();
 
         if self.activity() != AppActivity::LogView {
             let available_identities = self
@@ -2104,8 +2124,7 @@ impl App {
                 .retain(|identity| available_identities.contains(identity));
         }
 
-        self.tracked_total_row =
-            tracked_total_row(&self.display_snapshot().processes, &normalized_watch_names);
+        self.tracked_total_row = tracked_total_row(&self.display_snapshot().processes, &tracked);
         let mut live_entries = {
             let snapshot = self.display_snapshot();
             let candidates = snapshot
@@ -2113,8 +2132,7 @@ impl App {
                 .iter()
                 .enumerate()
                 .filter(|(_, process)| {
-                    let name = process.name.to_ascii_lowercase();
-                    !self.watch_enabled || normalized_watch_names.contains(&name)
+                    !self.watch_enabled || tracked.contains(&ProcessIdentity::from_row(process))
                 })
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
@@ -2199,6 +2217,27 @@ impl App {
                 crate::samplers::dotnet_control::clear_runtime_values(row);
             }
         }
+    }
+
+    pub(crate) fn is_tracked_process(&self, process: &ProcessRow) -> bool {
+        // A saved log already contains its effective recording scope.
+        if self.activity() == AppActivity::LogView {
+            return true;
+        }
+        self.is_tracked_process_name(&process.name)
+            || self
+                .paused_display
+                .as_ref()
+                .map_or(&self.tracking_scope, |display| &display.tracking_scope)
+                .contains(&ProcessIdentity::from_row(process))
+    }
+
+    pub(crate) fn is_live_tracked_process(&self, process: &ProcessRow) -> bool {
+        self.normalized_watch_names
+            .contains(&process.name.to_ascii_lowercase())
+            || self
+                .tracking_scope
+                .contains(&ProcessIdentity::from_row(process))
     }
 
     pub(crate) fn is_tracked_process_name(&self, name: &str) -> bool {
@@ -2447,7 +2486,7 @@ impl App {
             HashMap::new();
         for (identity, row) in self.display_exited_tracked_rows() {
             let name = identity.name.to_ascii_lowercase();
-            if !self.active_normalized_watch_names().contains(&name) {
+            if !self.is_tracked_process(&row.process) {
                 continue;
             }
             if !filter.is_empty()
@@ -4722,9 +4761,16 @@ impl App {
         }
 
         if self.is_tracked_process_name(&name) {
+            let target = self
+                .normalized_watch_names
+                .iter()
+                .filter(|n| !n.eq_ignore_ascii_case(&name))
+                .cloned()
+                .collect();
+            let lost = self.tracking_removals(&target);
             let (total_samples, discarded_samples) = self
                 .process_history
-                .prune_summary_for_name(&name, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
+                .prune_summary_for_identities(&lost, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
             if discarded_samples > 0 {
                 self.request_tracked_remove_confirmation(name, total_samples, discarded_samples);
             } else {
@@ -4754,9 +4800,16 @@ impl App {
             return;
         }
         let name = self.tracked_remove_name.clone();
-        let discarded = self
-            .process_history
-            .prune_name_to_latest(&name, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
+        let target = self
+            .normalized_watch_names
+            .iter()
+            .filter(|n| !n.eq_ignore_ascii_case(&name))
+            .cloned()
+            .collect();
+        let (_, discarded) = self.process_history.prune_summary_for_identities(
+            &self.tracking_removals(&target),
+            GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY,
+        );
         self.reset_tracked_remove_confirmation();
         self.remove_process_name_from_tracked_list(name.clone());
         self.status =
@@ -4787,7 +4840,7 @@ impl App {
         }
         self.rebuild_visible_process_cache();
         self.clamp_process_table_state();
-        self.status = format!("Added to Tracking List: {name} (all matching PIDs)");
+        self.status = format!("Added to Tracking List: {name} (matching names and descendants)");
     }
 
     #[cfg(test)]
@@ -4805,16 +4858,18 @@ impl App {
 
     fn remove_process_name_from_tracked_list(&mut self, name: String) {
         let before = self.watch_list.len();
-        self.watch_list
-            .retain(|watch_name| !watch_name.eq_ignore_ascii_case(&name));
-        self.rebuild_normalized_watch_names();
-        self.refresh_tracked_live_identities();
-        self.rebuild_visible_process_cache();
-        self.clamp_process_table_state();
+        let names = self
+            .watch_list
+            .iter()
+            .filter(|n| !n.eq_ignore_ascii_case(&name))
+            .cloned()
+            .collect();
+        let pending = self.prepare_tracked_list_switch(names);
+        self.apply_tracked_list_switch(pending);
         self.status = if self.watch_list.len() == before {
             format!("Not in Tracking List: {name}")
         } else {
-            format!("Removed from Tracking List: {name} (all matching PIDs)")
+            format!("Removed from Tracking List: {name} (matching names and descendants)")
         };
     }
 
@@ -4833,6 +4888,24 @@ impl App {
         }
     }
 
+    fn tracking_removals(&self, target: &HashSet<String>) -> HashSet<ProcessIdentity> {
+        let mut next = self.tracking_scope.clone();
+        next.update(&self.snapshot.processes, target);
+        self.process_history
+            .identities()
+            .filter(|id| {
+                (self.tracking_scope.contains(id)
+                    || self
+                        .watch_list
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(&id.name)))
+                    && !next.contains(id)
+                    && !target.contains(&id.name.to_ascii_lowercase())
+            })
+            .cloned()
+            .collect()
+    }
+
     pub(crate) fn prepare_tracked_list_switch(
         &self,
         target_processes: Vec<String>,
@@ -4845,17 +4918,18 @@ impl App {
             .filter(|name| !target_normalized.contains(&name.trim().to_ascii_lowercase()))
             .cloned()
             .collect::<Vec<_>>();
-        let mut affected_name_count = 0;
-        let mut discarded_sample_count = 0;
-        for name in &removed_names {
-            let (_, discarded) = self
-                .process_history
-                .prune_summary_for_name(name, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
-            if discarded > 0 {
-                affected_name_count += 1;
-                discarded_sample_count += discarded;
-            }
-        }
+        let lost = self.tracking_removals(&target_normalized);
+        let (_, discarded_sample_count) = self
+            .process_history
+            .prune_summary_for_identities(&lost, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
+        let affected_name_count = lost
+            .iter()
+            .filter(|id| {
+                self.process_history.sample_count_for(id) > GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY
+            })
+            .map(|id| id.name.to_ascii_lowercase())
+            .collect::<HashSet<_>>()
+            .len();
         PendingTrackedListSwitch {
             target_processes,
             removed_name_count: removed_names.len(),
@@ -4869,16 +4943,9 @@ impl App {
             return;
         }
         let target_normalized = normalized_process_names(&pending.target_processes);
-        let removed_names = self
-            .watch_list
-            .iter()
-            .filter(|name| !target_normalized.contains(&name.trim().to_ascii_lowercase()))
-            .cloned()
-            .collect::<Vec<_>>();
-        for name in &removed_names {
-            self.process_history
-                .prune_name_to_latest(name, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
-        }
+        let lost = self.tracking_removals(&target_normalized);
+        self.process_history
+            .prune_identities_to_latest(&lost, GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY);
         self.watch_list = pending.target_processes;
         self.rebuild_normalized_watch_names();
         self.refresh_tracked_live_identities();
@@ -7648,9 +7715,11 @@ Log load worker stopped",
         self.log_view_interval_seconds = Some(loaded.interval_seconds);
         self.log_view_frame_times = loaded.frame_times;
         self.log_view_watch_list = loaded.tracked_names.clone();
-        self.log_view_normalized_watch_names = normalized_process_names(&self.log_view_watch_list);
+        self.log_view_normalized_watch_names =
+            normalized_process_names(&loaded.summary.tracked_names);
         self.log_view_display = Some(PausedDisplay {
             snapshot: loaded.snapshot,
+            tracking_scope: TrackingScope::default(),
             exited_tracked_rows: HashMap::new(),
             process_history: loaded.process_history,
             system_history: loaded.system_history,
@@ -7748,6 +7817,7 @@ Log load worker stopped",
 
         self.paused_display = Some(PausedDisplay {
             snapshot: self.snapshot.clone(),
+            tracking_scope: self.tracking_scope.clone(),
             exited_tracked_rows: self.exited_tracked_rows.clone(),
             process_history: self.process_history.clone(),
             system_history: self.system_history.clone(),
@@ -7830,8 +7900,10 @@ Log load worker stopped",
             && self.details_sample_selected + 1 < self.selected_sample_count())
         .then(|| self.selected_details_sample_time())
         .flatten();
+        self.tracking_scope
+            .update(&collected.snapshot.processes, &self.normalized_watch_names);
         let next_tracked_live_identities =
-            tracked_live_identities(&collected.snapshot.processes, &self.normalized_watch_names);
+            tracked_live_identities(&collected.snapshot.processes, &self.tracking_scope);
         self.record_exited_tracked_rows(
             &next_tracked_live_identities,
             collected.snapshot.captured_at,
@@ -7858,10 +7930,10 @@ Log load worker stopped",
             sort_process_rows(&mut next_snapshot.processes, self.sort);
         }
         self.snapshot = next_snapshot;
-        self.process_history.record_snapshot(
+        self.process_history.record_tracked_snapshot(
             self.snapshot.captured_at,
             &self.snapshot.processes,
-            &self.normalized_watch_names,
+            &self.tracking_scope.identities(),
         );
         self.prune_stale_process_state();
         self.system_history.record_snapshot(&self.snapshot);
@@ -7948,7 +8020,7 @@ Log load worker stopped",
             .collect::<Vec<_>>();
 
         for identity in exited_identities {
-            if !self.is_tracked_process_name(&identity.name) {
+            if !self.tracking_scope.contains(&identity) {
                 continue;
             }
             let Some(process) = self
@@ -8006,10 +8078,7 @@ Log load worker stopped",
         let tracked_exit_candidates = self
             .exited_tracked_rows
             .iter()
-            .filter(|(identity, _)| {
-                self.normalized_watch_names
-                    .contains(&identity.name.to_ascii_lowercase())
-            })
+            .filter(|(identity, _)| self.tracking_scope.contains(identity))
             .map(|(identity, row)| (identity.clone(), row.exited_at))
             .collect::<HashMap<_, _>>();
         let recent_after = self.snapshot.captured_at
@@ -8021,11 +8090,14 @@ Log load worker stopped",
         );
         self.exited_tracked_rows
             .retain(|identity, _| retained_identities.contains(identity));
+        self.tracking_scope.retain(&retained_identities);
     }
 
     fn refresh_tracked_live_identities(&mut self) {
+        self.tracking_scope
+            .update(&self.snapshot.processes, &self.normalized_watch_names);
         self.last_tracked_live_identities =
-            tracked_live_identities(&self.snapshot.processes, &self.normalized_watch_names);
+            tracked_live_identities(&self.snapshot.processes, &self.tracking_scope);
     }
 
     pub(crate) fn ensure_sort_column_visible(&mut self) {
@@ -8189,22 +8261,22 @@ fn preserve_process_row_order(
 
 fn tracked_live_identities(
     processes: &[ProcessRow],
-    normalized_tracked_names: &HashSet<String>,
+    scope: &TrackingScope,
 ) -> HashSet<ProcessIdentity> {
     processes
         .iter()
-        .filter(|process| normalized_tracked_names.contains(&process.name.to_ascii_lowercase()))
+        .filter(|process| scope.contains(&ProcessIdentity::from_row(process)))
         .map(ProcessIdentity::from_row)
         .collect()
 }
 
 fn tracked_total_row(
     processes: &[ProcessRow],
-    normalized_tracked_names: &HashSet<String>,
+    tracked_identities: &HashSet<ProcessIdentity>,
 ) -> Option<ProcessRow> {
     let tracked = processes
         .iter()
-        .filter(|process| normalized_tracked_names.contains(&process.name.to_ascii_lowercase()))
+        .filter(|process| tracked_identities.contains(&ProcessIdentity::from_row(process)))
         .collect::<Vec<_>>();
     if tracked.is_empty() {
         return None;

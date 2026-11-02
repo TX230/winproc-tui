@@ -11,7 +11,7 @@ const GUIDES: [&[&str]; 4] = [
     &[
         "Outcome: see how one process's private memory changes over time.",
         "Before starting: use Live with the process running. In LOG, File > Return to Live first. Stop Recording before changing tracking.",
-        "1. Close Help. In Processes, select the process. Right-click its row > Track process (or Investigation > Add the selected name to Tracking List). Tracking List means process names: it retains longer history for all same-name instances, including future ones.",
+        "1. Close Help. In Processes, select the process. Right-click its row > Track name (or Investigation > Add the selected name to Tracking List). Tracking List means process names: it retains longer history for all same-name instances and their observed descendants, including future ones.",
         "2. Find the PrivBytes column; if hidden, View > Select columns. PrivBytes is private committed memory, not physical RAM usage. Right-click that process's PrivBytes value > Add to Graph Slot. If already added, choose Go to Graph Slot.",
         "3. Enable View > Graphs if the workspace is hidden. Let samples accumulate while exercising the process. A Graph belongs to this PID/lifetime; a restart needs a new Graph.",
         "4. Click an earlier point on the Graph, then a later one to read values and times. For an exact difference, use the Compare two times guide. Samples is the selected Graph's table of captured values; enable it in View when space permits.",
@@ -40,7 +40,7 @@ const GUIDES: [&[&str]; 4] = [
     ],
     &[
         "Outcome: save process and system metrics, then inspect their recorded history.",
-        "Before starting: use Live and track at least one process name (Processes row context menu > Track process). The Tracking List defines recording scope; filters and selected rows do not. No current matches is allowed: later matching processes are recorded.",
+        "Before starting: use Live and track at least one process name (Processes row context menu > Track name). The Tracking List defines recording scope; filters and selected rows do not. No current matches is allowed: later matching processes and descendants are recorded.",
         "1. Close Help. File > Start Recording opens the path, interval, and fixed tracked names. Review the names and matching-process count; choose a new .log path and interval, then use the displayed Start action (Enter).",
         "2. Check REC in the header and let samples accumulate. Recording writes JSON Lines; intervals above 1s average available values. Tracking changes are locked until recording stops. DISPLAY PAUSED freezes only the display, not recording.",
         "3. File > Stop Recording opens confirmation. Use its Stop action (y); Enter/Esc/n continues recording. A confirmed stop flushes and closes the file and returns to LIVE.",

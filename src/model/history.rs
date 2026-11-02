@@ -328,10 +328,7 @@ pub(crate) struct ProcessHistory {
 }
 
 impl ProcessHistory {
-    pub(crate) fn identities(&self) -> impl Iterator<Item = &ProcessIdentity> {
-        self.samples.keys()
-    }
-
+    #[cfg(test)]
     pub(crate) fn record_snapshot(
         &mut self,
         captured_at: DateTime<Local>,
@@ -345,6 +342,54 @@ impl ProcessHistory {
                 GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY
             };
             self.record_process_sample(captured_at, process, Some(capacity));
+        }
+    }
+
+    pub(crate) fn record_tracked_snapshot(
+        &mut self,
+        captured_at: DateTime<Local>,
+        processes: &[ProcessRow],
+        tracked: &HashSet<ProcessIdentity>,
+    ) {
+        for process in processes {
+            let capacity = if tracked.contains(&ProcessIdentity::from_row(process)) {
+                TRACKED_PROCESS_HISTORY_SAMPLE_CAPACITY
+            } else {
+                GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY
+            };
+            self.record_process_sample(captured_at, process, Some(capacity));
+        }
+    }
+
+    pub(crate) fn identities(&self) -> impl Iterator<Item = &ProcessIdentity> {
+        self.samples.keys()
+    }
+
+    pub(crate) fn prune_summary_for_identities(
+        &self,
+        identities: &HashSet<ProcessIdentity>,
+        retained: usize,
+    ) -> (usize, usize) {
+        self.samples
+            .iter()
+            .filter(|(id, _)| identities.contains(*id))
+            .fold((0, 0), |(total, discarded), (_, samples)| {
+                (
+                    total + samples.len(),
+                    discarded + samples.len().saturating_sub(retained),
+                )
+            })
+    }
+
+    pub(crate) fn prune_identities_to_latest(
+        &mut self,
+        identities: &HashSet<ProcessIdentity>,
+        retained: usize,
+    ) {
+        for (id, samples) in Arc::make_mut(&mut self.samples) {
+            if identities.contains(id) {
+                samples.remove_front(samples.len().saturating_sub(retained));
+            }
         }
     }
 
@@ -428,6 +473,7 @@ impl ProcessHistory {
             .unwrap_or_default()
     }
 
+    #[cfg(test)]
     pub(crate) fn prune_summary_for_name(
         &self,
         name: &str,
@@ -445,6 +491,7 @@ impl ProcessHistory {
             })
     }
 
+    #[cfg(test)]
     pub(crate) fn prune_name_to_latest(&mut self, name: &str, retained_samples: usize) -> usize {
         let normalized = name.to_ascii_lowercase();
         let mut discarded = 0;

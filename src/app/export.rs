@@ -21,7 +21,9 @@ use crate::app::{
     path_completion::PathCompletion,
     state::{RecordingDialogFocus, RecordingErrorDialog, RecordingErrorKind},
 };
-use crate::model::{GpuAdapterId, GpuAdapterSample, ProcessIdentity, ProcessRow, Snapshot};
+use crate::model::{
+    GpuAdapterId, GpuAdapterSample, ProcessIdentity, ProcessRow, Snapshot, TrackingScope,
+};
 
 pub(crate) const MAX_RECORDING_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
 pub(crate) const RECORDING_INTERVAL_OPTIONS_SECONDS: [u64; 4] = [1, 2, 5, 10];
@@ -161,7 +163,7 @@ struct RecordingFrameAggregate {
 }
 
 impl RecordingFrameAggregate {
-    fn add_snapshot(&mut self, snapshot: &Snapshot, tracked_names: &HashSet<String>) {
+    fn add_snapshot(&mut self, snapshot: &Snapshot, tracked: &HashSet<ProcessIdentity>) {
         self.sample_count = self.sample_count.saturating_add(1);
         self.captured_at_ms = Some(snapshot.captured_at.timestamp_millis());
 
@@ -185,7 +187,7 @@ impl RecordingFrameAggregate {
         for process in snapshot
             .processes
             .iter()
-            .filter(|process| tracked_names.contains(&process.name.to_ascii_lowercase()))
+            .filter(|process| tracked.contains(&ProcessIdentity::from_row(process)))
         {
             let identity = ProcessIdentity::from_row(process);
             if let Some(index) = self.process_indices.get(&identity).copied() {
@@ -258,6 +260,7 @@ pub(crate) struct RecordingSession {
     host: String,
     tracked_names: Vec<String>,
     normalized_tracked_names: HashSet<String>,
+    tracking_scope: TrackingScope,
     interval_seconds: u64,
     pending_frame: RecordingFrameAggregate,
     registered_processes: HashMap<ProcessIdentity, RegisteredProcess>,
@@ -613,7 +616,7 @@ impl App {
         self.snapshot
             .processes
             .iter()
-            .filter(|p| self.is_tracked_process_name(&p.name))
+            .filter(|p| self.is_live_tracked_process(p))
             .count()
     }
 
@@ -821,6 +824,7 @@ impl App {
                     host,
                     tracked_names: self.watch_list.clone(),
                     normalized_tracked_names: self.normalized_watch_names.clone(),
+                    tracking_scope: self.tracking_scope.clone(),
                     interval_seconds,
                     pending_frame: RecordingFrameAggregate::default(),
                     registered_processes: HashMap::new(),
@@ -955,7 +959,10 @@ fn recording_frame_records(
     snapshot: &Snapshot,
 ) -> Result<Vec<V3Record>> {
     let mut aggregate = RecordingFrameAggregate::default();
-    aggregate.add_snapshot(snapshot, &session.normalized_tracked_names);
+    session
+        .tracking_scope
+        .update(&snapshot.processes, &session.normalized_tracked_names);
+    aggregate.add_snapshot(snapshot, &session.tracking_scope.identities());
     aggregate.into_records(session)
 }
 
@@ -970,8 +977,19 @@ fn flush_pending_recording_frame(session: &mut RecordingSession) -> Result<()> {
 
 fn write_recording_snapshot(session: &mut RecordingSession, snapshot: &Snapshot) -> Result<bool> {
     session
+        .tracking_scope
+        .update(&snapshot.processes, &session.normalized_tracked_names);
+    session
         .pending_frame
-        .add_snapshot(snapshot, &session.normalized_tracked_names);
+        .add_snapshot(snapshot, &session.tracking_scope.identities());
+    // Recording owns only live membership; serialized definitions retain past lifetimes.
+    session.tracking_scope.retain(
+        &snapshot
+            .processes
+            .iter()
+            .map(ProcessIdentity::from_row)
+            .collect(),
+    );
     if session.pending_frame.sample_count < session.interval_seconds {
         return Ok(false);
     }
@@ -1184,8 +1202,14 @@ mod tests {
         second.disk_queue_length = Some(2.0);
 
         let mut aggregate = RecordingFrameAggregate::default();
-        aggregate.add_snapshot(&first, &session.normalized_tracked_names);
-        aggregate.add_snapshot(&second, &session.normalized_tracked_names);
+        session
+            .tracking_scope
+            .update(&first.processes, &session.normalized_tracked_names);
+        aggregate.add_snapshot(&first, &session.tracking_scope.identities());
+        session
+            .tracking_scope
+            .update(&second.processes, &session.normalized_tracked_names);
+        aggregate.add_snapshot(&second, &session.tracking_scope.identities());
         let records = aggregate.into_records(&mut session).unwrap();
 
         let V3Record::Frame(V3FrameRecord(captured_at_ms, system, processes)) =
@@ -1222,8 +1246,14 @@ mod tests {
         let first = test_snapshot(first_at, vec![row(1, "app.exe", Some(120), Some(9))]);
         let second = test_snapshot(first_at + chrono::Duration::seconds(1), Vec::new());
         let mut aggregate = RecordingFrameAggregate::default();
-        aggregate.add_snapshot(&first, &session.normalized_tracked_names);
-        aggregate.add_snapshot(&second, &session.normalized_tracked_names);
+        session
+            .tracking_scope
+            .update(&first.processes, &session.normalized_tracked_names);
+        aggregate.add_snapshot(&first, &session.tracking_scope.identities());
+        session
+            .tracking_scope
+            .update(&second.processes, &session.normalized_tracked_names);
+        aggregate.add_snapshot(&second, &session.tracking_scope.identities());
 
         let records = aggregate.into_records(&mut session).unwrap();
         let V3Record::Frame(V3FrameRecord(_, _, processes)) =
@@ -1338,6 +1368,7 @@ mod tests {
                 .iter()
                 .map(|name| (*name).to_string())
                 .collect(),
+            tracking_scope: TrackingScope::default(),
             normalized_tracked_names: tracked_names
                 .iter()
                 .map(|name| name.to_ascii_lowercase())

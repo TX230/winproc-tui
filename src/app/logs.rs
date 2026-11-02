@@ -291,6 +291,7 @@ fn load_v3_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
                 summary.session_id = Some(record.session_id.clone());
                 summary.host = Some(record.host.clone());
                 summary.started_at = datetime_from_millis(record.started_at_ms);
+                summary.tracked_names = record.tracked_names.clone();
                 session = SessionMeta::from_v3_record(record);
             }
             V3Record::Process(definition) => {
@@ -327,7 +328,6 @@ fn load_v3_log(path: &Path, sort: SortSpec) -> Result<LoadedLog> {
 
     let mut snapshot = last_snapshot.context("log contains no frames")?;
     sort_process_rows(&mut snapshot.processes, sort);
-    summary.tracked_names = tracked_names.clone();
     summary.interval_seconds = session.interval_seconds;
     summary.error = None;
     Ok(LoadedLog {

@@ -106,7 +106,7 @@ fn context_menu_limits_and_process_info_keep_fixed_targets() {
     assert!(
         menu.items
             .iter()
-            .any(|i| i.label == "Track process" && !i.enabled)
+            .any(|i| i.label == "Track name" && !i.enabled)
     );
     assert!(!menu.items.iter().any(|i| {
         ["Files", "Network", "Copy PID", "Copy process name"].contains(&i.label.as_str())
