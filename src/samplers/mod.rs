@@ -17,6 +17,7 @@ pub(crate) mod process_modules;
 pub(crate) mod scheduling;
 pub(crate) mod threads;
 pub(crate) mod verified_process;
+mod worker_priority;
 
 use std::{
     collections::HashMap,
@@ -135,12 +136,19 @@ impl SamplingWorker {
         let dotnet = dotnet_control::DotNetControl::default();
         let worker_dotnet = dotnet.clone();
         let join_handle = thread::spawn(move || {
+            let mut scheduling_warning = worker_priority::configure_current_thread();
             let mut runtime = SamplingRuntime::new(options);
             runtime.dotnet_runtime_sampler.control = worker_dotnet;
             while let Ok(request) = request_rx.recv() {
                 match request {
                     SampleRequest::Sample => {
-                        let result = runtime.collect_live();
+                        let mut result = runtime.collect_live();
+                        if let Some(warning) = scheduling_warning.take() {
+                            result.warning = Some(match result.warning {
+                                Some(existing) => format!("{existing} | {warning}"),
+                                None => warning,
+                            });
+                        }
                         if result_tx.send(result).is_err() {
                             break;
                         }

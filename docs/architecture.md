@@ -62,6 +62,8 @@ Windows counter, handle, module, file-metadata, remote-memory, and log operation
 
 Requests and results cross thread boundaries through typed channels or bounded latest-value caches. `App` allows only one sample request in flight, so a slow collection delays the next result instead of creating an unbounded queue.
 
+The sampling worker requests `THREAD_PRIORITY_ABOVE_NORMAL` and explicitly requests HighQoS before initializing its runtime. HighQoS uses `SetThreadInformation(ThreadPowerThrottling)` with the execution-speed bit selected in `ControlMask` and cleared in `StateMask`. Both requests apply only to that worker; process-wide priority and QoS, UI and other worker settings, and CPU affinity are unchanged. Both settings are attempted independently, and any failures are reported with the first sample result without stopping collection or replacing existing collection warnings. HighQoS is not P-Core affinity. These settings do not change the one-second cadence, move the synchronous startup capture, prevent blocking Windows calls, or guarantee gap-free sampling. See the [Windows thread QoS API](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setthreadinformation).
+
 Worker results carry enough identity, generation, or request information to reject stale results after selection, dialog, process-lifetime, or activity changes.
 
 The global Network browser and Process Info Network tab share an independent Network worker with a bounded request queue. Endpoint reports belong to their dialog sessions, outside `Snapshot`, histories, Recording, and exports. Capturing IP Helper tables and verifying process owners for navigation never runs on the UI or sampling thread.
