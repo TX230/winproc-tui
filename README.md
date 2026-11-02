@@ -128,7 +128,7 @@ _After pressing n: the selected process shows measurements; the other processes 
 - **CSV export**: Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
 - **Live monitoring**: Shows system memory pressure, per-adapter GPU load and memory, network and disk activity, CPU activity, and detailed per-process metrics.
 - **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
-- **Graphs and A/B comparison**: Keeps up to 16 metrics in an ordered workspace with synchronized Samples, then compares metric values at two selected sample times.
+- **Graphs and A/B comparison**: Displays up to 16 metrics on a shared timeline in a reorderable workspace. Use synchronized Samples to inspect values, compare two selected sample times, and review the minimum, maximum, and mean for the active Graph over the A/B interval.
 - **Process-group tracking**: Track an application name to include its observed children and deeper descendants in totals, history, and recordings. Unrelated processes with descendant names stay outside the scope.
 - **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
 - **.NET metrics**: Collect .NET 8/9/10 metrics explicitly for individual processes; supported .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning and steps.
