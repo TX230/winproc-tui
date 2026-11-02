@@ -9,3 +9,6 @@
 
 # Local scratch / temporary files
 /temp/
+
+# Local Japanese documentation
+/docs.ja/
