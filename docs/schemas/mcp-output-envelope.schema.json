@@ -1,0 +1,99 @@
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "api_version",
+        "backend_instance_id",
+        "source",
+        "status",
+        "warnings",
+        "data"
+      ],
+      "properties": {
+        "api_version": {
+          "const": "1.0"
+        },
+        "backend_instance_id": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "live",
+            "log"
+          ]
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "captured_at": {
+          "type": "string"
+        },
+        "capture_started_at": {
+          "type": "string"
+        },
+        "capture_finished_at": {
+          "type": "string"
+        },
+        "log_ref": {
+          "type": "string"
+        },
+        "interval_seconds": {
+          "type": "integer"
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "message",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "native_error_code": {
+              "type": "integer"
+            },
+            "field": {
+              "type": "string"
+            },
+            "constraint": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "type": "object"
+}

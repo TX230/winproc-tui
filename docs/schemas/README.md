@@ -20,4 +20,13 @@ When a schema-v3 field or array position changes, update all of the following to
 
 ## MCP tool contracts
 
-[`mcp-tools.json`](mcp-tools.json) records the input schemas and common success/error output-envelope schemas for Issue #202. Tool-specific success data remains an unconstrained object; the catalog does not yet define every result field or capture-row shape. The bridge loads this catalog and advertises all 26 implemented adapters. These definitions are not a released compatibility promise. The complete contract and conformance requirements are owned by [MCP integration](../mcp-integration-specification.md).
+The maintained sources for Issue #202 are:
+
+- [`mcp-tools.json`](mcp-tools.json): tool names, descriptions, annotations and input schemas. An optional `outputDataSchema` defines only that tool's successful `data` object.
+- [`mcp-output-envelope.schema.json`](mcp-output-envelope.schema.json): the shared success/error output schema, including the default unconstrained `data` object.
+
+`src/mcp/catalog.rs` embeds both files and assembles the catalog once at runtime. It clones the common envelope for each tool, replaces the success `data` schema when `outputDataSchema` is present, and publishes the assembled `outputSchema` through `tools/list`. The source-only `outputDataSchema` field is not published. Do not duplicate `outputSchema` in tool definitions. There is no external schema lookup or generated catalog to maintain.
+
+All 26 tools currently use the default unconstrained success `data` object; tool-specific result fields and capture-row shapes are not yet fully schematized. Source deduplication leaves the published tool contracts unchanged. Use MCP `tools/list` to inspect the complete expanded schemas. Catalog and stdio tests check expansion, tool isolation, error validation and discovery.
+
+These definitions are not a released compatibility promise. The complete contract and conformance requirements are owned by [MCP integration](../mcp-integration-specification.md).

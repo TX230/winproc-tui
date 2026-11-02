@@ -182,7 +182,7 @@ The SDK handles initialization, ping and request cancellation; the bridge implem
 
 All stdio output is valid UTF-8 newline-delimited MCP messages. Diagnostics use stderr and exclude captured values, command lines, paths, environment values, and raw requests. No banners, terminal escapes, progress bars, or application log lines go to stdout.
 
-Every tool publishes an input schema and a common success/error output-envelope schema from [mcp-tools.json](schemas/mcp-tools.json). Inputs reject unknown fields. The output schema validates the envelope but leaves tool-specific `data` as an object; it does not enumerate every result field or capture-row shape. Structured results and a text block contain the same JSON. The encoded response limit includes both representations.
+Every tool publishes an input schema from [mcp-tools.json](schemas/mcp-tools.json) and an output schema assembled from the shared [success/error envelope](schemas/mcp-output-envelope.schema.json). The source catalog may specify an optional `outputDataSchema` for a tool's success `data`; the catalog loader substitutes it into a separate copy of the common envelope. `tools/list` publishes the complete expanded `outputSchema`, without source-only fields or external references. Both sources are embedded in the executable and assembled once, with no runtime file or network lookup. Inputs reject unknown fields. The output schema validates the envelope but leaves tool-specific `data` as an object; it does not enumerate every result field or capture-row shape. Structured results and a text block contain the same JSON. The encoded response limit includes both representations.
 
 Tool annotations reflect actual behavior: read tools are read-only, including when file metadata inspection accesses a network share. Do not infer a closed-world annotation solely from the local-only MCP transport. Annotations are descriptive, not authorization. Capture creation allocates bounded ephemeral server state but does not modify investigated processes or files.
 
@@ -273,7 +273,7 @@ Existing retention remains authoritative: approximately 120 samples for non-trac
 
 ## 7. Tool interfaces
 
-Names below are the implemented public tool names. The table summarizes essential inputs; [mcp-tools.json](schemas/mcp-tools.json) defines accepted arguments, enums, required fields and bounds. Defaults stated here are applied by the adapters, not necessarily expressed as JSON Schema `default` keywords. Output schemas describe the common envelope; tool-specific data is documented here and exercised by adapter/system tests. Clients discover names, descriptions, annotations and schemas through `tools/list`.
+Names below are the implemented public tool names. The table summarizes essential inputs; [mcp-tools.json](schemas/mcp-tools.json) defines accepted arguments, enums, required fields and bounds. Defaults stated here are applied by the adapters, not necessarily expressed as JSON Schema `default` keywords. Published output schemas include the common envelope from [mcp-output-envelope.schema.json](schemas/mcp-output-envelope.schema.json); tool-specific data is documented here and exercised by adapter/system tests. Clients discover names, descriptions, annotations and schemas through `tools/list`.
 
 | Tool | Essential inputs | Result and behavior |
 |---|---|---|
