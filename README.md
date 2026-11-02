@@ -162,6 +162,36 @@ Log view does not replay frames. It shows the final process snapshot and lets yo
 
 See [docs/metrics.md](docs/metrics.md) for metric definitions, aggregation behavior, and the recording schema.
 
+## Local MCP Integration
+
+Configure your MCP client to run `winproc-tui mcp-bridge`. The client starts a bridge process that serves as the MCP server. The bridge and the interactive application run as separate processes of the same `winproc-tui.exe`; the application owns the TUI, metrics, history, and investigation state.
+
+On the first valid tool call, the bridge connects as follows:
+
+- **WinProc TUI is already running:** it connects to that application process and uses its current investigation. The existing window stays open; no additional TUI is started.
+- **WinProc TUI is not running:** it starts the application in a new visible Windows Terminal window, then connects. Startup and connection waiting take at most 12 seconds. Automatic startup requires Windows Terminal, its `wt.exe` app execution alias, and MCP connections enabled in the saved settings.
+
+MCP initialization and tool discovery (`tools/list`) alone do not start or connect to the TUI. If an existing application cannot accept MCP connections, the bridge reports an error rather than starting another application. Both processes must use the same Windows logon session and integrity level.
+
+```mermaid
+flowchart TD
+    Client["MCP client"]
+    Bridge["MCP server / bridge process<br/>winproc-tui.exe mcp-bridge"]
+    subgraph Application["Interactive application process: winproc-tui.exe"]
+        TUI["TUI and investigation state<br/>Metrics, history, tracking, Recording"]
+    end
+    Client <-->|"stdio / MCP"| Bridge
+    Bridge <-->|"local named pipe / internal JSON protocol"| TUI
+```
+
+The diagram shows the connection after the bridge has reused or started the application. MCP communication uses no TCP/IP. Files on network shares can still be investigated under normal Windows permissions.
+
+While a client is connected to the application, a yellow **MCP** badge appears at the top right of the TUI, immediately to the left of **LIVE**, **REC**, or **LOG**. It remains visible while the connection is idle and disappears when the last client disconnects. At extremely narrow window widths, activity and freshness/pause labels take priority over the badge. The application and any active Recording continue after the MCP client disconnects.
+
+Connections are enabled by default. Settings → **Disable MCP connections** disconnects clients and disables external access without stopping sampling or Recording. If MCP is saved as disabled, start the TUI manually and enable it. If a startup profile-selection dialog appears, complete it and retry the tool call.
+
+Use `tools/list` to discover the 26 implemented tools: metrics/history, process and file investigation, tracking/profiles, Recording, independent saved-log analysis, explicit .NET control, and condition waits. Configure the Recording directory locally before using Recording/log tools; required approvals appear in the TUI. See the [specification](docs/mcp-integration-specification.md) and [verification results](docs/mcp-system-testing.md).
+
 ## Requirements
 
 - Windows 11 x64 only; Linux and macOS are not supported.
@@ -211,9 +241,3 @@ This is a personal project and does not accept unsolicited pull requests from ex
 ## License
 
 MIT License. See [LICENSE](LICENSE).
-
-### Local MCP integration (under development)
-
-The `mcp-bridge` subcommand serves standard MCP over stdio and connects to WinProc TUI through a local Windows named pipe. Configure your MCP client to run `winproc-tui mcp-bridge`. If the TUI is absent, the first valid tool call opens it in a new Windows Terminal window and waits up to 12 seconds for readiness. Windows Terminal and its `wt.exe` app execution alias are required for automatic startup; you can also start the TUI manually. Both processes must use the same Windows logon session and integrity level. The TUI stays open after the MCP client disconnects. If MCP is saved as disabled, start the TUI manually to enable it; a startup profile-selection dialog also requires human input before retrying. Settings → **Disable MCP connections** disables external access without stopping sampling or Recording; connections are enabled by default.
-
-This integration is under development in [Issue #202](https://github.com/TX230/winproc-tui/issues/202). Use `tools/list` to discover the currently implemented tools. All 26 tools are connected: metrics/history, process and file investigation, tracking/profiles, Recording, independent saved-log analysis, explicit .NET control, and condition waits. Configure the Recording directory locally before using Recording/log tools; required approvals appear in the TUI. See the [specification](docs/mcp-integration-specification.md) and [verification results](docs/mcp-system-testing.md). MCP communication uses no TCP/IP; investigating files on network shares remains supported under normal Windows permissions.
