@@ -339,9 +339,8 @@ impl App {
                         false,
                     );
                 }
-                if !confirmed {
-                    return json!({"confirmation":"Stop the requested recording? Pending samples will be flushed and the log closed."});
-                }
+                self.show_recording_stop_confirmation = false;
+                self.show_recording_tracking_fixed = false;
                 let path = self.recording_session.as_ref().unwrap().path.clone();
                 if let Err(e) = self.stop_recording() {
                     self.present_active_recording_error(path, e);

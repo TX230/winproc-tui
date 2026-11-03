@@ -1272,7 +1272,7 @@
   },
   {
     "name": "winproc_stop_recording",
-    "description": "Required arguments: recording_session_id, operation_id. Request local confirmation to stop this exact recording session; completion follows flush and close. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"recording_session_id\":\"<returned-active-session-id>\",\"operation_id\":\"<new-operation-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
+    "description": "Required arguments: recording_session_id, operation_id. Stop this exact active recording session without local confirmation; completion follows flushing pending samples, writing the end record, flushing and closing the log. Returns an operation_id/state; poll winproc_get_operation. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"recording_session_id\":\"<returned-active-session-id>\",\"operation_id\":\"<new-operation-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {

@@ -353,7 +353,7 @@ The following interfaces complete the investigation workflow. State-changing req
 | `winproc_update_profile` | `action` (load/save/save_as/rename/delete), applicable profile reference/name, operation fields | Explicit profile operation; no UI selection changes, silent overwrite, or unconfirmed history pruning. |
 | `winproc_get_recording` | none | Active flag, session ID, fixed tracked names, interval, output-log ID, and whether an output directory is configured (not a filesystem readiness probe). Elapsed time and the latest completed outcome are not returned by this getter; inspect the start/stop operation outcome with `winproc_get_operation`. |
 | `winproc_start_recording` | `interval_seconds` (1/2/5/10), operation fields | Starts one application-owned recording using the current nonempty Tracking List and the configured output directory. |
-| `winproc_stop_recording` | `recording_session_id`, operation fields | Explicitly requests stopping that exact session, subject to confirmation and flush/close results. |
+| `winproc_stop_recording` | `recording_session_id`, operation fields | Stops that exact session without local confirmation; completion follows partial-window/end-record flush and close results. |
 | `winproc_list_logs` | optional filename filter; cursor for an existing listing | Starts a directory-listing job with default completion, first-page retrieval and cleanup; follow next_action if needed. Rows contain `log_id` and `name`; file size, dates and format validation are not returned. No unrestricted pathname parameter. |
 | `winproc_open_log` | `log_id` | Starts a bounded background load job; successful completion returns `log_ref` without changing TUI activity. |
 | `winproc_close_log` | `log_ref` | Releases a connection-owned loaded log and its dependent cursors/references; idempotent. |
@@ -448,7 +448,7 @@ An unmodified `read_capture` reads the existing frozen object without allocating
 | Tracking add/remove; profile load/save/save_as | Explicit authorized call | Reject | Reject | Same activity rules; no dependence on displayed selection |
 | Profile rename/delete | Explicit authorized call | Explicit authorized call | Explicit authorized call | Same activity rules |
 | Recording start | Explicit authorized call | Reject duplicate start | Reject | Uses current Tracking List |
-| Recording stop | No active session | Confirm exact session | No active session | Recording continues until confirmed stop |
+| Recording stop | No active session | Explicit exact-session call, without local confirmation | No active session | Flush partial window, write end record, flush and close before success |
 | Saved-log reads | Yes | Yes | Yes | Independent of displayed data |
 | Graph discovery/addition/CSV export | Yes | Yes | Yes | Uses displayed snapshot/history, including pause; Log additions require displayed-process references |
 | .NET collection control / live condition waits | Yes | Yes | Reject | Uses verified live identity/current samples |
@@ -492,7 +492,7 @@ Removal and profile loading use the existing retention/pruning rules. If an oper
 
 Start requires a nonempty working Tracking List but permits zero matching live processes. Snapshot the names and selected 1/2/5/10-second interval into the application-owned recording session. Start does not silently add tracked names, stop another session, change display pause, or switch out of Log view. Return a unique recording session ID, fixed scope, interval, and output-log ID.
 
-A stop request targets that exact session and preserves the existing stop confirmation semantics: recording continues until confirmed. Stale requests cannot stop a replacement session. Confirmed stop flushes a partial aggregation window, writes the end record, flushes and closes the writer. Report completion only after the result is known. Errors remain visible in the TUI and in operation status; preserve partial logs. The existing 24-hour duration limit and quit-cleanup rules remain authoritative.
+An explicit MCP stop request targets that exact session and needs no local confirmation or confirmation flag. Stale requests cannot stop a replacement session; operation-ID deduplication still returns the original outcome without repeating cleanup. After the session check, dismiss any Recording-only stop/fixed-tracking notice and use the existing stop path to flush a partial aggregation window, write the end record, flush and close the writer. The interactive TUI stop action retains its confirmation. Report completion only after the result is known. Errors remain visible in the TUI and in operation status; preserve partial logs. The existing 24-hour duration limit and quit-cleanup rules remain authoritative.
 
 Once started, Recording belongs to the application, not the bridge connection. Disconnecting, disabling MCP, or cancelling a client wait does not stop it. Tracking mutation and profile load/save remain unavailable during Recording. Recording is metric-only; file/module/network/thread reports are not silently added to its schema.
 

@@ -12,7 +12,8 @@ stateDiagram-v2
 
     Live --> Recording: choose path and start
     Recording --> Recording: request stop / continue
-    Recording --> Live: confirm stop / flush and close
+    Recording --> Live: confirm TUI stop / flush and close
+    Recording --> Live: explicit exact-session MCP stop / flush and close
     Recording --> Live: duration limit / flush and close
 
     Live --> LogList: open log list
@@ -56,7 +57,7 @@ The exact calculations, rounding rules, and schema fields are defined in [metric
 
 ## Stop, Quit, and Duration Limit
 
-Opening the stop confirmation does not pause sampling or aggregation. Continuing dismisses the confirmation without changing the session; confirmed Stop flushes the pending aggregate, writes the end record, flushes the writer, closes the log, and returns to Live.
+Opening the interactive TUI stop confirmation does not pause sampling or aggregation. Continuing dismisses the confirmation without changing the session; confirmed Stop flushes the pending aggregate, writes the end record, flushes the writer, closes the log, and returns to Live.
 
 Interactive quit uses the same cleanup path rather than nesting another stop flow. Windows console close, logoff, shutdown, `Ctrl+C`, and `Ctrl+Break` request bounded cleanup through the main loop.
 
@@ -112,6 +113,6 @@ Log-open failures appear in a persistent, scrollable error overlay containing th
 
 ## MCP recording and saved-log analysis
 
-MCP Recording uses the locally configured last Recording directory, a generated create-new filename, and the existing session-owned scope and aggregation. It returns an opaque session ID and log ID. Stopping requires local confirmation for that exact session; Enter/Esc/n continues and y stops. Disconnect does not stop an accepted session. Failures remain visible in the TUI and operation outcome.
+MCP Recording uses the locally configured last Recording directory, a generated create-new filename, and the existing session-owned scope and aggregation. It returns an opaque session ID and log ID. An explicit MCP stop requires the exact active session ID and an operation ID, and proceeds without local confirmation. It completes only after the pending aggregate and end record are written and the writer is flushed and closed. Stale session IDs are rejected, identical retries retain their original outcome, and a replay cannot stop a replacement session. An accepted stop dismisses stale Recording-only stop/fixed-tracking notices. Interactive TUI stopping retains its confirmation: Enter/Esc/n continues and y stops. Disconnect does not stop an accepted session. Failures remain visible in the TUI and operation outcome.
 
 Independent MCP log-load jobs reuse schema-v2/v3 reconstruction without entering Log view. Only server-listed IDs in the configured root are accepted. The external loader checks cancellation, deadline, and conservative memory reservation before record/definition expansion. It reports missing end records or an unfinished invalid final line as partial, retains complete readable frames, and rejects malformed complete records. Its references cannot target live process inspection. The interactive loader retains its existing behavior.

@@ -119,11 +119,12 @@ fn profiles_save_rename_confirmation_cancel_and_delete() {
     );
 }
 #[test]
-fn recording_owned_by_app_stops_only_after_confirmation() {
+fn mcp_recording_stop_flushes_without_confirmation_and_replays_safely() {
     let mut app = setup();
     let dir = unique_recording_dir("mcp-session");
     std::fs::create_dir_all(&dir).unwrap();
     app.recording_last_dir = Some(dir.clone());
+    app.snapshot.committed_memory = Some(100);
     action(
         &mut app,
         "winproc_update_tracking",
@@ -132,10 +133,10 @@ fn recording_owned_by_app_stops_only_after_confirmation() {
     let result = action(
         &mut app,
         "winproc_start_recording",
-        json!({"interval_seconds":2}),
+        json!({"interval_seconds":10}),
     );
     assert_eq!(result["state"], "succeeded");
-    let id = result["result"]["recording_session_id"].clone();
+    let session = result["result"]["recording_session_id"].clone();
     let path = app.recording_session.as_ref().unwrap().path.clone();
     app.mcp_state
         .operations
@@ -149,28 +150,155 @@ fn recording_owned_by_app_stops_only_after_confirmation() {
         json!({"action":"add","process_name":"bad.exe"}),
     );
     assert_eq!(rejected["result"]["error"]["code"], "ACTIVITY_CONFLICT");
-    let pending = action(
-        &mut app,
-        "winproc_stop_recording",
-        json!({"recording_session_id":id}),
-    );
-    assert_eq!(pending["state"], "pending_confirmation");
-    assert!(app.recording_session.is_some());
-    app.resolve_mcp_confirmation(false);
-    assert!(app.recording_session.is_some());
-    action(
-        &mut app,
-        "winproc_stop_recording",
-        json!({"recording_session_id":id}),
-    );
-    app.resolve_mcp_confirmation(true);
+    app.snapshot.captured_at += chrono::Duration::seconds(1);
+    app.snapshot.committed_memory = Some(300);
+    app.write_current_recording_frame().unwrap();
+    let args = json!({"recording_session_id":session,"operation_id":"stop-once"});
+    let stopped = action(&mut app, "winproc_stop_recording", args.clone());
+    assert_eq!(stopped["state"], "succeeded");
+    assert_eq!(stopped["result"]["stopped"], true);
     assert!(app.recording_session.is_none());
+    assert!(app.mcp_state.confirmation.is_none());
+    assert!(!app.show_recording_stop_confirmation);
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(action(&mut app, "winproc_stop_recording", args), stopped);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
     let loaded = crate::app::logs::load_log(&path, Default::default()).unwrap();
-    assert_eq!(loaded.interval_seconds, 2);
+    assert_eq!(loaded.interval_seconds, 10);
+    assert_eq!(loaded.summary.frame_count, 1);
+    assert_eq!(loaded.snapshot.committed_memory, Some(200));
+    assert_eq!(
+        loaded.snapshot.captured_at.timestamp_millis(),
+        app.snapshot.captured_at.timestamp_millis()
+    );
     assert!(loaded.snapshot.processes.is_empty());
+    let last: crate::app::log_format::V3Record = serde_json::from_slice(
+        bytes
+            .split(|b| *b == b'\n')
+            .rfind(|line| !line.is_empty())
+            .unwrap(),
+    )
+    .unwrap();
+    let crate::app::log_format::V3Record::End(crate::app::log_format::V3EndRecord(_, reason)) =
+        last
+    else {
+        panic!("Recording must finish with a clean end record");
+    };
+    assert_eq!(reason, "stopped");
     std::fs::remove_file(path).unwrap();
     std::fs::remove_dir(dir).unwrap();
 }
+
+#[test]
+fn mcp_recording_stop_never_targets_a_replacement_session() {
+    let mut app = setup();
+    let dir = unique_recording_dir("mcp-stale-stop");
+    std::fs::create_dir_all(&dir).unwrap();
+    app.recording_last_dir = Some(dir.clone());
+    action(
+        &mut app,
+        "winproc_update_tracking",
+        json!({"action":"add","process_name":"absent.exe"}),
+    );
+    let first = action(
+        &mut app,
+        "winproc_start_recording",
+        json!({"interval_seconds":10}),
+    );
+    let old = first["result"]["recording_session_id"].clone();
+    let args = json!({"recording_session_id":old,"operation_id":"original-stop"});
+    let stopped = action(&mut app, "winproc_stop_recording", args.clone());
+    assert_eq!(stopped["state"], "succeeded");
+    let second = action(
+        &mut app,
+        "winproc_start_recording",
+        json!({"interval_seconds":10}),
+    );
+    let current = second["result"]["recording_session_id"].clone();
+    assert_ne!(old, current);
+    let path = app.recording_session.as_ref().unwrap().path.clone();
+    app.request_recording_stop();
+    assert_eq!(action(&mut app, "winproc_stop_recording", args), stopped);
+    assert!(app.show_recording_stop_confirmation);
+    for session in [old, json!("unknown-session")] {
+        let rejected = action(
+            &mut app,
+            "winproc_stop_recording",
+            json!({"recording_session_id":session}),
+        );
+        assert_eq!(rejected["result"]["error"]["code"], "STATE_CONFLICT");
+        assert_eq!(app.recording_session.as_ref().unwrap().path, path);
+        assert!(app.show_recording_stop_confirmation);
+        assert!(app.mcp_state.confirmation.is_none());
+    }
+    let result = action(
+        &mut app,
+        "winproc_stop_recording",
+        json!({"recording_session_id":current}),
+    );
+    assert_eq!(result["state"], "succeeded");
+    assert!(!app.show_recording_stop_confirmation);
+    assert!(app.recording_session.is_none());
+    for file in std::fs::read_dir(&dir).unwrap() {
+        std::fs::remove_file(file.unwrap().path()).unwrap();
+    }
+    std::fs::remove_dir(dir).unwrap();
+}
+
+#[test]
+fn mcp_recording_stop_reports_write_and_flush_failures_without_confirmation() {
+    struct FailWriter {
+        write: bool,
+    }
+    impl std::io::Write for FailWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.write {
+                Err(std::io::Error::other("test write failure"))
+            } else {
+                Ok(bytes.len())
+            }
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::other("test flush failure"))
+        }
+    }
+    for write in [true, false] {
+        let mut app = setup();
+        let dir = unique_recording_dir("mcp-stop-error");
+        std::fs::create_dir_all(&dir).unwrap();
+        app.recording_last_dir = Some(dir.clone());
+        action(
+            &mut app,
+            "winproc_update_tracking",
+            json!({"action":"add","process_name":"absent.exe"}),
+        );
+        let started = action(
+            &mut app,
+            "winproc_start_recording",
+            json!({"interval_seconds":10}),
+        );
+        let path = app.recording_session.as_ref().unwrap().path.clone();
+        app.show_recording_tracking_fixed = true;
+        app.replace_recording_writer_for_test(Box::new(FailWriter { write }));
+        let result = action(
+            &mut app,
+            "winproc_stop_recording",
+            json!({"recording_session_id":started["result"]["recording_session_id"]}),
+        );
+        assert_eq!(result["state"], "failed");
+        assert_eq!(result["result"]["error"]["code"], "INTERNAL_ERROR");
+        assert!(app.mcp_state.confirmation.is_none());
+        assert!(!app.show_recording_stop_confirmation);
+        assert!(!app.show_recording_tracking_fixed);
+        assert!(app.recording_session.is_none());
+        assert!(app.recording_error.is_some());
+        assert!(path.is_file());
+        assert!(render_app_to_text(&app, 100, 45).contains("RECORDING ERROR"));
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
+}
+
 #[test]
 fn operation_ids_conflict_and_only_one_pending_is_allowed() {
     let mut ops = operations::Operations::default();

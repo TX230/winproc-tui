@@ -385,3 +385,21 @@ node scripts/test-mcp-graph-csv.mjs <exe> <tui-pid> <sdk-package-directory> <out
 ```
 
 The harness adds Graphs and creates test CSV files. It refuses to modify a nonempty starting workspace. Local detailed evidence remains in ignored `notes/`; no maintainer-specific path is part of the committed evidence. This is an unreleased local implementation of [Issue #206](https://github.com/TX230/winproc-tui/issues/206), separate from Issue #205's performance commits.
+
+## MCP Recording stop without confirmation (2026-11-03, Issue #207)
+
+`winproc_stop_recording` now accepts an explicit exact-session request without local human confirmation. Session-ID validation, required operation IDs, deduplication, shared operation serialization and existing cleanup remain in place. A matching stop dismisses obsolete Recording-only stop/fixed-tracking notices. The ordinary TUI stop action retains its confirmation.
+
+Verification passed **1,222 Rust tests and four CLI tests**, with 11 intentionally ignored tests. After a Clippy-only test-iterator adjustment, all 79 Recording-related tests passed again; formatting, all-target/all-feature Clippy with warnings denied and the statically configured release build passed. Three MCP stop regressions verify a partial final aggregation window and clean end record, retries, wrong/stale IDs, protection of a replacement session, dismissal of a pre-existing stop notice, and visible errors/partial-file preservation for injected write and flush failures. The existing interactive `Ctrl+R` confirmation regression remains unchanged and passed.
+
+A Python-free test using the official TypeScript MCP SDK 1.32.2 against an isolated TUI negotiated MCP 2025-11-25 and discovered 29 tools. It started a 10-second Recording, stopped without terminal input, verified one partial frame and the clean `stopped` end record, and reopened the saved log through MCP with `status: "complete"`. The first default-wait stop succeeded in **65.18 ms in one tool call**. This is one small warm observation, excluding natural-language/model time, not a latency guarantee for slow storage. A `wait_ms: 0` stop also progressed from pending to success through the ordinary operation getter without human confirmation.
+
+Native replay returned the original successful outcome without changing the file or stopping a replacement Recording. A new stop request using the old session ID failed with `STATE_CONFLICT` and left the replacement active until its own explicit stop. Write/flush failures were simulated in Rust; no native storage-failure experiment is claimed.
+
+Reproduce only against an explicitly owned, isolated test TUI configured with `tracked_names = ["winproc-mcp-stop-test-207.exe"]`, a Recording `last_dir` matching the directory argument, and an inactive starting Recording:
+
+```powershell
+node scripts/test-mcp-recording-stop.mjs <exe> <tui-pid> <sdk-package-directory> <recording-directory> <results.json>
+```
+
+The harness starts/stops its own sessions and creates test recordings. The source fixture and detailed native results remain in ignored local storage. This follow-up is tracked by [Issue #207](https://github.com/TX230/winproc-tui/issues/207); existing confirmation evidence earlier in this document describes the implementation at that time.
