@@ -190,6 +190,8 @@ While a client is connected to the application, a yellow **MCP** badge appears a
 
 Connections are enabled by default. Settings → **Disable MCP connections** disconnects clients and disables external access without stopping sampling or Recording. If MCP is saved as disabled, start the TUI manually and enable it. If a startup profile-selection dialog appears, complete it and retry the tool call.
 
+The default bridge waits briefly for results and releases temporary captures after their final page. It supplies a continuation when more work remains. Clients that manage asynchronous jobs and capture lifetimes explicitly can use `winproc-tui mcp-bridge --raw`.
+
 Use `tools/list` to discover the 26 implemented tools: metrics/history, process and file investigation, tracking/profiles, Recording, independent saved-log analysis, explicit .NET control, and condition waits. Configure the Recording directory locally before using Recording/log tools; required approvals appear in the TUI. See the [specification](docs/mcp-integration-specification.md) and [verification results](docs/mcp-system-testing.md).
 
 ## Requirements

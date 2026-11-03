@@ -16,5 +16,9 @@ pub(crate) struct Cli {
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
     /// Serve MCP over stdio; start WinProc TUI in Windows Terminal when needed.
-    McpBridge,
+    McpBridge {
+        /// Preserve explicit asynchronous jobs and caller-owned capture lifetime.
+        #[arg(long)]
+        raw: bool,
+    },
 }

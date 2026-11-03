@@ -1,7 +1,9 @@
 pub(crate) mod backend;
 pub(crate) mod bridge;
 pub(crate) mod catalog;
+mod completion;
 pub(crate) mod jobs;
+mod managed;
 pub(crate) mod metrics;
 pub(crate) mod operations;
 pub(crate) mod protocol;

@@ -24,7 +24,7 @@ import time
 class Bridge:
     def __init__(self, exe, *, env=None, timeout=15):
         self.timeout = timeout
-        self.process = subprocess.Popen([str(exe), 'mcp-bridge'], stdin=subprocess.PIPE,
+        self.process = subprocess.Popen([str(exe), 'mcp-bridge', '--raw'], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8',
             creationflags=subprocess.CREATE_NO_WINDOW, env=env)
         self.messages = queue.Queue()

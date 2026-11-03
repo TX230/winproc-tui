@@ -1,7 +1,7 @@
 [
   {
     "name": "winproc_get_status",
-    "description": "Read application activity, backend availability, limits and sampling freshness. Obtain state revisions from tracking, profile or .NET collection getters.",
+    "description": "Read application activity, backend availability, limits and sampling freshness. Obtain state revisions from tracking, profile or .NET collection getters. Example arguments: {}.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -17,7 +17,7 @@
   },
   {
     "name": "winproc_get_system_info",
-    "description": "Read cached Windows version/build and architecture, plus CPU name/topology/cache and total memory from the published snapshot. No GPU inventory or fresh collection is performed. In TUI Log view, fields remain from the last Live sample, not the displayed recording.",
+    "description": "Read cached Windows version/build and architecture, plus CPU name/topology/cache and total memory from the published snapshot. No GPU inventory or fresh collection is performed. In TUI Log view, fields remain from the last Live sample, not the displayed recording. Example arguments: {}.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -33,7 +33,7 @@
   },
   {
     "name": "winproc_list_metrics",
-    "description": "Describe metric identifiers, exact units, representations and availability.",
+    "description": "Describe metric identifiers, exact units, representations and availability. Example arguments: {\"target_kind\":\"system\"}.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -57,7 +57,7 @@
   },
   {
     "name": "winproc_list_processes",
-    "description": "Discover process lifetime references in a frozen snapshot or retained history, independent of TUI filters.",
+    "description": "Discover process lifetime references in a frozen snapshot or retained history, independent of TUI filters. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Example arguments: {\"filter\":{\"name\":\"chrome.exe\"}}.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -134,12 +134,18 @@
         "limit": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500
+          "maximum": 5000,
+          "default": 5000
         },
         "cursor": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [],
@@ -173,7 +179,7 @@
   },
   {
     "name": "winproc_get_process_info",
-    "description": "Inspect static image metadata for a verified live process lifetime. Returns a bounded asynchronous job; poll winproc_get_job and read the resulting capture. Signature verification, when requested, is explicitly unavailable. Default fields are image and version; command_line and user require explicit opt-in.",
+    "description": "Required arguments: process_ref. Inspect static image metadata for a verified live process lifetime. Returns a bounded asynchronous job; poll winproc_get_job and read the resulting capture. Signature verification, when requested, is explicitly unavailable. Default fields are image and version; command_line and user require explicit opt-in. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Returns the first page in data.result_page automatically. Optional read selects rows/fields. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Example arguments: {\"process_ref\":\"<returned-process-ref>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -197,6 +203,90 @@
           "minItems": 1,
           "maxItems": 50,
           "uniqueItems": true
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
+        },
+        "read": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "projection": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 5000
+            },
+            "owner_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Exact case-insensitive file-owner executable name, applied before projection."
+            },
+            "extension": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32,
+              "pattern": "^\\.[^\\\\/ .]+$",
+              "description": "Exact case-insensitive filename extension, including the leading dot."
+            },
+            "distinct_paths": {
+              "type": "boolean",
+              "description": "Return one row per exact path string. Requires projection:[\"path\"]."
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "distinct_paths": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "distinct_paths"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "projection": {
+                    "const": [
+                      "path"
+                    ]
+                  }
+                },
+                "required": [
+                  "projection"
+                ]
+              }
+            }
+          ],
+          "default": {}
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [
@@ -213,7 +303,7 @@
   },
   {
     "name": "winproc_get_metrics",
-    "description": "Read current raw metric values; integer quantities are decimal strings.",
+    "description": "Required arguments: metric_ids. Read current raw metric values; integer quantities are decimal strings. Source defaults to live, or log when log_ref is supplied. Targets default to the system. Supply metric_ids directly; no status/catalog call is needed when metric names are known. Example arguments: {\"metric_ids\":[\"cpu_average_percent\"]}. Process memory example: {\"targets\":[{\"process_ref\":\"<returned-process-ref>\"}],\"metric_ids\":[\"private_bytes\"]}.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -267,7 +357,49 @@
           "items": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 256,
+            "enum": [
+              "cpu_average_percent",
+              "physical_memory_bytes",
+              "modified_memory_bytes",
+              "standby_memory_bytes",
+              "free_zeroed_memory_bytes",
+              "committed_bytes",
+              "paged_pool_bytes",
+              "nonpaged_pool_bytes",
+              "pages_input_per_sec",
+              "pages_output_per_sec",
+              "thread_count",
+              "process_count",
+              "network_received_bytes_per_sec",
+              "network_sent_bytes_per_sec",
+              "disk_read_bytes_per_sec",
+              "disk_write_bytes_per_sec",
+              "disk_queue_length",
+              "cpu_percent",
+              "private_bytes",
+              "workset_bytes",
+              "workset_private_bytes",
+              "workset_shareable_bytes",
+              "handle_count",
+              "user_object_count",
+              "gdi_object_count",
+              "gpu_percent",
+              "dotnet_heap_bytes",
+              "dotnet_gc_gen0_heap_bytes",
+              "dotnet_gc_gen1_heap_bytes",
+              "dotnet_gc_gen2_heap_bytes",
+              "dotnet_gc_loh_bytes",
+              "dotnet_gc_poh_bytes",
+              "dotnet_gc_committed_bytes",
+              "dotnet_gc_fragmentation_bytes",
+              "dotnet_allocation_bytes_per_sec",
+              "gpu_dedicated_bytes",
+              "gpu_shared_bytes",
+              "io_read_bytes_per_sec",
+              "io_write_bytes_per_sec"
+            ],
+            "description": "System CPU uses cpu_average_percent; process CPU uses cpu_percent. list_metrics supplies units and collection requirements when needed."
           },
           "minItems": 1,
           "maxItems": 50,
@@ -275,8 +407,6 @@
         }
       },
       "required": [
-        "source",
-        "targets",
         "metric_ids"
       ],
       "additionalProperties": false,
@@ -309,7 +439,7 @@
   },
   {
     "name": "winproc_get_history",
-    "description": "Read retained samples or summaries. Missing counts describe stored samples only.",
+    "description": "Required arguments: target, metric_ids, from, to, mode. Read retained samples or summaries. Missing counts describe stored samples only. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Source defaults to live, or log when log_ref is supplied. Example arguments: {\"target\":{\"system\":true},\"metric_ids\":[\"cpu_average_percent\"],\"from\":\"2026-01-01T00:00:00Z\",\"to\":\"2026-01-01T00:01:00Z\",\"mode\":\"summary\"}. Replace example dates with the requested interval.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -357,7 +487,49 @@
           "items": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 256,
+            "enum": [
+              "cpu_average_percent",
+              "physical_memory_bytes",
+              "modified_memory_bytes",
+              "standby_memory_bytes",
+              "free_zeroed_memory_bytes",
+              "committed_bytes",
+              "paged_pool_bytes",
+              "nonpaged_pool_bytes",
+              "pages_input_per_sec",
+              "pages_output_per_sec",
+              "thread_count",
+              "process_count",
+              "network_received_bytes_per_sec",
+              "network_sent_bytes_per_sec",
+              "disk_read_bytes_per_sec",
+              "disk_write_bytes_per_sec",
+              "disk_queue_length",
+              "cpu_percent",
+              "private_bytes",
+              "workset_bytes",
+              "workset_private_bytes",
+              "workset_shareable_bytes",
+              "handle_count",
+              "user_object_count",
+              "gdi_object_count",
+              "gpu_percent",
+              "dotnet_heap_bytes",
+              "dotnet_gc_gen0_heap_bytes",
+              "dotnet_gc_gen1_heap_bytes",
+              "dotnet_gc_gen2_heap_bytes",
+              "dotnet_gc_loh_bytes",
+              "dotnet_gc_poh_bytes",
+              "dotnet_gc_committed_bytes",
+              "dotnet_gc_fragmentation_bytes",
+              "dotnet_allocation_bytes_per_sec",
+              "gpu_dedicated_bytes",
+              "gpu_shared_bytes",
+              "io_read_bytes_per_sec",
+              "io_write_bytes_per_sec"
+            ],
+            "description": "System CPU uses cpu_average_percent; process CPU uses cpu_percent. list_metrics supplies units and collection requirements when needed."
           },
           "minItems": 1,
           "maxItems": 50,
@@ -383,16 +555,21 @@
         "limit": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500
+          "maximum": 5000,
+          "default": 5000
         },
         "cursor": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [
-        "source",
         "target",
         "metric_ids",
         "from",
@@ -429,7 +606,7 @@
   },
   {
     "name": "winproc_start_capture",
-    "description": "Start read-only asynchronous file, module, endpoint, thread or scheduling inspection.",
+    "description": "Required arguments: kind. Start read-only asynchronous file, module, endpoint, thread or scheduling inspection. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Returns the first page in data.result_page automatically. Optional read selects rows/fields. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Example arguments: {\"kind\":\"file_users\",\"read\":{\"projection\":[\"path\"],\"distinct_paths\":true}}. Chrome logs: {\"kind\":\"file_users\",\"read\":{\"owner_name\":\"chrome.exe\",\"extension\":\".log\",\"projection\":[\"path\"]}}.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -448,6 +625,90 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
+        },
+        "read": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "projection": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 5000
+            },
+            "owner_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Exact case-insensitive file-owner executable name, applied before projection."
+            },
+            "extension": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32,
+              "pattern": "^\\.[^\\\\/ .]+$",
+              "description": "Exact case-insensitive filename extension, including the leading dot."
+            },
+            "distinct_paths": {
+              "type": "boolean",
+              "description": "Return one row per exact path string. Requires projection:[\"path\"]."
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "distinct_paths": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "distinct_paths"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "projection": {
+                    "const": [
+                      "path"
+                    ]
+                  }
+                },
+                "required": [
+                  "projection"
+                ]
+              }
+            }
+          ],
+          "default": {}
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [
@@ -485,7 +746,7 @@
   },
   {
     "name": "winproc_get_job",
-    "description": "Read running/terminal state and outcome of a connection-owned asynchronous job; no percentage progress is reported. Inspect state and result.error even when the getter itself succeeds.",
+    "description": "Required arguments: job_id. Read running/terminal state and outcome of a connection-owned asynchronous job; no percentage progress is reported. Inspect state and result.error even when the getter itself succeeds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Returns the first page in data.result_page automatically. Optional read selects rows/fields. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Example arguments: {\"job_id\":\"<returned-job-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -493,6 +754,90 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
+        },
+        "read": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "projection": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 5000
+            },
+            "owner_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Exact case-insensitive file-owner executable name, applied before projection."
+            },
+            "extension": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32,
+              "pattern": "^\\.[^\\\\/ .]+$",
+              "description": "Exact case-insensitive filename extension, including the leading dot."
+            },
+            "distinct_paths": {
+              "type": "boolean",
+              "description": "Return one row per exact path string. Requires projection:[\"path\"]."
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "distinct_paths": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "distinct_paths"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "projection": {
+                    "const": [
+                      "path"
+                    ]
+                  }
+                },
+                "required": [
+                  "projection"
+                ]
+              }
+            }
+          ],
+          "default": {}
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [
@@ -509,7 +854,7 @@
   },
   {
     "name": "winproc_read_capture",
-    "description": "Page a frozen capture; path filtering does not rescan files.",
+    "description": "Required arguments: capture_id. Read a frozen capture without rescanning. Filter by full path terms, exact owner_name or extension; use distinct_paths with projection:[\"path\"] for a path list. limit supports up to 5000 with automatic response-size bounds. Continue only when next_cursor is non-null; do not reread complete pages. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Example arguments: {\"capture_id\":\"<returned-capture-id>\",\"cursor\":\"<returned-next-cursor>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -537,18 +882,67 @@
         "limit": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500
+          "maximum": 5000,
+          "default": 5000
         },
         "cursor": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "owner_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Exact case-insensitive file-owner executable name, applied before projection."
+        },
+        "extension": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^\\.[^\\\\/ .]+$",
+          "description": "Exact case-insensitive filename extension, including the leading dot."
+        },
+        "distinct_paths": {
+          "type": "boolean",
+          "description": "Return one row per exact path string. Requires projection:[\"path\"]."
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [
         "capture_id"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "distinct_paths": {
+                "const": true
+              }
+            },
+            "required": [
+              "distinct_paths"
+            ]
+          },
+          "then": {
+            "properties": {
+              "projection": {
+                "const": [
+                  "path"
+                ]
+              }
+            },
+            "required": [
+              "projection"
+            ]
+          }
+        }
+      ]
     },
     "annotations": {
       "readOnlyHint": true,
@@ -559,7 +953,7 @@
   },
   {
     "name": "winproc_cancel_job",
-    "description": "Cancel a connection-owned job without rolling back accepted application state.",
+    "description": "Required arguments: job_id. Cancel a connection-owned job without rolling back accepted application state. Example arguments: {\"job_id\":\"<returned-job-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -583,7 +977,7 @@
   },
   {
     "name": "winproc_release_capture",
-    "description": "Release a connection-owned frozen capture.",
+    "description": "Required arguments: capture_id. Release a connection-owned frozen capture. Example arguments: {\"capture_id\":\"<explicitly-retained-capture-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -607,7 +1001,7 @@
   },
   {
     "name": "winproc_get_tracking",
-    "description": "Read current name-based tracking intent and revision. Matching rows come from the last Live sample, independent of the displayed recording; they are not a fresh OS liveness check in TUI Log view.",
+    "description": "Read current name-based tracking intent and revision. Matching rows come from the last Live sample, independent of the displayed recording; they are not a fresh OS liveness check in TUI Log view. Example arguments: {}.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -623,7 +1017,7 @@
   },
   {
     "name": "winproc_update_tracking",
-    "description": "Explicitly add or remove an executable name. All current and future matching lifetimes are affected; history loss requires local confirmation. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "description": "Required arguments: action, operation_id, expected_revision. Explicitly add or remove an executable name. All current and future matching lifetimes are affected; history loss requires local confirmation. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"action\":\"add\",\"process_name\":\"<explicitly-requested-name>\",\"operation_id\":\"<new-operation-id>\",\"expected_revision\":\"<returned-investigation-revision>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -653,6 +1047,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -693,7 +1094,7 @@
   },
   {
     "name": "winproc_list_profiles",
-    "description": "Read saved Investigation Profiles without loading them.",
+    "description": "Read saved Investigation Profiles without loading them. Example arguments: {}.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -709,7 +1110,7 @@
   },
   {
     "name": "winproc_update_profile",
-    "description": "Explicitly load, save, create, rename or delete a profile. Loading replaces working tracking intent only. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "description": "Required arguments: action, operation_id, expected_revision. Explicitly load, save, create, rename or delete a profile. Loading replaces working tracking intent only. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"action\":\"save_as\",\"name\":\"<explicitly-requested-profile-name>\",\"operation_id\":\"<new-operation-id>\",\"expected_revision\":\"<returned-investigation-revision>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -747,6 +1148,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -801,7 +1209,7 @@
   },
   {
     "name": "winproc_get_recording",
-    "description": "Read active recording session identity, scope, interval and state.",
+    "description": "Read active recording session identity, scope, interval and state. Example arguments: {}.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -817,7 +1225,7 @@
   },
   {
     "name": "winproc_start_recording",
-    "description": "Record current tracked names using the locally configured output directory. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "description": "Required arguments: interval_seconds, operation_id, expected_revision. Record current tracked names using the locally configured output directory. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"interval_seconds\":1,\"operation_id\":\"<new-operation-id>\",\"expected_revision\":\"<returned-investigation-revision>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -839,6 +1247,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -857,7 +1272,7 @@
   },
   {
     "name": "winproc_stop_recording",
-    "description": "Request local confirmation to stop this exact recording session; completion follows flush and close. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "description": "Required arguments: recording_session_id, operation_id. Request local confirmation to stop this exact recording session; completion follows flush and close. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"recording_session_id\":\"<returned-active-session-id>\",\"operation_id\":\"<new-operation-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -870,6 +1285,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -887,7 +1309,7 @@
   },
   {
     "name": "winproc_list_logs",
-    "description": "List regular .log files in the locally configured recording directory, optionally filtered by filename. Poll the returned job, then page its capture with winproc_read_capture for log IDs and names. Recording format is validated when opening, not listing.",
+    "description": "List regular .log files in the locally configured recording directory, optionally filtered by filename. Poll the returned job, then page its capture with winproc_read_capture for log IDs and names. Recording format is validated when opening, not listing. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Returns the first page in data.result_page automatically. Optional read selects rows/fields. Final pages are automatically released by default. Follow data.next_action only when non-null; use retain_capture:true for repeated reads. Example arguments: {}.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -899,12 +1321,97 @@
         "limit": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500
+          "maximum": 5000,
+          "default": 5000
         },
         "cursor": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
+        },
+        "read": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "projection": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 5000
+            },
+            "owner_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Exact case-insensitive file-owner executable name, applied before projection."
+            },
+            "extension": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32,
+              "pattern": "^\\.[^\\\\/ .]+$",
+              "description": "Exact case-insensitive filename extension, including the leading dot."
+            },
+            "distinct_paths": {
+              "type": "boolean",
+              "description": "Return one row per exact path string. Requires projection:[\"path\"]."
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "distinct_paths": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "distinct_paths"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "projection": {
+                    "const": [
+                      "path"
+                    ]
+                  }
+                },
+                "required": [
+                  "projection"
+                ]
+              }
+            }
+          ],
+          "default": {}
+        },
+        "retain_capture": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep frozen data for repeated inspection. Default false automatically releases source/derived captures after the final page. Follow data.next_action for continuation; do not release when capture_retained is false."
         }
       },
       "required": [],
@@ -919,7 +1426,7 @@
   },
   {
     "name": "winproc_open_log",
-    "description": "Start a bounded read-only load of a server-issued log ID without changing TUI activity. Poll the load job for log_ref. Source files are read with a conservative allocation reservation and a 60-second deadline; incomplete trailing records are reported as partial.",
+    "description": "Required arguments: log_id. Start a bounded read-only load of a server-issued log ID without changing TUI activity. Poll the load job for log_ref. Source files are read with a conservative allocation reservation and a 60-second deadline; incomplete trailing records are reported as partial. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"log_id\":\"<returned-log-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -927,6 +1434,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -943,7 +1457,7 @@
   },
   {
     "name": "winproc_close_log",
-    "description": "Release an independent loaded log and its references.",
+    "description": "Required arguments: log_ref. Release an independent loaded log and its references. Example arguments: {\"log_ref\":\"<returned-log-ref>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -967,7 +1481,7 @@
   },
   {
     "name": "winproc_get_dotnet_collection",
-    "description": "Read per-lifetime .NET collection authorization, state and revision.",
+    "description": "Required arguments: process_ref. Read per-lifetime .NET collection authorization, state and revision. Example arguments: {\"process_ref\":\"<returned-process-ref>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -991,7 +1505,7 @@
   },
   {
     "name": "winproc_set_dotnet_collection",
-    "description": "Explicitly request per-lifetime EventPipe authorization or revocation; enabling requires local readiness confirmation. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds.",
+    "description": "Required arguments: process_ref, enabled, operation_id, expected_revision. Explicitly request per-lifetime EventPipe authorization or revocation; enabling requires local readiness confirmation. Returns an operation_id/state; poll winproc_get_operation. Required confirmation happens only in the local TUI and expires after 60 seconds. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"process_ref\":\"<returned-process-ref>\",\"enabled\":true,\"operation_id\":\"<new-operation-id>\",\"expected_revision\":\"<returned-collection-revision>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1012,6 +1526,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -1031,7 +1552,7 @@
   },
   {
     "name": "winproc_wait_condition",
-    "description": "Wait for process-name presence or a metric comparison in a fresh sample newer than the request, or verify process exit through a held handle. Presence and threshold checks do not require a transition from the previous state.",
+    "description": "Required arguments: condition, timeout_ms. Wait for process-name presence or a metric comparison in a fresh sample newer than the request, or verify process exit through a held handle. Presence and threshold checks do not require a transition from the previous state. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"condition\":\"process_appeared\",\"process_name\":\"<requested-executable-name>\",\"timeout_ms\":5000}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1078,7 +1599,49 @@
         "metric_id": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 256
+          "maxLength": 256,
+          "enum": [
+            "cpu_average_percent",
+            "physical_memory_bytes",
+            "modified_memory_bytes",
+            "standby_memory_bytes",
+            "free_zeroed_memory_bytes",
+            "committed_bytes",
+            "paged_pool_bytes",
+            "nonpaged_pool_bytes",
+            "pages_input_per_sec",
+            "pages_output_per_sec",
+            "thread_count",
+            "process_count",
+            "network_received_bytes_per_sec",
+            "network_sent_bytes_per_sec",
+            "disk_read_bytes_per_sec",
+            "disk_write_bytes_per_sec",
+            "disk_queue_length",
+            "cpu_percent",
+            "private_bytes",
+            "workset_bytes",
+            "workset_private_bytes",
+            "workset_shareable_bytes",
+            "handle_count",
+            "user_object_count",
+            "gdi_object_count",
+            "gpu_percent",
+            "dotnet_heap_bytes",
+            "dotnet_gc_gen0_heap_bytes",
+            "dotnet_gc_gen1_heap_bytes",
+            "dotnet_gc_gen2_heap_bytes",
+            "dotnet_gc_loh_bytes",
+            "dotnet_gc_poh_bytes",
+            "dotnet_gc_committed_bytes",
+            "dotnet_gc_fragmentation_bytes",
+            "dotnet_allocation_bytes_per_sec",
+            "gpu_dedicated_bytes",
+            "gpu_shared_bytes",
+            "io_read_bytes_per_sec",
+            "io_write_bytes_per_sec"
+          ],
+          "description": "System CPU uses cpu_average_percent; process CPU uses cpu_percent. list_metrics supplies units and collection requirements when needed."
         },
         "comparison": {
           "type": "string",
@@ -1100,6 +1663,13 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 60000
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [
@@ -1171,7 +1741,7 @@
   },
   {
     "name": "winproc_get_operation",
-    "description": "Read retained application-owned mutation status, including after reconnecting.",
+    "description": "Required arguments: operation_id. Read retained application-owned mutation status, including after reconnecting. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"operation_id\":\"<returned-operation-id>\"}. Replace placeholders with actual IDs/revisions or explicitly requested values; never submit placeholders.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1179,6 +1749,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
         }
       },
       "required": [

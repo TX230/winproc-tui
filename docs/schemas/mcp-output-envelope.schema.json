@@ -87,6 +87,9 @@
             },
             "constraint": {
               "type": "string"
+            },
+            "expected": {
+              "description": "Expected value or constraint copied only from the committed input schema; never rejected input."
             }
           },
           "additionalProperties": false

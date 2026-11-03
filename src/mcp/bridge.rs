@@ -14,7 +14,12 @@ use tokio::{sync::Mutex, time::timeout};
 
 #[derive(Default)]
 struct Bridge {
-    client: Mutex<Option<Client>>,
+    client: Mutex<Option<Connection>>,
+    raw: bool,
+}
+struct Connection {
+    client: Client,
+    delivery: super::managed::Delivery,
 }
 impl ServerHandler for Bridge {
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
@@ -23,7 +28,7 @@ impl ServerHandler for Bridge {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::from_build_env())
-            .with_instructions("Connects to WinProc TUI in the same Windows logon session. The first valid tool call starts the application in a new visible Windows Terminal window if absent and MCP is enabled in its saved configuration. Startup may take up to 12 seconds. The application remains open after disconnect. No automatic elevation or headless fallback.")
+            .with_instructions(if self.raw { "Connects to WinProc TUI in the same Windows logon session. The first valid tool call starts the application in a new visible Windows Terminal window if absent and MCP is enabled in its saved configuration. Startup may take up to 12 seconds. The application remains open after disconnect. No automatic elevation or headless fallback. For asynchronous tools use wait_ms:5000; capture-producing tools also accept read to return a completed first page in one call. Continue a running job with winproc_get_job and the same options. For application operations wait_ms also stops at local confirmation. Avoid preliminary status calls unless status itself is needed. Use projection and larger bounded pages for bulk reads; follow next_cursor only when non-null." } else { "WinProc TUI investigation tools. Call the tool matching the user request directly; no preliminary status call is needed. Jobs and operations wait up to 5 seconds by default and captures include their first result page. Completed final pages are automatically released: do not call release_capture when capture_retained is false. If data.next_action is non-null, invoke exactly its tool and arguments to continue; null means no automatic follow-up. Pending local confirmation requires a human TUI decision, never automated approval. Use retain_capture:true only for repeated inspection of the same frozen data. Metrics default to the live system; a log_ref selects that saved log unless source is explicit. All identity, revision, idempotency and confirmation requirements remain in force. The first valid call can start the normal visible application; it stays open after disconnect." })
     }
     async fn list_tools(
         &self,
@@ -37,7 +42,7 @@ impl ServerHandler for Bridge {
             ));
         }
         Ok(ListToolsResult {
-            tools: catalog::available_tools(),
+            tools: catalog::tools_for_client(self.raw),
             ..Default::default()
         })
     }
@@ -74,7 +79,12 @@ impl ServerHandler for Bridge {
         };
         if client.is_none() {
             match super::startup::connect(|| context.ct.is_cancelled()).await {
-                Ok(connection) => *client = Some(connection),
+                Ok(connection) => {
+                    *client = Some(Connection {
+                        client: connection,
+                        delivery: Default::default(),
+                    })
+                }
                 Err(error) => return Ok(CallToolResult::structured_error(error).into()),
             }
         }
@@ -86,9 +96,23 @@ impl ServerHandler for Bridge {
             ))
             .into());
         }
+        let connection = client.as_mut().expect("connected");
+        let call = async {
+            if self.raw {
+                super::completion::call(&mut connection.client, &request.name, arguments).await
+            } else {
+                super::managed::call(
+                    &mut connection.client,
+                    &mut connection.delivery,
+                    &request.name,
+                    arguments,
+                )
+                .await
+            }
+        };
         let result = tokio::select! {
             _ = context.ct.cancelled() => Err(()),
-            result = timeout(Duration::from_secs(10), client.as_mut().expect("connected").call(&request.name, arguments)) => match result { Ok(Ok(value)) => Ok(value), _ => Err(()) },
+            result = timeout(Duration::from_secs(10), call) => match result { Ok(Ok(value)) => Ok(value), _ => Err(()) },
         };
         let value = match result {
             Ok(value) => value,
@@ -120,20 +144,23 @@ impl ServerHandler for Bridge {
     }
 }
 
-pub(crate) fn run() -> anyhow::Result<()> {
+pub(crate) fn run(raw: bool) -> anyhow::Result<()> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?
         .block_on(async {
-            let service = Bridge::default()
-                .serve(
-                    rmcp::transport::async_rw::AsyncRwTransport::new_server(
-                        tokio::io::stdin(),
-                        tokio::io::stdout(),
-                    )
-                    .with_max_line_length(super::protocol::MAX_FRAME_BYTES),
+            let service = Bridge {
+                raw,
+                ..Default::default()
+            }
+            .serve(
+                rmcp::transport::async_rw::AsyncRwTransport::new_server(
+                    tokio::io::stdin(),
+                    tokio::io::stdout(),
                 )
-                .await?;
+                .with_max_line_length(super::protocol::MAX_FRAME_BYTES),
+            )
+            .await?;
             service.waiting().await?;
             Ok(())
         })

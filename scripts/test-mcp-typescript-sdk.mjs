@@ -10,7 +10,7 @@ const client=new Client({name:'winproc-system-typescript',version:'1'},{capabili
 let protocol;
 const originalRequest=client.request.bind(client);
 client.request=async (...args)=>{const result=await originalRequest(...args);if(args[0].method==='initialize')protocol=result.protocolVersion;return result;};
-const transport=new StdioClientTransport({command:resolve(exe),args:['mcp-bridge']});
+const transport=new StdioClientTransport({command:resolve(exe),args:['mcp-bridge','--raw']});
 function assert(condition,detail){if(!condition)throw new Error(JSON.stringify(detail));}
 try{
   await client.connect(transport);

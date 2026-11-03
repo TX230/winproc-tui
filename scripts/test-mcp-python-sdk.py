@@ -11,7 +11,7 @@ from mcp.client.stdio import stdio_client
 
 async def main():
     exe,pid,output=sys.argv[1:]
-    async with stdio_client(StdioServerParameters(command=str(Path(exe).resolve()),args=["mcp-bridge"])) as (read,write):
+    async with stdio_client(StdioServerParameters(command=str(Path(exe).resolve()),args=["mcp-bridge","--raw"])) as (read,write):
         async with ClientSession(read,write,read_timeout_seconds=15) as client:
             initialized=await client.initialize()
             tools=await client.list_tools()

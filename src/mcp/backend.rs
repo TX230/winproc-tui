@@ -529,6 +529,9 @@ fn envelope(session: &Session, view: &View, instance: &str, data: Value) -> Valu
 }
 
 fn dispatch(session: &mut Session, view: &View, method: &str, args: &Value) -> Value {
+    let mut normalized = args.clone();
+    catalog::apply_defaults(method, &mut normalized);
+    let args = &normalized;
     if catalog::validate(method, args) != Some(true) {
         return error("INVALID_ARGUMENT", "Invalid tool or arguments", false);
     }
@@ -539,7 +542,7 @@ fn dispatch(session: &mut Session, view: &View, method: &str, args: &Value) -> V
         "winproc_list_logs"=>return list_logs(session,view,args),
         "winproc_open_log"=>return open_log(session,view,args),
         "winproc_close_log"=>{session.logs.remove(args["log_ref"].as_str().unwrap());return json!({"closed":true});},
-        "winproc_get_status" => return json!({"activity":view.activity,"stale":(Local::now()-view.snapshot.captured_at).num_seconds()>=3,"sample_age_ms":(Local::now()-view.snapshot.captured_at).num_milliseconds().max(0),"version":env!("CARGO_PKG_VERSION"),"transport":"named_pipe","connected":true,"permissions":{"same_logon":true,"same_integrity":true},"capabilities":catalog::available_tools().iter().map(|t|t.name.to_string()).collect::<Vec<_>>(),"limits":{"connections":4,"active_jobs_per_connection":2,"retained_objects_per_connection":8,"result_bytes_per_connection":67108864,"result_ttl_seconds":300,"operation_entries":1024,"operation_ttl_seconds":86400,"pending_operations":1}}),
+        "winproc_get_status" => return json!({"activity":view.activity,"stale":(Local::now()-view.snapshot.captured_at).num_seconds()>=3,"sample_age_ms":(Local::now()-view.snapshot.captured_at).num_milliseconds().max(0),"version":env!("CARGO_PKG_VERSION"),"transport":"named_pipe","connected":true,"permissions":{"same_logon":true,"same_integrity":true},"capabilities":catalog::TOOLS.iter().filter(|t|catalog::available(&t.name)).map(|t|t.name.to_string()).collect::<Vec<_>>(),"limits":{"connections":4,"active_jobs_per_connection":2,"retained_objects_per_connection":8,"result_bytes_per_connection":67108864,"result_ttl_seconds":300,"operation_entries":1024,"operation_ttl_seconds":86400,"pending_operations":1}}),
         "winproc_get_system_info" => return view.host.clone(),
         "winproc_list_metrics" => return metrics::catalog(args["target_kind"].as_str()),
         "winproc_get_tracking" => {
@@ -971,7 +974,12 @@ fn read_capture(session: &mut Session, args: &Value) -> Value {
                 .and_then(|s| s.split_once(':').map(|p| p.0))
         })
         .unwrap_or("");
-    let used = session.retained_bytes();
+    // Ordinary live pages need no traversal/serialization of retained log data.
+    let used = if session.logs.is_empty() {
+        0
+    } else {
+        session.retained_bytes()
+    };
     let count = session.capture_count();
     for (log_ref, log) in &mut session.logs {
         if log.session.captures.contains_key(id) {
@@ -1012,8 +1020,11 @@ fn read_capture(session: &mut Session, args: &Value) -> Value {
     if capture.created.elapsed() >= Duration::from_secs(300) {
         return error("REFERENCE_INVALID", "Capture expired", false);
     }
-    let unmodified =
-        args.get("projection").is_none() && args["filter"].as_str().is_none_or(str::is_empty);
+    let unmodified = args.get("projection").is_none()
+        && args["filter"].as_str().is_none_or(str::is_empty)
+        && args.get("owner_name").is_none()
+        && args.get("extension").is_none()
+        && !args["distinct_paths"].as_bool().unwrap_or(false);
     if unmodified {
         let offset = if let Some(cursor) = args["cursor"].as_str() {
             let Some((cursor_id, offset)) = cursor.split_once(':') else {
@@ -1051,7 +1062,31 @@ fn read_capture(session: &mut Session, args: &Value) -> Value {
     let query = args["filter"].as_str().unwrap_or("").to_lowercase();
     let terms: Vec<_> = query.split_whitespace().collect();
     let mut rows = Vec::new();
+    let owner = args["owner_name"].as_str().map(str::to_lowercase);
+    let extension = args["extension"].as_str().map(str::to_lowercase);
+    let distinct = args["distinct_paths"].as_bool().unwrap_or(false);
+    let mut seen = std::collections::HashSet::new();
     for row in &capture.rows {
+        if owner.as_ref().is_some_and(|name| {
+            row["name"]
+                .as_str()
+                .is_none_or(|v| v.to_lowercase() != *name)
+        }) {
+            continue;
+        }
+        if extension.as_ref().is_some_and(|ext| {
+            row["path"].as_str().is_none_or(|path| {
+                let filename = path.rsplit(['\\', '/']).next().unwrap_or(path);
+                filename
+                    .rfind('.')
+                    .is_none_or(|at| filename[at..].to_lowercase() != *ext)
+            })
+        }) {
+            continue;
+        }
+        if distinct && row["path"].as_str().is_none_or(|path| !seen.insert(path)) {
+            continue;
+        }
         if !terms.is_empty()
             && !row["path"]
                 .as_str()
@@ -2105,5 +2140,40 @@ mod connection_status_tests {
         assert!(!status.connected());
         status.update(&Event::Disconnected("three".into()));
         assert_eq!(status.label, "unavailable");
+    }
+    #[test]
+    fn owner_extension_and_distinct_selection_preserve_coverage_and_paging() {
+        let mut s = Session::default();
+        let source = s.page_with_context(
+            &json!({"limit":5000}),
+            Some(vec![
+                json!({"name":"CHROME.EXE","path":"C:\\outside\\a.LOG","pid":1}),
+                json!({"name":"chrome.exe","path":"C:\\outside\\a.LOG","pid":2}),
+                json!({"name":"other.exe","path":"C:\\Chrome\\b.log","pid":3}),
+                json!({"name":"chrome.exe","path":"C:\\x.log\\a.txt","pid":1}),
+                json!({"name":"chrome.exe","path":"C:\\outside\\c.log","pid":1}),
+            ]),
+            json!({"status":"partial","coverage":{"denied_processes":7}}),
+            Instant::now(),
+        );
+        let args = json!({"capture_id":source["capture_id"],"owner_name":"chrome.exe","extension":".log","projection":["path"],"distinct_paths":true,"limit":1});
+        let first = read_capture(&mut s, &args);
+        assert_eq!(first["coverage"]["listed"], 2);
+        assert_eq!(first["coverage"]["denied_processes"], 7);
+        let mut next = args.clone();
+        next["cursor"] = first["next_cursor"].clone();
+        let last = read_capture(&mut s, &next);
+        assert!(last["next_cursor"].is_null());
+        assert_ne!(first["rows"], last["rows"]);
+        let zero = read_capture(
+            &mut s,
+            &json!({"capture_id":source["capture_id"],"owner_name":"absent.exe","limit":5000}),
+        );
+        assert_eq!(zero["rows"], json!([]));
+        assert_eq!(zero["coverage"]["denied_processes"], 7);
+        assert_eq!(
+            s.captures[first["capture_id"].as_str().unwrap()].metadata["status"],
+            "partial"
+        );
     }
 }

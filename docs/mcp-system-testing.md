@@ -225,3 +225,136 @@ Validation passed 1,175 Rust tests (ten ignored) and four CLI tests, formatting,
 The source catalog now stores the common success/error output envelope once and expands it for each tool at runtime. Compared actual `initialize` / `tools/list` responses from the previously validated badge release and the refactored executable: all 26 tool definitions matched as JSON values, including names, descriptions, annotations, input schemas and output schemas. This discovery comparison did not dispatch investigation tools or start another TUI. Local evidence is retained in `notes/discovery-before.json`, `notes/discovery-after.json` and `notes/discovery-parity.json`.
 
 Added regressions cover source-field preservation, absence of source-only fields in discovery, isolated per-tool success-data overrides, unchanged common error validation and rejection of duplicated source output envelopes. The stdio CLI test checks expanded output schemas and validates a real error response against the advertised contract. Full validation passed 1,180 Rust tests (ten ignored) and four CLI tests, formatting, and all-target/all-feature Clippy with warnings denied.
+
+## MCP performance and bounded completion (2026-11-03, Issue #205)
+
+The performance investigation covers all interface categories, with file capture as a model-driven reproduction. Direct official TypeScript SDK measurements of the unchanged baseline showed approximately 0.285 ms median status latency and 33–37 ms to fetch eight capture pages. Collection plus retrieval varied from 1.71 to 4.94 seconds. The dominant delay in the native Codex workflow was between client operations; collector time alone did not explain its 55.74-second path retrieval.
+
+Opt-in bridge completion now applies to investigation, metadata, log-list/load and condition jobs, plus application-operation outcome waits. Capture jobs can include the first selected page. All paged interfaces accept up to 5,000 rows under the existing response-size guard. File-owner/extension selection and distinct path projection reduce unrelated rows without changing collection coverage. Shared live-page reads avoid unnecessary retained-log byte-accounting serialization, and status reads no longer clone the complete tool schemas.
+
+Native Codex runs with the same configured model measured path retrieval at 55.74 → 14.57 seconds with high reasoning and 20.76 → 7.75 seconds with low reasoning. Initial-request-to-result latency changed from 30.78 → 0.78 seconds and 11.61 → 0.74 seconds respectively. Calls including cleanup fell from 14/16 to three. These are observed workflow comparisons with revised tool guidance and prompts, not controlled model-service benchmarks: host state, collection duration and client startup varied. No collector algorithm was changed, and these observations do not establish a native scan speedup. Client reasoning settings were overridden only for the measurements; no global model/reasoning preference was changed.
+
+Three optimized direct captures completed in 0.69–1.02 seconds, each returning the distinct path page in one call. Exact same-capture comparison verified every path, Chrome .log rows and empty partial results against the unfiltered source. Cross-category checks covered cached getters, metrics and raw/summary history, Network, Threads, Scheduling, Open Files, modules, process metadata, saved-log listing/loading/query/closure, conditions and unknown operation lookup. During a 1.5-second condition wait another connection's status request completed in about 4.2 ms. Application mutations and required confirmations are covered by existing application regressions and new bridge tests; no destructive or user-state-changing benchmark was performed.
+
+Run the read-only category benchmark with an installed official TypeScript MCP SDK package and a running test TUI. The optional mode is async or completion (default). A configured Recording root is required for the saved-log subcheck; otherwise its unavailability is reported. The benchmark prints per-category evidence and writes request duration/result-byte measurements to the specified output:
+
+    node scripts/benchmark-mcp.mjs <exe> <tui-pid> <sdk-package-directory> <output.json> completion
+
+Validation passed 1,196 Rust tests (11 intentionally ignored), four CLI tests, formatting and all-target/all-feature Clippy with warnings denied. Local native events, monotonic timings and direct-client evidence are retained under notes/mcp-perf-20261103/. Model/client startup and service latency remain outside the server's control; the specification and ADR 0006 describe the bounded interface improvement without promising an end-to-end latency ceiling.
+
+## First-call generation follow-up (2026-11-03, Issue #205)
+
+Added an unmodified stdio timing proxy to measure the previously missing tools/list-to-tools/call boundary. Discovery itself took about 1.7 ms in the first traced run and sent 26 tools in approximately 51.8 KB. Three native Codex/Astra-high status workflows spent 5.70–6.97 seconds after discovery (median 6.35 seconds). Explicitly requesting the tool as the first action, without a separate preamble, reduced that interval to 4.06–4.88 seconds (median 4.83 seconds, three correct runs). These are repeated observations, not a latency guarantee.
+
+A diagnostic OpenTelemetry run of the direct-prompt case placed a 4.08-second model API stream wait inside a 5.85-second post-discovery interval. Tool-router construction was about 32 ms and world-state construction about 281 ms in that run; other initialization/prewarming accounted for additional time. A normal-prompt trace with an extra developer directive still made two main-model sampling requests before the tool: approximately 3.14 and 2.81 seconds. A tool schema cannot eliminate a client model's inference/service wait.
+
+Negative controls did not support reducing the public contract: advertising only the status tool still took 7.98 seconds after discovery in one run; removing optional output schemas took 4.24 seconds, within the observed direct-prompt spread. A smaller-context Astra-low run took 3.96 seconds. Luna-low with a smaller context and explicit direct prompt took 3.06–3.37 seconds across three correct runs, but this combines model/context changes and is not an isolated model comparison. No global model or service-tier setting was changed. An aggressive dedicated profile selected the wrong tool in two of three runs (invalid empty-argument cancellation calls were rejected); it was not adopted. Correctness failures are excluded from successful latency statistics.
+
+Added the direct workflow runner to avoid spawning a second Codex/model session for already-known MCP request sequences. In the maintained-script check, connect plus discovery took about 71.8 ms, discovery to first call about 0.09 ms, and the status workflow completed in about 76.7 ms. The full distinct-path workflow took about 1.41 seconds including collection, complete pagination and cleanup, with about 0.15 ms from discovery to its first call. These intervals measure execution of caller-authored workflows; they exclude the current assistant's prior reasoning and are not comparable to natural-language-to-tool inference latency. Standard native MCP remains available with its measured model/client delay.
+
+Reproduce native timing (read-only status request; existing model preserved):
+
+    ./scripts/benchmark-mcp-first-call.ps1 -Executable <exe> -OutputDirectory <evidence-directory> -Direct
+
+Omit -Direct for the normal-prompt comparison. The script rejects a wrong first tool or failed status response and writes a monotonic discovery-to-call interval. Run a known workflow from the current client without a nested AI session:
+
+    node scripts/run-mcp-workflow.mjs <exe> <sdk-package-directory> scripts/mcp-workflows/status.mjs <output.json>
+    node scripts/run-mcp-workflow.mjs <exe> <sdk-package-directory> scripts/mcp-workflows/file-paths.mjs <output.json>
+
+Both maintained examples and the passive native timing harness ran successfully. No Rust production code, catalog schema or application setting changed in this follow-up; Rust verification from the preceding implementation remains applicable. Diagnostic catalog rewrites, model comparisons and rejected profiles remain local experiments. Their traces and the raw timing evidence are retained under notes/mcp-first-call-20261103/.
+
+## Native same-session latency and tool exposure (2026-11-03, Issue #205)
+
+Further native Codex CLI 0.164.0 app-server measurements used Astra/high with all 26 tools, one ephemeral conversation per session, and four fresh status requests per session. Each session initialized/discovered the bridge once and reused it for subsequent turns. The boundary below is **turn/start submission to first real MCP tools/call**, including model/client work; it differs from the preceding discovery-flush boundary and excludes execution of the MCP request itself. There were three sessions per group, giving three first-turn and nine subsequent-turn observations:
+
+| Prompt and exposure | First turn, median (range) | Subsequent turns, median (range) | Model requests before first-turn MCP call |
+| --- | --- | --- | --- |
+| Normal request, full surfaces | 9.36 s (6.62–10.87) | 4.75 s (2.81–10.73) | 2 in each session |
+| Explicit tool name, `{}` and no preamble, full surfaces | 5.04 s (4.34–5.60) | 3.37 s (3.09–8.10) | 1 in each session |
+| Same normal request, direct-only exposure | 6.95 s (5.00–7.43) | 3.98 s (3.14–7.63) | 1 in each session |
+
+For the exact discovery boundary requested in this investigation, monotonic tools/list-flush-to-first-tools/call medians across the same first turns were 9.271 s (6.533–10.777) for normal/full, 4.957 s (4.257–5.526) for the explicit prompt/full, and 6.862 s (4.918–7.337) for normal/direct-only. Discovery flushed about 79–95 ms after turn submission in these runs. Subsequent turns did not repeat discovery.
+
+A diagnostic baseline classified the internal Code Mode calls without retaining their arguments: the first inspected `ALL_TOOLS`, then the second invoked the status tool. With `omit_tools_from = ["deferred", "code_mode"]`, normal requests still emitted preambles but called the native MCP tool with one model request. This refines the preceding preamble explanation: catalog inspection is a demonstrated extra step; the explicit prompt changes tool naming, argument guidance and preamble together, so its improvement cannot be attributed to prose suppression alone. All 36 status requests in the three main comparison groups were correct. The direct-only setting retains all 26 direct tools and their validation/authorization rules.
+
+The direct-only normal-prompt medians were about 26% lower for first turns and 16% lower for subsequent turns. These small repeated samples have broad, overlapping ranges and are not randomized service benchmarks or guarantees. Subsequent normal/full turns already used one model request: their median model time-to-first-token was 3.862 s, followed by about 0.773 s of response streaming. Direct-only subsequent medians were 3.548 s and 0.438 s respectively. One normal/full subsequent request reused 38,656 of 38,862 input tokens (99.5%) yet still reported 3.915 s to first token. Warm connections and a hot prompt cache therefore do not eliminate this delay. Time-to-first-token includes client/network/provider scheduling, prefill and model waiting; the available telemetry cannot isolate these components or establish a performance floor.
+
+A user-authorized Fast comparison used a separate direct-only session with the explicit direct prompt. After a standard warm-up, three standard turns alternated with three Fast turns. Standard first-call times were 4.684, 3.542 and 2.265 s (median 3.542); Fast times were 2.595, 2.908 and 4.397 s (median 2.908). Telemetry confirmed `service_tier: priority` on the Fast requests. Total turn medians, including the final answer, were almost equal: 6.010 versus 6.006 s. This does not establish a reliable end-to-end Fast benefit. Fast consumes additional usage under the client's pricing rules; the global tier/model/reasoning preferences were left unchanged.
+
+Correctness controls found an invalid `metrics` argument instead of `metric_ids` in both full and direct-only routes. A separate over-constrained prompt also attempted an invalid empty cancellation call; it was rejected and excluded from successful timing statistics. Tool descriptions now prefix the names already required by their input schemas. Three native direct-only workflows with this exact description change each completed host information, live system CPU metrics and full accessible distinct-path retrieval without a tool error. They returned 2,279, 2,339 and 2,316 unique paths respectively; each matched its capture's listed count, exhausted its cursor and released both source and derived captures. All three captures were explicitly partial, so these counts do not imply access to every OS handle. These small controls support the hint but do not prove elimination of all model argument errors. No application mutation or confirmation behavior was changed or benchmarked anew.
+
+Reproduce the native session comparison with Node.js, an installed Codex CLI JavaScript entry point, a test executable and separate empty output directories:
+
+```powershell
+node scripts/benchmark-mcp-session.mjs <codex-cli.js> <exe> <output-directory> <model> normal high 4 full default
+node scripts/benchmark-mcp-session.mjs <codex-cli.js> <exe> <other-output-directory> <model> normal high 4 direct-only default
+```
+
+Use `direct` instead of `normal` to test the explicit prompt. Only use the optional `alternating` tier mode when additional-usage comparisons are intended; seven turns provide one standard warm-up and three turns per tier. The harness explicitly resets exposure in both groups, does not modify global configuration, rejects unexpected approval/input requests, verifies ephemeral conversation ownership and preserves evidence of wrong calls as failures. The local OTLP collector stores only allowlisted timing/token/tool-name metadata, excluding prompts, arguments and results; local app-server events separately contain the benchmark prompts and status responses. The metadata listener is diagnostic infrastructure, not an MCP transport.
+
+The maintained benchmark passed two standard native turns. After installing the rebuilt executable and the winproc-only client setting, a separate ephemeral Codex run using the actual registration (without a proxy or command/argument overrides) made exactly one successful native status call and returned Live/non-stale. Discovery advertised all 26 tools with the new hints; Recording remained inactive. Focused Rust MCP checks passed 36 tests with one intentionally ignored endpoint test, four CLI tests passed, and the release executable built successfully. The source change is limited to 18 descriptions; names, annotations and schemas are unchanged. The preceding full Rust/Clippy verification remains applicable to the unchanged Rust implementation. Raw controlled evidence and sanitized analysis are retained locally under `notes/mcp-warm-session-20261103/`.
+
+## Agent-facing defaults and natural requests (2026-11-03, Issue #205)
+
+The normal bridge now owns bounded completion, default first-page delivery, exact continuations and final-page cleanup across paged/async interface categories. Immediate getters remain immediate; action identity/revision/idempotency/local-confirmation requirements remain explicit. All 26 tools are retained. `--raw` preserves the previous asynchronous, caller-retained lifecycle, and `retain_capture: true` supports repeated frozen-data inspection. Input descriptions include schema-validated minimal examples for all 26 tools, metric inputs enumerate the existing 39 identifiers, omitted metric targets select the system, and omitted query source selects live or an explicitly supplied log reference. See [ADR 0007](adr/0007-mcp-agent-delivery-defaults.md), which supersedes the opt-in-only decision in ADR 0006.
+
+The audit covered immediate status/host/catalog/control getters; current metrics and history; process/capture pages; all six native capture kinds and image metadata; log listing/loading/closure; condition jobs; and all action starters/operation status. Common delivery changed where there are mechanical lifecycle steps. Semantic targets, history bounds, metric selection and mutation safety fields remain explicit. Loaded logs still require explicit close because later queries depend on them. No TUI collection cadence, Windows collector algorithm, Recording format or metric meaning changed.
+
+Native Codex/Astra-high/Fast tests used identical natural requests without tool names, JSON, wait/read/retention parameters or lifecycle instructions. They requested current system CPU percentage, all distinct open file paths, and Chrome-owned `.log` paths. The external harness retained full tool results; final answers contained counts/partial status. One complete baseline and one complete final-variant session observed:
+
+| Request | Before: MCP calls (rejected calls), total turn | After: MCP calls (rejected calls), total turn |
+| --- | --- | --- |
+| System CPU | 6 (4), 21.81 s | 1 (0), 16.26 s |
+| Distinct file paths | 4 (1), 17.51 s | 1 (0), 9.77 s |
+| Chrome `.log` paths | 3 (0), 17.44 s | 1 (0), 11.28 s |
+
+**CPU timing correction:** the 16.26-second CPU observation also included an HTTP 429 with about five seconds of retry backoff before its only MCP call. It is an observed end-to-end result, not a clean MCP acquisition benchmark. See the CPU latency decomposition below.
+
+The baseline recovered and returned results despite intermediate rejected calls. Its file workflows explicitly released two captures; final-variant workflows needed no release calls. Before/after file captures each returned 2,302 distinct paths and 16 Chrome log paths, matching their listed counts with no continuation. They were explicitly partial captures, not exhaustive access to all OS handles. Automatic cleanup was reported by `capture_retained: false` and independently tested through subsequent invalid-reference and capacity checks.
+
+A repeat final-variant session completed CPU and distinct paths in one error-free call each (14.25 and 9.53 s; the latter returned 2,306 distinct paths with complete pagination). Its third turn made **no MCP call**: the model API returned HTTP 429 and scheduled a retry about 482 seconds later. The 90-second harness ended the session, and further model load tests were stopped. This is an incomplete service-limited trial, not a successful Chrome observation or a collector timeout. Earlier development trials with only schema hints still had argument rejections; these are retained as failed evidence rather than included as successful results.
+
+These small, ordered observations demonstrate reduced client decisions/calls, not a guaranteed speedup. Initial model latency did not improve consistently: the CPU first-call boundary was 4.20 s before and 12.96 s in the complete final-variant session. The interface cannot remove model/service waiting or provider rate limiting. Native tests used the final catalog/delivery behavior; subsequent ownership bookkeeping and cancellation-test hardening were verified by the final SDK/Rust suite, without another model run after the 429.
+
+Reproduce the Python-free managed/raw integration checks against a running test application:
+
+```powershell
+node scripts/test-mcp-managed.mjs <exe> <tui-pid> <sdk-package-directory> <output.json>
+node scripts/test-mcp-typescript-sdk.mjs <exe> <tui-pid> <sdk-package-directory> <raw-output.json>
+node scripts/run-mcp-workflow.mjs <exe> <sdk-package-directory> scripts/mcp-workflows/file-paths.mjs <paths-output.json>
+```
+
+Final validation passed 1,207 Rust tests (11 intentionally ignored), four CLI tests, formatting and all-target/all-feature Clippy with warnings denied. New regressions cover page-chain ownership, consumed-job replay, retention opt-in, selection/cleanup failure, explicit release/log closure, bounded bridge bookkeeping, confirmation behavior, metric-enum parity and all example arguments. The previous timer-racing cancellation mock was made deterministically pending. Release build succeeded after waiting for the benchmark-owned executable lock to clear.
+
+The maintained SDK harness completed 17 groups: cached getters/minimal metrics, process-reference survival after capture cleanup, independent pagination, raw history, Network/Threads/Scheduling/Open Files/modules/image, file-path cleanup, explicit retention, raw ownership, ten successive captures beyond the eight-slot capacity, and another client's responsiveness during a wait. Saved-log listing reported unavailable because no Recording root was configured; no new end-to-end saved-log load or application mutation was performed. Existing Rust log/operation regressions and managed log-closure tests retain that coverage. The independent TypeScript SDK 1.32.2 raw workflow negotiated MCP 2025-11-25 and passed process/metrics/files plus structured/text parity. The simplified path workflow used one MCP call, including cleanup.
+
+The final executable was copied with a backup to the existing registration and checked for matching hashes; Live sampling remained non-stale and Recording inactive. The default lifecycle change is unreleased: retained-result clients must use raw mode or opt into retention. Both READMEs and the canonical MCP contract describe this migration. Local native/SDK evidence is retained under `notes/mcp-warm-session-20261103/`; no Python was executed during this follow-up.
+
+## CPU latency decomposition and model retries (2026-11-03, Issue #205)
+
+Re-audited the CPU observations after the maintainer challenged the 16-second result. **The 16.2558-second observation itself contained HTTP 429 and a scheduled 4.9983-second retry wait**, not just the later aborted Chrome turn. The earlier report did not identify this contamination clearly enough. Its measured phases were 12.9564 seconds from turn submission to the MCP request, **5.8461 ms** inside the MCP call, and 3.2936 seconds after the MCP reply until the final answer. The retry wait is part of the first interval, not an additional duration to sum. Another CPU observation without a logged retry took 14.2496 seconds: 9.0699 before MCP, 4.2146 ms in MCP, and 5.1755 after MCP. These are existing published-sample reads, not forced new CPU sampling.
+
+The native session benchmark now supports the optional final query argument `cpu` (default remains `status`), checks the actual live-system CPU value and tool name, and records before/in/after-MCP intervals separately. Explicit `fast` tier and alternating `high`/`low` effort are available for controlled tests. Each benchmark isolates its configured MCP server map to WinProc, retaining all 26 WinProc tools; this test-only context change is not applied to the user's general MCP configuration. It is an additional difference from the earlier multi-server measurements.
+
+The installed CLI rejects overrides of the reserved built-in `openai` provider, so provider retry settings are not changed. Instead the harness detects HTTP 429 on stderr, interrupts that exact measurement turn and retains its failed evidence, then stops further turns. Rate events are matched by turn ID as well as timestamps to avoid clock-boundary omissions. This guard was exercised: an Astra request hit 429 before any MCP call, scheduled about 270 seconds of retry delay, and was interrupted after about 197 ms. It is excluded from successful latency statistics. A read-only usage snapshot did not report an exhausted quota, but it cannot explain or rule out other throttling; no further burst on that model was attempted.
+
+The same natural CPU request, all 26 direct tools, Astra and Fast produced five successful fresh reads before that interruption. One initial low-effort warm-up took 6.880 seconds. Subsequent alternating observations were:
+
+| Effort | Complete turn times | Before-MCP times | In-MCP times |
+| --- | --- | --- | --- |
+| High, n=2 | 7.105, 4.803 s | 3.357, 2.362 s | 1.078, 0.657 ms |
+| Low, n=2 | 5.659, 7.244 s | 3.232, 4.078 s | 0.661, 0.674 ms |
+
+Lower effort did not demonstrate a stable benefit in this small sample. A separate Luna/low/Fast session with the identical natural request and MCP exposure succeeded twice, using exactly one correct metrics call per turn: first-turn completion 4.033 s (2.270 before MCP, 3.706 ms in MCP, 1.760 after), then 2.705 s (1.379 before, 1.722 ms in MCP, 1.324 after). Telemetry confirmed priority service for both model trials. These small, ordered observations support investigating a lightweight model for fixed reads, not changing the general development model automatically or claiming a guaranteed latency bound. No global model, effort or service-tier preference was changed.
+
+Added `scripts/mcp-workflows/cpu.mjs` for the current caller to read CPU through the existing MCP connection path without starting another Codex/model session. It performs one metrics call and returns the value, sample timestamp/age, stale flag, status and warnings; unavailable values remain explicit. A fresh process using the maintained workflow runner completed connect/discovery/workflow in 77.18 ms; a PowerShell stopwatch around the **whole Node command** measured 296.77 ms with the TUI already running. This excludes the existing assistant's natural-language interpretation and final answer generation, so it is not a subsecond natural-language result. It is a programmatic MCP execution path with no Python, shell-based CPU collector or extra model request.
+
+Reproduction:
+
+```powershell
+node scripts/run-mcp-workflow.mjs <exe> <sdk-package-directory> scripts/mcp-workflows/cpu.mjs <cpu-output.json>
+node scripts/benchmark-mcp-session.mjs <codex-cli.js> <exe> <astra-output-directory> gpt-6-astra normal alternating 7 direct-only fast cpu
+node scripts/benchmark-mcp-session.mjs <codex-cli.js> <exe> <luna-output-directory> gpt-6-luna normal low 2 direct-only fast cpu
+```
+
+The first command needs no model invocation. Native comparisons consume model usage; the harness stops on a rejected/rate-limited sample. Two initial harness configurations were rejected before initialization, so they made no model calls and are not latency observations. Final JavaScript syntax/diff checks, live MCP workflow execution, native CPU correctness and the rate-interruption path were verified. Rust implementation and runtime binary are unchanged from the preceding 1,207-test verification. Detailed local phase evidence is retained under `notes/mcp-warm-session-20261103/` in the CPU audit/clean-analysis files and their source traces.
