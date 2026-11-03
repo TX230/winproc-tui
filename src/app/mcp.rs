@@ -11,6 +11,8 @@ use std::{collections::HashMap, sync::Arc};
 pub(crate) struct ControlState {
     pub operations: operations::Shared,
     fingerprint: Value,
+    pub(super) csv: Option<super::mcp_graphs::PendingCsv>,
+    pub(super) display_generation: u64,
     revision: u64,
     epoch: Option<String>,
     profile_ids: HashMap<String, String>,
@@ -38,6 +40,7 @@ impl App {
             control: self.mcp_control(),
             log_root: self.recording_last_dir.clone(),
             host: serde_json::json!({"windows_version":self.system_info_host.windows_version,"windows_build":self.system_info_host.windows_build,"architecture":self.system_info_host.architecture,"cpu_name":self.snapshot.cpu_name,"cpu_topology":self.snapshot.cpu_topology,"cpu_cache":self.snapshot.cpu_cache,"total_memory_bytes":self.snapshot.total_memory.to_string()}),
+            graph_targets: self.mcp_graph_targets(),
             activity: match self.activity() {
                 AppActivity::Live => "live",
                 AppActivity::Recording => "recording",
@@ -47,8 +50,8 @@ impl App {
         }
     }
     pub(crate) fn poll_mcp(&mut self) -> bool {
+        let mut action_changed = self.poll_mcp_csv();
         self.refresh_mcp_control();
-        let mut action_changed = false;
         if let Some((action, _)) = &self.mcp_state.confirmation {
             let active = self.mcp_state.operations.lock().unwrap().active.clone();
             if active.as_deref() != Some(&action.id)
@@ -82,6 +85,8 @@ impl App {
                     operations.confirming(&action.id, description);
                     self.mcp_state.confirmation_scroll = 0;
                     self.mcp_state.confirmation = Some((action, description.into()));
+                } else if result["csv_pending"] == true {
+                    operations.running(&action.id);
                 } else {
                     operations.finish(&action.id, result);
                 }
@@ -147,11 +152,11 @@ impl App {
 }
 
 impl App {
-    fn refresh_mcp_control(&mut self) {
+    pub(super) fn refresh_mcp_control(&mut self) {
         self.mcp_state
             .epoch
             .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
-        let fingerprint = json!({"names":self.watch_list,"profiles":self.runtime.saved_investigation_profiles,"active":self.active_investigation_profile,"dotnet_generation":self.sampling_worker.dotnet.generation(),"dotnet_authorized":({let mut ids:Vec<_>=self.snapshot.processes.iter().map(crate::model::ProcessIdentity::from_row).filter(|id|self.sampling_worker.dotnet.allows(id)).map(|id|format!("{}:{:?}",id.pid,id.start_time)).collect();ids.sort();ids})});
+        let fingerprint = json!({"graphs":self.mcp_graph_fingerprint(),"names":self.watch_list,"profiles":self.runtime.saved_investigation_profiles,"active":self.active_investigation_profile,"dotnet_generation":self.sampling_worker.dotnet.generation(),"dotnet_authorized":({let mut ids:Vec<_>=self.snapshot.processes.iter().map(crate::model::ProcessIdentity::from_row).filter(|id|self.sampling_worker.dotnet.allows(id)).map(|id|format!("{}:{:?}",id.pid,id.start_time)).collect();ids.sort();ids})});
         if fingerprint != self.mcp_state.fingerprint {
             self.mcp_state.revision += 1;
             self.mcp_state.fingerprint = fingerprint;
@@ -177,7 +182,7 @@ impl App {
             self.mcp_state.recording_key = key;
         }
     }
-    fn mcp_revision(&self) -> String {
+    pub(super) fn mcp_revision(&self) -> String {
         format!(
             "{}:{}",
             self.mcp_state.epoch.as_deref().unwrap_or("initial"),
@@ -194,7 +199,7 @@ impl App {
             let state=if control.target_stopping(&id){"stopping"}else if control.is_collecting(&id){"collecting"}else if control.allows(&id){"waiting"}else if detail.starts_with("Unavailable"){"unavailable"}else{"disabled"};
             json!({"pid":id.pid,"start_time":id.start_time,"enabled":control.allows(&id),"supported":control.supports_metrics(&id),"state":state,"detail":detail,"revision":revision})
         }).collect();
-        json!({"revision":revision,"profiles":profiles,"active_profile":self.active_investigation_profile,"dotnet":dotnet,"recording":{"active":self.recording_session.is_some(),"recording_session_id":self.mcp_state.recording_id,"interval_seconds":self.active_recording_interval_seconds(),"tracked_names":if self.recording_session.is_some(){self.watch_list.clone()}else{vec![]},"output_log_id":self.recording_session.as_ref().map(|s|crate::mcp::backend::log_id(&s.path)),"output_configured":self.recording_last_dir.is_some()}})
+        json!({"graphs":self.mcp_graph_state(),"revision":revision,"profiles":profiles,"active_profile":self.active_investigation_profile,"dotnet":dotnet,"recording":{"active":self.recording_session.is_some(),"recording_session_id":self.mcp_state.recording_id,"interval_seconds":self.active_recording_interval_seconds(),"tracked_names":if self.recording_session.is_some(){self.watch_list.clone()}else{vec![]},"output_log_id":self.recording_session.as_ref().map(|s|crate::mcp::backend::log_id(&s.path)),"output_configured":self.recording_last_dir.is_some()}})
     }
     pub(crate) fn resolve_mcp_confirmation(&mut self, accepted: bool) {
         let Some((action, _)) = self.mcp_state.confirmation.take() else {
@@ -222,6 +227,10 @@ impl App {
         }
         let args = &action.args;
         if action.method != "winproc_stop_recording"
+            && (!matches!(
+                action.method.as_str(),
+                "winproc_add_graphs" | "winproc_export_graphs"
+            ) || args.get("expected_revision").is_some())
             && args["expected_revision"].as_str() != Some(&self.mcp_revision())
         {
             return error(
@@ -254,6 +263,7 @@ impl App {
             );
         }
         match action.method.as_str() {
+            "winproc_add_graphs" | "winproc_export_graphs" => self.apply_mcp_graph_action(action),
             "winproc_update_tracking" => {
                 let name = args["process_name"]
                     .as_str()

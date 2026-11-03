@@ -7,6 +7,11 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+#[derive(Clone, Default)]
+pub(crate) struct GraphTargets {
+    pub identities: HashMap<String, ProcessIdentity>,
+    pub revision: Option<String>,
+}
 #[derive(Clone)]
 pub(crate) struct Action {
     pub id: String,
@@ -15,6 +20,7 @@ pub(crate) struct Action {
     pub args: Value,
     pub identity: Option<ProcessIdentity>,
     pub created: Instant,
+    pub graph: GraphTargets,
 }
 struct Entry {
     signature: Value,
@@ -73,8 +79,33 @@ impl Operations {
             args: args.clone(),
             identity,
             created: Instant::now(),
+            graph: GraphTargets::default(),
         });
         result
+    }
+    pub fn submit_graph(
+        &mut self,
+        connection: &str,
+        method: &str,
+        args: &Value,
+        graph: GraphTargets,
+    ) -> Value {
+        let id = args["operation_id"].as_str().unwrap();
+        let fresh = !self.entries.contains_key(id);
+        let result = self.submit(connection, method, args, None);
+        if fresh
+            && let Some(action) = self.pending.as_mut()
+            && action.id == id
+        {
+            action.graph = graph;
+        }
+        result
+    }
+    pub fn running(&mut self, id: &str) {
+        if let Some(entry) = self.entries.get_mut(id) {
+            entry.result = json!({"operation_id":id,"state":"running"});
+        }
+        self.pending = None;
     }
     pub fn get(&self, id: &str) -> Value {
         self.entries
@@ -127,7 +158,9 @@ impl Operations {
 pub(crate) fn is_action(method: &str) -> bool {
     matches!(
         method,
-        "winproc_update_tracking"
+        "winproc_add_graphs"
+            | "winproc_export_graphs"
+            | "winproc_update_tracking"
             | "winproc_update_profile"
             | "winproc_start_recording"
             | "winproc_stop_recording"

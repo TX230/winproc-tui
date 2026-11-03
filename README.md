@@ -192,7 +192,7 @@ Connections are enabled by default. Settings → **Disable MCP connections** dis
 
 The default bridge waits briefly for results and releases temporary captures after their final page. It supplies a continuation when more work remains. Clients that manage asynchronous jobs and capture lifetimes explicitly can use `winproc-tui mcp-bridge --raw`.
 
-Use `tools/list` to discover the 26 implemented tools: metrics/history, process and file investigation, tracking/profiles, Recording, independent saved-log analysis, explicit .NET control, and condition waits. Configure the Recording directory locally before using Recording/log tools; required approvals appear in the TUI. See the [specification](docs/mcp-integration-specification.md) and [verification results](docs/mcp-system-testing.md).
+Use `tools/list` to discover the 29 implemented tools: metrics/history, process and file investigation, tracking/profiles, Recording, independent saved-log analysis, explicit .NET control, condition waits, and Graph-slot/CSV actions. Add requested system/process metrics to Graph slots and export all registered Graphs to a selected directory, optionally in one call. Configure the Recording directory locally before using Recording/log tools; required approvals appear in the TUI. See the [specification](docs/mcp-integration-specification.md) and [verification results](docs/mcp-system-testing.md).
 
 ## Requirements
 

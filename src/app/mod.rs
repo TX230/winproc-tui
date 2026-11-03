@@ -12,6 +12,7 @@ pub(crate) mod help;
 pub(crate) mod log_format;
 pub(crate) mod logs;
 pub(crate) mod mcp;
+mod mcp_graphs;
 pub(crate) mod navigation;
 pub(crate) mod network;
 pub(crate) mod open_files;

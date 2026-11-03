@@ -43,6 +43,17 @@ The active Graph determines which series the shared Samples inspector displays. 
 
 Changing a Graph's display mode affects only that entry. Reordering and resize preserve the mode with its `GraphId`; removing the entry removes its mode. The active Graph, selected time, visible range, live-follow state, and A/B timestamps do not change when a mode button is used, including when the button belongs to an inactive card.
 
+### MCP Graph actions
+
+MCP exposes the same session-local ordered workspace through `winproc_get_graphs`, `winproc_add_graphs` and `winproc_export_graphs`. Discovery reports stable run-scoped Graph IDs, active ID, visibility, modes, metric identifiers, revision and displayed source/time. Optional process discovery includes identities from the displayed snapshot and retained history, with explicit truncation and encoded-response limits. Its references are connection-local and revision-bound; start times use decimal strings. Existing GPU Graphs are described and exported, while MCP additions currently accept system and process metric IDs.
+
+Adding metrics appends unique sources in request order, ignoring duplicates without replacing existing Graphs. Validate the whole batch and the 16-source capacity atomically. Preserve existing IDs, order, modes, active selection, focus, visibility, shared time, follow state and A/B points; an empty workspace selects its first added Graph. Adding a Graph neither changes tracking/history retention nor starts collection or Recording. Process additions require a verified full identity present in the displayed snapshot or retained history. A reused PID never substitutes another lifetime.
+
+Export optionally appends metrics and snapshots all registered Graphs in the same action. It accepts a destination directory, optional single `.csv` filename and `all` (default), `visible` or inclusive `ab` range. Relative directories resolve against the TUI working directory; an omitted filename gets a unique name. Return the absolute path, row count and accepted workspace/source metadata. Use the existing displayed-history snapshot and background CSV writer, including exact raw values for MA5 Graphs, empty missing cells, timestamp union and workspace ordering. CSV output does not require a configured Recording directory.
+
+Invalid arguments, unavailable ranges or worker-start failure leave entries unchanged; IDs reserved during a rejected attempt remain unused. Once accepted, writing and its result belong to the application and continue after the requesting connection closes or MCP is disabled. An I/O failure retains additions and any partial file; an existing destination is never overwritten. The shared MCP mutation slot remains reserved until completion, but getters and human interaction remain available. This is in-memory work, not an export queue surviving application exit. See [MCP action semantics](mcp-integration-specification.md#graph-workspace-and-csv-export) and [ADR 0008](adr/0008-mcp-graph-actions-and-csv-export.md).
+
+
 ## Time Selection and A/B Comparison
 
 Navigation may select a nearby useful timestamp, but a Graph displays a value only when that series has a sample at the exact selected `captured_at`. Another Graph's nearby sample must never be presented as synchronized data.

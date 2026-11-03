@@ -170,7 +170,7 @@ def run(exe, output, phase, pid=None):
             calls = build_launcher_fixture(fixture)
             b = bridge()
             def discovery():
-                assert len(b.call("tools/list", {})["tools"]) == 26
+                assert len(b.call("tools/list", {})["tools"]) == 29
                 b.tool("get_status", {"unexpected": True}, error="INVALID_ARGUMENT")
                 b.call("ping", {})
                 assert not present(INSTANCE) and not present(LAUNCH)

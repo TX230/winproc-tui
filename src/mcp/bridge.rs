@@ -54,7 +54,7 @@ impl ServerHandler for Bridge {
         if !catalog::available(&request.name) {
             return Err(ErrorData::invalid_params("Unknown tool", None));
         }
-        let arguments = Value::Object(request.arguments.unwrap_or_default());
+        let mut arguments = Value::Object(request.arguments.unwrap_or_default());
         match catalog::validate(&request.name, &arguments) {
             None => return Err(ErrorData::invalid_params("Unknown tool", None)),
             Some(false) => {
@@ -66,6 +66,8 @@ impl ServerHandler for Bridge {
             }
             Some(true) => {}
         }
+        catalog::apply_defaults(&request.name, &mut arguments);
+        let operation_id = arguments.get("operation_id").cloned();
         let mut client = match self.client.try_lock() {
             Ok(client) => client,
             Err(_) => {
@@ -118,11 +120,15 @@ impl ServerHandler for Bridge {
             Ok(value) => value,
             Err(()) => {
                 *client = None; // Drop the stream: never replay an uncertain mutation.
-                error(
+                let mut failure = error(
                     "OUTCOME_UNKNOWN",
                     "Connection closed or request cancelled; inspect operation status before submitting a new mutation",
                     false,
-                )
+                );
+                if let Some(id) = operation_id {
+                    failure["error"]["operation_id"] = id;
+                }
+                failure
             }
         };
         let result = if value.get("error").is_some() {

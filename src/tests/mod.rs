@@ -37,6 +37,7 @@ mod tracking_history;
 mod graph_csv;
 
 mod mcp_actions;
+mod mcp_graphs;
 
 mod descendant_tracking;
 

@@ -118,6 +118,11 @@ pub(crate) fn apply_defaults(method: &str, args: &mut Value) {
     if !args.is_object() {
         return;
     }
+    if matches!(method, "winproc_add_graphs" | "winproc_export_graphs")
+        && args.get("operation_id").is_none()
+    {
+        args["operation_id"] = json!(uuid::Uuid::new_v4().to_string());
+    }
     if matches!(
         method,
         "winproc_list_processes" | "winproc_get_metrics" | "winproc_get_history"
@@ -137,7 +142,10 @@ pub(crate) fn apply_defaults(method: &str, args: &mut Value) {
 pub(crate) fn available(name: &str) -> bool {
     matches!(
         name,
-        "winproc_get_status"
+        "winproc_get_graphs"
+            | "winproc_add_graphs"
+            | "winproc_export_graphs"
+            | "winproc_get_status"
             | "winproc_get_system_info"
             | "winproc_list_metrics"
             | "winproc_list_processes"
@@ -266,8 +274,45 @@ mod tests {
     }
 
     #[test]
+    fn graph_actions_validate_minimal_calls_without_weakening_existing_guards() {
+        let args = json!({"metrics":[{"metric_id":"committed_bytes"}]});
+        assert_eq!(validate("winproc_add_graphs", &args), Some(true));
+        assert_eq!(
+            validate("winproc_add_graphs", &json!({"metrics":[]})),
+            Some(false)
+        );
+        assert_eq!(
+            validate(
+                "winproc_add_graphs",
+                &json!({"metrics":[{"metric_id":"invented"}]})
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            validate("winproc_export_graphs", &json!({"output_directory":"csv"})),
+            Some(true)
+        );
+        assert_eq!(
+            validate(
+                "winproc_export_graphs",
+                &json!({"output_directory":"csv","range":"selected"})
+            ),
+            Some(false)
+        );
+        let mut generated = args.clone();
+        apply_defaults("winproc_add_graphs", &mut generated);
+        let id = generated["operation_id"].as_str().unwrap().to_string();
+        assert!(uuid::Uuid::parse_str(&id).is_ok());
+        apply_defaults("winproc_add_graphs", &mut generated);
+        assert_eq!(generated["operation_id"], id);
+        let mut old = json!({"action":"add","process_name":"x.exe"});
+        apply_defaults("winproc_update_tracking", &mut old);
+        assert!(old.get("operation_id").is_none());
+        assert_eq!(validate("winproc_update_tracking", &old), Some(false));
+    }
+    #[test]
     fn catalog_rejects_unknown_fields_and_enforces_source_and_identity() {
-        assert_eq!(TOOLS.len(), 26);
+        assert_eq!(TOOLS.len(), 29);
         assert_eq!(available_tools().len(), TOOLS.len());
         for tool in TOOLS.iter() {
             assert_eq!(
@@ -395,8 +440,8 @@ mod tests {
         assert_eq!(error["error"]["expected"], json!(["metric_ids"]));
         let raw = tools_for_client(true);
         let ready = tools_for_client(false);
-        assert_eq!(raw.len(), 26);
-        assert_eq!(ready.len(), 26);
+        assert_eq!(raw.len(), 29);
+        assert_eq!(ready.len(), 29);
         for (raw, ready) in raw.iter().zip(&ready) {
             if ready.input_schema["properties"].get("wait_ms").is_some() {
                 assert_eq!(ready.input_schema["properties"]["wait_ms"]["default"], 5000);

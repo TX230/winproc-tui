@@ -1,6 +1,6 @@
 # 0007: Agent-facing MCP delivery defaults
 
-- Status: Accepted
+- Status: Superseded by [ADR 0008](0008-mcp-graph-actions-and-csv-export.md), which retains these delivery defaults and adds the Graph-action exception
 - Date: 2026-11-03
 - Supersedes: [ADR 0006](0006-mcp-bounded-completion.md)
 - Related: [Issue #205](https://github.com/TX230/winproc-tui/issues/205)

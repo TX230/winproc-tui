@@ -1769,5 +1769,260 @@
       "idempotentHint": false,
       "openWorldHint": true
     }
+  },
+  {
+    "name": "winproc_get_graphs",
+    "description": "Read the current TUI Graph workspace, revision, supported metric IDs and CSV ranges. Optional include_processes:true or process_name returns process references from the displayed Live, paused or Log history. Does not change focus or state. Example arguments: {}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_processes": {
+          "type": "boolean",
+          "default": false
+        },
+        "process_name": {
+          "type": "string",
+          "maxLength": 260,
+          "description": "Case-insensitive executable-name substring; implies include_processes."
+        },
+        "target_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000,
+          "default": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_add_graphs",
+    "description": "Required arguments: metrics. Append system/process metrics to the TUI Graph slots, retaining existing sources/order and shared display state. Duplicates are ignored; at most 16 unique slots. Process targets require actual get_graphs or live list_processes references. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"metrics\":[{\"metric_id\":\"cpu_average_percent\"},{\"metric_id\":\"committed_bytes\"}]}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "description": "Sources to append, preserving existing Graphs. Omit process_ref for a system metric; use an actual process reference for a process metric.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "metric_id": {
+                "type": "string",
+                "enum": [
+                  "cpu_average_percent",
+                  "physical_memory_bytes",
+                  "modified_memory_bytes",
+                  "standby_memory_bytes",
+                  "free_zeroed_memory_bytes",
+                  "committed_bytes",
+                  "paged_pool_bytes",
+                  "nonpaged_pool_bytes",
+                  "pages_input_per_sec",
+                  "pages_output_per_sec",
+                  "thread_count",
+                  "process_count",
+                  "network_received_bytes_per_sec",
+                  "network_sent_bytes_per_sec",
+                  "disk_read_bytes_per_sec",
+                  "disk_write_bytes_per_sec",
+                  "disk_queue_length",
+                  "cpu_percent",
+                  "private_bytes",
+                  "workset_bytes",
+                  "workset_private_bytes",
+                  "workset_shareable_bytes",
+                  "handle_count",
+                  "user_object_count",
+                  "gdi_object_count",
+                  "gpu_percent",
+                  "dotnet_heap_bytes",
+                  "dotnet_gc_gen0_heap_bytes",
+                  "dotnet_gc_gen1_heap_bytes",
+                  "dotnet_gc_gen2_heap_bytes",
+                  "dotnet_gc_loh_bytes",
+                  "dotnet_gc_poh_bytes",
+                  "dotnet_gc_committed_bytes",
+                  "dotnet_gc_fragmentation_bytes",
+                  "dotnet_allocation_bytes_per_sec",
+                  "gpu_dedicated_bytes",
+                  "gpu_shared_bytes",
+                  "io_read_bytes_per_sec",
+                  "io_write_bytes_per_sec"
+                ]
+              },
+              "process_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "metric_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Optional unique request ID. Generated when omitted; reuse an explicit ID and identical arguments for safe retries."
+        },
+        "expected_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Optional revision from get_graphs; reject concurrent workspace edits when supplied."
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "winproc_export_graphs",
+    "description": "Required arguments: output_directory. Export ALL registered Graphs as raw CSV in workspace order. Optional metrics appends requested sources before exporting in this single call. Creates missing directories, never overwrites files, returns actual output_path and rows. Uses displayed Live, paused or TUI Log data; range is all (default), visible or inclusive ab. Optional filename is a single .csv name. Waits up to 5 seconds by default; use wait_ms:0 for an immediate handle. Example arguments: {\"metrics\":[{\"metric_id\":\"cpu_average_percent\"},{\"metric_id\":\"committed_bytes\"}],\"output_directory\":\"C:\\\\Temp\\\\winproc-csv\"}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "description": "Sources to append, preserving existing Graphs. Omit process_ref for a system metric; use an actual process reference for a process metric.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "metric_id": {
+                "type": "string",
+                "enum": [
+                  "cpu_average_percent",
+                  "physical_memory_bytes",
+                  "modified_memory_bytes",
+                  "standby_memory_bytes",
+                  "free_zeroed_memory_bytes",
+                  "committed_bytes",
+                  "paged_pool_bytes",
+                  "nonpaged_pool_bytes",
+                  "pages_input_per_sec",
+                  "pages_output_per_sec",
+                  "thread_count",
+                  "process_count",
+                  "network_received_bytes_per_sec",
+                  "network_sent_bytes_per_sec",
+                  "disk_read_bytes_per_sec",
+                  "disk_write_bytes_per_sec",
+                  "disk_queue_length",
+                  "cpu_percent",
+                  "private_bytes",
+                  "workset_bytes",
+                  "workset_private_bytes",
+                  "workset_shareable_bytes",
+                  "handle_count",
+                  "user_object_count",
+                  "gdi_object_count",
+                  "gpu_percent",
+                  "dotnet_heap_bytes",
+                  "dotnet_gc_gen0_heap_bytes",
+                  "dotnet_gc_gen1_heap_bytes",
+                  "dotnet_gc_gen2_heap_bytes",
+                  "dotnet_gc_loh_bytes",
+                  "dotnet_gc_poh_bytes",
+                  "dotnet_gc_committed_bytes",
+                  "dotnet_gc_fragmentation_bytes",
+                  "dotnet_allocation_bytes_per_sec",
+                  "gpu_dedicated_bytes",
+                  "gpu_shared_bytes",
+                  "io_read_bytes_per_sec",
+                  "io_write_bytes_per_sec"
+                ]
+              },
+              "process_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "metric_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Optional unique request ID. Generated when omitted; reuse an explicit ID and identical arguments for safe retries."
+        },
+        "expected_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Optional revision from get_graphs; reject concurrent workspace edits when supplied."
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait budget in milliseconds; default 5000. Use 0 for an immediate job/operation handle.",
+          "default": 5000
+        },
+        "output_directory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32700,
+          "description": "Destination directory, absolute or relative to the TUI working directory. Missing parents are created."
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Optional single .csv filename. Default is a unique graphs-<UUID>.csv."
+        },
+        "range": {
+          "enum": [
+            "all",
+            "visible",
+            "ab"
+          ],
+          "default": "all"
+        }
+      },
+      "required": [
+        "output_directory"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
   }
 ]

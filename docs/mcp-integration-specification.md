@@ -1,16 +1,16 @@
 # WinProc MCP Integration Specification
 
-Status: all 26 tool adapters implemented with local system verification under [Issue #202](https://github.com/TX230/winproc-tui/issues/202); not a released compatibility promise.
-Date: 2026-11-01.
+Status: all 29 tool adapters implemented with local system verification under [Issue #202](https://github.com/TX230/winproc-tui/issues/202) and [Issue #206](https://github.com/TX230/winproc-tui/issues/206); not a released compatibility promise.
+Date: 2026-11-03.
 Scope: Windows 11 x64, winproc-tui, local MCP access through a stdio bridge and a named pipe.
 
 ## 1. Purpose and scope
 
 The maintainer requires metrics retrieval, file investigation, compatibility with general MCP clients, and no TCP/IP transport for MCP communication, including the bridge-to-backend connection. This integration uses a small stdio bridge so ordinary stdio-capable MCP clients do not need a custom transport.
 
-This document describes the current MCP implementation: client connection, the bridge, the application endpoint, exposed tools, state transitions, and interface limitations. It is a functional and interface specification, not a development plan. The bridge advertises all 26 adapters implemented under Issue #202. Section 12 lists release-verification criteria, not a claim that every check has passed. Observed results and remaining coverage are recorded in [MCP system testing](mcp-system-testing.md).
+This document describes the current MCP implementation: client connection, the bridge, the application endpoint, exposed tools, state transitions, and interface limitations. It is a functional and interface specification, not a development plan. The bridge advertises all 29 adapters, including Graph/CSV actions under Issue #206. Section 12 lists release-verification criteria, not a claim that every check has passed. Observed results and remaining coverage are recorded in [MCP system testing](mcp-system-testing.md).
 
-MCP is available by default during normal startup, with a persisted Settings control to disable connections and no activation CLI flag. The implemented feature set includes process and host inspection, metrics and history, file/module/network/thread investigation, tracking and Investigation Profiles, Recording control, saved-log analysis, explicit .NET collection control, and bounded condition waiting. Read and state-changing tools share one contract; their different authorization and lifecycle rules are defined below.
+MCP is available by default during normal startup, with a persisted Settings control to disable connections and no activation CLI flag. The implemented feature set includes process and host inspection, metrics and history, file/module/network/thread investigation, tracking and Investigation Profiles, Recording control, saved-log analysis, explicit .NET collection control, bounded condition waiting, and Graph-slot/CSV actions. Read and state-changing tools share one contract; their different authorization and lifecycle rules are defined below.
 
 Goals:
 
@@ -190,7 +190,7 @@ Long collection uses ordinary start/status/result tools with default bounded bri
 
 ### Bounded completion and first-page retrieval
 
-The normal `mcp-bridge` entry point uses agent-facing delivery defaults across all 26 interfaces. Immediate getters remain immediate. Tools with `wait_ms` wait up to 5,000 ms by default; an explicit `wait_ms: 0` returns an immediate handle. The bridge dispatches the original request once and polls only its job/operation ID, outside the shared application query thread. A budget expiring returns the same running/pending work. Pending local confirmation returns immediately and is never approved, polled automatically or replayed by the bridge.
+The normal `mcp-bridge` entry point uses agent-facing delivery defaults across all 29 interfaces. Immediate getters remain immediate. Tools with `wait_ms` wait up to 5,000 ms by default; an explicit `wait_ms: 0` returns an immediate handle. The bridge dispatches the original request once and polls only its job/operation ID, outside the shared application query thread. A budget expiring returns the same running/pending work. Pending local confirmation returns immediately and is never approved, polled automatically or replayed by the bridge.
 
 Capture-producing starters and `winproc_get_job` read the first page automatically after success, returning its complete envelope under `data.result_page` alongside the existing job outcome. Optional `read` selects rows/fields; it is no longer required to obtain a result. Ordinary paged tools (`list_processes`, raw `get_history`, `read_capture`) use the same delivery lifecycle. The default page size is 5,000, reduced by the encoded message budget; explicit smaller limits remain available. Rows, timestamps, partial status, warnings and coverage retain their existing meanings.
 
@@ -200,11 +200,11 @@ When another step is necessary, `data.next_action` gives the exact `tool` and `a
 
 Use `retain_capture: true` on the initial paged/capture request when repeated filtering or rereading the same data is intended. Retained pages return `retained_capture_ids`; callers release these explicitly. Their continuations preserve retention. Ordinary managed results are single-consumer streams; retaining captures is the supported route for independent views of the same frozen source. Cleanup transport failure closes the connection, invoking the existing connection-owned cleanup; there is no automatic replay. Bridge continuation bookkeeping expires after five minutes and remains bounded by the application's capture/job capacities.
 
-For advanced clients requiring the earlier asynchronous and caller-owned result lifecycle, start `winproc-tui.exe mcp-bridge --raw`. Raw mode defaults to `wait_ms: 0`, requires explicit `read` for inline results, uses a 100-row default page and keeps captures until explicit release/expiry/disconnect. It advertises these defaults in its tool catalog and does not add managed continuation metadata. All 26 tools and their explicit wait/read controls remain available in both modes. Existing clients that depend on retaining results must select raw mode or explicitly opt into retention with the normal bridge.
+For advanced clients requiring the earlier asynchronous and caller-owned result lifecycle, start `winproc-tui.exe mcp-bridge --raw`. Raw mode defaults to `wait_ms: 0`, requires explicit `read` for inline results, uses a 100-row default page and keeps captures until explicit release/expiry/disconnect. It advertises these defaults in its tool catalog and does not add managed continuation metadata. All 29 tools and their explicit wait/read controls remain available in both modes. Existing clients that depend on retaining results must select raw mode or explicitly opt into retention with the normal bridge.
 
 For example, a normal call `winproc_start_capture({kind:"file_users",read:{projection:["path"],distinct_paths:true}})` returns a useful path page, normally in one call with cleanup included. For Chrome logs, use `read:{owner_name:"chrome.exe",extension:".log",projection:["path"]}`. Follow `next_action` only when present. A preliminary status call is unnecessary unless status itself is needed. No extra scan starts when continuing pages.
 
-Bridge completion shares the existing ten-second request/cancellation envelope. The wait budget covers polling; result reading and cleanup run inside the outer deadline. Cancellation still closes the connection, invalidates connection-owned references and cancels jobs. Accepted application operations retain their existing ownership and unknown-outcome rules. Bridge delivery options are removed before native dispatch and do not change operation idempotency signatures. Required action, identity, revision, operation-ID and recording-session fields remain explicit; delivery defaults do not infer authorization.
+Bridge completion shares the existing ten-second request/cancellation envelope. The wait budget covers polling; result reading and cleanup run inside the outer deadline. Cancellation still closes the connection, invalidates connection-owned references and cancels jobs. Accepted application operations retain their existing ownership and unknown-outcome rules. Bridge delivery options are removed before native dispatch and do not change operation idempotency signatures. Existing required action, identity, revision, operation-ID and recording-session fields remain explicit; delivery defaults do not infer authorization. The new additive Graph/export actions have the optional generated-ID and current-workspace revision semantics defined in section 10.
 
 
 ### Discovery versus client-side tool generation
@@ -217,7 +217,7 @@ The passive scripts/trace-mcp-stdio.mjs proxy records request names, message siz
 
 ### Codex direct tool exposure
 
-For Codex clients that support `omit_tools_from`, the following optional server setting keeps all 26 tools directly callable while removing the same tools from deferred search and Code Mode:
+For Codex clients that support `omit_tools_from`, the following optional server setting keeps all 29 tools directly callable while removing the same tools from deferred search and Code Mode:
 
 ```toml
 [mcp_servers.winproc]
@@ -344,6 +344,9 @@ The following interfaces complete the investigation workflow. State-changing req
 
 | Tool | Essential inputs | Result and behavior |
 |---|---|---|
+| `winproc_get_graphs` | optional process-name filter / include_processes | Displayed Graph workspace, revision, stable IDs, supported metrics, export ranges and optional displayed-process references. |
+| `winproc_add_graphs` | metrics | Atomically appends unique sources, preserving existing Graph/display state. |
+| `winproc_export_graphs` | output_directory; optional metrics / filename / range | Optionally adds metrics and exports all registered Graphs through the existing background CSV writer. |
 | `winproc_get_tracking` | none | Current working process names, investigation revision, and matching live identities; `winproc_list_profiles` supplies the active profile binding. |
 | `winproc_update_tracking` | `action` (add/remove), `process_name` or `process_ref`, operation fields | Changes one name in the working Tracking List, returning the resulting revision and affected scope; no implicit profile save. |
 | `winproc_list_profiles` | none | Saved Investigation Profiles, profile references, revisions, and their tracked names. |
@@ -357,7 +360,7 @@ The following interfaces complete the investigation workflow. State-changing req
 | `winproc_get_dotnet_collection` | `process_ref` | Runtime support (`supported`), authorization (`enabled`), collection revision, disabled/waiting/collecting/stopping/unavailable state, and safe diagnostic detail. This getter does not return a runtime-family classification or a separate collection-freshness field. |
 | `winproc_set_dotnet_collection` | `process_ref`, `enabled`, operation fields | Explicit per-lifetime collection change; tracking and metric queries do not grant permission. |
 | `winproc_wait_condition` | condition, target, `timeout_ms` | Starts a bounded job for process appearance, verified exit, or a metric threshold; returns observed evidence or timeout. |
-| `winproc_get_operation` | `operation_id` | Application-owned action state (`pending`, `pending_confirmation`, `succeeded`, or `failed`) and outcome. |
+| `winproc_get_operation` | `operation_id` | Application-owned action state (`pending`, `running`, `pending_confirmation`, `succeeded`, or `failed`) and outcome. |
 
 Example MCP call using the implemented `private_bytes` metric:
 
@@ -447,15 +450,35 @@ An unmodified `read_capture` reads the existing frozen object without allocating
 | Recording start | Explicit authorized call | Reject duplicate start | Reject | Uses current Tracking List |
 | Recording stop | No active session | Confirm exact session | No active session | Recording continues until confirmed stop |
 | Saved-log reads | Yes | Yes | Yes | Independent of displayed data |
+| Graph discovery/addition/CSV export | Yes | Yes | Yes | Uses displayed snapshot/history, including pause; Log additions require displayed-process references |
 | .NET collection control / live condition waits | Yes | Yes | Reject | Uses verified live identity/current samples |
 
-MCP reads do not change focus, selected row, filters, Graphs, A/B positions, active profile, or display pause. Explicit tracking, profile, recording, and .NET actions change their owned application state and are reflected by the TUI without selecting a different process or opening an investigation view. Multiple clients cannot overwrite each other's inspection sessions. Applying results checks connection, backend instance, request/job identity, target lifetime, activity, and state revision as applicable.
+MCP reads do not change focus, selected row, filters, Graphs, A/B positions, active profile, or display pause. Explicit Graph, CSV, tracking, profile, recording, and .NET actions change their owned application state and are reflected by the TUI without selecting a different process or opening an investigation view. Multiple clients cannot overwrite each other's inspection sessions. Applying results checks connection, backend instance, request/job identity, target lifetime, activity, and state revision as applicable.
 
-TUI Log view stores its displayed recording separately from the last Live snapshot. General getters continue to describe application-owned state and cached host information with `source: "live"`; their timestamp and snapshot-derived host fields never come from the displayed recording. Tracking matches likewise refer to the last Live sample, not recorded process rows. Live sampling is suspended in Log view, so these matches are not a fresh OS liveness check; `get_status.activity`, sample age and the original timestamp expose that distinction. Dedicated `source: "log"` queries read independently opened recordings.
+TUI Log view stores its displayed recording separately from the last Live snapshot. General getters continue to describe application-owned state and cached host information with `source: "live"`; their timestamp and snapshot-derived host fields never come from the displayed recording. Tracking matches likewise refer to the last Live sample, not recorded process rows. Live sampling is suspended in Log view, so these matches are not a fresh OS liveness check; `get_status.activity`, sample age and the original timestamp expose that distinction. Dedicated `source: "log"` queries read independently opened recordings. Graph discovery and CSV outcomes explicitly describe the TUI displayed source instead.
 
 A transition to Log view cancels MCP-owned live investigation and condition-wait jobs and invalidates live capture cursors. No new live work is dispatched in Log view. Pending native work may finish, but results are discarded. Independent saved-log handles remain usable. A published snapshot is copied or shared immutably with bounded lifetimes; collectors never hold the UI state lock during Windows calls.
 
 ## 10. Investigation and state-changing behavior
+
+### Graph workspace and CSV export
+
+`winproc_get_graphs` reads the TUI workspace and its displayed source, independently of general Live metric getters. `include_processes: true` or a case-insensitive `process_name` substring includes displayed/retained process targets; `target_limit` defaults to 500, maximum 5,000, with total count and explicit truncation. The encoded response budget may reduce the returned count further; narrow the name filter when needed. It does not inspect the OS or open a log. A TUI Log view reports `source: "log"` and the recorded timestamp; paused display reports its frozen timestamp and `display_paused: true`. Independently opened MCP `log_ref` objects do not select the TUI workspace. Graph IDs remain stable across revision changes, but not application restart. Displayed-process reference retention is bounded at 10,000 per connection; exhaustion requires a fresh connection or revision.
+
+`winproc_add_graphs` requires an array of up to 16 `{metric_id, process_ref?}` sources. Omitting `process_ref` selects a system metric. Process references come from Graph discovery, or live process listing for displayed Live/Recording history. They bind full process lifetimes, including creation time; unavailable identity or history is an explicit failure. Log view requires Graph-discovery references. Displayed-process references also carry the workspace revision, so a pause/activity/log/workspace/range change before acceptance rejects them. New TUI log loads invalidate them even if timestamps match. All sources/capacity validate before additions; duplicates do not consume slots. Existing Graphs and shared display state are preserved as specified in [Graph workspace](graph-workspace.md#mcp-graph-actions).
+
+`winproc_export_graphs` requires `output_directory`; optional `metrics` performs additions and export in this one action. All registered Graphs are exported in order, including existing Graphs. `filename` is an optional single normal `.csv` name; otherwise generate a unique name. Directories may be absolute or relative to the TUI working directory. Missing parents are created on the background worker, normal Windows permissions apply and existing files are never overwritten. `range` is `all` (default), `visible` or `ab` with inclusive chronological bounds. Unsupported range state fails before acceptance. The existing TUI CSV snapshot/writer preserves displayed paused/Log histories, exact raw integers, timestamps, empty missing cells and CSV escaping, independently of Raw/MA5 display mode.
+
+Only these two new actions permit an omitted `operation_id` and `expected_revision`. Generate the ID before dispatch; return it in operation status and in an `OUTCOME_UNKNOWN` error after uncertain dispatch. Supply an explicit ID when a client must retry after losing the entire response. Identical ID/arguments return the retained outcome; different arguments conflict. Never retry uncertain work automatically. A supplied revision rejects intervening edits; omission explicitly accepts appending/exporting the current workspace at application acceptance. Process-reference scope is checked regardless. Existing mutators keep their required IDs/revisions/session guards.
+
+Default bridge completion waits up to five seconds and returns the final operation, or an exact `get_operation` continuation while `pending`/`running`. Before acceptance, disconnect/disable cancels pending work. Once the application snapshots data and starts the CSV worker, writing continues after disconnect/disable and is not affected by later Graph/display edits. The single MCP mutation slot remains occupied until completion, while reads, sampling, Recording and local input continue. Completion returns `output_path`, `range`, `rows` and the accepted `workspace`; write failure returns `EXPORT_FAILED` with that path/workspace retained. Operation envelopes retain the snapshot's source/time even after later activity changes. Validation/snapshot/spawn failure restores entries; accepted write failure keeps requested additions and any partial file. Application exit does not preserve an unfinished export or its ledger. See [ADR 0008](adr/0008-mcp-graph-actions-and-csv-export.md).
+
+For example, one call can append system CPU and commit metrics and export all Graphs:
+
+```json
+{"metrics":[{"metric_id":"cpu_average_percent"},{"metric_id":"committed_bytes"}],"output_directory":"C:\\Temp\\winproc-csv","filename":"metrics.csv"}
+```
+
 
 ### Tracking and Investigation Profiles
 
@@ -503,9 +526,9 @@ Condition waits use a caller-specified deadline and a connection-owned job. Supp
 
 ### Shared action semantics
 
-Revisions are opaque process-instance-prefixed counters. The implementation conservatively shares one revision across investigation, profiles, and collection authorization, so an unrelated edit can require a client to refresh. Profile operations other than `save_as` require both the profile ID and its reported revision. All mutation calls return an operation handle promptly; poll `winproc_get_operation` for completion. Pending confirmation is displayed in a scrollable local overlay. Error codes distinguish a conflict, cancellation, timeout, or execution failure even when the enclosing operation state is `failed`.
+Revisions are opaque process-instance-prefixed counters. The implementation conservatively shares one revision across investigation, profiles, collection authorization and Graph/display-range state, so an unrelated edit can require a client to refresh. Profile operations other than `save_as` require both the profile ID and its reported revision. Native mutation dispatch returns an operation handle promptly; the normal bridge waits up to five seconds and supplies a continuation when needed. Pending confirmation is displayed in a scrollable local overlay. Error codes distinguish a conflict, cancellation, timeout, or execution failure even when the enclosing operation state is `failed`.
 
-Investigation state changes are explicit tool calls, never side effects of reads. Connection establishment can start the normal visible application as described in section 3, including its ordinary startup sampling and persistence lifecycle. Each action carries a unique `operation_id` and an expected revision for the state it changes (investigation/profile/collection), or the exact session ID for recording stop. The backend serializes shared-state changes and checks activity, identity, permissions, and revisions immediately before application. Read operations return the corresponding revisions; profile load/save check both the investigation revision and the selected profile revision, while save_as/rename check destination-name uniqueness. Changes by the TUI or another client invalidate stale requests with `STATE_CONFLICT` rather than silently overwriting state. Recording start also checks the current investigation revision and absence of an active session.
+Investigation state changes are explicit tool calls, never side effects of reads. Connection establishment can start the normal visible application as described in section 3, including its ordinary startup sampling and persistence lifecycle. Except for the additive Graph/export defaults above, each action requires an explicit unique `operation_id` and an expected revision for the state it changes (investigation/profile/collection), or the exact session ID for recording stop. The backend serializes shared-state changes and checks activity, identity, permissions, and revisions immediately before application. Read operations return the corresponding revisions; profile load/save check both the investigation revision and the selected profile revision, while save_as/rename check destination-name uniqueness. Changes by the TUI or another client invalidate stale requests with `STATE_CONFLICT` rather than silently overwriting state. Recording start also checks the current investigation revision and absence of an active session.
 
 The backend enforces applicable local authorization and confirmation requirements. When confirmation is required, return `pending_confirmation` with an immutable action description and let the local TUI record the human decision; do not require client elicitation support or accept an AI-supplied `confirmed: true`. Recheck revisions and target identity after confirmation. Sampling and Recording continue while an action waits. The 60-second confirmation timeout is measured from action submission, not from the first overlay draw, and reports `TIMEOUT`; requesting-client disconnect, MCP disable, or local refusal produces `CANCELLED`. Already accepted application-owned state is not rolled back on disconnect.
 

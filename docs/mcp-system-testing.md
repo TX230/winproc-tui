@@ -358,3 +358,30 @@ node scripts/benchmark-mcp-session.mjs <codex-cli.js> <exe> <luna-output-directo
 ```
 
 The first command needs no model invocation. Native comparisons consume model usage; the harness stops on a rejected/rate-limited sample. Two initial harness configurations were rejected before initialization, so they made no model calls and are not latency observations. Final JavaScript syntax/diff checks, live MCP workflow execution, native CPU correctness and the rate-interruption path were verified. Rust implementation and runtime binary are unchanged from the preceding 1,207-test verification. Detailed local phase evidence is retained under `notes/mcp-warm-session-20261103/` in the CPU audit/clean-analysis files and their source traces.
+
+## Graph-slot and CSV MCP verification (2026-11-03, Issue #206)
+
+Implemented `winproc_get_graphs`, `winproc_add_graphs` and `winproc_export_graphs`, bringing the advertised catalog to 29 tools in managed and raw modes. System/process additions use the existing typed Graph sources; existing GPU Graphs remain discoverable/exportable. Export can append explicitly selected metrics and snapshot all registered Graphs in one action, with a destination directory, optional filename and existing all/visible/A-B ranges. See [ADR 0008](adr/0008-mcp-graph-actions-and-csv-export.md).
+
+Final verification passed **1,220 Rust tests plus four CLI tests**, with 11 intentionally ignored tests. Formatting, all-target/all-feature Clippy with warnings denied and the statically configured Windows x64 release build passed. The 13 added Rust regressions cover append/deduplication/capacity, state preservation, stale revisions, lifetime/display-reference safety, exact CSV parity, paused/Log source provenance, inclusive ranges, validation rollback, create-new collisions/write failure, accepted-write ownership after disconnect/disable, generated-ID defaults, metric-map parity, reference limits and large encoded responses. Discovery builds a reverse reference index once per request rather than scanning the reference map for every process. A 5,000-candidate Unicode-name test verifies deterministic bounded responses and reference reuse.
+
+The official TypeScript MCP SDK 1.32.2 negotiated MCP 2025-11-25 against an isolated, owned test TUI with an empty Graph workspace. No Python was executed. Four native groups passed:
+
+| Group | Observed result |
+|---|---|
+| Combined system add/export | One MCP call added CPU and committed bytes and wrote a three-row CSV into a newly created directory containing spaces and Japanese characters. The tool call took **94.88 ms**; the complete assertion/file-read group took 95.26 ms. |
+| Process Graph append | Added the test TUI's Private Bytes twice in one request; only one new slot appeared, retaining both existing Graph IDs and active selection. |
+| Retry and destination collision | Reusing the original operation ID returned its original snapshot/outcome without writing again. A fresh operation targeting the existing file returned `EXPORT_FAILED`; original bytes remained unchanged. |
+| Raw lifecycle and reconnect | Raw export returned a handle; a later connection could read its successful outcome. This small file had already completed before disconnect, so actual in-progress disconnect/disable survival is covered by the deterministic Rust regression, not claimed from this native observation. |
+
+The CSV's committed-byte cell exactly matched a retained MCP metric value at the same timestamp. UTF-8/LF output, row count and absolute destination were checked. The native timing is one small warm operation, excludes natural-language/model time and is not a latency guarantee for large histories or slow storage. Recording configuration/session state remained unchanged and Live sampling stayed non-stale. A preliminary engineering run of the same combined action also succeeded before final reference-index hardening; its timing is not pooled with the final observation.
+
+The existing managed SDK harness passed all 17 groups with the 29-tool catalog, including process references, independent pagination, metrics/history, image/files/modules/network/threads/scheduling, capture cleanup, retention, raw ownership and capacity recovery. Another client's status read during a bounded wait took 1.64 ms in that run. The independent raw SDK process/metrics/file workflow also passed. No Recording root was configured in the isolated runtime, so saved-log directory availability remained an explicit `INVALID_ARGUMENT`; no new native saved-log load is claimed. Paused/Log CSV behavior and serialization parity were verified by Rust fixtures.
+
+Reproduce against an explicitly owned test TUI with an initially empty Graph workspace:
+
+```powershell
+node scripts/test-mcp-graph-csv.mjs <exe> <tui-pid> <sdk-package-directory> <output-directory>
+```
+
+The harness adds Graphs and creates test CSV files. It refuses to modify a nonempty starting workspace. Local detailed evidence remains in ignored `notes/`; no maintainer-specific path is part of the committed evidence. This is an unreleased local implementation of [Issue #206](https://github.com/TX230/winproc-tui/issues/206), separate from Issue #205's performance commits.

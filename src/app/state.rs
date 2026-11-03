@@ -7717,6 +7717,7 @@ Log load worker stopped",
         self.log_view_watch_list = loaded.tracked_names.clone();
         self.log_view_normalized_watch_names =
             normalized_process_names(&loaded.summary.tracked_names);
+        self.mcp_state.display_generation = self.mcp_state.display_generation.wrapping_add(1);
         self.log_view_display = Some(PausedDisplay {
             snapshot: loaded.snapshot,
             tracking_scope: TrackingScope::default(),

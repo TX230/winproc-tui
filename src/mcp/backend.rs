@@ -26,6 +26,7 @@ pub(crate) struct View {
     pub(crate) tracked_names: Vec<String>,
     pub(crate) tracked_identities: HashSet<ProcessIdentity>,
     pub(crate) host: Value,
+    pub(crate) graph_targets: Vec<ProcessIdentity>,
     pub(crate) control: Value,
     pub(crate) log_root: Option<std::path::PathBuf>,
 }
@@ -49,6 +50,7 @@ struct Session {
     loading: HashMap<String, (String, std::sync::mpsc::Receiver<Loaded>)>,
     log_files: HashMap<String, std::path::PathBuf>,
     refs: HashMap<String, ProcessIdentity>,
+    graph_refs: HashMap<String, (ProcessIdentity, String)>,
     jobs: HashMap<String, super::jobs::Job>,
     captures: HashMap<String, Capture>,
 }
@@ -431,7 +433,8 @@ impl Backend {
                         }
                     }
                     match server.requests.recv_timeout(Duration::from_millis(20)) {
-                        Ok(request) => {
+                        Ok(mut request) => {
+                            catalog::apply_defaults(&request.method, &mut request.arguments);
                             if request.reply.is_closed() {
                                 continue;
                             }
@@ -462,6 +465,19 @@ impl Backend {
                                         &request.arguments,
                                         None,
                                     )
+                                } else if matches!(
+                                    request.method.as_str(),
+                                    "winproc_add_graphs" | "winproc_export_graphs"
+                                ) {
+                                    match graph_action_targets(session, &view, &request.arguments) {
+                                        Ok(targets) => operations.lock().unwrap().submit_graph(
+                                            &request.connection,
+                                            &request.method,
+                                            &request.arguments,
+                                            targets,
+                                        ),
+                                        Err(error) => error,
+                                    }
                                 } else if reference.is_some() && identity.is_none() {
                                     error(
                                         "REFERENCE_INVALID",
@@ -524,8 +540,167 @@ fn envelope(session: &Session, view: &View, instance: &str, data: Value) -> Valu
             }
         }
     }
+    if let Some(workspace) = data.pointer("/result/workspace").or_else(|| {
+        data.get("result")
+            .filter(|result| result.get("graphs").is_some())
+    }) {
+        result["source"] = workspace["source"].clone();
+        result["captured_at"] = workspace["captured_at"].clone();
+    } else if data.get("graphs").is_some() && data.get("source").is_some() {
+        result["source"] = data["source"].clone();
+        result["captured_at"] = data["captured_at"].clone();
+    }
     result["data"] = data;
     result
+}
+
+fn graph_reference(
+    session: &mut Session,
+    references: &mut HashMap<ProcessIdentity, String>,
+    identity: &ProcessIdentity,
+    revision: &str,
+) -> String {
+    if let Some(reference) = references.get(identity) {
+        return reference.clone();
+    }
+    let reference = format!("graph-process-{}", uuid::Uuid::new_v4());
+    session
+        .graph_refs
+        .insert(reference.clone(), (identity.clone(), revision.into()));
+    references.insert(identity.clone(), reference.clone());
+    reference
+}
+
+fn graph_workspace(session: &mut Session, view: &View, args: &Value) -> Value {
+    let mut workspace = view.control["graphs"].clone();
+    let revision = workspace["revision"].as_str().unwrap_or("").to_owned();
+    session.graph_refs.retain(|_, (_, rev)| rev == &revision);
+    // Build the reverse index once: process discovery must not scan all references per row.
+    let mut references: HashMap<_, _> = session
+        .graph_refs
+        .iter()
+        .map(|(reference, (identity, _))| (identity.clone(), reference.clone()))
+        .collect();
+    let name = args["process_name"].as_str().unwrap_or("").to_lowercase();
+    let limit = args["target_limit"].as_u64().unwrap_or(500) as usize;
+    let include = args["include_processes"] == true || args.get("process_name").is_some();
+    let mut needed: HashSet<_> = view
+        .graph_targets
+        .iter()
+        .filter(|id| include && id.name.to_lowercase().contains(&name))
+        .take(limit)
+        .cloned()
+        .collect();
+    for graph in workspace["graphs"].as_array().into_iter().flatten() {
+        if graph["target"]["kind"] == "process" {
+            let target = &graph["target"];
+            needed.insert(ProcessIdentity {
+                pid: target["pid"].as_u64().unwrap() as u32,
+                name: target["name"].as_str().unwrap().into(),
+                start_time: target["start_time"].as_str().and_then(|s| s.parse().ok()),
+            });
+        }
+    }
+    for (identity, _) in session.graph_refs.values() {
+        needed.remove(identity);
+    }
+    if session.graph_refs.len() + needed.len() > 10_000 {
+        return error(
+            "RESOURCE_LIMIT",
+            "Displayed-process reference capacity reached; reconnect",
+            false,
+        );
+    }
+    if let Some(graphs) = workspace["graphs"].as_array_mut() {
+        for graph in graphs {
+            if graph["target"]["kind"] == "process" {
+                let target = &graph["target"];
+                let identity = ProcessIdentity {
+                    pid: target["pid"].as_u64().unwrap() as u32,
+                    name: target["name"].as_str().unwrap().into(),
+                    start_time: target["start_time"].as_str().and_then(|s| s.parse().ok()),
+                };
+                graph["target"]["process_ref"] = json!(graph_reference(
+                    session,
+                    &mut references,
+                    &identity,
+                    &revision
+                ));
+            }
+        }
+    }
+    if args["include_processes"] == true || args.get("process_name").is_some() {
+        let name = args["process_name"].as_str().unwrap_or("").to_lowercase();
+        let limit = args["target_limit"].as_u64().unwrap_or(500) as usize;
+        let matches: Vec<_> = view
+            .graph_targets
+            .iter()
+            .filter(|id| id.name.to_lowercase().contains(&name))
+            .collect();
+        let mut targets: Vec<_> = matches.iter().take(limit).map(|id| {
+            json!({"pid":id.pid,"name":id.name,"start_time":id.start_time.map(|time|time.to_string()),
+                "process_ref":graph_reference(session,&mut references,id,&revision),"identity_verified":id.start_time.is_some()})
+        }).collect();
+        // MCP includes structured and text copies. Reserve the same encoding headroom as pages.
+        while !targets.is_empty()
+            && serde_json::to_vec(&targets).map_or(true, |bytes| {
+                bytes.len().saturating_mul(3).saturating_add(65536)
+                    > super::protocol::MAX_FRAME_BYTES
+            })
+        {
+            targets.truncate(targets.len() / 2);
+        }
+        workspace["processes_truncated"] = json!(matches.len() > targets.len());
+        workspace["processes"] = json!(targets);
+        workspace["process_count"] = json!(matches.len());
+    }
+    json!({"api_version":"1.0","backend_instance_id":"","source":workspace["source"],
+        "captured_at":workspace["captured_at"],"status":if workspace["processes_truncated"]==true {"partial"}else{"complete"},
+        "warnings":[],"data":workspace})
+}
+
+fn graph_action_targets(
+    session: &Session,
+    view: &View,
+    args: &Value,
+) -> Result<super::operations::GraphTargets, Value> {
+    let mut targets = super::operations::GraphTargets::default();
+    for spec in args["metrics"].as_array().into_iter().flatten() {
+        let Some(reference) = spec["process_ref"].as_str() else {
+            continue;
+        };
+        if let Some((identity, revision)) = session.graph_refs.get(reference) {
+            if view.control["graphs"]["revision"].as_str() != Some(revision) {
+                return Err(error(
+                    "STATE_CONFLICT",
+                    "Displayed Graph source changed; read Graph targets again",
+                    false,
+                ));
+            }
+            targets.revision = Some(revision.clone());
+            targets
+                .identities
+                .insert(reference.into(), identity.clone());
+        } else if let Some(identity) = session.refs.get(reference) {
+            if view.activity == "log_view" {
+                return Err(error(
+                    "ACTIVITY_CONFLICT",
+                    "Use displayed Graph process references in Log view",
+                    false,
+                ));
+            }
+            targets
+                .identities
+                .insert(reference.into(), identity.clone());
+        } else {
+            return Err(error(
+                "REFERENCE_INVALID",
+                "Obtain a process reference from get_graphs or live list_processes",
+                false,
+            ));
+        }
+    }
+    Ok(targets)
 }
 
 fn dispatch(session: &mut Session, view: &View, method: &str, args: &Value) -> Value {
@@ -544,6 +719,7 @@ fn dispatch(session: &mut Session, view: &View, method: &str, args: &Value) -> V
         "winproc_close_log"=>{session.logs.remove(args["log_ref"].as_str().unwrap());return json!({"closed":true});},
         "winproc_get_status" => return json!({"activity":view.activity,"stale":(Local::now()-view.snapshot.captured_at).num_seconds()>=3,"sample_age_ms":(Local::now()-view.snapshot.captured_at).num_milliseconds().max(0),"version":env!("CARGO_PKG_VERSION"),"transport":"named_pipe","connected":true,"permissions":{"same_logon":true,"same_integrity":true},"capabilities":catalog::TOOLS.iter().filter(|t|catalog::available(&t.name)).map(|t|t.name.to_string()).collect::<Vec<_>>(),"limits":{"connections":4,"active_jobs_per_connection":2,"retained_objects_per_connection":8,"result_bytes_per_connection":67108864,"result_ttl_seconds":300,"operation_entries":1024,"operation_ttl_seconds":86400,"pending_operations":1}}),
         "winproc_get_system_info" => return view.host.clone(),
+        "winproc_get_graphs" => return graph_workspace(session,view,args),
         "winproc_list_metrics" => return metrics::catalog(args["target_kind"].as_str()),
         "winproc_get_tracking" => {
             let matching:Vec<_>=view.snapshot.processes.iter().filter(|p|view.tracked_identities.contains(&ProcessIdentity::from_row(p))).map(|p|json!({"pid":p.pid,"name":p.name,"process_ref":session.reference(&ProcessIdentity::from_row(p))})).collect();
@@ -1408,6 +1584,7 @@ fn open_log(session: &mut Session, view: &View, args: &Value) -> Value {
                         activity: "saved_log".into(),
                         host,
                         control: json!({}),
+                        graph_targets: Vec::new(),
                         log_root: None,
                     },
                     session: Box::default(),
@@ -1538,6 +1715,153 @@ pub(crate) fn log_id(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn graph_discovery_references_are_display_scoped_and_bounded() {
+        let mut view = view();
+        let mut session = Session::default();
+        let identity = ProcessIdentity {
+            pid: 42,
+            name: "Target.exe".into(),
+            start_time: Some(9_007_199_254_740_993),
+        };
+        view.graph_targets = vec![
+            identity.clone(),
+            ProcessIdentity {
+                pid: 43,
+                name: "target.exe".into(),
+                start_time: None,
+            },
+        ];
+        view.control = json!({"graphs":{"revision":"epoch:1","source":"log","captured_at":"2026-01-01T00:00:00Z","graphs":[]}});
+        view.activity = "log_view".into();
+        let result = dispatch(
+            &mut session,
+            &view,
+            "winproc_get_graphs",
+            &json!({"process_name":"TARGET","target_limit":1}),
+        );
+        assert_eq!(result["source"], "log");
+        assert_eq!(result["captured_at"], "2026-01-01T00:00:00Z");
+        assert_eq!(result["status"], "partial");
+        assert_eq!(result["data"]["process_count"], 2);
+        assert_eq!(
+            result["data"]["processes"][0]["start_time"],
+            "9007199254740993"
+        );
+        let reference = result["data"]["processes"][0]["process_ref"]
+            .as_str()
+            .unwrap();
+        let args = json!({"metrics":[{"metric_id":"private_bytes","process_ref":reference}]});
+        let target = graph_action_targets(&session, &view, &args).unwrap();
+        assert_eq!(target.identities[reference], identity);
+        assert_eq!(target.revision.as_deref(), Some("epoch:1"));
+        assert_eq!(
+            graph_action_targets(&Session::default(), &view, &args)
+                .err()
+                .unwrap()["error"]["code"],
+            "REFERENCE_INVALID"
+        );
+        view.control["graphs"]["revision"] = json!("epoch:2");
+        assert_eq!(
+            graph_action_targets(&session, &view, &args).err().unwrap()["error"]["code"],
+            "STATE_CONFLICT"
+        );
+        dispatch(
+            &mut session,
+            &view,
+            "winproc_get_graphs",
+            &json!({"include_processes":true}),
+        );
+        assert_eq!(session.graph_refs.len(), 2);
+        let live = session.reference(&identity);
+        let args = json!({"metrics":[{"metric_id":"private_bytes","process_ref":live}]});
+        assert_eq!(
+            graph_action_targets(&session, &view, &args).err().unwrap()["error"]["code"],
+            "ACTIVITY_CONFLICT"
+        );
+        view.activity = "live".into();
+        assert!(
+            graph_action_targets(&session, &view, &args)
+                .unwrap()
+                .revision
+                .is_none()
+        );
+    }
+    #[test]
+    fn graph_discovery_bounds_encoded_rows_and_reuses_indexed_references() {
+        let mut view = view();
+        let mut session = Session::default();
+        view.control = json!({"graphs":{"revision":"epoch:1","source":"live","captured_at":"2026-01-01T00:00:00Z","graphs":[]}});
+        view.graph_targets = (0..5000)
+            .map(|pid| ProcessIdentity {
+                pid,
+                name: "あ".repeat(255),
+                start_time: Some(1),
+            })
+            .collect();
+        let args = json!({"include_processes":true,"target_limit":5000});
+        let first = graph_workspace(&mut session, &view, &args);
+        assert_eq!(first["status"], "partial");
+        assert_eq!(first["data"]["process_count"], 5000);
+        let rows = first["data"]["processes"].as_array().unwrap();
+        assert!(!rows.is_empty() && rows.len() < 5000);
+        assert!(
+            serde_json::to_vec(&first).unwrap().len() * 3 + 16384
+                < super::super::protocol::MAX_FRAME_BYTES
+        );
+        let count = session.graph_refs.len();
+        let second = graph_workspace(&mut session, &view, &args);
+        assert_eq!(first, second);
+        assert_eq!(session.graph_refs.len(), count);
+    }
+    #[test]
+    fn graph_discovery_refuses_unbounded_reference_growth() {
+        let mut view = view();
+        let mut session = Session::default();
+        view.control = json!({"graphs":{"revision":"epoch:1","source":"live","captured_at":"2026-01-01T00:00:00Z","graphs":[]}});
+        for pid in 0..10_000 {
+            session.graph_refs.insert(
+                pid.to_string(),
+                (
+                    ProcessIdentity {
+                        pid,
+                        name: "old.exe".into(),
+                        start_time: Some(1),
+                    },
+                    "epoch:1".into(),
+                ),
+            );
+        }
+        view.graph_targets.push(ProcessIdentity {
+            pid: 20_000,
+            name: "new.exe".into(),
+            start_time: Some(2),
+        });
+        let response = graph_workspace(&mut session, &view, &json!({"include_processes":true}));
+        assert_eq!(response["error"]["code"], "RESOURCE_LIMIT");
+        assert_eq!(session.graph_refs.len(), 10_000);
+        view.control["graphs"]["revision"] = json!("epoch:2");
+        assert!(
+            graph_workspace(&mut session, &view, &json!({"include_processes":true}))
+                .get("error")
+                .is_none()
+        );
+        assert_eq!(session.graph_refs.len(), 1);
+    }
+    #[test]
+    fn graph_operation_envelope_keeps_export_snapshot_provenance() {
+        let view = view();
+        let session = Session::default();
+        let response = envelope(
+            &session,
+            &view,
+            "backend",
+            json!({"operation_id":"export","state":"succeeded","result":{"output_path":"test.csv","workspace":{"source":"log","captured_at":"2026-01-01T00:00:00Z"}}}),
+        );
+        assert_eq!(response["source"], "log");
+        assert_eq!(response["captured_at"], "2026-01-01T00:00:00Z");
+    }
+
     fn view() -> View {
         let snapshot = Snapshot {
             captured_at: Local::now(),
@@ -1582,6 +1906,7 @@ mod tests {
             activity: "live".into(),
             tracked_names: Vec::new(),
             tracked_identities: HashSet::new(),
+            graph_targets: Vec::new(),
             host: json!({}),
             control: json!({}),
             log_root: None,

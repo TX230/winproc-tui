@@ -113,7 +113,7 @@ fn mcp_stdio_negotiates_lists_tools_validates_arguments_and_exits_on_eof() {
     };
     let response = call(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
     let tools = response["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 26);
+    assert_eq!(tools.len(), 29);
     let common_output: Value = serde_json::from_str(include_str!(
         "../docs/schemas/mcp-output-envelope.schema.json"
     ))

@@ -45,9 +45,9 @@ def profile(name):return next(p for p in data('list_profiles')['profiles'] if p[
 def profile_op(kind,profile_name,**extra):
  p=profile(profile_name);return op('update_profile',{'action':kind,'profile_id':p['profile_id'],'expected_profile_revision':p['revision'],**extra})
 try:
- assert len(b.call('tools/list',{})['tools'])==26
+ assert len(b.call('tools/list',{})['tools'])==29
  listed=data('list_processes',{'filter':{'pid':pid}});ref=listed['rows'][0]['process_ref'];data('release_capture',{'capture_id':listed['capture_id']})
- detail=job('get_process_info',{'process_ref':ref,'fields':['image','version']});rows=data('read_capture',{'capture_id':detail['capture_id']})['rows'];assert set(rows[0])=={'image','version'};data('release_capture',{'capture_id':detail['capture_id']});record('26 tools and process information',len(rows))
+ detail=job('get_process_info',{'process_ref':ref,'fields':['image','version']});rows=data('read_capture',{'capture_id':detail['capture_id']})['rows'];assert set(rows[0])=={'image','version'};data('release_capture',{'capture_id':detail['capture_id']});record('29 tools and process information',len(rows))
  first=op('update_tracking',{'action':'add','process_ref':ref});assert 'winproc-tui.exe' in first['result']['tracked_names']
  stale=rev();op('update_tracking',{'action':'add','process_name':absent});op('update_tracking',{'action':'add','process_name':'should-not-add.exe','expected_revision':stale},'STATE_CONFLICT')
  record('tracking and revision conflicts',data('get_tracking'))
