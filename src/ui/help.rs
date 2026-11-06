@@ -62,7 +62,7 @@ const FILE_USERS_ROWS: &[HelpItem] = &[
     },
     HelpItem {
         key: "Space (file results)",
-        label: "Show the full path and capture coverage",
+        label: "Show full path and coverage, including timed-out or skipped lookups",
     },
     HelpItem {
         key: "Esc (file search)",

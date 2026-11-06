@@ -154,6 +154,10 @@ pub(crate) struct FileSearchProgress {
     pub(crate) inspected_handles: usize,
     pub(crate) unreadable_handles: usize,
     pub(crate) unnamed_disk_handles: usize,
+    #[serde(default)]
+    pub(crate) path_timeouts: usize,
+    #[serde(default)]
+    pub(crate) path_workers_busy: usize,
     pub(crate) skipped_handles: usize,
 }
 
@@ -164,6 +168,8 @@ impl FileSearchProgress {
             + self.unavailable_processes
             + self.unreadable_handles
             + self.unnamed_disk_handles
+            + self.path_timeouts
+            + self.path_workers_busy
             + self.skipped_handles
             > 0
     }
@@ -194,6 +200,7 @@ impl FileSearchEnd {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FileSearchReport {
+    pub(crate) elapsed: Option<std::time::Duration>,
     pub(crate) matches: Vec<FileUserMatch>,
     pub(crate) progress: FileSearchProgress,
     pub(crate) end: Option<FileSearchEnd>,

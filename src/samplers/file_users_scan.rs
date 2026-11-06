@@ -21,9 +21,10 @@ use winapi::{
     },
 };
 
-use super::open_files::{
-    OwnedHandle, duplicate_process_handle, final_path_for_handle, query_system_handles,
-};
+mod path_workers;
+use path_workers::{PathLookup, PathWorkers};
+
+use super::open_files::{OwnedHandle, duplicate_process_handle, query_system_handles};
 use crate::model::file_users::*;
 
 fn open_process(pid: u32, duplicate: bool) -> Result<OwnedHandle, std::io::Error> {
@@ -169,6 +170,7 @@ fn scan_processes(
     progress.total_handles = groups.values().map(Vec::len).sum();
     emit(FileUsersMessage::Progress(progress.clone()))?;
     let mut last_progress = Instant::now();
+    let mut workers = PathWorkers::default();
     let mut match_count = 0;
     let mut retained_bytes = 0;
     for (pid, handles) in groups {
@@ -199,25 +201,28 @@ fn scan_processes(
             if let Some(handle) = duplicate_process_handle(source.0, value) {
                 // SAFETY: the uniquely owned duplicate is live; GetFileType accepts a kernel handle.
                 if unsafe { GetFileType(handle.0) } == 1 {
-                    if let Some(path) = final_path_for_handle(handle.0) {
-                        if query.matches(&path) {
-                            if !paths.contains_key(&path) {
-                                let bytes = path.len()
-                                    + owner.name.len()
-                                    + owner.executable_path.len()
-                                    + 128;
-                                if match_count + paths.len() >= MAX_MATCHES
-                                    || retained_bytes + bytes > MAX_RESULT_BYTES
-                                {
-                                    end = Some(FileSearchEnd::ResultLimit);
-                                    break;
+                    match workers.lookup(handle)? {
+                        PathLookup::Ready(Some(path)) => {
+                            if query.matches(&path) {
+                                if !paths.contains_key(&path) {
+                                    let bytes = path.len()
+                                        + owner.name.len()
+                                        + owner.executable_path.len()
+                                        + 128;
+                                    if match_count + paths.len() >= MAX_MATCHES
+                                        || retained_bytes + bytes > MAX_RESULT_BYTES
+                                    {
+                                        end = Some(FileSearchEnd::ResultLimit);
+                                        break;
+                                    }
+                                    retained_bytes += bytes;
                                 }
-                                retained_bytes += bytes;
+                                *paths.entry(path).or_default() += 1;
                             }
-                            *paths.entry(path).or_default() += 1;
                         }
-                    } else {
-                        progress.unnamed_disk_handles += 1;
+                        PathLookup::Ready(None) => progress.unnamed_disk_handles += 1,
+                        PathLookup::Expired => progress.path_timeouts += 1,
+                        PathLookup::Busy => progress.path_workers_busy += 1,
                     }
                 }
             } else {

@@ -90,12 +90,17 @@ fn status(view: &FileUsersView) -> String {
             .end
             .as_ref()
             .is_some_and(|end| *end != FileSearchEnd::Complete);
-    format!(
+    let mut status = format!(
         "{state}{} · {}/{} matches",
         if partial { " (partial results)" } else { "" },
         view.filtered_count(),
         view.report.matches.len()
-    )
+    );
+    if let Some(elapsed) = view.report.elapsed {
+        use std::fmt::Write;
+        write!(status, " · {:.2}s", elapsed.as_secs_f64()).unwrap();
+    }
+    status
 }
 
 pub(crate) fn detail_lines(view: &FileUsersView, width: u16) -> Vec<String> {
@@ -123,6 +128,11 @@ pub(crate) fn detail_lines(view: &FileUsersView, width: u16) -> Vec<String> {
         format!("Handles in table: {}", p.total_handles),
         format!("Handles inspected: {}", p.inspected_handles),
         format!("Handles unreadable: {}", p.unreadable_handles),
+        format!("Path lookups timed out: {}", p.path_timeouts),
+        format!(
+            "Path lookups skipped (workers busy): {}",
+            p.path_workers_busy
+        ),
         format!(
             "Disk-file handles without a readable path: {}",
             p.unnamed_disk_handles

@@ -126,6 +126,7 @@ fn worker_loop(requests: Receiver<Work>, active: Arc<AtomicU64>, latest: Latest)
                 owner: None,
             },
         );
+        let requested_at = Instant::now();
         let result = (|| {
             let _scan = if matches!(&request, FileUsersRequest::Verify(_)) {
                 None
@@ -155,6 +156,7 @@ fn worker_loop(requests: Receiver<Work>, active: Arc<AtomicU64>, latest: Latest)
                 FileUsersUpdate {
                     id,
                     report: FileSearchReport {
+                        elapsed: Some(requested_at.elapsed()),
                         end: Some(FileSearchEnd::Failed(error.to_string())),
                         ..FileSearchReport::default()
                     },
@@ -267,6 +269,7 @@ fn run_command(
     total_timeout: Duration,
     idle_timeout: Duration,
 ) -> Result<()> {
+    let capture_started = Instant::now();
     let mut helper = Helper::spawn(command)?;
     let started = Instant::now();
     let mut last_message = started;
@@ -342,6 +345,7 @@ fn run_command(
     report
         .matches
         .sort_by(|a, b| a.path.cmp(&b.path).then(a.owner.pid.cmp(&b.owner.pid)));
+    report.elapsed = Some(capture_started.elapsed());
     publish(latest, FileUsersUpdate { id, report, owner });
     Ok(())
 }
@@ -391,6 +395,7 @@ mod tests {
                     FileSearchEnd::TimedOut
                 })
             );
+            assert!(update.report.elapsed.is_some_and(|time| !time.is_zero()));
             assert!(update.report.cleanup_warning.is_none());
         }
     }

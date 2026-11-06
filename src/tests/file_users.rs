@@ -114,6 +114,7 @@ fn file_users_collects_on_open_and_filters_without_new_requests() {
         &updates,
         id,
         FileSearchReport {
+            elapsed: Some(std::time::Duration::from_millis(430)),
             matches: vec![entry(0), entry(1), entry(2)],
             end: Some(FileSearchEnd::Complete),
             ..Default::default()
@@ -123,8 +124,9 @@ fn file_users_collects_on_open_and_filters_without_new_requests() {
     assert_eq!(app.file_users.filtered_count(), 1);
     assert_eq!(app.file_users.selected_entry().unwrap().path, entry(1).path);
     assert_eq!(app.file_users.focus, FileUsersFocus::Query);
-    assert!(render_app_to_text(&app, 120, 35).contains("1/3 matches"));
+    assert!(render_app_to_text(&app, 120, 35).contains("1/3 matches · 0.43s"));
     press(&mut app, KeyCode::Backspace);
+    assert!(render_app_to_text(&app, 120, 35).contains("3/3 matches · 0.43s"));
     assert_eq!(app.file_users.filtered_count(), 3);
     assert_eq!(app.file_users.selected_entry().unwrap().path, entry(1).path);
     app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
@@ -249,6 +251,8 @@ fn file_users_partial_zero_results_show_coverage_and_full_diagnostics() {
             total_processes: 10,
             denied_processes: 3,
             unreadable_handles: 5,
+            path_timeouts: 2,
+            path_workers_busy: 1,
             ..FileSearchProgress::default()
         },
         end: Some(FileSearchEnd::TimedOut),
@@ -262,6 +266,8 @@ fn file_users_partial_zero_results_show_coverage_and_full_diagnostics() {
     let details = ui::file_users::detail_lines(&app.file_users, 120).join("\n");
     assert!(details.contains("Access denied for 3 processes"));
     assert!(details.contains("Handles unreadable: 5"));
+    assert!(details.contains("Path lookups timed out: 2"));
+    assert!(details.contains("Path lookups skipped (workers busy): 1"));
     assert!(details.contains("Memory-mapped-only"));
 }
 
