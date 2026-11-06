@@ -104,7 +104,7 @@ An empty Processes table reserves one body row for contextual recovery guidance,
 - Drawing and hit testing use the same computed geometry.
 - Multi-column Graphs and the active Samples inspector can coexist when their minimum sizes fit.
 
-Process Graph and Samples captions retain the target PID when names must be shortened. Exact B-A values occupy a separate caption so target labels cannot truncate their digits. Layout controls distinguish effective column count from a constrained explicit preference.
+Process Graph and Samples captions retain the target PID when names must be shortened. Exact B-A values occupy a separate caption so target labels cannot truncate their digits. The layout control shows the selected preference even when the terminal width constrains the effective column count.
 
 Graph and Samples show their local history/follow state independently of the activity header. Manual history inspection offers a return to the latest sample; paused and recorded latest samples are labeled by their source. Returning to latest or reaching the latest pan boundary uses that same source label; it never implies that display pause has ended or that recorded samples are live.
 

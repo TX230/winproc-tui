@@ -14,12 +14,6 @@ use crate::{
 pub(crate) const HEADER_HEIGHT: u16 = 1;
 
 pub(crate) const SYSTEM_PANEL_HEIGHT: u16 = 7;
-const GRAPH_AUTO_SCROLL_WIDTH: u16 = 21;
-pub(crate) const GRAPH_SAMPLES_TOGGLE_WIDTH: u16 = 16;
-pub(crate) const GRAPH_DELTA_TOGGLE_WIDTH: u16 = 14;
-pub(crate) const GRAPH_LAYOUT_TOGGLE_WIDTH: u16 = 14;
-pub(crate) const GRAPH_ALL_SAMPLES_TOGGLE_WIDTH: u16 = 15;
-pub(crate) const GRAPH_Y_AXIS_TOGGLE_WIDTH: u16 = 13;
 pub(crate) const DETAILS_SHARED_CONTROLS_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_HEADER_HEIGHT: u16 = 1;
 pub(crate) const DETAILS_SAMPLES_SUMMARY_SPACER_HEIGHT: u16 = 1;
@@ -588,57 +582,86 @@ pub(crate) struct GraphSharedControlAreas {
     pub(crate) y_axis: Option<Rect>,
 }
 
-pub(crate) fn graph_shared_control_areas(
+// All toolbar labels are ASCII, so byte length is also terminal-cell width.
+pub(crate) const GRAPH_SAMPLES: &str = "Samples(v)";
+pub(crate) const GRAPH_DELTA: &str = "Delta(d)";
+pub(crate) const GRAPH_FIT_ALL: &str = "Fit all(f)";
+pub(crate) const GRAPH_MIN_ZERO: &str = "Min 0(z)";
+pub(crate) const GRAPH_AUTO_SCROLL: &str = "Auto Scroll(End)";
+pub(crate) const GRAPH_LATEST: &str = "[Latest]";
+
+pub(crate) fn graph_shared_control_areas(area: Rect, app: &App) -> GraphSharedControlAreas {
+    shared_control_areas(
+        area,
+        app.show_samples_panel,
+        app.graph_slot_layout,
+        app.graph_auto_scroll_available(),
+    )
+}
+
+fn shared_control_areas(
     area: Rect,
-    show_samples_panel: bool,
+    show_samples: bool,
+    mode: GraphSlotLayout,
+    live_scroll: bool,
 ) -> GraphSharedControlAreas {
-    // Keep the recovery control available before less essential display options.
-    let auto_scroll = (area.width >= GRAPH_AUTO_SCROLL_WIDTH && area.height > 0).then(|| {
-        Rect::new(
-            area.right() - GRAPH_AUTO_SCROLL_WIDTH,
-            area.y,
-            GRAPH_AUTO_SCROLL_WIDTH,
-            1,
-        )
-    });
-    let mut right = auto_scroll.map_or(area.right(), |control| control.x.saturating_sub(1));
-    let mut remaining = area.width.saturating_sub(if auto_scroll.is_some() {
-        GRAPH_AUTO_SCROLL_WIDTH + 1
-    } else {
-        0
-    });
-    let mut reserve = |width: u16| {
-        if remaining < width {
+    let mut remaining = area.width;
+    fn reserve(area: Rect, remaining: &mut u16, width: usize) -> Option<Rect> {
+        let width = width as u16;
+        if area.height == 0 || width > *remaining {
             return None;
         }
-        right = right.saturating_sub(width);
-        remaining = remaining.saturating_sub(width);
-        Some(Rect::new(right, area.y, width, area.height.min(1)))
-    };
-
-    let y_axis = reserve(GRAPH_Y_AXIS_TOGGLE_WIDTH);
-    let all_samples = reserve(GRAPH_ALL_SAMPLES_TOGGLE_WIDTH);
-    let layout = reserve(GRAPH_LAYOUT_TOGGLE_WIDTH);
-    let delta = (show_samples_panel
-        && area.width
-            >= GRAPH_AUTO_SCROLL_WIDTH
-                + 1
-                + GRAPH_Y_AXIS_TOGGLE_WIDTH
-                + GRAPH_ALL_SAMPLES_TOGGLE_WIDTH
-                + GRAPH_LAYOUT_TOGGLE_WIDTH
-                + GRAPH_DELTA_TOGGLE_WIDTH
-                + GRAPH_SAMPLES_TOGGLE_WIDTH)
-        .then(|| reserve(GRAPH_DELTA_TOGGLE_WIDTH))
+        let x = area.x + (*remaining - width);
+        *remaining = (*remaining - width).saturating_sub(1);
+        Some(Rect::new(x, area.y, width, 1))
+    }
+    // Reserve recovery first, then leave a one-cell gap between visible controls.
+    let auto_scroll = reserve(
+        area,
+        &mut remaining,
+        if live_scroll {
+            4 + GRAPH_AUTO_SCROLL.len()
+        } else {
+            GRAPH_LATEST.len()
+        },
+    );
+    let y_axis = reserve(area, &mut remaining, 4 + GRAPH_MIN_ZERO.len());
+    let all_samples = reserve(area, &mut remaining, 4 + GRAPH_FIT_ALL.len());
+    let layout = reserve(
+        area,
+        &mut remaining,
+        "Layout: ".len() + mode.label().len() + "(l)".len(),
+    );
+    let delta_width = 4 + GRAPH_DELTA.len();
+    let samples_width = 4 + GRAPH_SAMPLES.len();
+    let delta = (show_samples && usize::from(remaining) >= delta_width + 1 + samples_width)
+        .then(|| reserve(area, &mut remaining, delta_width))
         .flatten();
-    let samples = reserve(GRAPH_SAMPLES_TOGGLE_WIDTH);
-    GraphSharedControlAreas {
+    let samples = reserve(area, &mut remaining, samples_width);
+    let mut controls = GraphSharedControlAreas {
         auto_scroll,
         samples,
         delta,
         layout,
         all_samples,
         y_axis,
+    };
+    // Widen only existing gaps, after choosing which controls fit.
+    let visible = [
+        &mut controls.auto_scroll,
+        &mut controls.y_axis,
+        &mut controls.all_samples,
+        &mut controls.layout,
+        &mut controls.delta,
+        &mut controls.samples,
+    ];
+    let count = visible.iter().filter(|rect| rect.is_some()).count();
+    if usize::from(remaining) >= count.saturating_sub(1) * 2 {
+        for (index, rect) in visible.into_iter().filter_map(Option::as_mut).enumerate() {
+            rect.x -= 2 * index as u16;
+        }
     }
+    controls
 }
 
 pub(crate) fn details_samples_max_width(show_sample_delta: bool) -> u16 {
@@ -934,8 +957,8 @@ mod tests {
     #[test]
     fn shared_graph_controls_use_the_same_order_with_or_without_delta() {
         let area = Rect::new(0, 0, 120, 1);
-        let with_delta = graph_shared_control_areas(area, true);
-        let without_delta = graph_shared_control_areas(area, false);
+        let with_delta = shared_control_areas(area, true, GraphSlotLayout::Auto, true);
+        let without_delta = shared_control_areas(area, false, GraphSlotLayout::Auto, true);
 
         assert!(with_delta.samples.unwrap().x < with_delta.delta.unwrap().x);
         assert!(with_delta.delta.unwrap().x < with_delta.layout.unwrap().x);

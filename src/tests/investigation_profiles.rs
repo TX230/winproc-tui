@@ -150,15 +150,22 @@ fn header_shows_profile_binding_and_modified_marker() {
         let buffer = render_app_to_buffer(app, 120, 45);
         let (x, y) = find_text_position(&buffer, label).expect("profile badge should render");
         for offset in 0..label.chars().count() as u16 {
-            assert_eq!(buffer[(x + offset, y)].fg, app.theme().muted);
-            assert_eq!(buffer[(x + offset, y)].bg, app.theme().menu_bar);
+            assert_eq!(buffer[(x + offset, y)].fg, ratatui::style::Color::Black);
+            assert_eq!(buffer[(x + offset, y)].bg, ratatui::style::Color::Yellow);
+            assert!(
+                buffer[(x + offset, y)]
+                    .modifier
+                    .contains(ratatui::style::Modifier::BOLD)
+            );
         }
     }
 
     let mut app = make_test_app(1, 10);
     let initial = render_app_to_text(&app, 120, 45);
-    assert!(initial.contains("PF: none"), "{initial}");
-    assert_profile_badge(&app, "PF: none");
+    assert!(
+        !initial.contains("PF:") && !initial.contains("Profile:"),
+        "{initial}"
+    );
 
     app.begin_save_investigation_profile_as();
     for ch in "myapp".chars() {
@@ -167,9 +174,9 @@ fn header_shows_profile_binding_and_modified_marker() {
     app.commit_investigation_profile_name_input();
 
     let clean = render_app_to_text(&app, 120, 45);
-    assert!(clean.contains("PF: myapp"), "{clean}");
-    assert!(!clean.contains("PF: myapp*"), "{clean}");
-    assert_profile_badge(&app, "PF: myapp");
+    assert!(clean.contains("Profile: myapp"), "{clean}");
+    assert!(!clean.contains("Profile: myapp*"), "{clean}");
+    assert_profile_badge(&app, "Profile: myapp");
 
     app.watch_enabled = true;
     app.process_view_mode = ProcessViewMode::Tree;
@@ -183,19 +190,19 @@ fn header_shows_profile_binding_and_modified_marker() {
     app.graph_y_axis_zero_min = false;
     app.recording_interval_index = 2;
     let still_clean = render_app_to_text(&app, 120, 45);
-    assert!(still_clean.contains("PF: myapp"), "{still_clean}");
-    assert!(!still_clean.contains("PF: myapp*"), "{still_clean}");
+    assert!(still_clean.contains("Profile: myapp"), "{still_clean}");
+    assert!(!still_clean.contains("Profile: myapp*"), "{still_clean}");
 
     app.watch_list.push("worker.exe".to_string());
     let modified = render_app_to_text(&app, 120, 45);
-    assert!(modified.contains("PF: myapp*"), "{modified}");
-    assert_profile_badge(&app, "PF: myapp*");
+    assert!(modified.contains("Profile: myapp*"), "{modified}");
+    assert_profile_badge(&app, "Profile: myapp*");
 
     app.save_active_investigation_profile();
     let saved = render_app_to_text(&app, 120, 45);
-    assert!(saved.contains("PF: myapp"), "{saved}");
-    assert!(!saved.contains("PF: myapp*"), "{saved}");
-    assert_profile_badge(&app, "PF: myapp");
+    assert!(saved.contains("Profile: myapp"), "{saved}");
+    assert!(!saved.contains("Profile: myapp*"), "{saved}");
+    assert_profile_badge(&app, "Profile: myapp");
 }
 
 #[test]

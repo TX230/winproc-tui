@@ -395,6 +395,12 @@ pub(crate) fn sync_layout_state(app: &mut App, screen_area: Rect) {
     ));
     app.ensure_visible_panel_focus();
     app.clamp_process_table_state();
+    app.graph_hovered_target = match (app.pointer_position, panels.details) {
+        (Some(pos), Some(details)) if !app.has_modal_focus() => {
+            actions::graph_hover_target_at(app, details, pos.x, pos.y)
+        }
+        _ => None,
+    };
 }
 
 fn details_samples_page_size_for_app(panels: &MainPanelAreas, app: &App) -> usize {

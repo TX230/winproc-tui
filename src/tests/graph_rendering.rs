@@ -910,7 +910,7 @@ fn samples_temporary_collapse_is_distinct_from_user_preference() {
 }
 
 #[test]
-fn graph_shared_samples_and_layout_checkboxes_work_with_mouse() {
+fn graph_shared_samples_and_layout_controls_work_with_mouse() {
     let screen = Rect::new(0, 0, 120, 60);
     let mut app = make_test_app(3, 10);
     assign_private_graph(&mut app);
@@ -918,7 +918,7 @@ fn graph_shared_samples_and_layout_checkboxes_work_with_mouse() {
     app.last_screen_area = screen;
     let initial = render_app_to_buffer(&app, screen.width, screen.height);
     let (layout_x, layout_y) =
-        find_text_position(&initial, "l: Auto").expect("layout control should render");
+        find_text_position(&initial, "Layout: Auto(l)").expect("layout control should render");
 
     app.on_mouse(left_click(layout_x, layout_y), screen);
 
@@ -926,7 +926,7 @@ fn graph_shared_samples_and_layout_checkboxes_work_with_mouse() {
     assert!(app.show_samples_panel);
     let one_column = render_app_to_buffer(&app, screen.width, screen.height);
     let (layout_x, layout_y) =
-        find_text_position(&one_column, "l: 1 col").expect("layout control should render");
+        find_text_position(&one_column, "Layout: 1 col(l)").expect("layout control should render");
 
     app.on_mouse(left_click(layout_x, layout_y), screen);
 
@@ -934,15 +934,15 @@ fn graph_shared_samples_and_layout_checkboxes_work_with_mouse() {
     assert!(app.show_samples_panel);
     let two_columns = render_app_to_buffer(&app, screen.width, screen.height);
     let (samples_x, samples_y) =
-        find_text_position(&two_columns, "v: Samples").expect("Samples checkbox should render");
+        find_text_position(&two_columns, "Samples(v)").expect("Samples checkbox should render");
 
     app.on_mouse(left_click(samples_x, samples_y), screen);
 
     assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
     assert!(!app.show_samples_panel);
 
-    let (layout_x, layout_y) =
-        find_text_position(&two_columns, "l: 1/2 cols").expect("layout control should render");
+    let (layout_x, layout_y) = find_text_position(&two_columns, "Layout: 2 cols(l)")
+        .expect("layout control should render");
     app.on_mouse(left_click(layout_x, layout_y), screen);
     assert_eq!(app.graph_slot_layout, GraphSlotLayout::ThreeColumns);
 }
@@ -958,11 +958,50 @@ fn graph_y_axis_checkbox_uses_box_symbols() {
     );
 
     let rendered = render_app_to_text(&app, 120, 45);
-    assert!(rendered.contains("[x] z: Min 0"), "{rendered}");
+    assert!(rendered.contains("[x] Min 0(z)"), "{rendered}");
 
     app.graph_y_axis_zero_min = false;
     let rendered = render_app_to_text(&app, 120, 45);
-    assert!(rendered.contains("[ ] z: Min 0"), "{rendered}");
+    assert!(rendered.contains("[ ] Min 0(z)"), "{rendered}");
+}
+
+#[test]
+fn process_and_graph_options_dim_with_focus_and_keep_their_shortcut_colors() {
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    for focus in [
+        FocusedPanel::Processes,
+        FocusedPanel::DetailsGraph,
+        FocusedPanel::DetailsSamples,
+        FocusedPanel::Cpu,
+    ] {
+        app.focused_panel = focus;
+        let buffer = render_app_to_buffer(&app, 140, 45);
+        for (label, shortcut, active) in [
+            ("Tree ", "(Shift+V)", focus == FocusedPanel::Processes),
+            ("Tracked ", "(Shift+T)", focus == FocusedPanel::Processes),
+            ("Exited ", "(Shift+E)", focus == FocusedPanel::Processes),
+            (
+                "Samples(v)",
+                "(v)",
+                matches!(
+                    focus,
+                    FocusedPanel::DetailsGraph | FocusedPanel::DetailsSamples
+                ),
+            ),
+        ] {
+            let (x, y) = find_text_position(&buffer, label).unwrap();
+            let (kx, ky) = find_text_position(&buffer, shortcut).unwrap();
+            assert_eq!(buffer[(kx, ky)].fg, app.theme().key_hint);
+            for cell in [&buffer[(x, y)], &buffer[(kx, ky)]] {
+                assert_eq!(
+                    cell.modifier.contains(ratatui::style::Modifier::DIM),
+                    !active
+                );
+            }
+        }
+        assert!(buffer_to_text(&buffer).contains("Samples(v) · ["));
+    }
 }
 
 #[test]
@@ -979,24 +1018,24 @@ fn graph_shared_controls_follow_footer_shortcut_color_roles_in_all_color_schemes
 
         let buffer = render_app_to_buffer(&app, 140, 45);
 
-        let (checked_x, checked_y) = find_text_position(&buffer, "[x] v: Samples")
+        let (checked_x, checked_y) = find_text_position(&buffer, "[x] Samples(v)")
             .expect("checked Graph option should render");
         assert_eq!(buffer[(checked_x, checked_y)].fg, theme.accent);
-        assert_eq!(buffer[(checked_x + 4, checked_y)].fg, theme.key_hint);
-        assert_eq!(buffer[(checked_x + 5, checked_y)].fg, theme.muted);
+        assert_eq!(buffer[(checked_x + 12, checked_y)].fg, theme.key_hint);
+        assert_eq!(buffer[(checked_x + 5, checked_y)].fg, theme.text);
         assert_eq!(buffer[(checked_x + 7, checked_y)].fg, theme.text);
 
         let (layout_x, layout_y) =
-            find_text_position(&buffer, "l: 1/3 cols").expect("layout option should render");
-        assert_eq!(buffer[(layout_x, layout_y)].fg, theme.key_hint);
-        assert_eq!(buffer[(layout_x + 1, layout_y)].fg, theme.muted);
+            find_text_position(&buffer, "Layout: 3 cols(l)").expect("layout option should render");
+        assert_eq!(buffer[(layout_x + 15, layout_y)].fg, theme.key_hint);
+        assert_eq!(buffer[(layout_x + 1, layout_y)].fg, theme.text);
         assert_eq!(buffer[(layout_x + 3, layout_y)].fg, theme.text);
 
-        let (unchecked_x, unchecked_y) = find_text_position(&buffer, "[ ] f: Fit all")
+        let (unchecked_x, unchecked_y) = find_text_position(&buffer, "[ ] Fit all(f)")
             .expect("unchecked Graph option should render");
         assert_eq!(buffer[(unchecked_x, unchecked_y)].fg, theme.muted);
-        assert_eq!(buffer[(unchecked_x + 4, unchecked_y)].fg, theme.key_hint);
-        assert_eq!(buffer[(unchecked_x + 5, unchecked_y)].fg, theme.muted);
+        assert_eq!(buffer[(unchecked_x + 12, unchecked_y)].fg, theme.key_hint);
+        assert_eq!(buffer[(unchecked_x + 5, unchecked_y)].fg, theme.text);
         assert_eq!(buffer[(unchecked_x + 7, unchecked_y)].fg, theme.text);
     }
 }
@@ -1872,11 +1911,11 @@ fn multi_graph_rendering_uses_one_shared_samples_inspector() {
         "{rendered}"
     );
     assert_eq!(rendered.matches("B-A: --").count(), 2, "{rendered}");
-    assert_eq!(rendered.matches("f: Fit all").count(), 1, "{rendered}");
-    assert_eq!(rendered.matches("z: Min 0").count(), 1, "{rendered}");
-    assert_eq!(rendered.matches("v: Samples").count(), 1, "{rendered}");
-    assert_eq!(rendered.matches("d: Delta").count(), 1, "{rendered}");
-    assert_eq!(rendered.matches("l: Auto").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("Fit all(f)").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("Min 0(z)").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("Samples(v)").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("Delta(d)").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("Layout: Auto(l)").count(), 1, "{rendered}");
     assert_eq!(
         rendered.matches("SAMPLES  · Slot#2 · PID 0 proc-0").count(),
         1,
@@ -2040,7 +2079,7 @@ fn narrow_graphs_keep_same_name_pids_and_complete_byte_deltas() {
         assert!(text.contains(&format!("PID {pid}")), "{text}");
     }
     assert_eq!(text.matches("B-A: +3,321,856 B").count(), 3, "{text}");
-    assert!(text.contains("l: 2/3 cols"), "{text}");
+    assert!(text.contains("Layout: 3 cols(l)"), "{text}");
 }
 
 #[test]
@@ -2266,9 +2305,9 @@ fn compact_workspace_renders_data_and_restores_samples_and_shared_state() {
         if screen == small {
             assert!(app.samples_temporarily_collapsed);
             assert_eq!(app.focused_panel, FocusedPanel::DetailsGraph);
-            assert!(text.contains("[~] v: Samples"), "{text}");
+            assert!(text.contains("[~] Samples(v)"), "{text}");
             let (key_x, key_y) =
-                find_text_position(&render_app_to_buffer(&app, 80, 24), "v: Samples").unwrap();
+                find_text_position(&render_app_to_buffer(&app, 80, 24), "(v)").unwrap();
             assert_eq!(
                 render_app_to_buffer(&app, 80, 24)[(key_x, key_y)].fg,
                 app.theme().key_hint
@@ -2276,7 +2315,7 @@ fn compact_workspace_renders_data_and_restores_samples_and_shared_state() {
             assert!(text.contains("Samples hidden: enlarge terminal"), "{text}");
             // Hidden Samples must not move the drawn layout control's hit target.
             let buffer = render_app_to_buffer(&app, 80, 24);
-            let (x, y) = find_text_position(&buffer, "l: Auto").unwrap();
+            let (x, y) = find_text_position(&buffer, "Layout: Auto(l)").unwrap();
             app.on_mouse(left_click(x, y), screen);
             assert_eq!(app.graph_slot_layout, GraphSlotLayout::OneColumn);
             app.graph_slot_layout = GraphSlotLayout::Auto;

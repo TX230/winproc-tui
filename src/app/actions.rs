@@ -1714,6 +1714,7 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, mouse: MouseEvent, screen_area: Rect) {
+        self.pointer_position = Some(ratatui::layout::Position::new(mouse.column, mouse.row));
         if self.mcp_state.confirmation.is_some() {
             match mouse.kind {
                 MouseEventKind::ScrollUp => {
@@ -1837,7 +1838,8 @@ impl App {
             return;
         }
         let has_modal_focus = self.has_modal_focus();
-        let process_area = main_panel_areas_for_app(screen_area, self).processes.area;
+        let panels = main_panel_areas_for_app(screen_area, self);
+        let process_area = panels.processes.area;
         self.column_resize_hovered = if has_modal_focus {
             None
         } else {
@@ -1925,8 +1927,9 @@ impl App {
             self.process_show_exited_hovered = false;
             self.process_disclosure_hovered = None;
         } else {
-            self.graph_hovered_target =
-                graph_hover_target_at(self, screen_area, mouse.column, mouse.row);
+            self.graph_hovered_target = panels
+                .details
+                .and_then(|details| graph_hover_target_at(self, details, mouse.column, mouse.row));
             self.cpu_per_core_hovered =
                 cpu_per_core_button_area(cpu_panel_area_for_screen(screen_area, self))
                     .is_some_and(|area| contains_point(area, mouse.column, mouse.row));
@@ -3672,13 +3675,28 @@ fn graph_display_mode_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option
         .map(|card| card.id)
 }
 
-fn graph_hover_target_at(app: &App, screen_area: Rect, x: u16, y: u16) -> Option<GraphHoverTarget> {
-    let layout = graph_workspace_layout_for_app(app, screen_area)?;
-    if graph_shared_control_areas(layout.controls, app.show_samples_panel)
-        .auto_scroll
-        .is_some_and(|area| contains_point(area, x, y))
-    {
-        return Some(GraphHoverTarget::AutoScroll);
+pub(super) fn graph_hover_target_at(
+    app: &App,
+    details: Rect,
+    x: u16,
+    y: u16,
+) -> Option<GraphHoverTarget> {
+    if !contains_point(details, x, y) {
+        return None;
+    }
+    let layout = graph_workspace_layout(details, app);
+    let controls = graph_shared_control_areas(layout.controls, app);
+    for (area, target) in [
+        (controls.auto_scroll, GraphHoverTarget::AutoScroll),
+        (controls.samples, GraphHoverTarget::Samples),
+        (controls.delta, GraphHoverTarget::Delta),
+        (controls.layout, GraphHoverTarget::Layout),
+        (controls.all_samples, GraphHoverTarget::FitAll),
+        (controls.y_axis, GraphHoverTarget::MinZero),
+    ] {
+        if area.is_some_and(|area| contains_point(area, x, y)) {
+            return Some(target);
+        }
     }
     if app.can_zoom_graph_time_span(false)
         && layout
@@ -3829,7 +3847,7 @@ fn graph_shared_control_areas_for_app(
     let controls = graph_workspace_layout_for_app(app, screen_area)
         .map(|layout| layout.controls)
         .unwrap_or_default();
-    graph_shared_control_areas(controls, app.show_samples_panel)
+    graph_shared_control_areas(controls, app)
 }
 
 fn details_sample_page_size_for_samples_area(

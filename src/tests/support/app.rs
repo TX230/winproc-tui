@@ -352,6 +352,7 @@ pub(in crate::tests) fn make_test_app_with_workers(
         graph_scroll_row: 0,
         graph_scrollbar_dragging: false,
         graph_scrollbar_grab_offset: 0,
+        pointer_position: None,
         graph_hovered_target: None,
         cpu_per_core_hovered: false,
         graph_return_focus: FocusedPanel::Processes,

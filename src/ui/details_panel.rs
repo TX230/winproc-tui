@@ -26,8 +26,9 @@ use crate::{
             format_io_rate, format_mb_per_sec, format_signed_integer, format_signed_io_rate,
         },
         layout::{
-            GraphCardLayout, GraphSpanControlAreas, GraphWorkspaceLayout, details_graph_rows,
-            details_samples_content_layout, details_samples_summary_visibility,
+            GRAPH_AUTO_SCROLL, GRAPH_DELTA, GRAPH_FIT_ALL, GRAPH_LATEST, GRAPH_MIN_ZERO,
+            GRAPH_SAMPLES, GraphCardLayout, GraphSpanControlAreas, GraphWorkspaceLayout,
+            details_graph_rows, details_samples_content_layout, details_samples_summary_visibility,
             graph_shared_control_areas, graph_workspace_layout, graph_workspace_title_label,
         },
         widgets::block::{graph_card_block, graph_workspace_block, panel_block_focused},
@@ -83,7 +84,7 @@ pub(crate) fn draw_details_panel(
     }
 
     let layout = graph_workspace_layout(area, app);
-    draw_graph_shared_controls(frame, layout.controls, app, layout.columns, theme);
+    draw_graph_shared_controls(frame, layout.controls, app, theme);
     let graph_focused = app.panel_has_focus(FocusedPanel::DetailsGraph);
     let mut block = graph_workspace_block(
         graph_workspace_title(app, theme, graph_focused, layout.span_controls),
@@ -975,73 +976,97 @@ fn draw_graph_content(
     frame.render_widget(x_axis, layout[2]);
 }
 
-fn draw_graph_shared_controls(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    app: &App,
-    effective: usize,
-    theme: Theme,
-) {
-    let controls = graph_shared_control_areas(area, app.show_samples_panel);
-    if let Some(area) = controls.auto_scroll {
-        let hovered = app.graph_hovered_target == Some(GraphHoverTarget::AutoScroll);
-        let style = graph_button_style(theme, hovered, true).fg(theme.text);
-        let label = if !app.graph_auto_scroll_available() {
-            "[Latest]"
-        } else if app.details_live {
-            "[x] Auto Scroll (End)"
-        } else {
-            "[ ] Auto Scroll (End)"
-        };
-        frame.render_widget(Paragraph::new(label).style(style), area);
-    }
-    render_graph_toggle_mark(
-        frame,
-        controls.samples,
-        if app.show_samples_panel && app.samples_temporarily_collapsed {
-            "[~]"
-        } else if app.show_samples_panel {
-            "[x]"
-        } else {
-            "[ ]"
-        },
-        "v",
-        "Samples",
-        theme,
-    );
-    render_graph_toggle(
-        frame,
-        controls.delta,
-        app.show_sample_delta,
-        "d",
-        "Delta",
-        theme,
-    );
-    let requested = app.graph_slot_layout.columns() as usize;
-    let label = if requested > 0 && requested != effective {
-        format!("{effective}/{requested} cols")
-    } else if requested == 0 {
-        format!("Auto ({effective})")
+fn draw_graph_shared_controls(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App, theme: Theme) {
+    let controls = graph_shared_control_areas(area, app);
+    let checked = |value| if value { "[x]" } else { "[ ]" };
+    let layout_label = format!("Layout: {}(l)", app.graph_slot_layout.label());
+    let (scroll_mark, scroll_label) = if app.graph_auto_scroll_available() {
+        (Some(checked(app.details_live)), GRAPH_AUTO_SCROLL)
     } else {
-        app.graph_slot_layout.label().to_string()
+        (None, GRAPH_LATEST)
     };
-    render_graph_layout_mode(frame, controls.layout, &label, theme);
-    render_graph_toggle(
-        frame,
-        controls.all_samples,
-        app.graph_show_all_samples,
-        "f",
-        "Fit all",
-        theme,
-    );
-    render_graph_toggle(
-        frame,
-        controls.y_axis,
-        app.graph_y_axis_zero_min,
-        "z",
-        "Min 0",
-        theme,
-    );
+    let focused = app.panel_has_focus(FocusedPanel::DetailsGraph)
+        || app.panel_has_focus(FocusedPanel::DetailsSamples);
+    let mut previous_right = None;
+    for (area, target, mark, label) in [
+        (
+            controls.samples,
+            GraphHoverTarget::Samples,
+            Some(
+                if app.show_samples_panel && app.samples_temporarily_collapsed {
+                    "[~]"
+                } else {
+                    checked(app.show_samples_panel)
+                },
+            ),
+            GRAPH_SAMPLES,
+        ),
+        (
+            controls.delta,
+            GraphHoverTarget::Delta,
+            Some(checked(app.show_sample_delta)),
+            GRAPH_DELTA,
+        ),
+        (
+            controls.layout,
+            GraphHoverTarget::Layout,
+            None,
+            layout_label.as_str(),
+        ),
+        (
+            controls.all_samples,
+            GraphHoverTarget::FitAll,
+            Some(checked(app.graph_show_all_samples)),
+            GRAPH_FIT_ALL,
+        ),
+        (
+            controls.y_axis,
+            GraphHoverTarget::MinZero,
+            Some(checked(app.graph_y_axis_zero_min)),
+            GRAPH_MIN_ZERO,
+        ),
+        (
+            controls.auto_scroll,
+            GraphHoverTarget::AutoScroll,
+            scroll_mark,
+            scroll_label,
+        ),
+    ] {
+        let Some(area) = area else { continue };
+        let hovered = app.graph_hovered_target == Some(target);
+        if let Some(right) = previous_right {
+            let x = right + (area.x - right) / 2;
+            frame.render_widget(
+                Span::styled("·", Style::default().fg(theme.muted)),
+                Rect::new(x, area.y, 1, 1),
+            );
+        }
+        previous_right = Some(area.right());
+        let mut style = graph_button_style(theme, hovered, true).fg(theme.text);
+        if !focused && !hovered {
+            style = style.add_modifier(Modifier::DIM);
+        }
+        let mut spans = Vec::new();
+        if let Some(mark) = mark {
+            let color = if mark == "[x]" {
+                theme.accent
+            } else {
+                theme.muted
+            };
+            spans.push(Span::styled(
+                mark,
+                if hovered { style } else { style.fg(color) },
+            ));
+            spans.push(Span::raw(" "));
+        }
+        if let Some((name, key)) = label.split_once('(') {
+            spans.push(Span::raw(name));
+            spans.push(Span::styled(format!("({key}"), style.fg(theme.key_hint)));
+        } else {
+            spans.push(Span::raw(label));
+        }
+        frame.render_widget(Paragraph::new(Line::from(spans)).style(style), area);
+    }
 }
 
 fn graph_workspace_title(
@@ -1096,76 +1121,6 @@ fn graph_button_style(theme: Theme, hovered: bool, enabled: bool) -> Style {
     } else {
         Style::default().fg(theme.muted).bg(theme.panel)
     }
-}
-
-fn render_graph_toggle(
-    frame: &mut ratatui::Frame<'_>,
-    area: Option<Rect>,
-    checked: bool,
-    key: &'static str,
-    label: &'static str,
-    theme: Theme,
-) {
-    render_graph_toggle_mark(
-        frame,
-        area,
-        if checked { "[x]" } else { "[ ]" },
-        key,
-        label,
-        theme,
-    );
-}
-
-fn render_graph_toggle_mark(
-    frame: &mut ratatui::Frame<'_>,
-    area: Option<Rect>,
-    mark: &'static str,
-    key: &'static str,
-    label: &'static str,
-    theme: Theme,
-) {
-    let Some(toggle_area) = area else {
-        return;
-    };
-    let mark_color = if mark == "[x]" {
-        theme.accent
-    } else {
-        theme.muted
-    };
-    let toggle = Paragraph::new(Line::from(vec![
-        Span::styled(mark, Style::default().fg(mark_color).bg(theme.panel)),
-        Span::raw(" "),
-        Span::styled(key, Style::default().fg(theme.key_hint).bg(theme.panel)),
-        Span::styled(":", Style::default().fg(theme.muted).bg(theme.panel)),
-        Span::styled(
-            format!(" {label}"),
-            Style::default().fg(theme.text).bg(theme.panel),
-        ),
-    ]))
-    .style(Style::default().bg(theme.panel));
-    frame.render_widget(toggle, toggle_area);
-}
-
-fn render_graph_layout_mode(
-    frame: &mut ratatui::Frame<'_>,
-    area: Option<Rect>,
-    mode: &str,
-    theme: Theme,
-) {
-    let Some(area) = area else {
-        return;
-    };
-    let content = Paragraph::new(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("l", Style::default().fg(theme.key_hint).bg(theme.panel)),
-        Span::styled(":", Style::default().fg(theme.muted).bg(theme.panel)),
-        Span::styled(
-            format!(" {mode}"),
-            Style::default().fg(theme.text).bg(theme.panel),
-        ),
-    ]))
-    .style(Style::default().bg(theme.panel));
-    frame.render_widget(content, area);
 }
 
 fn details_paragraph<'a>(lines: Vec<Line<'a>>, theme: Theme) -> Paragraph<'a> {

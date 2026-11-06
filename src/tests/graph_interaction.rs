@@ -1369,7 +1369,7 @@ fn graph_all_samples_checkbox_uses_full_sample_span() {
 
     let screen = Rect::new(0, 0, 120, 45);
     let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
-    let x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+    let x = ui::layout::graph_shared_control_areas(controls, &app)
         .all_samples
         .unwrap()
         .x
@@ -1390,7 +1390,7 @@ fn graph_all_samples_checkbox_uses_full_sample_span() {
     assert_eq!(app.effective_graph_time_span_seconds(), 240);
 
     let rendered = render_app_to_text(&app, 120, 45);
-    assert!(rendered.contains("[x] f: Fit all"), "{rendered}");
+    assert!(rendered.contains("[x] Fit all(f)"), "{rendered}");
 }
 
 #[test]
@@ -1544,7 +1544,7 @@ fn graph_y_axis_checkbox_click_toggles_scale_mode() {
 
     let screen = Rect::new(0, 0, 120, 45);
     let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
-    let x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+    let x = ui::layout::graph_shared_control_areas(controls, &app)
         .y_axis
         .unwrap()
         .x
@@ -1588,12 +1588,12 @@ fn graph_checkboxes_work_when_samples_panel_is_hidden() {
     let screen = Rect::new(0, 0, 120, 45);
     let controls = details_shared_controls_area_for_app(screen, &app).unwrap();
     let y = controls.y;
-    let all_samples_x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+    let all_samples_x = ui::layout::graph_shared_control_areas(controls, &app)
         .all_samples
         .unwrap()
         .x
         + 1;
-    let y_axis_x = ui::layout::graph_shared_control_areas(controls, app.show_samples_panel)
+    let y_axis_x = ui::layout::graph_shared_control_areas(controls, &app)
         .y_axis
         .unwrap()
         .x
@@ -1692,8 +1692,8 @@ fn graph_layout_shortcuts_preserve_explicit_samples_preference() {
     assert_eq!(app.graph_slot_layout, GraphSlotLayout::TwoColumns);
     assert!(app.show_samples_panel);
     let rendered = render_app_to_text(&app, 120, 60);
-    assert!(rendered.contains("[x] v: Samples"), "{rendered}");
-    assert!(rendered.contains("l: 1/2 cols"), "{rendered}");
+    assert!(rendered.contains("[x] Samples(v)"), "{rendered}");
+    assert!(rendered.contains("Layout: 2 cols(l)"), "{rendered}");
 
     app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
         .unwrap();
@@ -1701,7 +1701,7 @@ fn graph_layout_shortcuts_preserve_explicit_samples_preference() {
     assert_eq!(app.graph_slot_layout, GraphSlotLayout::ThreeColumns);
     assert!(app.show_samples_panel);
     let rendered = render_app_to_text(&app, 180, 60);
-    assert!(rendered.contains("l: 2/3 cols"), "{rendered}");
+    assert!(rendered.contains("Layout: 3 cols(l)"), "{rendered}");
 
     app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
         .unwrap();
@@ -2101,7 +2101,7 @@ fn graph_auto_scroll_control_renders_clicks_and_hovers_at_compact_widths() {
         let screen = Rect::new(0, 0, width, 45);
         app::sync_layout_state(&mut app, screen);
         let area = details_shared_controls_area_for_app(screen, &app).unwrap();
-        let controls = ui::layout::graph_shared_control_areas(area, app.show_samples_panel);
+        let controls = ui::layout::graph_shared_control_areas(area, &app);
         let control = controls.auto_scroll.unwrap();
         assert_eq!(control.right(), area.right());
         for other in [
@@ -2116,7 +2116,7 @@ fn graph_auto_scroll_control_renders_clicks_and_hovers_at_compact_widths() {
         {
             assert!(other.right() < control.x);
         }
-        assert!(render_app_to_text(&app, width, 45).contains("[x] Auto Scroll (End)"));
+        assert!(render_app_to_text(&app, width, 45).contains("[x] Auto Scroll(End)"));
         app.on_mouse(
             MouseEvent {
                 kind: MouseEventKind::Moved,
@@ -2146,11 +2146,109 @@ fn graph_auto_scroll_control_renders_clicks_and_hovers_at_compact_widths() {
             );
             assert_eq!(app.details_live, expected);
             let mark = if expected {
-                "[x] Auto Scroll (End)"
+                "[x] Auto Scroll(End)"
             } else {
-                "[ ] Auto Scroll (End)"
+                "[ ] Auto Scroll(End)"
             };
             assert!(render_app_to_text(&app, width, 45).contains(mark));
+        }
+    }
+}
+
+#[test]
+fn graph_toolbar_hover_covers_whole_controls_and_excludes_separators() {
+    for width in [80, 140] {
+        let mut app = make_test_app(1, 10);
+        assign_private_graph(&mut app);
+        let screen = Rect::new(0, 0, width, 45);
+        app::sync_layout_state(&mut app, screen);
+        let row = details_shared_controls_area_for_app(screen, &app).unwrap();
+        let controls = ui::layout::graph_shared_control_areas(row, &app);
+        for (rect, target) in [
+            (controls.auto_scroll, app::GraphHoverTarget::AutoScroll),
+            (controls.samples, app::GraphHoverTarget::Samples),
+            (controls.delta, app::GraphHoverTarget::Delta),
+            (controls.layout, app::GraphHoverTarget::Layout),
+            (controls.all_samples, app::GraphHoverTarget::FitAll),
+            (controls.y_axis, app::GraphHoverTarget::MinZero),
+        ] {
+            let Some(rect) = rect else {
+                assert_eq!(width, 80);
+                continue;
+            };
+            for column in [rect.x, rect.right() - 1, rect.x.saturating_sub(1)] {
+                app.on_mouse(
+                    MouseEvent {
+                        kind: MouseEventKind::Moved,
+                        column,
+                        row: rect.y,
+                        modifiers: KeyModifiers::NONE,
+                    },
+                    screen,
+                );
+                if column < rect.x {
+                    assert_eq!(app.graph_hovered_target, None);
+                    continue;
+                }
+                assert_eq!(app.graph_hovered_target, Some(target));
+                let buffer = render_app_to_buffer(&app, width, 45);
+                for x in rect.x..rect.right() {
+                    let cell = &buffer[(x, rect.y)];
+                    assert_eq!(cell.bg, app.theme().focus_surface);
+                    assert!(cell.modifier.contains(ratatui::style::Modifier::BOLD));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn stationary_pointer_tracks_graph_toolbar_after_keyboard_reflow() {
+    let screen = Rect::new(0, 0, 140, 45);
+    let mut app = make_test_app(1, 10);
+    assign_private_graph(&mut app);
+    app.focused_panel = FocusedPanel::DetailsGraph;
+    app::sync_layout_state(&mut app, screen);
+    let row = details_shared_controls_area_for_app(screen, &app).unwrap();
+    let controls = ui::layout::graph_shared_control_areas(row, &app);
+    let samples = controls.samples.unwrap();
+    let delta = controls.delta.unwrap();
+
+    // The first cell moves into whitespace; the old Delta label becomes Samples.
+    for (column, expected) in [
+        (samples.x, None),
+        (delta.x, Some(app::GraphHoverTarget::Samples)),
+    ] {
+        app.on_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column,
+                row: row.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            screen,
+        );
+        for visible in [false, true] {
+            app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE))
+                .unwrap();
+            app::sync_layout_state(&mut app, screen);
+            assert_eq!(app.show_samples_panel, visible);
+            let target = if !visible {
+                expected
+            } else if column == samples.x {
+                Some(app::GraphHoverTarget::Samples)
+            } else {
+                Some(app::GraphHoverTarget::Delta)
+            };
+            assert_eq!(app.graph_hovered_target, target);
+            let current = ui::layout::graph_shared_control_areas(row, &app)
+                .samples
+                .unwrap();
+            let buffer = render_app_to_buffer(&app, screen.width, screen.height);
+            assert_eq!(
+                buffer[(current.x, current.y)].bg == app.theme().focus_surface,
+                target == Some(app::GraphHoverTarget::Samples)
+            );
         }
     }
 }
@@ -2295,7 +2393,7 @@ fn graph_auto_scroll_right_drag_back_to_latest_checks_control() {
     }
     assert!(app.details_live);
     assert_eq!(app.graph_time_offset_seconds, 0);
-    assert!(render_app_to_text(&app, 120, 45).contains("[x] Auto Scroll (End)"));
+    assert!(render_app_to_text(&app, 120, 45).contains("[x] Auto Scroll(End)"));
 }
 
 #[test]

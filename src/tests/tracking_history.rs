@@ -402,7 +402,7 @@ fn process_table_title_shows_concise_active_view_state() {
     let (state_x, state_y) = find_text_position(&buffer, "[x] Tracked (Shift+T)")
         .expect("tracked-only state should be rendered");
     let state_cell = &buffer[(state_x, state_y)];
-    assert_eq!(state_cell.fg, ui::THEMES[0].tracked);
+    assert_eq!(state_cell.fg, ui::THEMES[0].text);
     assert_ne!(state_cell.fg, ui::THEMES[0].warning);
     assert_eq!(state_cell.bg, ui::THEMES[0].panel);
     assert!(!state_cell.modifier.contains(Modifier::BOLD));
@@ -416,7 +416,7 @@ fn process_table_title_shows_concise_active_view_state() {
     let (shortcut_x, shortcut_y) =
         find_text_position(&buffer, "(Shift+T)").expect("tracked-only shortcut should be rendered");
     assert_eq!(shortcut_y, state_y);
-    assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, ui::THEMES[0].muted);
+    assert_eq!(buffer[(shortcut_x, shortcut_y)].fg, ui::THEMES[0].key_hint);
     assert!(
         !buffer[(shortcut_x, shortcut_y)]
             .modifier
@@ -431,15 +431,19 @@ fn process_table_title_shows_concise_active_view_state() {
 }
 
 #[test]
-fn process_table_view_mode_stays_muted_until_hovered() {
+fn process_title_checkbox_marks_share_the_normal_text_color() {
     let mut app = make_test_app(3, 10);
     app.process_view_mode = ProcessViewMode::Tree;
     app.rebuild_visible_process_cache();
 
-    let buffer = render_app_to_buffer(&app, 100, 30);
-    let (x, y) = find_text_position(&buffer, "[x] Tree (Shift+V)").expect("Tree view state");
-    assert_eq!(buffer[(x, y)].fg, app.theme().muted);
-    assert!(!buffer[(x, y)].modifier.contains(Modifier::BOLD));
+    let buffer = render_app_to_buffer(&app, 140, 30);
+    for label in ["Tree (Shift+V)", "Tracked (Shift+T)", "Exited (Shift+E)"] {
+        let (x, y) = find_text_position(&buffer, label).expect("process control");
+        for column in x - 4..x - 1 {
+            assert_eq!(buffer[(column, y)].fg, app.theme().text);
+            assert!(!buffer[(column, y)].modifier.contains(Modifier::BOLD));
+        }
+    }
 }
 
 #[test]

@@ -629,12 +629,12 @@ fn profile_label_keeps_both_padding_cells_when_truncated() {
             let mut app = make_test_app(1, 10);
             app.active_investigation_profile = Some(name.clone());
             let buffer = render_app_to_buffer(&app, width, 60);
-            let (x, y) = find_text_position(&buffer, "PF:").unwrap();
+            let (x, y) = find_text_position(&buffer, "Profile:").unwrap();
             assert_eq!(buffer[(x - 1, y)].symbol(), " ");
-            assert_eq!(buffer[(x - 1, y)].bg, app.theme().menu_bar);
+            assert_eq!(buffer[(x - 1, y)].bg, ratatui::style::Color::Yellow);
             let profile_end = width - 1;
             assert_eq!(buffer[(profile_end, y)].symbol(), " ");
-            assert_eq!(buffer[(profile_end, y)].bg, app.theme().menu_bar);
+            assert_eq!(buffer[(profile_end, y)].bg, ratatui::style::Color::Yellow);
         }
     }
 }

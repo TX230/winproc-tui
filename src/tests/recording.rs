@@ -866,7 +866,10 @@ fn live_header_omits_freshness_when_current() {
         rendered.contains("File▾") || rendered.contains("File ▾"),
         "{rendered}"
     );
-    assert!(rendered.contains("PF: none"), "{rendered}");
+    assert!(
+        !rendered.contains("PF:") && !rendered.contains("Profile:"),
+        "{rendered}"
+    );
     assert!(!rendered.contains("fresh"), "{rendered}");
     assert!(!rendered.contains("STALE"), "{rendered}");
 }
@@ -918,17 +921,14 @@ fn recording_header_shows_rec_spinner_and_path() {
         "{header}"
     );
     assert!(!header.contains(&path.display().to_string()), "{header}");
-    assert!(header.contains("PF: none"), "{header}");
+    assert!(
+        !header.contains("PF:") && !header.contains("Profile:"),
+        "{header}"
+    );
     assert!(
         rendered.contains("File▾") || rendered.contains("File ▾"),
         "{rendered}"
     );
-    let buffer = render_app_to_buffer(&app, 140, 45);
-    let (profile_x, profile_y) =
-        find_text_position(&buffer, "PF: none").expect("profile badge should render");
-    assert_eq!(buffer[(profile_x, profile_y)].fg, app.theme().muted);
-    assert_eq!(buffer[(profile_x, profile_y)].bg, app.theme().menu_bar);
-
     app.toggle_display_pause();
     let paused = render_app_to_text(&app, 140, 45);
     let paused_header = paused.lines().next().expect("paused header row");

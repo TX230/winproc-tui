@@ -1072,16 +1072,7 @@ fn process_table_title(app: &App, width: u16, theme: Theme) -> Line<'static> {
     } else {
         for segment in process_table_state_segments(app, width) {
             spans.push(title_separator(theme));
-            if segment.kind == ProcessTitleSegmentKind::TrackedOnly {
-                spans.extend(process_tracked_only_title_spans(app, theme));
-            } else if segment.kind == ProcessTitleSegmentKind::ViewMode {
-                spans.extend(process_view_mode_title_spans(app, theme));
-            } else {
-                spans.push(Span::styled(
-                    segment.label,
-                    process_title_segment_style(segment.kind, app, theme),
-                ));
-            }
+            spans.extend(process_title_segment_spans(segment, app, theme));
         }
     }
     Line::from(spans)
@@ -1160,47 +1151,40 @@ fn process_table_state_segments(app: &App, width: u16) -> Vec<ProcessTitleSegmen
     segments
 }
 
-fn process_title_segment_style(kind: ProcessTitleSegmentKind, app: &App, theme: Theme) -> Style {
-    match kind {
-        ProcessTitleSegmentKind::VisibleCount => Style::default()
-            .fg(theme.muted)
-            .remove_modifier(Modifier::BOLD),
-        ProcessTitleSegmentKind::ViewMode if app.activity() == AppActivity::LogView => {
-            Style::default()
-                .fg(theme.muted)
-                .remove_modifier(Modifier::BOLD)
+fn process_title_segment_spans(
+    segment: ProcessTitleSegment,
+    app: &App,
+    theme: Theme,
+) -> Vec<Span<'static>> {
+    let plain = Style::default().remove_modifier(Modifier::BOLD);
+    let hovered = match segment.kind {
+        ProcessTitleSegmentKind::Filter => {
+            return vec![Span::styled(segment.label, plain.fg(theme.warning))];
         }
-        ProcessTitleSegmentKind::ViewMode => Style::default()
-            .fg(theme.muted)
-            .remove_modifier(Modifier::BOLD),
-        ProcessTitleSegmentKind::TrackedOnly if app.watch_enabled => Style::default()
-            .fg(theme.tracked)
-            .remove_modifier(Modifier::BOLD),
-        ProcessTitleSegmentKind::TrackedOnly => Style::default()
-            .fg(theme.muted)
-            .remove_modifier(Modifier::BOLD),
-        ProcessTitleSegmentKind::ShowExited if app.process_show_exited_hovered => Style::default()
-            .fg(theme.text)
-            .bg(theme.focus_surface)
-            .add_modifier(Modifier::BOLD),
-        ProcessTitleSegmentKind::ShowExited => Style::default()
-            .fg(theme.text)
-            .remove_modifier(Modifier::BOLD),
-        ProcessTitleSegmentKind::Filter => Style::default()
-            .fg(theme.warning)
-            .remove_modifier(Modifier::BOLD),
-    }
-}
-
-fn process_view_mode_title_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    let mut style = process_title_segment_style(ProcessTitleSegmentKind::ViewMode, app, theme);
-    if app.process_view_mode_hovered && app.activity() != AppActivity::LogView {
-        style = style
-            .fg(theme.text)
-            .bg(theme.focus_surface)
-            .add_modifier(Modifier::BOLD);
-    }
-    vec![Span::styled(process_view_mode_label(app), style)]
+        ProcessTitleSegmentKind::VisibleCount => {
+            return vec![Span::styled(segment.label, plain.fg(theme.muted))];
+        }
+        ProcessTitleSegmentKind::ViewMode if app.activity() == AppActivity::LogView => {
+            return vec![Span::styled(segment.label, plain.fg(theme.muted))];
+        }
+        ProcessTitleSegmentKind::ViewMode => app.process_view_mode_hovered,
+        ProcessTitleSegmentKind::TrackedOnly => app.process_tracked_only_hovered,
+        ProcessTitleSegmentKind::ShowExited => app.process_show_exited_hovered,
+    };
+    let style = if hovered {
+        plain.bg(theme.focus_surface).add_modifier(Modifier::BOLD)
+    } else if app.panel_has_focus(FocusedPanel::Processes) {
+        plain
+    } else {
+        plain.add_modifier(Modifier::DIM)
+    };
+    let (label, shortcut) = segment
+        .label
+        .split_at(segment.label.rfind('(').unwrap_or(segment.label.len()));
+    vec![
+        Span::styled(label.to_owned(), style.fg(theme.text)),
+        Span::styled(shortcut.to_owned(), style.fg(theme.key_hint)),
+    ]
 }
 
 fn process_view_mode_label(app: &App) -> String {
@@ -1216,28 +1200,6 @@ fn process_view_mode_label(app: &App) -> String {
             }
         )
     }
-}
-
-fn process_tracked_only_title_spans(app: &App, theme: Theme) -> Vec<Span<'static>> {
-    if app.process_tracked_only_hovered {
-        return vec![Span::styled(
-            process_tracked_only_label(app),
-            Style::default()
-                .fg(theme.text)
-                .bg(theme.focus_surface)
-                .add_modifier(Modifier::BOLD),
-        )];
-    }
-    if app.watch_enabled {
-        let plain = |color| Style::default().fg(color).remove_modifier(Modifier::BOLD);
-        return vec![
-            Span::styled("[x]", plain(theme.tracked)),
-            Span::styled(" Tracked ", plain(theme.text)),
-            Span::styled("(Shift+T)", plain(theme.muted)),
-        ];
-    }
-    let label_style = process_title_segment_style(ProcessTitleSegmentKind::TrackedOnly, app, theme);
-    vec![Span::styled(process_tracked_only_label(app), label_style)]
 }
 
 fn filter_title_spans(

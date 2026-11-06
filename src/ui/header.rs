@@ -5,7 +5,7 @@ use crate::{
 };
 use ratatui::{
     layout::{Alignment, Rect},
-    prelude::{Modifier, Style},
+    prelude::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -142,29 +142,33 @@ pub(crate) fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App,
     let mut spans = header_status_spans(app, theme, usize::from(status_area.width));
     let budget = usize::from(status_area.width);
     let profile = if app.activity() == AppActivity::LogView {
-        "PF: --".to_string()
+        Some((
+            "PF: --".to_string(),
+            Style::default().fg(theme.muted).bg(theme.menu_bar),
+        ))
     } else {
-        format!(
-            "PF: {}{}",
-            app.active_investigation_profile
-                .as_deref()
-                .unwrap_or("none"),
-            if app.active_investigation_profile.is_some()
-                && app.active_investigation_profile_dirty()
-            {
+        app.active_investigation_profile.as_ref().map(|name| {
+            let suffix = if app.active_investigation_profile_dirty() {
                 "*"
             } else {
                 ""
-            }
-        )
+            };
+            (
+                format!("Profile: {name}{suffix}"),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
+        })
     };
     let profile_budget = budget.min(spans.iter().map(Span::width).sum::<usize>() + 30);
     let remaining = profile_budget.saturating_sub(spans.iter().map(Span::width).sum::<usize>());
-    if remaining >= 8 {
+    if let Some((profile, style)) = profile.filter(|_| remaining >= 8) {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             format!(" {} ", truncate_name(&profile, remaining - 4)),
-            Style::default().fg(theme.muted).bg(theme.menu_bar),
+            style,
         ));
     }
     if let Some(path) = app.active_log_path() {
