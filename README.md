@@ -273,6 +273,10 @@ Report suspected security vulnerabilities privately as described in [SECURITY.md
 
 This is a personal project and does not accept unsolicited pull requests from external contributors. Opening or discussing an Issue does not authorize a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution policy.
 
+## About Development
+
+winproc-tui is a personal project and also a testbed for development practices that make use of AI agents.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).

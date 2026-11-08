@@ -273,6 +273,10 @@ cargo install --path . --locked
 
 個人開発のプロジェクトのため、外部コントリビューターからの Pull Request は、事前に依頼したものを除き受け付けていません。Issue の作成や議論は、Pull Request の依頼を意味しません。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
+## 開発について
+
+winproc-tui は個人プロジェクトであり、AI エージェントを活用した開発手法を試す場でもあります。
+
 ## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。
