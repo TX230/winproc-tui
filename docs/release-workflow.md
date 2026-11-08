@@ -168,6 +168,15 @@ git status
 The release tag should be created from the commit that is intended to become the release.
 If there are uncommitted changes, either commit them first or intentionally leave them out of the release.
 
+Before building, update the package version in `Cargo.toml` and the `winproc-tui` entry in `Cargo.lock` together. Use an English Conventional Commit with `bump` in the title and a concise explanatory body, for example:
+
+```powershell
+git add Cargo.toml Cargo.lock
+git commit -m "chore: bump version to X.Y.Z" -m "Prepare the package manifest and lockfile for the X.Y.Z release."
+```
+
+Include any related release-documentation changes in the same commit. Follow `AGENTS.md` for agent branches and authorized integration into `main`, then verify the final release commit before tagging.
+
 ### 4. Run Clippy and Tests
 
 Run the same Clippy command used by CI against the release candidate; warnings block packaging.
