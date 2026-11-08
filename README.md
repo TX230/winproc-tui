@@ -6,11 +6,11 @@
 
 Language: [English](README.md) | [日本語](README.ja.md)
 
-`winproc-tui` is a lightweight process monitor for Windows 11, built in Rust for responsive monitoring with low CPU usage and a small memory footprint.
+winproc-tui is a fast, lightweight terminal process monitor for Windows 11, built with Rust and Ratatui.
 
-Monitor multiple system-wide and per-process metrics, visualize resource trends, and investigate process behavior directly in the terminal. Track how an application's memory, handles, GUI resources, GPU memory, I/O, .NET runtime metrics, and other metrics change over time.
+It collects a wide range of system-wide and per-process metrics, including .NET 8/9/10 runtime information that is not available through PDH, and tracks how they change over time. It supports simultaneous monitoring with up to 16 Graph slots, measuring the change between two points in time with A/B markers, and recording sessions for later investigation. You can also inspect the DLLs a process has loaded, the files it has open, and the network ports it is using, or search for processes that have a specific file open. For debugging, it provides operations such as killing a selected process and changing its priority or CPU affinity. As an experimental feature, it supports MCP (Model Context Protocol), allowing AI assistants to retrieve metrics and investigate processes.
 
-Select the metrics that matter, keep up to 16 Graphs in one workspace, compare exact points with A/B markers, and record sessions for later inspection. The focus is fast, repeatable investigation of selected processes during development and testing—not broad system inspection.
+winproc-tui is especially well suited to quick, repeated investigation of specific processes during development and testing.
 
 ![The winproc-tui main screen showing system and process metrics, the Graph Workspace, Samples, and an A/B comparison](assets/screenshots/main-screen.png)
 
@@ -24,6 +24,11 @@ Official Windows binaries are published only on [TX230/winproc-tui Releases](htt
 
 ```powershell
 winget install winproc-tui
+```
+
+After installing winproc-tui with WinGet for the first time, close and reopen your terminal to apply the changes to the PATH environment variable. This step is not needed for subsequent installations.
+
+```powershell
 winproc-tui
 ```
 
@@ -57,21 +62,20 @@ Uninstall with `scoop uninstall winproc-tui`. A normal uninstall preserves saved
 
 ### See a Process Change Over Time
 
-1. Select a process in `PROCESSES`.
-2. Use `Left` / `Right` to select a metric column such as `PrivBytes`.
-3. Press `Space` or double-click the metric cell to add a Graph. Repeat with other metrics to compare up to 16 Graphs in the workspace.
+1. Move focus to the `PROCESSES` panel. Press `Tab` to cycle focus, use `Ctrl+↑/↓/←/→` to move to the neighboring panel in that direction, or click inside the panel with the mouse.
+2. Use `↑` / `↓` or click a process row to select the process you want to investigate.
+3. Use `Left` / `Right` to select a metric column such as `PrivBytes`.
+4. Press `Space` or double-click the metric cell to add a Graph. Repeat with other metrics to compare up to 16 Graphs in the workspace.
 
-System MEM, GPU, CPU, and network/disk metrics can be graphed directly from their panels; they do not require a Tracking List entry.
-
-![Graph Workspace showing 12 metrics in a three-column layout](assets/screenshots/main-screen-12slots.png)
-
-_A customized layout displaying 12 Graphs._
+System metrics such as Commit charge can also be graphed in the same way.
 
 ### Compare Two Points
 
 Move focus to a Graph or Samples and choose a sample with `Left` / `Right`. Press `a` at the start point and `b` at the end point to see the value difference and elapsed time. Press `x` to clear the comparison.
 
 ### Track and Record Processes
+
+Tracking a process retains its metric history in memory for approximately two hours (up to 7,200 samples at one-second intervals), compared with approximately two minutes (up to 120 samples) for untracked processes. Child processes of tracked processes, including further descendants, are also tracked automatically when detected. To inspect the history after exiting the application, start recording to a log separately.
 
 1. Select a Process or PID cell and press `Space` or `t`, or choose **Track process** from its right-click menu to add that process name to the working Tracking List.
 2. Use `Ctrl+T` to open a saved Investigation Profile. Press `Ctrl+S` to save the active Profile, or use `Investigation > Save profile as…` to save the working Tracking List under a new profile name.
@@ -82,24 +86,6 @@ Move focus to a Graph or Samples and choose a sample with `Left` / `Right`. Pres
 Recording requires at least one process name in the Tracking List, but no matching process needs to be running yet. The names are captured when Recording starts and remain fixed for that session. `Shift+T` can still switch between All processes and Tracked-only because it changes only the display.
 
 Use `Tab` / `Shift+Tab` to move between panels and the arrow keys to select rows, columns, and samples. Press `F1` or `?` at any time for the complete controls; the footer shows the main actions available in the current context.
-
-### Inspect Network Addresses and Ports
-
-1. Open **Investigation > Network endpoints** or press `F3` to view network endpoints across the system.
-2. Optionally type in Filter to narrow the list, then press `Enter` to focus it. The default view shows TCP listeners and bound UDP endpoints.
-3. Select a row with `↑` / `↓` and press `Enter` to open Process Info for the process using that port.
-
-The list is captured when you first open the view. Press `r` while the list has focus to refresh it.
-
-### Find Processes That Have a File Open
-
-1. Open **Investigation > Find processes by file** or press `F4` to open file search.
-2. The view collects accessible open files automatically. Enter a file name or path terms in Query to filter the list immediately (AND matching), then press `Enter` to focus results. Use `Ctrl+R` to refresh the capture.
-3. Select a result with `↑` / `↓` and press `Enter` to open that process's Files tab in Process Info. Inspect the matching file's handles, access rights, and other details.
-
-Results also report uninspected scope, such as inaccessible processes. No matches does not guarantee that no process has the file open.
-
-Both investigations are available in Live and during Recording. Switching views preserves results and input, but these reports are not recorded and are unavailable in Log view.
 
 ### Collect .NET Metrics
 
@@ -125,32 +111,49 @@ _After pressing n: the selected process shows measurements; the other processes 
 
 ## Capabilities
 
-- **CSV export**: Export all registered Graphs to one CSV from **File > Export Graphs to CSV**, using retained history, the visible time range, or A/B bounds.
-- **Live monitoring**: Shows system memory pressure, per-adapter GPU load and memory, network and disk activity, CPU activity, and detailed per-process metrics.
-- **Process tree**: Switches the Processes table between a sortable flat list and a process tree showing parent-child relationships, with filtering and subtree collapse.
-- **Graphs and A/B comparison**: Displays up to 16 metrics on a shared timeline in a reorderable workspace. Use synchronized Samples to inspect values, compare two selected sample times, and review the minimum, maximum, and mean for the active Graph over the A/B interval.
-- **Process-group tracking**: Track an application name to include its observed children and deeper descendants in totals, history, and recordings. Unrelated processes with descendant names stay outside the scope.
-- **Investigation Profiles**: Saves named Tracking Lists for investigations that may start before their target processes. The app retains the last sampled values for tracked processes after they exit.
-- **.NET metrics**: Collect .NET 8/9/10 metrics explicitly for individual processes; supported .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning and steps.
-- **Process Info**: Brings metrics, image and runtime details, open files, DLLs, environment variables, network endpoints, and threads with their preferred CPUs together for the selected process. Its Scheduling tab can inspect and change CPU priority and, on single-processor-group systems, CPU affinity, with direct application and explicit restoration of the previous value.
-- **Find processes by file**: Find processes by file name or path and inspect their open-file details. See [Find Processes That Have a File Open](#find-processes-that-have-a-file-open) for the steps.
-- **Network endpoints**: Inspect TCP/UDP addresses, ports, and the processes using them across the system. See [Inspect Network Addresses and Ports](#inspect-network-addresses-and-ports) for the steps.
-- **Recording and Log view**: Records system metrics, matching processes, and their observed descendants as JSON Lines, then reopens them in the same Processes, Graph, Samples, and A/B views.
+### Monitor
 
-The last working Tracking List and app settings are restored on the next launch, or startup can choose a saved Investigation Profile or an empty Tracking List. Graphs start empty each time the app starts; filter input and runtime process identities are not saved.
+- **System and process metrics**: Shows CPU, memory, per-adapter GPU, and network/disk activity across the system, together with detailed per-process metrics, in real time.
+- **List and tree views**: Switches PROCESSES between a sortable flat list and a tree showing parent-child relationships, with filtering and subtree collapse.
+- **.NET metrics**: Start .NET 8/9/10 collection per process; .NET Framework metrics are collected automatically. See [Collect .NET Metrics](#collect-net-metrics) for the startup warning.
+
+### Visualize and Compare
+
+- **Graph Workspace**: Displays up to 16 metrics side by side on a shared timeline in a reorderable layout. Graphs start empty each time the app starts.
+- **Samples and A/B comparison**: Synchronized value history shows the difference and elapsed time between two points, plus the minimum, maximum, and mean of the active Graph over its A/B interval.
+- **CSV export**: Export registered Graphs to one CSV from **File > Export Graphs to CSV**, using the full history, the visible range, or the A/B interval.
+
+### Investigate
+
+- **Process Info**: Inspect a process's image, open files, DLLs, environment variables, network endpoints, and threads in one dialog. CPU priority and affinity can also be changed.
+- **Find processes by file**: From **Investigation > Find processes by file** or `F4`, find the processes that have a file open from part of its name or path. For example, entering `.log` lists every `.log` file open across the system and the processes that have it open. A search usually completes within a second. Inaccessible processes cannot be inspected, so no matches does not guarantee that no process has the file open.
+- **Network endpoints**: From **Investigation > Network endpoints** or `F3`, list TCP/UDP addresses and ports across the system and open details for the process using each one.
+
+![The Processes Using File dialog showing results for "chrome .log"](assets/screenshots/find-processes-by-file.png)
+
+_Searching for `chrome .log` lists open files whose paths contain both terms, along with the processes that have them open, in 0.66 seconds._
+
+### Track and Record
+
+- **Process-group tracking**: Add an application's process name to the Tracking List to track its observed descendants together with it. Processes with descendant names but no parent-child relationship stay outside the scope.
+- **Investigation Profiles**: Save a Tracking List under a name to restart investigations of the same application quickly. The last Tracking List is restored on the next launch, and startup can also choose a saved Profile.
+- **Recording and Log view**: Record tracked processes and system metrics as JSON Lines, then inspect them later with Graphs and A/B comparison. See [Recording and Log View](#recording-and-log-view) for details.
 
 ## When to Use It
 
-`winproc-tui` is a good fit when you need to:
+`winproc-tui` is a good fit for investigations like these during development and testing:
 
-- Understand a process's resource usage and identify opportunities to optimize it.
-- Check for memory, handle, and other resource leaks.
-- Compare `Private Bytes` with `Working Set - Private` to investigate whether a large allocated buffer may be going unused.
-- Review handle-count trends and the Files tab in Process Info to find files that may not have been closed. Inspect each file handle's cache mode, write-through setting, I/O mode, and access rights.
-- Inspect the paths and versions of DLLs loaded by a process.
-- Find processes that have a specific file open and inspect how the file was opened and its access rights.
-- Compare resource usage before and after a specific operation or code change.
-- Record a target process and later inspect history around the time an issue occurred.
+- **Memory or handles keep growing**: Compare Private Bytes, handle count, USER/GDI object counts, and GPU memory over time to look for signs of a leak. For .NET applications, you can also check whether the growth is accompanied by managed-heap growth.
+- **Allocated memory may not be in use**: The gap between `Private Bytes` and `Working Set - Private` provides a rough indication of how much committed private memory is not resident in physical memory. A large gap can indicate buffers that were allocated but never touched.
+- **You need numbers for an operation's impact**: Place A/B markers before and after an operation to see the change, elapsed time, and the minimum, maximum, and mean over the interval. To compare runs before and after a code change, export each run's Graphs to CSV.
+- **An application runs as several processes**: Add the launching process name to the Tracking List to track its descendants together and see their combined total.
+- **Startup, shutdown, or hard-to-reproduce issues**: Start recording before the target launches. Tracked processes keep their last successfully sampled values and history after they exit, and recordings of up to 24 hours let you inspect the period around an incident later. Changes shorter than the collection interval may not be captured.
+- **A file is in use and cannot be deleted or overwritten**: Find the processes that have it open from part of its name or path, and check details such as their access rights.
+- **Files may be left open or opened with unexpected flags**: Use handle-count trends and the open-file list to find files that may not have been closed. Each handle's cache mode, write-through setting, asynchronous I/O support, and access rights are also shown.
+- **A server cannot start because its port is in use**: Identify the process using that port.
+- **The wrong build or configuration may be running**: Check the paths and versions of the executable and loaded DLLs, the command line, and environment variables.
+
+For function-level CPU profiling, call-stack capture, remote monitoring, or operational monitoring that runs continuously and accumulates long-term data, use a dedicated tool.
 
 ## Recording and Log View
 
@@ -164,7 +167,28 @@ See [docs/metrics.md](docs/metrics.md) for metric definitions, aggregation behav
 
 ## Local MCP Integration
 
+**MCP integration is experimental.**
+
 Configure your MCP client to run `winproc-tui mcp-bridge`. The client starts a bridge process that serves as the MCP server. The bridge and the interactive application run as separate processes of the same `winproc-tui.exe`; the application owns the TUI, metrics, history, and investigation state.
+
+Each MCP client connection uses its own MCP server (bridge) process. Multiple bridges share one interactive application process per Windows session, with up to four simultaneous bridge connections. For example, two connected MCP clients use two bridge processes and one application process. They share the current investigation, metrics, history, and Recording state owned by the application; each client does not get a separate TUI or investigation.
+
+For Codex, with `codex` and `winproc-tui` available on PATH, register the server and verify the configuration:
+
+```powershell
+codex mcp add winproc -- winproc-tui mcp-bridge
+codex mcp list
+```
+
+If `winproc-tui` is not on PATH, replace it in the registration command with the full path to `winproc-tui.exe`, enclosed in double quotes.
+
+To remove the MCP server registration from Codex:
+
+```powershell
+codex mcp remove winproc
+```
+
+This removes only the Codex MCP configuration; it does not uninstall `winproc-tui` itself. For other MCP clients, remove the corresponding server entry from their configuration.
 
 On the first valid tool call, the bridge connects as follows:
 
@@ -229,8 +253,17 @@ cargo install --path . --locked
 
 - Press `F1` or `?` in the app for the complete keyboard and mouse controls.
 - Run `winproc-tui --help` for command-line options.
-- See [docs/metrics.md](docs/metrics.md) for metrics, data sources, display formats, and recording logs.
-- See [docs/architecture.md](docs/architecture.md) for the system overview and links to focused design documents.
+
+For details, see the following documents:
+
+- [docs/metrics.md](docs/metrics.md): metric definitions, data sources, display formats, and recording formats.
+- [docs/tracking-and-history.md](docs/tracking-and-history.md): tracking scope, automatic descendant tracking, and history retention.
+- [docs/graph-workspace.md](docs/graph-workspace.md): graphs, Samples, and A/B comparison.
+- [docs/process-investigation.md](docs/process-investigation.md): inspection of files, DLLs, environment variables, network endpoints, and more.
+- [docs/recording-and-log-view.md](docs/recording-and-log-view.md): recording behavior, log loading, and inspection.
+- [docs/dotnet-metrics-collection.md](docs/dotnet-metrics-collection.md): supported runtimes, collection methods, and limitations.
+- [docs/mcp-integration-specification.md](docs/mcp-integration-specification.md): connection setup, tool specifications, and limitations.
+- [docs/architecture.md](docs/architecture.md): internal structure, component responsibilities, and data flow.
 
 ## Bug Reports and Feature Requests
 
