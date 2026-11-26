@@ -1,4 +1,3 @@
-use chrono::{Local, TimeZone};
 use ratatui::widgets::TableState;
 
 use crate::app::{
@@ -71,13 +70,13 @@ pub(in crate::tests) fn record_tracked_process_history_samples(
     process.pid = 42;
     process.start_time = Some(1_700_000_042);
     let tracked_names = std::collections::HashSet::from([name.to_ascii_lowercase()]);
-    let now = Local.with_ymd_and_hms(2026, 5, 6, 0, 0, 0).unwrap();
+    let now = crate::datetime::local_test_time(2026, 5, 6, 0, 0, 0);
     app.process_history = ProcessHistory::default();
 
     for offset in 0..count {
         process.private_bytes = Some(offset as u64);
         app.process_history.record_snapshot(
-            now + chrono::Duration::seconds(offset as i64),
+            now + jiff::SignedDuration::from_secs(offset as i64),
             &[process.clone()],
             &tracked_names,
         );
@@ -482,7 +481,7 @@ pub(in crate::tests) fn test_snapshot(row_count: usize) -> Snapshot {
         .collect::<Vec<_>>();
 
     Snapshot {
-        captured_at: Local::now(),
+        captured_at: jiff::Timestamp::now(),
         total_memory: 0,
         used_memory: 0,
         available_memory: None,

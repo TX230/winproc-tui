@@ -1,3 +1,5 @@
+use crate::datetime::TimestampExt;
+use jiff::{SignedDuration, Timestamp};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -6,7 +8,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local};
 use ratatui::{layout::Rect, widgets::TableState};
 
 use crate::{
@@ -115,7 +116,7 @@ const fn process_info_metric_label(column: MetricColumn) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessLifecycle {
     Live,
-    Exited { exited_at: DateTime<Local> },
+    Exited { exited_at: Timestamp },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,7 +147,7 @@ pub(crate) struct VisibleProcessRow<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct ExitedTrackedRow {
     pub(crate) process: ProcessRow,
-    pub(crate) exited_at: DateTime<Local>,
+    pub(crate) exited_at: Timestamp,
 }
 
 #[derive(Debug, Clone)]
@@ -246,7 +247,7 @@ pub(crate) enum DetailsTarget {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct AbComparisonPoint {
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: Timestamp,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -578,7 +579,7 @@ pub(crate) struct SourceCellClick {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GraphSample {
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: Timestamp,
     pub(crate) value: Option<f64>,
 }
 
@@ -1192,7 +1193,7 @@ pub(crate) struct App {
     pub(crate) recording_spinner_index: usize,
     pub(crate) log_view_path: Option<PathBuf>,
     pub(crate) log_view_interval_seconds: Option<u64>,
-    pub(crate) log_view_frame_times: Vec<DateTime<Local>>,
+    pub(crate) log_view_frame_times: Vec<Timestamp>,
     pub(crate) should_quit: bool,
     pub(crate) column_picker_index: usize,
     pub(crate) column_picker_scroll: ScrollableModalState,
@@ -1249,7 +1250,7 @@ pub(crate) struct App {
     pub(crate) process_info_manual_height: Option<u16>,
     pub(crate) process_info_resize_drag: Option<(u16, u16)>,
     pub(crate) process_info_target: Option<ProcessInfoDialogTarget>,
-    pub(crate) process_info_verified_snapshot_at: Option<DateTime<Local>>,
+    pub(crate) process_info_verified_snapshot_at: Option<Timestamp>,
     pub(crate) process_info_generation: u64,
     pub(crate) show_cpu_core_dialog: bool,
     pub(crate) cpu_core_scroll: ScrollableModalState,
@@ -1281,7 +1282,7 @@ pub(crate) struct App {
     pub(crate) details_target: DetailsTarget,
     pub(crate) details_metric: DetailsMetric,
     pub(crate) details_sample_selected: usize,
-    pub(crate) sample_selection: Option<(GraphId, DateTime<Local>, DateTime<Local>)>,
+    pub(crate) sample_selection: Option<(GraphId, Timestamp, Timestamp)>,
     pub(crate) details_sample_offset: usize,
     pub(crate) details_sample_page_size: usize,
     pub(crate) samples_scrollbar_dragging: bool,
@@ -1294,7 +1295,7 @@ pub(crate) struct App {
     pub(crate) graph_pan_drag: Option<GraphPanDrag>,
     pub(crate) graph_time_span_seconds: u32,
     pub(crate) graph_time_offset_seconds: u32,
-    pub(crate) graph_time_window_right_at: Option<DateTime<Local>>,
+    pub(crate) graph_time_window_right_at: Option<Timestamp>,
     pub(crate) graph_show_all_samples: bool,
     pub(crate) graph_y_axis_zero_min: bool,
     pub(crate) graph_slot_layout: GraphSlotLayout,
@@ -1721,16 +1722,16 @@ impl App {
     }
 
     pub(crate) fn sample_freshness(&self) -> Option<SampleFreshness> {
-        self.sample_freshness_at(Local::now())
+        self.sample_freshness_at(Timestamp::now())
     }
 
-    pub(crate) fn sample_freshness_at(&self, now: DateTime<Local>) -> Option<SampleFreshness> {
+    pub(crate) fn sample_freshness_at(&self, now: Timestamp) -> Option<SampleFreshness> {
         if self.activity() == AppActivity::LogView {
             return None;
         }
         let age_seconds = now
-            .signed_duration_since(self.snapshot.captured_at)
-            .num_seconds()
+            .duration_since(self.snapshot.captured_at)
+            .as_secs()
             .max(0) as u64;
         if age_seconds >= SAMPLE_STALE_AFTER_SECONDS {
             Some(SampleFreshness::Stale { age_seconds })
@@ -2489,8 +2490,7 @@ impl App {
         if !self.show_exited {
             return Vec::new();
         }
-        let mut latest_by_name: HashMap<String, (&ProcessIdentity, DateTime<Local>)> =
-            HashMap::new();
+        let mut latest_by_name: HashMap<String, (&ProcessIdentity, Timestamp)> = HashMap::new();
         for (identity, row) in self.display_exited_tracked_rows() {
             let name = identity.name.to_ascii_lowercase();
             if !self.is_tracked_process(&row.process) {
@@ -2905,7 +2905,7 @@ impl App {
             .or_else(|| self.graph_entries.first().map(|entry| &entry.source))
     }
 
-    pub(crate) fn selected_details_sample_time(&self) -> Option<DateTime<Local>> {
+    pub(crate) fn selected_details_sample_time(&self) -> Option<Timestamp> {
         let slot = self.active_graph_slot()?;
         self.graph_slot_sample_at(slot, self.details_sample_selected)
             .map(|sample| sample.captured_at)
@@ -4000,8 +4000,8 @@ impl App {
         };
         let Some((index, _)) = samples.iter().enumerate().min_by_key(|(_, sample)| {
             let age = time_reference_at
-                .signed_duration_since(sample.captured_at)
-                .num_seconds()
+                .duration_since(sample.captured_at)
+                .as_secs()
                 .max(0);
             (age - age_seconds).abs()
         }) else {
@@ -4014,7 +4014,7 @@ impl App {
         self.status = format!("Samples selection: {}", index + 1);
     }
 
-    fn align_details_sample_selection_to_time(&mut self, captured_at: Option<DateTime<Local>>) {
+    fn align_details_sample_selection_to_time(&mut self, captured_at: Option<Timestamp>) {
         let Some(slot) = self.active_graph_slot() else {
             return;
         };
@@ -4042,8 +4042,8 @@ impl App {
             return;
         };
         let selected_age = time_reference_at
-            .signed_duration_since(selected.captured_at)
-            .num_seconds()
+            .duration_since(selected.captured_at)
+            .as_secs()
             .clamp(0, i64::from(u32::MAX)) as u32;
         let span = self.graph_time_span_seconds.max(1);
         let current_offset = self.graph_time_offset_seconds;
@@ -4114,7 +4114,7 @@ impl App {
         }
         self.status = format!(
             "{label} point set: {}",
-            point.captured_at.format("%H:%M:%S"),
+            point.captured_at.format_local("%H:%M:%S"),
         );
     }
 
@@ -4157,7 +4157,7 @@ impl App {
         })
     }
 
-    fn sample_index_at(&self, captured_at: DateTime<Local>) -> Option<usize> {
+    fn sample_index_at(&self, captured_at: Timestamp) -> Option<usize> {
         let slot = self.active_graph_slot()?;
         self.graph_slot_samples(slot)
             .iter()
@@ -4555,11 +4555,11 @@ impl App {
         }
     }
 
-    fn graph_time_window_right_edge(&self) -> Option<DateTime<Local>> {
+    fn graph_time_window_right_edge(&self) -> Option<Timestamp> {
         let time_reference_at = self.graph_time_reference_at()?;
         Some(
             time_reference_at
-                - chrono::Duration::seconds(i64::from(self.graph_time_offset_seconds)),
+                - SignedDuration::from_secs(i64::from(self.graph_time_offset_seconds)),
         )
     }
 
@@ -4642,8 +4642,8 @@ impl App {
             .iter()
             .map(|sample| {
                 time_reference_at
-                    .signed_duration_since(sample.captured_at)
-                    .num_seconds()
+                    .duration_since(sample.captured_at)
+                    .as_secs()
                     .clamp(0, i64::from(u32::MAX)) as u32
             })
             .collect::<Vec<_>>();
@@ -4669,7 +4669,7 @@ impl App {
         }
     }
 
-    pub(crate) fn graph_time_reference_at(&self) -> Option<DateTime<Local>> {
+    pub(crate) fn graph_time_reference_at(&self) -> Option<Timestamp> {
         self.graph_sample_time_range().map(|(_, latest)| latest)
     }
 
@@ -4679,7 +4679,7 @@ impl App {
             .unwrap_or(self.graph_time_span_seconds)
     }
 
-    fn graph_sample_time_range(&self) -> Option<(DateTime<Local>, DateTime<Local>)> {
+    fn graph_sample_time_range(&self) -> Option<(Timestamp, Timestamp)> {
         self.graph_entries
             .iter()
             .filter_map(|entry| self.graph_slot_time_range(&entry.source))
@@ -4691,10 +4691,7 @@ impl App {
             })
     }
 
-    fn graph_slot_time_range(
-        &self,
-        slot: &GraphSlot,
-    ) -> Option<(DateTime<Local>, DateTime<Local>)> {
+    fn graph_slot_time_range(&self, slot: &GraphSlot) -> Option<(Timestamp, Timestamp)> {
         match slot {
             GraphSlot::Process { identity, .. } => {
                 self.display_process_history().time_range_for(identity)
@@ -8019,7 +8016,7 @@ Log load worker stopped",
     fn record_exited_tracked_rows(
         &mut self,
         next_tracked_live_identities: &HashSet<ProcessIdentity>,
-        exited_at: DateTime<Local>,
+        exited_at: Timestamp,
     ) {
         let exited_identities = self
             .last_tracked_live_identities
@@ -8090,7 +8087,7 @@ Log load worker stopped",
             .map(|(identity, row)| (identity.clone(), row.exited_at))
             .collect::<HashMap<_, _>>();
         let recent_after = self.snapshot.captured_at
-            - chrono::Duration::seconds(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64);
+            - SignedDuration::from_secs(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64);
         let retained_identities = self.process_history.retain_live_generations(
             &protected_identities,
             &tracked_exit_candidates,
@@ -8450,46 +8447,40 @@ fn synced_sample_viewport_offset(
     selected_index.saturating_sub(active_row).min(max_offset)
 }
 
-fn sample_index_at_time(samples: &[GraphSample], captured_at: DateTime<Local>) -> Option<usize> {
+fn sample_index_at_time(samples: &[GraphSample], captured_at: Timestamp) -> Option<usize> {
     samples
         .iter()
         .position(|sample| sample.captured_at == captured_at)
 }
 
-fn format_process_info_time(captured_at: DateTime<Local>) -> String {
-    captured_at.format("%Y-%m-%d %H:%M:%S").to_string()
+fn format_process_info_time(captured_at: Timestamp) -> String {
+    captured_at.format_local("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-fn sample_index_nearest_time(
-    samples: &[GraphSample],
-    captured_at: DateTime<Local>,
-) -> Option<usize> {
+fn sample_index_nearest_time(samples: &[GraphSample], captured_at: Timestamp) -> Option<usize> {
     samples
         .iter()
         .enumerate()
         .min_by_key(|(index, sample)| {
             let diff = sample
                 .captured_at
-                .signed_duration_since(captured_at)
-                .num_milliseconds()
+                .duration_since(captured_at)
+                .as_millis()
                 .unsigned_abs();
             (diff, usize::MAX - *index)
         })
         .map(|(index, _)| index)
 }
 
-fn rounded_nonnegative_seconds_between(later: DateTime<Local>, earlier: DateTime<Local>) -> u32 {
-    let milliseconds = later
-        .signed_duration_since(earlier)
-        .num_milliseconds()
-        .max(0);
-    (milliseconds.saturating_add(500) / 1_000).min(i64::from(u32::MAX)) as u32
+fn rounded_nonnegative_seconds_between(later: Timestamp, earlier: Timestamp) -> u32 {
+    let milliseconds = later.duration_since(earlier).as_millis().max(0);
+    (milliseconds.saturating_add(500) / 1_000).min(i128::from(u32::MAX)) as u32
 }
 
-fn sample_time_span_seconds(first: DateTime<Local>, last: DateTime<Local>) -> u32 {
+fn sample_time_span_seconds(first: Timestamp, last: Timestamp) -> u32 {
     let span = last
-        .signed_duration_since(first)
-        .num_seconds()
+        .duration_since(first)
+        .as_secs()
         .max(1)
         .min(i64::from(u32::MAX));
     span as u32

@@ -3,6 +3,7 @@ use super::{
     App, AppActivity, DetailsMetric, GraphDisplayMode, GraphId, GraphSlot, graph_csv::CsvRange,
     state::GraphEntry,
 };
+use crate::datetime::TimestampExt;
 use crate::{
     mcp::{operations::Action, transport::error},
     model::{ProcessIdentity, history::SystemMetric},
@@ -83,12 +84,12 @@ impl App {
             "activity": format!("{:?}", self.activity()),
             "paused": self.is_display_paused(),
             "display_time": if self.is_display_paused() || self.activity() == AppActivity::LogView {
-                Some(self.display_snapshot().captured_at)
+                Some(self.display_snapshot().captured_at.utc_rfc3339())
             } else { None },
             "generation": self.mcp_state.display_generation,
             "span": self.graph_time_span_seconds,
             "offset": self.graph_time_offset_seconds,
-            "right": self.graph_time_window_right_at,
+            "right": self.graph_time_window_right_at.map(TimestampExt::utc_rfc3339),
             "fit_all": self.graph_show_all_samples,
             "ab": format!("{:?}", self.ab_comparison)
         })
@@ -130,7 +131,7 @@ impl App {
         json!({
             "revision": revision,
             "source": if self.activity() == AppActivity::LogView { "log" } else { "live" },
-            "captured_at": self.display_snapshot().captured_at.with_timezone(&chrono::Utc).to_rfc3339(),
+            "captured_at": self.display_snapshot().captured_at.utc_rfc3339(),
             "activity": match self.activity() {
                 AppActivity::Live => "live", AppActivity::Recording => "recording", AppActivity::LogView => "log_view"
             },

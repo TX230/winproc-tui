@@ -1,3 +1,4 @@
+use crate::datetime::TimestampExt;
 use std::{
     ffi::OsString,
     fs,
@@ -10,7 +11,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local};
 use sysinfo::{Pid, ProcessesToUpdate, System, Users};
 use winapi::{
     ctypes::c_void,
@@ -689,12 +689,8 @@ fn version_buffer_slice<T>(
 fn format_system_time(time: SystemTime) -> String {
     let duration = time.duration_since(UNIX_EPOCH).ok();
     duration
-        .and_then(|duration| DateTime::from_timestamp(duration.as_secs() as i64, 0))
-        .map(|date| {
-            date.with_timezone(&Local)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
-        })
+        .and_then(|duration| jiff::Timestamp::from_second(duration.as_secs() as i64).ok())
+        .map(|date| date.format_local("%Y-%m-%d %H:%M:%S").to_string())
         .unwrap_or_else(|| "--".to_string())
 }
 

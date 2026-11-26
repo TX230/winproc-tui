@@ -1,5 +1,5 @@
+use crate::datetime::TimestampExt;
 use anyhow::Result;
-use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
 
@@ -17,7 +17,7 @@ pub(crate) enum ContextAction {
     RevealExecutable(Box<ProcessInfoDialogTarget>),
     Track(String),
     Copy(String),
-    SetPoint(GraphId, Option<DateTime<Local>>, char),
+    SetPoint(GraphId, Option<jiff::Timestamp>, char),
     ReorderGraphs(GraphId),
     ClearPoints,
     ExportGraphsCsv,
@@ -155,7 +155,7 @@ impl App {
                 entry.source.metric_label(),
                 sample.as_ref().map_or_else(
                     || "No sample".into(),
-                    |s| s.captured_at.format("%H:%M:%S").to_string()
+                    |s| s.captured_at.format_local("%H:%M:%S").to_string()
                 )
             ),
             anchor,
@@ -333,7 +333,10 @@ impl App {
                     } else {
                         comparison.b = Some(point);
                     }
-                    self.status = format!("{label} point set: {}", captured_at.format("%H:%M:%S"));
+                    self.status = format!(
+                        "{label} point set: {}",
+                        captured_at.format_local("%H:%M:%S")
+                    );
                 }
             }
             ContextAction::ClearPoints => self.clear_ab_comparison_with_status(),

@@ -1,7 +1,6 @@
+use jiff::Timestamp;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-
-use chrono::{DateTime, Local};
 
 use crate::model::{ProcessRow, Snapshot};
 
@@ -250,7 +249,7 @@ impl ProcessIdentity {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProcessSample {
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: Timestamp,
     pub(crate) cpu_percent: Option<f64>,
     pub(crate) private_bytes: Option<u64>,
     pub(crate) workset_bytes: Option<u64>,
@@ -277,7 +276,7 @@ pub(crate) struct ProcessSample {
 }
 
 impl ProcessSample {
-    pub(crate) fn from_row(captured_at: DateTime<Local>, row: &ProcessRow) -> Self {
+    pub(crate) fn from_row(captured_at: Timestamp, row: &ProcessRow) -> Self {
         Self {
             captured_at,
             cpu_percent: row.cpu_percent,
@@ -331,7 +330,7 @@ impl ProcessHistory {
     #[cfg(test)]
     pub(crate) fn record_snapshot(
         &mut self,
-        captured_at: DateTime<Local>,
+        captured_at: Timestamp,
         processes: &[ProcessRow],
         tracked_names: &HashSet<String>,
     ) {
@@ -347,7 +346,7 @@ impl ProcessHistory {
 
     pub(crate) fn record_tracked_snapshot(
         &mut self,
-        captured_at: DateTime<Local>,
+        captured_at: Timestamp,
         processes: &[ProcessRow],
         tracked: &HashSet<ProcessIdentity>,
     ) {
@@ -395,7 +394,7 @@ impl ProcessHistory {
 
     pub(crate) fn record_snapshot_unbounded(
         &mut self,
-        captured_at: DateTime<Local>,
+        captured_at: Timestamp,
         processes: &[ProcessRow],
     ) {
         for process in processes {
@@ -405,7 +404,7 @@ impl ProcessHistory {
 
     fn record_process_sample(
         &mut self,
-        captured_at: DateTime<Local>,
+        captured_at: Timestamp,
         process: &ProcessRow,
         capacity: Option<usize>,
     ) {
@@ -442,7 +441,7 @@ impl ProcessHistory {
     pub(crate) fn time_range_for(
         &self,
         identity: &ProcessIdentity,
-    ) -> Option<(DateTime<Local>, DateTime<Local>)> {
+    ) -> Option<(Timestamp, Timestamp)> {
         let samples = self.samples.get(identity)?;
         Some((samples.front()?.captured_at, samples.back()?.captured_at))
     }
@@ -450,7 +449,7 @@ impl ProcessHistory {
     pub(crate) fn sample_at(
         &self,
         identity: &ProcessIdentity,
-        captured_at: DateTime<Local>,
+        captured_at: Timestamp,
     ) -> Option<&ProcessSample> {
         self.samples
             .get(identity)?
@@ -513,11 +512,10 @@ impl ProcessHistory {
     pub(crate) fn retain_live_generations(
         &mut self,
         protected: &HashSet<ProcessIdentity>,
-        tracked_exit_candidates: &HashMap<ProcessIdentity, DateTime<Local>>,
-        recent_after: DateTime<Local>,
+        tracked_exit_candidates: &HashMap<ProcessIdentity, Timestamp>,
+        recent_after: Timestamp,
     ) -> HashSet<ProcessIdentity> {
-        let mut candidates_by_name =
-            HashMap::<String, Vec<(ProcessIdentity, DateTime<Local>)>>::new();
+        let mut candidates_by_name = HashMap::<String, Vec<(ProcessIdentity, Timestamp)>>::new();
         for (identity, samples) in self.samples.iter() {
             let Some(latest_sample) = samples.back() else {
                 continue;
@@ -587,7 +585,7 @@ impl ProcessHistory {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SystemSample {
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: Timestamp,
     pub(crate) cpu_average_percent: Option<u64>,
     pub(crate) physical_memory_bytes: Option<u64>,
     pub(crate) modified_memory_bytes: Option<u64>,
@@ -711,7 +709,7 @@ impl SystemHistory {
         self.samples.len()
     }
 
-    pub(crate) fn time_range(&self) -> Option<(DateTime<Local>, DateTime<Local>)> {
+    pub(crate) fn time_range(&self) -> Option<(Timestamp, Timestamp)> {
         Some((
             self.samples.front()?.captured_at,
             self.samples.back()?.captured_at,
@@ -736,6 +734,7 @@ fn max_option(left: Option<u64>, right: Option<u64>) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::SignedDuration;
 
     fn empty_tracked_names() -> HashSet<String> {
         HashSet::new()
@@ -781,12 +780,12 @@ mod tests {
 
     #[test]
     fn process_history_keeps_last_120_samples_for_general_processes() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut history = ProcessHistory::default();
 
         for offset in 0..(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY + 1) {
             history.record_snapshot(
-                now + chrono::Duration::seconds(offset as i64),
+                now + SignedDuration::from_secs(offset as i64),
                 &[row(1, "app.exe", offset as u64)],
                 &empty_tracked_names(),
             );
@@ -803,12 +802,12 @@ mod tests {
 
     #[test]
     fn process_history_keeps_last_7200_samples_for_tracked_processes() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut history = ProcessHistory::default();
 
         for offset in 0..7_201 {
             history.record_snapshot(
-                now + chrono::Duration::seconds(offset),
+                now + SignedDuration::from_secs(offset),
                 &[row(1, "app.exe", offset as u64)],
                 &tracked_names(&["app.exe"]),
             );
@@ -825,7 +824,7 @@ mod tests {
 
     #[test]
     fn process_history_uses_pid_and_name_identity() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut history = ProcessHistory::default();
         history.record_snapshot(
             now,
@@ -845,7 +844,7 @@ mod tests {
 
     #[test]
     fn process_history_keeps_peak_after_sample_prune() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let identity = ProcessIdentity {
             pid: 1,
             name: "app.exe".to_string(),
@@ -854,7 +853,7 @@ mod tests {
         let mut history = ProcessHistory::default();
 
         history.record_snapshot(
-            now - chrono::Duration::seconds(61),
+            now - SignedDuration::from_secs(61),
             &[row(1, "app.exe", 40)],
             &empty_tracked_names(),
         );
@@ -867,7 +866,7 @@ mod tests {
 
     #[test]
     fn process_history_separates_pid_reuse_by_start_time() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut first = row(1, "app.exe", 10);
         first.start_time = Some(100);
         let mut second = row(1, "app.exe", 20);
@@ -887,8 +886,8 @@ mod tests {
 
     #[test]
     fn process_history_exact_lookup_requires_time_and_identity_match() {
-        let now = Local::now();
-        let later = now + chrono::Duration::seconds(1);
+        let now = Timestamp::now();
+        let later = now + SignedDuration::from_secs(1);
         let mut first = row(1, "app.exe", 10);
         first.start_time = Some(100);
         let mut restarted = row(1, "app.exe", 20);
@@ -917,14 +916,14 @@ mod tests {
         assert!(history.sample_at(&restarted_identity, now).is_none());
         assert!(
             history
-                .sample_at(&first_identity, now + chrono::Duration::milliseconds(1))
+                .sample_at(&first_identity, now + SignedDuration::from_millis(1))
                 .is_none()
         );
     }
 
     #[test]
     fn process_history_retain_live_generations_keeps_protected_and_recent_identities() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let retained = ProcessIdentity {
             pid: 1,
             name: "keep.exe".to_string(),
@@ -948,12 +947,12 @@ mod tests {
         stale_row.start_time = stale.start_time;
         let mut history = ProcessHistory::default();
         history.record_snapshot(
-            now - chrono::Duration::seconds(121),
+            now - SignedDuration::from_secs(121),
             &[retained_row, stale_row],
             &empty_tracked_names(),
         );
         history.record_snapshot(
-            now - chrono::Duration::seconds(119),
+            now - SignedDuration::from_secs(119),
             &[recent_row],
             &empty_tracked_names(),
         );
@@ -961,7 +960,7 @@ mod tests {
         history.retain_live_generations(
             &HashSet::from([retained.clone()]),
             &HashMap::new(),
-            now - chrono::Duration::seconds(120),
+            now - SignedDuration::from_secs(120),
         );
 
         assert_eq!(history.identity_count(), 2);
@@ -976,7 +975,7 @@ mod tests {
 
     #[test]
     fn process_history_keeps_two_complete_same_name_generations() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut oldest = row(1, "app.exe", 10);
         oldest.start_time = Some(100);
         let oldest_identity = ProcessIdentity::from_row(&oldest);
@@ -991,7 +990,7 @@ mod tests {
         for offset in 0..3 {
             oldest.private_bytes = Some(10 + offset);
             history.record_snapshot(
-                now + chrono::Duration::seconds(offset as i64),
+                now + SignedDuration::from_secs(offset as i64),
                 &[oldest.clone()],
                 &empty_tracked_names(),
             );
@@ -999,7 +998,7 @@ mod tests {
         for offset in 0..4 {
             middle.private_bytes = Some(20 + offset);
             history.record_snapshot(
-                now + chrono::Duration::seconds(10 + offset as i64),
+                now + SignedDuration::from_secs(10 + offset as i64),
                 &[middle.clone()],
                 &empty_tracked_names(),
             );
@@ -1007,7 +1006,7 @@ mod tests {
         for offset in 0..5 {
             latest.private_bytes = Some(30 + offset);
             history.record_snapshot(
-                now + chrono::Duration::seconds(20 + offset as i64),
+                now + SignedDuration::from_secs(20 + offset as i64),
                 &[latest.clone()],
                 &empty_tracked_names(),
             );
@@ -1016,7 +1015,7 @@ mod tests {
         history.retain_live_generations(
             &HashSet::new(),
             &HashMap::new(),
-            now - chrono::Duration::seconds(120),
+            now - SignedDuration::from_secs(120),
         );
 
         assert_eq!(history.identity_count(), 2);
@@ -1037,7 +1036,7 @@ mod tests {
 
     #[test]
     fn process_history_keeps_protected_identity_beyond_generation_limit() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut history = ProcessHistory::default();
         let mut identities = Vec::new();
 
@@ -1046,7 +1045,7 @@ mod tests {
             process.start_time = Some(1_000 + u64::from(generation));
             identities.push(ProcessIdentity::from_row(&process));
             history.record_snapshot(
-                now + chrono::Duration::seconds(i64::from(generation)),
+                now + SignedDuration::from_secs(i64::from(generation)),
                 &[process],
                 &empty_tracked_names(),
             );
@@ -1055,7 +1054,7 @@ mod tests {
         history.retain_live_generations(
             &HashSet::from([identities[0].clone()]),
             &HashMap::new(),
-            now - chrono::Duration::seconds(120),
+            now - SignedDuration::from_secs(120),
         );
 
         assert_eq!(history.identity_count(), 3);
@@ -1068,7 +1067,7 @@ mod tests {
 
     #[test]
     fn process_history_summarizes_and_prunes_name_to_latest_samples() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut first = row(1, "app.exe", 10);
         first.start_time = Some(100);
         let mut second = row(2, "APP.EXE", 20);
@@ -1078,7 +1077,7 @@ mod tests {
         for offset in 0..(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY + 2) {
             first.private_bytes = Some(offset as u64);
             history.record_snapshot(
-                now + chrono::Duration::seconds(offset as i64),
+                now + SignedDuration::from_secs(offset as i64),
                 &[first.clone()],
                 &tracked_names(&["app.exe"]),
             );
@@ -1086,7 +1085,7 @@ mod tests {
         for offset in 0..(GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY + 1) {
             second.private_bytes = Some(offset as u64);
             history.record_snapshot(
-                now + chrono::Duration::seconds(offset as i64),
+                now + SignedDuration::from_secs(offset as i64),
                 &[second.clone()],
                 &tracked_names(&["app.exe"]),
             );
@@ -1122,7 +1121,7 @@ mod tests {
 
     #[test]
     fn system_history_keeps_last_7200_samples() {
-        let now = Local::now();
+        let now = Timestamp::now();
         let mut snapshot = Snapshot {
             captured_at: now,
             total_memory: 0,
@@ -1162,7 +1161,7 @@ mod tests {
         let mut history = SystemHistory::default();
 
         for offset in 0..(SYSTEM_HISTORY_SAMPLE_CAPACITY + 1) {
-            snapshot.captured_at = now + chrono::Duration::seconds(offset as i64);
+            snapshot.captured_at = now + SignedDuration::from_secs(offset as i64);
             snapshot.used_memory = offset as u64;
             history.record_snapshot(&snapshot);
         }

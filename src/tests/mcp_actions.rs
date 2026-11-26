@@ -1,5 +1,7 @@
 use super::support::*;
+use crate::datetime::TimestampExt;
 use crate::{app::App, mcp::operations};
+use jiff::SignedDuration;
 use serde_json::{Value, json};
 fn setup() -> App {
     let mut app = make_test_app(2, 10);
@@ -150,7 +152,7 @@ fn mcp_recording_stop_flushes_without_confirmation_and_replays_safely() {
         json!({"action":"add","process_name":"bad.exe"}),
     );
     assert_eq!(rejected["result"]["error"]["code"], "ACTIVITY_CONFLICT");
-    app.snapshot.captured_at += chrono::Duration::seconds(1);
+    app.snapshot.captured_at += SignedDuration::from_secs(1);
     app.snapshot.committed_memory = Some(300);
     app.write_current_recording_frame().unwrap();
     let args = json!({"recording_session_id":session,"operation_id":"stop-once"});
@@ -168,8 +170,8 @@ fn mcp_recording_stop_flushes_without_confirmation_and_replays_safely() {
     assert_eq!(loaded.summary.frame_count, 1);
     assert_eq!(loaded.snapshot.committed_memory, Some(200));
     assert_eq!(
-        loaded.snapshot.captured_at.timestamp_millis(),
-        app.snapshot.captured_at.timestamp_millis()
+        loaded.snapshot.captured_at.epoch_millis(),
+        app.snapshot.captured_at.epoch_millis()
     );
     assert!(loaded.snapshot.processes.is_empty());
     let last: crate::app::log_format::V3Record = serde_json::from_slice(
@@ -462,7 +464,7 @@ fn mcp_log_view_keeps_live_host_and_tracking_provenance() {
     app.watch_list = vec![app.snapshot.processes[0].name.clone()];
     let before = app.mcp_test_view();
     let mut recorded = app.snapshot.clone();
-    recorded.captured_at -= chrono::Duration::days(10);
+    recorded.captured_at -= SignedDuration::from_hours(240);
     recorded.cpu_name = Some("recorded-cpu".into());
     recorded.total_memory = 67890;
     recorded.processes[0].name = "recorded-only.exe".into();

@@ -148,6 +148,8 @@ The collection boundary deliberately produces one aggregate `Snapshot`. Explicit
 
 `Snapshot` is the aggregate value for one capture time. It contains optional system and process measurements so unavailability can be represented without fabricating a value. `ProcessHistory` is keyed by full process identity, while `SystemHistory` owns system Graph sources. Detailed retention and Graph-source rules are defined in the related design documents.
 
+Snapshots and histories use Jiff timestamps for instant comparison and elapsed-time arithmetic. The shared datetime module applies the system time zone for display and preserves the existing timestamp formats for recording, CSV, and MCP.
+
 ## 6. UI Boundary
 
 Directional main-screen focus follows effective panel rectangles, skips hidden panels, and stops at screen edges. Neighbors sharing the travel axis take priority, followed by edge distance and center alignment. Tab cycling remains available. Changing workspace focus preserves the active Graph and all panel selections.

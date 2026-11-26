@@ -227,11 +227,10 @@ fn contains_point(area: Rect, x: u16, y: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Local;
 
     fn snapshot_with_cores(has_e_core: bool) -> Snapshot {
         Snapshot {
-            captured_at: Local::now(),
+            captured_at: jiff::Timestamp::now(),
             total_memory: 0,
             used_memory: 0,
             available_memory: None,

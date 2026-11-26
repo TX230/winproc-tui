@@ -6,8 +6,8 @@ use crate::app;
 use crate::app::{AppActivity, DetailsMetric, FocusedPanel, GraphSlot};
 use crate::model::SortSpec;
 use crate::ui;
-use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use jiff::Timestamp;
 use ratatui::layout::Rect;
 
 #[test]
@@ -27,8 +27,8 @@ fn log_list_renders_session_rows() {
     let mut app = make_test_app(1, 10);
     app.show_log_list = true;
     app.log_list_dir = Some(std::path::PathBuf::from("C:/logs"));
-    let started_at = Local.with_ymd_and_hms(2026, 5, 14, 7, 43, 22).unwrap();
-    let ended_at = Local.with_ymd_and_hms(2026, 5, 14, 7, 45, 27).unwrap();
+    let started_at = crate::datetime::local_test_time(2026, 5, 14, 7, 43, 22);
+    let ended_at = crate::datetime::local_test_time(2026, 5, 14, 7, 45, 27);
     app.log_summaries = vec![app::logs::LogSummary {
         path: std::path::PathBuf::from("C:/logs/winproc-tui-demo.log"),
         schema_version: Some(2),
@@ -81,7 +81,7 @@ fn log_list_shows_the_log_being_opened() {
         path: std::path::PathBuf::from("C:/logs/large-session.log"),
         schema_version: Some(2),
         session_id: Some("large".to_string()),
-        started_at: Some(Local::now()),
+        started_at: Some(Timestamp::now()),
         ended_at: None,
         host: Some("PC".to_string()),
         tracked_names: vec!["app.exe".to_string()],
@@ -115,7 +115,7 @@ fn log_list_ignores_another_open_while_loading() {
             path,
             schema_version: Some(2),
             session_id: None,
-            started_at: Some(Local::now()),
+            started_at: Some(Timestamp::now()),
             ended_at: None,
             host: None,
             tracked_names: Vec::new(),
@@ -415,7 +415,7 @@ fn log_list_click_selects_row() {
             path: std::path::PathBuf::from("C:/logs/first.log"),
             schema_version: Some(2),
             session_id: None,
-            started_at: Some(Local::now()),
+            started_at: Some(Timestamp::now()),
             ended_at: None,
             host: None,
             tracked_names: vec!["first.exe".to_string()],
@@ -427,7 +427,7 @@ fn log_list_click_selects_row() {
             path: std::path::PathBuf::from("C:/logs/second.log"),
             schema_version: Some(2),
             session_id: None,
-            started_at: Some(Local::now()),
+            started_at: Some(Timestamp::now()),
             ended_at: None,
             host: None,
             tracked_names: vec!["second.exe".to_string()],
@@ -454,7 +454,7 @@ fn log_list_double_click_opens_row() {
     let path = std::env::temp_dir().join(format!(
         "winproc-tui-log-double-click-test-{}-{}.log",
         std::process::id(),
-        Local::now().timestamp_nanos_opt().unwrap_or_default()
+        Timestamp::now().as_nanosecond()
     ));
     std::fs::write(
             &path,
@@ -471,7 +471,7 @@ fn log_list_double_click_opens_row() {
         path: path.clone(),
         schema_version: Some(2),
         session_id: Some("s1".to_string()),
-        started_at: Some(Local::now()),
+        started_at: Some(Timestamp::now()),
         ended_at: None,
         host: Some("PC".to_string()),
         tracked_names: vec!["app.exe".to_string()],
@@ -611,7 +611,7 @@ fn loaded_log_is_ignored_if_recording_started_before_worker_returns() {
     let log_view_path = std::env::temp_dir().join(format!(
         "winproc-tui-log-view-race-test-{}-{}.log",
         std::process::id(),
-        Local::now().timestamp_nanos_opt().unwrap_or_default()
+        Timestamp::now().as_nanosecond()
     ));
     std::fs::write(
             &log_view_path,
@@ -647,7 +647,7 @@ fn loaded_log_feeds_graph_samples_without_turning_missing_values_to_zero() {
     let path = std::env::temp_dir().join(format!(
         "winproc-tui-log-view-test-{}-{}.log",
         std::process::id(),
-        Local::now().timestamp_nanos_opt().unwrap_or_default()
+        Timestamp::now().as_nanosecond()
     ));
     std::fs::write(
             &path,
@@ -700,7 +700,7 @@ fn recording_writes_v3_session_definitions_frames_and_end_records() {
     let initial_captured_at = app.snapshot.captured_at;
     for generation in 1..=2_u32 {
         app.snapshot.captured_at =
-            initial_captured_at + chrono::Duration::seconds(i64::from(generation));
+            initial_captured_at + jiff::SignedDuration::from_secs(i64::from(generation));
         app.snapshot.processes[0].pid = 100 + generation;
         app.snapshot.processes[0].start_time = Some(1_800_000_000 + u64::from(generation));
         app.write_current_recording_frame().unwrap();

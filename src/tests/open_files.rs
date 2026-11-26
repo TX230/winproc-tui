@@ -4,6 +4,7 @@ use super::support::{
 };
 use crate::app;
 use crate::app::FocusedPanel;
+use crate::datetime::TimestampExt;
 use crate::model::open_files::{FileAttribute, FileAttributeError, OpenFileHandle};
 use crate::samplers::SamplingWorker;
 use crate::samplers::open_files::{
@@ -46,10 +47,10 @@ fn file_metadata_details_keep_independent_values_and_existing_clipboard() {
         size: Ok(Some(12345)),
     };
     let details = entry.detail_text().join("\n");
-    let expected = chrono::DateTime::from_timestamp(0, 0)
+    let expected = jiff::Timestamp::new(0, 0)
+        .ok()
         .unwrap()
-        .with_timezone(&chrono::Local)
-        .format("%Y-%m-%d %H:%M:%S%.3f %:z")
+        .format_local("%Y-%m-%d %H:%M:%S%.3f %:z")
         .to_string();
     assert!(details.contains(&format!("Created: {expected}")));
     assert!(details.contains("Modified: -- (Windows error 5)"));

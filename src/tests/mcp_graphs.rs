@@ -6,7 +6,7 @@ use crate::{
     mcp::operations::{GraphTargets, Operations},
     model::{ProcessHistory, ProcessIdentity, SystemHistory},
 };
-use chrono::{Local, TimeZone};
+use jiff::SignedDuration;
 use serde_json::{Value, json};
 use std::{
     path::PathBuf,
@@ -19,7 +19,7 @@ fn setup() -> App {
     app.mcp_connections_disabled = false;
     app.process_history = ProcessHistory::default();
     app.system_history = SystemHistory::default();
-    app.snapshot.captured_at = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    app.snapshot.captured_at = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
     app.snapshot.processes[0].start_time = Some(12);
     for value in [Some(9_007_199_254_740_993), None, Some(3)] {
         app.snapshot.processes[0].private_bytes = value;
@@ -30,9 +30,9 @@ fn setup() -> App {
             &app.normalized_watch_names,
         );
         app.system_history.record_snapshot(&app.snapshot);
-        app.snapshot.captured_at += chrono::Duration::seconds(1);
+        app.snapshot.captured_at += SignedDuration::from_secs(1);
     }
-    app.snapshot.captured_at -= chrono::Duration::seconds(1);
+    app.snapshot.captured_at -= SignedDuration::from_secs(1);
     app.poll_mcp();
     app
 }
@@ -258,12 +258,12 @@ fn mcp_graph_export_snapshots_paused_and_log_data_with_inclusive_ranges() {
             captured_at: final_time,
         }),
         b: Some(AbComparisonPoint {
-            captured_at: final_time - chrono::Duration::seconds(1),
+            captured_at: final_time - SignedDuration::from_secs(1),
         }),
     });
     app.snapshot.processes[0].private_bytes = Some(1);
     app.process_history.record_snapshot(
-        final_time + chrono::Duration::seconds(1),
+        final_time + SignedDuration::from_secs(1),
         &app.snapshot.processes,
         &app.normalized_watch_names,
     );

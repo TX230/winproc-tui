@@ -1,3 +1,5 @@
+use crate::datetime::TimestampExt;
+use jiff::{SignedDuration, Timestamp};
 use ratatui::{
     layout::Rect,
     prelude::{Modifier, Style},
@@ -916,16 +918,15 @@ fn format_process_started(info: &ProcessInfo) -> String {
     let Some(start_time) = info.start_time else {
         return "--".to_string();
     };
-    let Some(started_utc) = chrono::DateTime::from_timestamp(start_time as i64, 0) else {
+    let Ok(started) = Timestamp::from_second(start_time as i64) else {
         return start_time.to_string();
     };
-    let started = started_utc.with_timezone(&chrono::Local);
-    let uptime = chrono::Local::now()
-        .signed_duration_since(started)
-        .max(chrono::Duration::zero());
+    let uptime = Timestamp::now()
+        .duration_since(started)
+        .max(SignedDuration::ZERO);
     format!(
         "{} / Uptime {}",
-        started.format("%Y-%m-%d %H:%M:%S"),
+        started.format_local("%Y-%m-%d %H:%M:%S"),
         format_duration(uptime)
     )
 }
@@ -934,13 +935,9 @@ fn format_recorded_process_started(process: &ProcessRow) -> String {
     let Some(start_time) = process.start_time else {
         return "--".to_string();
     };
-    chrono::DateTime::from_timestamp(start_time as i64, 0)
-        .map(|started| {
-            started
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
-        })
+    Timestamp::from_second(start_time as i64)
+        .ok()
+        .map(|started| started.format_local("%Y-%m-%d %H:%M:%S").to_string())
         .unwrap_or_else(|| start_time.to_string())
 }
 
@@ -948,8 +945,8 @@ fn value_text(value: &InfoValue) -> String {
     value.text().to_string()
 }
 
-fn format_duration(duration: chrono::Duration) -> String {
-    let total_seconds = duration.num_seconds().max(0);
+fn format_duration(duration: SignedDuration) -> String {
+    let total_seconds = duration.as_secs().max(0);
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let seconds = total_seconds % 60;

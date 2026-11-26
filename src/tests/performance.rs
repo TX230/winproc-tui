@@ -9,6 +9,7 @@ use crate::samplers::{CollectSnapshotResult, SamplingWorker};
 use crate::ui;
 use crate::ui::main_panel_areas;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use jiff::SignedDuration;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -91,7 +92,7 @@ fn perf_process_cursor_navigation_and_refresh_frames() {
             .map(|index| {
                 let mut snapshot = test_snapshot(row_count);
                 snapshot.captured_at =
-                    app.snapshot.captured_at + chrono::Duration::seconds(index + 1);
+                    app.snapshot.captured_at + SignedDuration::from_secs(index + 1);
                 CollectSnapshotResult {
                     snapshot,
                     warning: None,
@@ -160,14 +161,14 @@ fn perf_long_history_graph_rendering() {
     app.show_samples_panel = true;
     app.process_history = ProcessHistory::default();
     let tracked_names = std::collections::HashSet::from([identity.name.to_ascii_lowercase()]);
-    let base = app.snapshot.captured_at - chrono::Duration::seconds(7_199);
+    let base = app.snapshot.captured_at - SignedDuration::from_secs(7_199);
     for offset in 0..7_200_i64 {
         let process = &mut app.snapshot.processes[0];
         process.private_bytes = Some(offset as u64 * 1_024);
         process.workset_bytes = Some(offset as u64 * 2_048);
         process.cpu_percent = Some((offset % 100) as f64);
         process.io_read_bytes_per_sec = Some(offset as u64 * 4_096);
-        app.snapshot.captured_at = base + chrono::Duration::seconds(offset);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(offset);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
             &app.snapshot.processes,
@@ -223,11 +224,11 @@ fn perf_pause_long_histories() {
         .iter()
         .map(|process| process.name.to_ascii_lowercase())
         .collect::<std::collections::HashSet<_>>();
-    let base = snapshot.captured_at - chrono::Duration::seconds(7_199);
+    let base = snapshot.captured_at - SignedDuration::from_secs(7_199);
     let mut process_history = ProcessHistory::default();
     let mut system_history = SystemHistory::default();
     for offset in 0..7_200_i64 {
-        snapshot.captured_at = base + chrono::Duration::seconds(offset);
+        snapshot.captured_at = base + SignedDuration::from_secs(offset);
         process_history.record_snapshot(snapshot.captured_at, &snapshot.processes, &tracked_names);
         system_history.record_snapshot(&snapshot);
     }
@@ -247,7 +248,7 @@ fn perf_pause_long_histories() {
 
     let mut pause_and_sample_durations = Vec::new();
     for offset in 0..50_i64 {
-        snapshot.captured_at += chrono::Duration::seconds(1);
+        snapshot.captured_at += SignedDuration::from_secs(1);
         let start = Instant::now();
         let paused_process_history = process_history.clone();
         let paused_system_history = system_history.clone();
@@ -291,14 +292,14 @@ fn perf_system_history_retention() {
     let mut legacy = vec![initial; 7_200];
     let mut current = SystemHistory::default();
     for _ in 0..7_200 {
-        snapshot.captured_at += chrono::Duration::seconds(1);
+        snapshot.captured_at += SignedDuration::from_secs(1);
         current.record_snapshot(&snapshot);
     }
 
     let mut legacy_durations = Vec::new();
     let mut current_durations = Vec::new();
     for _ in 0..2_000 {
-        snapshot.captured_at += chrono::Duration::seconds(1);
+        snapshot.captured_at += SignedDuration::from_secs(1);
         let sample = SystemSample::from_snapshot(&snapshot);
         let start = Instant::now();
         legacy.push(sample);

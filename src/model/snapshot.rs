@@ -1,10 +1,8 @@
-use chrono::{DateTime, Local};
-
 use super::{CpuLogicalProcessorSample, DiskUsageSample, GpuAdapterSample, ProcessRow};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Snapshot {
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: jiff::Timestamp,
     pub(crate) total_memory: u64,
     pub(crate) used_memory: u64,
     pub(crate) available_memory: Option<u64>,

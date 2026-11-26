@@ -11,7 +11,6 @@ use crate::model::{
 };
 use crate::samplers::{CollectSnapshotResult, SamplingWorker};
 use crate::ui;
-use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier};
@@ -972,9 +971,9 @@ fn shifted_ab_keys_jump_selection_to_points() {
     let mut app = make_test_app(1, 10);
     assign_private_graph(&mut app);
     app.focused_panel = FocusedPanel::DetailsGraph;
-    let base = Local::now();
+    let base = jiff::Timestamp::now();
     for (seconds, value) in [(0, 10), (1, 20), (2, 30)] {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + jiff::SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(value);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,

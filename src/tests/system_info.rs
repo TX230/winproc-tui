@@ -9,8 +9,8 @@ use crate::model;
 use crate::model::{ColumnPreset, MetricColumn};
 use crate::ui;
 use crate::ui::{column_picker_area, column_picker_scrollbar_area};
-use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use jiff::SignedDuration;
 use ratatui::layout::Rect;
 
 #[test]
@@ -239,8 +239,8 @@ fn ctrl_c_copies_cpu_average_row_text() {
 #[test]
 fn ctrl_c_copies_selected_sample_row_text_when_samples_are_focused() {
     let mut app = make_test_app(1, 10);
-    let first = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
-    let second = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 1).unwrap();
+    let first = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
+    let second = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 1);
     let tracked = app.normalized_watch_names.clone();
     app.snapshot.captured_at = first;
     app.snapshot.processes[0].private_bytes = Some(100);
@@ -412,10 +412,10 @@ fn system_info_uses_latest_host_snapshot_while_paused_and_in_log_view() {
 #[test]
 fn sample_range_copy_extends_shrinks_and_uses_exact_times() {
     let mut app = make_test_app(1, 10);
-    let first = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    let first = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
     for i in 0..4 {
         app.process_history.record_snapshot(
-            first + chrono::Duration::seconds(i),
+            first + SignedDuration::from_secs(i),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -432,7 +432,7 @@ fn sample_range_copy_extends_shrinks_and_uses_exact_times() {
     assert!(text.starts_with("10:00:01\t"));
     assert_eq!(
         app.sample_selection.unwrap().1,
-        first + chrono::Duration::seconds(3)
+        first + SignedDuration::from_secs(3)
     );
     app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT))
         .unwrap();
@@ -445,7 +445,7 @@ fn sample_range_copy_extends_shrinks_and_uses_exact_times() {
             .all(|line| line.split('\t').count() == 2)
     );
     app.process_history.record_snapshot(
-        first + chrono::Duration::seconds(4),
+        first + SignedDuration::from_secs(4),
         &app.snapshot.processes,
         &app.normalized_watch_names,
     );
@@ -456,7 +456,7 @@ fn sample_range_copy_extends_shrinks_and_uses_exact_times() {
     assert!(app.sample_selection.is_none());
     app.sample_selection = Some((
         app.active_graph_id.unwrap(),
-        first - chrono::Duration::seconds(1),
+        first - SignedDuration::from_secs(1),
         first,
     ));
     assert!(app.samples_clipboard_text().is_none());
@@ -543,10 +543,10 @@ fn process_tsv_quotes_embedded_delimiters_and_context_captures_snapshot() {
 #[test]
 fn sample_page_selection_preserves_anchor_reverses_and_clamps() {
     let mut app = make_test_app(1, 10);
-    let first = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    let first = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
     for i in 0..12 {
         app.process_history.record_snapshot(
-            first + chrono::Duration::seconds(i),
+            first + SignedDuration::from_secs(i),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -568,7 +568,7 @@ fn sample_page_selection_preserves_anchor_reverses_and_clamps() {
         assert_eq!(app.details_sample_selected, expected);
         assert_eq!(
             app.sample_selection.unwrap().1,
-            first + chrono::Duration::seconds(5)
+            first + SignedDuration::from_secs(5)
         );
         assert_eq!(
             app.samples_clipboard_text().unwrap().lines().count(),
@@ -588,7 +588,7 @@ fn sample_page_selection_preserves_anchor_reverses_and_clamps() {
         .unwrap();
     assert_eq!(
         app.sample_selection.unwrap().1,
-        first + chrono::Duration::seconds(8)
+        first + SignedDuration::from_secs(8)
     );
     assert_eq!(app.samples_clipboard_text().unwrap().lines().count(), 4);
 }

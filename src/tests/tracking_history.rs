@@ -14,8 +14,8 @@ use crate::model::{ColumnPreset, ProcessIdentity};
 use crate::samplers::{CollectSnapshotResult, SamplingWorker};
 use crate::ui;
 use crate::ui::main_panel_areas_for_app;
-use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use jiff::SignedDuration;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 
@@ -672,11 +672,11 @@ fn exited_process_name_shows_close_time() {
         .set(crate::model::SortColumn::ProcessName, 18);
     app.snapshot.processes[0].name = "target.exe".to_string();
     app.add_selected_process_to_watch_list();
-    app.snapshot.captured_at = Local.with_ymd_and_hms(2026, 5, 9, 12, 34, 56).unwrap();
+    app.snapshot.captured_at = crate::datetime::local_test_time(2026, 5, 9, 12, 34, 56);
     app.sampling_in_progress = true;
 
     let mut next = test_snapshot(0);
-    next.captured_at = Local.with_ymd_and_hms(2026, 5, 9, 12, 34, 56).unwrap();
+    next.captured_at = crate::datetime::local_test_time(2026, 5, 9, 12, 34, 56);
     result_tx
         .send(CollectSnapshotResult {
             snapshot: next,
@@ -806,7 +806,7 @@ fn latest_same_name_ghost_is_the_only_visible_ghost() {
     app.sampling_in_progress = true;
 
     let mut first_exit = test_snapshot(0);
-    first_exit.captured_at = captured_at + chrono::Duration::seconds(1);
+    first_exit.captured_at = captured_at + SignedDuration::from_secs(1);
     result_tx
         .send(CollectSnapshotResult {
             snapshot: first_exit,
@@ -817,7 +817,7 @@ fn latest_same_name_ghost_is_the_only_visible_ghost() {
 
     app.sampling_in_progress = true;
     let mut restarted = test_snapshot(1);
-    restarted.captured_at = captured_at + chrono::Duration::seconds(2);
+    restarted.captured_at = captured_at + SignedDuration::from_secs(2);
     restarted.processes[0].name = "target.exe".to_string();
     restarted.processes[0].pid = 42;
     restarted.processes[0].start_time = Some(1_800_000_000);
@@ -832,7 +832,7 @@ fn latest_same_name_ghost_is_the_only_visible_ghost() {
 
     app.sampling_in_progress = true;
     let mut second_exit = test_snapshot(0);
-    second_exit.captured_at = captured_at + chrono::Duration::seconds(3);
+    second_exit.captured_at = captured_at + SignedDuration::from_secs(3);
     result_tx
         .send(CollectSnapshotResult {
             snapshot: second_exit,
@@ -843,7 +843,7 @@ fn latest_same_name_ghost_is_the_only_visible_ghost() {
 
     app.sampling_in_progress = true;
     let mut restarted_again = test_snapshot(1);
-    restarted_again.captured_at = captured_at + chrono::Duration::seconds(4);
+    restarted_again.captured_at = captured_at + SignedDuration::from_secs(4);
     restarted_again.processes[0].name = "target.exe".to_string();
     restarted_again.processes[0].pid = 43;
     restarted_again.processes[0].start_time = Some(1_800_000_001);
@@ -858,7 +858,7 @@ fn latest_same_name_ghost_is_the_only_visible_ghost() {
 
     app.sampling_in_progress = true;
     let mut third_exit = test_snapshot(0);
-    third_exit.captured_at = captured_at + chrono::Duration::seconds(5);
+    third_exit.captured_at = captured_at + SignedDuration::from_secs(5);
     result_tx
         .send(CollectSnapshotResult {
             snapshot: third_exit,
@@ -955,7 +955,7 @@ fn paused_process_identity_remains_available_for_a_later_graph() {
 
     let mut exited = test_snapshot(0);
     exited.captured_at = captured_at
-        + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 + 1);
+        + SignedDuration::from_secs(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 + 1);
     app.sampling_in_progress = true;
     result_tx
         .send(CollectSnapshotResult {
@@ -974,7 +974,7 @@ fn paused_process_identity_remains_available_for_a_later_graph() {
 
     let mut later = test_snapshot(0);
     later.captured_at = captured_at
-        + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 2);
+        + SignedDuration::from_secs(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 2);
     app.sampling_in_progress = true;
     result_tx
         .send(CollectSnapshotResult {
@@ -1003,7 +1003,7 @@ fn paused_ghost_identity_remains_available_for_a_later_graph() {
     );
 
     let mut first_exit = test_snapshot(0);
-    first_exit.captured_at = captured_at + chrono::Duration::seconds(1);
+    first_exit.captured_at = captured_at + SignedDuration::from_secs(1);
     app.sampling_in_progress = true;
     result_tx
         .send(CollectSnapshotResult {
@@ -1016,7 +1016,7 @@ fn paused_ghost_identity_remains_available_for_a_later_graph() {
     app.toggle_display_pause();
 
     let mut restarted = test_snapshot(1);
-    restarted.captured_at = captured_at + chrono::Duration::seconds(2);
+    restarted.captured_at = captured_at + SignedDuration::from_secs(2);
     restarted.processes[0].name = "target.exe".to_string();
     restarted.processes[0].pid = 42;
     restarted.processes[0].start_time = Some(1_800_000_000);
@@ -1031,7 +1031,7 @@ fn paused_ghost_identity_remains_available_for_a_later_graph() {
     app.poll_sample_results().unwrap();
 
     let mut second_exit = test_snapshot(0);
-    second_exit.captured_at = captured_at + chrono::Duration::seconds(3);
+    second_exit.captured_at = captured_at + SignedDuration::from_secs(3);
     app.sampling_in_progress = true;
     result_tx
         .send(CollectSnapshotResult {
@@ -1043,7 +1043,7 @@ fn paused_ghost_identity_remains_available_for_a_later_graph() {
 
     let mut expired = test_snapshot(0);
     expired.captured_at = captured_at
-        + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 2);
+        + SignedDuration::from_secs(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 2);
     app.sampling_in_progress = true;
     result_tx
         .send(CollectSnapshotResult {
@@ -1064,7 +1064,7 @@ fn paused_ghost_identity_remains_available_for_a_later_graph() {
 
     let mut later = test_snapshot(0);
     later.captured_at = captured_at
-        + chrono::Duration::seconds(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 3);
+        + SignedDuration::from_secs(model::GENERAL_PROCESS_HISTORY_SAMPLE_CAPACITY as i64 * 3);
     app.sampling_in_progress = true;
     result_tx
         .send(CollectSnapshotResult {
@@ -1089,7 +1089,7 @@ fn live_process_churn_prunes_stale_histories_and_peaks() {
 
     for identity_index in 0..256_u32 {
         let mut next = test_snapshot(1);
-        next.captured_at = captured_at + chrono::Duration::seconds(i64::from(identity_index) + 1);
+        next.captured_at = captured_at + SignedDuration::from_secs(i64::from(identity_index) + 1);
         next.processes[0].pid = 10_000 + identity_index;
         next.processes[0].start_time = Some(1_800_000_000 + u64::from(identity_index));
         next.processes[0].private_bytes = Some(u64::from(identity_index));
@@ -1125,7 +1125,7 @@ fn concurrent_same_name_live_processes_are_all_retained() {
     let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
     let mut app = make_test_app_with_worker(1, 10, sampling_worker);
     let mut next = test_snapshot(3);
-    next.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    next.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(1);
     for (index, process) in next.processes.iter_mut().enumerate() {
         process.name = "worker.exe".to_string();
         process.pid = 1_000 + index as u32;
@@ -1233,7 +1233,7 @@ fn copy_table_includes_visible_ghost_and_total_then_respects_show_exited() {
     app.sampling_in_progress = true;
     let mut next = test_snapshot(1);
     next.processes[0].start_time = Some(9999);
-    next.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    next.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(1);
     result_tx
         .send(CollectSnapshotResult {
             snapshot: next,

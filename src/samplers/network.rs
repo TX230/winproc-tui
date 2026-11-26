@@ -1,3 +1,4 @@
+use jiff::Timestamp;
 use std::{
     collections::HashMap,
     mem::{size_of, zeroed},
@@ -9,7 +10,6 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use chrono::Local;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use winapi::{
     shared::{
@@ -200,7 +200,7 @@ fn verify_owner(owner: &NetworkOwner) -> Result<()> {
 }
 
 pub(crate) fn collect_endpoints(target: Option<&ProcessIdentity>) -> Result<NetworkReport> {
-    let started_at = Local::now();
+    let started_at = Timestamp::now();
     let pids = if let Some(target) = target {
         vec![target.pid]
     } else {
@@ -287,7 +287,7 @@ pub(crate) fn collect_endpoints(target: Option<&ProcessIdentity>) -> Result<Netw
             .cmp(&b.key)
             .then_with(|| a.tcp_state.cmp(&b.tcp_state))
     });
-    report.captured_at = Local::now();
+    report.captured_at = Timestamp::now();
     Ok(report)
 }
 

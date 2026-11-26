@@ -26,7 +26,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::Local;
 use sysinfo::{ProcessesToUpdate, System};
 
 use crate::model::{GpuSample, ProcessExtraMetrics, ProcessRow, Snapshot};
@@ -342,7 +341,7 @@ fn collect_snapshot(
 
     CollectSnapshotResult {
         snapshot: Snapshot {
-            captured_at: Local::now(),
+            captured_at: jiff::Timestamp::now(),
             total_memory,
             used_memory,
             available_memory: Some(mapped_counters.available_memory),

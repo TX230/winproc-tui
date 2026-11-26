@@ -1,9 +1,11 @@
 //! Bounded native collection jobs. Timed-out native calls retain their slot until cleanup.
 use super::transport::error;
+use crate::datetime::TimestampExt;
 use crate::{
     model::{InfoValue, ProcessIdentity, ProcessRow},
     samplers,
 };
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use std::{
     sync::{
@@ -41,7 +43,7 @@ impl Job {
         fields: Option<Vec<String>>,
     ) -> Result<Self, Value> {
         Self::custom(move |cancelled| {
-            let started = chrono::Utc::now();
+            let started = Timestamp::now();
             match collect(&kind, process.as_ref(), &cancelled) {
                 Ok(mut value) => {
                     if kind == "process_info"
@@ -72,8 +74,8 @@ impl Job {
                             vec![]
                         });
                     }
-                    value["capture_started_at"] = json!(started.to_rfc3339());
-                    value["capture_finished_at"] = json!(chrono::Utc::now().to_rfc3339());
+                    value["capture_started_at"] = json!(started.utc_rfc3339());
+                    value["capture_finished_at"] = json!(Timestamp::now().utc_rfc3339());
                     value
                 }
                 Err(value) => value,

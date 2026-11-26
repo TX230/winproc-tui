@@ -7,13 +7,12 @@ use crate::{
     model::{GpuAdapterId, GpuAdapterSample, history::ProcessIdentity},
     tests::support::{assign_private_graph, make_test_app, render_app_to_text},
 };
-use chrono::Local;
-use chrono::TimeZone;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use jiff::{SignedDuration, Timestamp};
 use std::io::Write;
 fn fixture() -> App {
     let mut app = make_test_app(1, 10);
-    app.snapshot.captured_at = Local.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    app.snapshot.captured_at = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
     app.snapshot.processes[0].name = "a,\"b.exe".into();
     app.snapshot.processes[0].start_time = Some(12);
     app.snapshot.processes[0].private_bytes = Some(9_007_199_254_740_993);
@@ -30,7 +29,7 @@ fn fixture() -> App {
 fn csv_exact_integer_union_gaps_order_and_lifetimes() {
     let mut app = fixture();
     let time = app.snapshot.captured_at;
-    app.snapshot.captured_at += chrono::Duration::milliseconds(1);
+    app.snapshot.captured_at += SignedDuration::from_millis(1);
     app.snapshot.gpu_adapters = vec![GpuAdapterSample {
         id: GpuAdapterId { high: 1, low: 2 },
         dedicated_used: Some(99),
@@ -72,7 +71,7 @@ fn csv_snapshot_is_immutable_and_paused_history_is_used() {
     app.toggle_display_pause();
     app.snapshot.processes[0].private_bytes = Some(1);
     app.process_history.record_snapshot(
-        time + chrono::Duration::seconds(1),
+        time + SignedDuration::from_secs(1),
         &app.snapshot.processes,
         &app.normalized_watch_names,
     );
@@ -88,7 +87,7 @@ fn csv_ranges_are_inclusive_and_unset_ab_is_rejected() {
     let time = app.snapshot.captured_at;
     for offset in [5, 10, 15] {
         app.process_history.record_snapshot(
-            time + chrono::Duration::seconds(offset),
+            time + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -96,10 +95,10 @@ fn csv_ranges_are_inclusive_and_unset_ab_is_rejected() {
     assert!(app.csv_snapshot(CsvRange::Ab).is_err());
     app.ab_comparison = Some(AbComparison {
         a: Some(AbComparisonPoint {
-            captured_at: time + chrono::Duration::seconds(10),
+            captured_at: time + SignedDuration::from_secs(10),
         }),
         b: Some(AbComparisonPoint {
-            captured_at: time + chrono::Duration::seconds(5),
+            captured_at: time + SignedDuration::from_secs(5),
         }),
     });
     assert_eq!(app.csv_snapshot(CsvRange::Ab).unwrap().rows().len(), 2);
@@ -115,7 +114,7 @@ fn csv_does_not_overwrite_and_reports_write_failures() {
     let path = std::env::temp_dir().join(format!(
         "winproc-csv-{}-{}.csv",
         std::process::id(),
-        Local::now().timestamp_nanos_opt().unwrap()
+        Timestamp::now().as_nanosecond()
     ));
     assert_eq!(export.write_file(&path).unwrap(), 1);
     let original = std::fs::read(&path).unwrap();
@@ -189,7 +188,7 @@ fn csv_worker_reports_success_and_existing_destination_in_dialog() {
     let path = std::env::temp_dir().join(format!(
         "winproc-csv-worker-{}-{}",
         std::process::id(),
-        Local::now().timestamp_nanos_opt().unwrap()
+        Timestamp::now().as_nanosecond()
     ));
     let path = path.join("日本語 folder").join("graphs.csv");
     for attempt in 0..2 {
@@ -326,7 +325,7 @@ fn csv_ctrl_space_matches_recording_and_preserves_filename() {
     let root = std::env::temp_dir().join(format!(
         "winproc-csv-completion-{}-{}",
         std::process::id(),
-        Local::now().timestamp_nanos_opt().unwrap()
+        Timestamp::now().as_nanosecond()
     ));
     for name in ["日本語 one", "日本語 two"] {
         std::fs::create_dir_all(root.join(name)).unwrap();
@@ -396,7 +395,7 @@ fn csv_ctrl_e_defaults_to_all_regardless_of_ab_and_rechecks_on_reopen() {
     let time = app.snapshot.captured_at;
     let a = AbComparisonPoint { captured_at: time };
     let b = AbComparisonPoint {
-        captured_at: time - chrono::Duration::seconds(5),
+        captured_at: time - SignedDuration::from_secs(5),
     };
     for (comparison, expected) in [
         (None, CsvRange::All),

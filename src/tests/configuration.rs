@@ -12,6 +12,7 @@ use crate::config::{
 use crate::model::{ColumnPreset, MetricColumn, SortColumn, SortDirection, SortSpec};
 use crate::with_terminal_session;
 use clap::Parser;
+use jiff::SignedDuration;
 use std::time::Duration;
 
 #[test]
@@ -545,13 +546,13 @@ fn sample_freshness_turns_stale_at_defined_threshold() {
 
     assert_eq!(
         app.sample_freshness_at(
-            captured_at + chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64 - 1)
+            captured_at + SignedDuration::from_secs(SAMPLE_STALE_AFTER_SECONDS as i64 - 1)
         ),
         Some(SampleFreshness::Fresh)
     );
     assert_eq!(
         app.sample_freshness_at(
-            captured_at + chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64)
+            captured_at + SignedDuration::from_secs(SAMPLE_STALE_AFTER_SECONDS as i64)
         ),
         Some(SampleFreshness::Stale {
             age_seconds: SAMPLE_STALE_AFTER_SECONDS

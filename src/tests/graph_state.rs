@@ -159,7 +159,7 @@ fn display_mode_toggle_does_not_change_raw_history_or_comparison_state() {
     let mut app = make_test_app(1, 10);
     let tracked = std::collections::HashSet::new();
     for offset in 0..6 {
-        let captured_at = app.snapshot.captured_at + chrono::Duration::seconds(offset);
+        let captured_at = app.snapshot.captured_at + jiff::SignedDuration::from_secs(offset);
         app.process_history
             .record_snapshot(captured_at, &app.snapshot.processes, &tracked);
     }

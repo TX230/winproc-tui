@@ -43,7 +43,7 @@ fn sample(
     rows: Vec<ProcessRow>,
 ) {
     let mut snapshot = test_snapshot(0);
-    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    snapshot.captured_at = app.snapshot.captured_at + jiff::SignedDuration::from_secs(1);
     snapshot.processes = rows;
     app.sampling_in_progress = true;
     sender

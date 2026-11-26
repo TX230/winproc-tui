@@ -1,3 +1,4 @@
+use crate::datetime::TimestampExt;
 use ratatui::{
     layout::{Position, Rect},
     prelude::{Modifier, Style},
@@ -208,7 +209,7 @@ fn draw_content(
             } else {
                 "Captured "
             },
-            report.captured_at.format("%H:%M:%S"),
+            report.captured_at.format_local("%H:%M:%S"),
             entries.len(),
             report.endpoints.len(),
             report.successful_tables
@@ -536,8 +537,8 @@ pub(crate) fn detail_lines(view: &NetworkView, width: u16) -> Vec<String> {
     if let Some(report) = &view.report {
         lines.push(format!(
             "Capture: {} - {}",
-            report.started_at.format("%Y-%m-%d %H:%M:%S%.3f"),
-            report.captured_at.format("%H:%M:%S%.3f")
+            report.started_at.format_local("%Y-%m-%d %H:%M:%S%.3f"),
+            report.captured_at.format_local("%H:%M:%S%.3f")
         ));
         lines.extend(
             report

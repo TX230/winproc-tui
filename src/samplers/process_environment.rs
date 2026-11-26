@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::Local;
 use sysinfo::{Pid, System};
 use winapi::{
     ctypes::c_void,
@@ -204,7 +203,7 @@ pub(crate) fn collect_process_environment(
     Ok(ProcessEnvironmentReport {
         pid: process.pid,
         process_name: process.name.clone(),
-        captured_at: Local::now(),
+        captured_at: jiff::Timestamp::now(),
         entries,
         malformed_entries,
     })

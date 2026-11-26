@@ -1,5 +1,3 @@
-use chrono::{DateTime, Local};
-
 use crate::model::InfoValue;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +15,7 @@ pub(crate) struct ProcessModuleEntry {
 pub(crate) struct ProcessModulesReport {
     pub(crate) pid: u32,
     pub(crate) process_name: String,
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: jiff::Timestamp,
     pub(crate) entries: Vec<ProcessModuleEntry>,
 }
 

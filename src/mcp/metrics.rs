@@ -200,7 +200,7 @@ mod tests {
             cpu_percent: Some(f64::NAN),
             ..Default::default()
         };
-        let sample = ProcessSample::from_row(chrono::Local::now(), &row);
+        let sample = ProcessSample::from_row(jiff::Timestamp::now(), &row);
         assert_eq!(
             process_value(&sample, "private_bytes"),
             Some(json!("18446744073709551615"))

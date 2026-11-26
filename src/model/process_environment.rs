@@ -1,5 +1,3 @@
-use chrono::{DateTime, Local};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessEnvironmentEntry {
     pub(crate) name: String,
@@ -16,7 +14,7 @@ impl ProcessEnvironmentEntry {
 pub(crate) struct ProcessEnvironmentReport {
     pub(crate) pid: u32,
     pub(crate) process_name: String,
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: jiff::Timestamp,
     pub(crate) entries: Vec<ProcessEnvironmentEntry>,
     pub(crate) malformed_entries: usize,
 }

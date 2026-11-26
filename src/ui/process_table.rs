@@ -1,3 +1,4 @@
+use crate::datetime::TimestampExt;
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Margin, Rect},
     prelude::{Modifier, Style},
@@ -783,7 +784,7 @@ fn process_name_line(
         None => Line::from(Span::styled(process.name.clone(), base_style)),
     };
     let mut line = if let ProcessLifecycle::Exited { exited_at } = &row.lifecycle {
-        let suffix = format!("({})", exited_at.format("%H:%M:%S"));
+        let suffix = format!("({})", exited_at.format_local("%H:%M:%S"));
         let suffix_width = text_width(&suffix);
         if suffix_width < name_width {
             let mut line = truncate_line_end(line, name_width - suffix_width, base_style);
@@ -1522,7 +1523,7 @@ mod tests {
             assert!(!style.add_modifier.contains(Modifier::BOLD));
 
             let exited = ProcessLifecycle::Exited {
-                exited_at: chrono::Local::now(),
+                exited_at: jiff::Timestamp::now(),
             };
             let exited_style = tracked_marker_style(&exited, theme);
             assert_eq!(exited_style.fg, Some(theme.background));

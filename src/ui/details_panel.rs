@@ -1,6 +1,7 @@
+use crate::datetime::TimestampExt;
+use jiff::{SignedDuration, Timestamp};
 use std::borrow::Cow;
 
-use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -55,7 +56,7 @@ impl GraphCardRenderData {
     }
 }
 
-fn graph_frame_times(app: &App) -> Cow<'_, [DateTime<Local>]> {
+fn graph_frame_times(app: &App) -> Cow<'_, [Timestamp]> {
     if !app.log_view_frame_times.is_empty() {
         Cow::Borrowed(app.log_view_frame_times.as_slice())
     } else {
@@ -233,8 +234,8 @@ fn prepare_graph_card_render_data(
     slot: &GraphSlot,
     display_mode: GraphDisplayMode,
     bounds: (i64, i64),
-    time_reference_at: Option<DateTime<Local>>,
-    frame_times: Option<&[DateTime<Local>]>,
+    time_reference_at: Option<Timestamp>,
+    frame_times: Option<&[Timestamp]>,
     plot_height: u16,
 ) -> GraphCardRenderData {
     let samples = app.graph_slot_samples(slot);
@@ -291,7 +292,7 @@ fn render_graph_card(
     app: &App,
     theme: Theme,
     y_label_width: usize,
-    selected_sample_time: Option<DateTime<Local>>,
+    selected_sample_time: Option<Timestamp>,
 ) {
     let active = app.active_graph_id == Some(card.id);
     // Comparison values get their own border row so a long target cannot clip digits.
@@ -422,7 +423,7 @@ fn draw_active_samples_inspector(
     area: Rect,
     app: &App,
     samples: &[GraphSample],
-    frame_times: Option<&[DateTime<Local>]>,
+    frame_times: Option<&[Timestamp]>,
     theme: Theme,
 ) {
     let (Some(index), Some(entry)) = (
@@ -546,7 +547,7 @@ fn draw_samples_subpanel(
     theme: Theme,
     show_base_summary: bool,
     show_delta: bool,
-    frame_times: Option<&[DateTime<Local>]>,
+    frame_times: Option<&[Timestamp]>,
 ) -> SampleViewport {
     let inner = area;
     let unit = exact_unit_suffix(metric);
@@ -617,7 +618,7 @@ fn draw_samples_subpanel(
                 style,
             ),
             Span::styled(
-                format!("{}  ", sample.captured_at.format("%H:%M:%S")),
+                format!("{}  ", sample.captured_at.format_local("%H:%M:%S")),
                 style,
             ),
             Span::styled(
@@ -710,12 +711,7 @@ fn synced_sample_viewport_offset(
 fn sample_age_seconds(samples: &[GraphSample], index: usize) -> Option<i64> {
     let latest = samples.last()?.captured_at;
     let sample = samples.get(index)?;
-    Some(
-        latest
-            .signed_duration_since(sample.captured_at)
-            .num_seconds()
-            .max(0),
-    )
+    Some(latest.duration_since(sample.captured_at).as_secs().max(0))
 }
 
 #[cfg(test)]
@@ -740,35 +736,32 @@ fn sample_index_at_age_seconds(samples: &[GraphSample], age_seconds: i64) -> Opt
 }
 
 fn sample_age_seconds_at_time(
-    time_reference_at: Option<DateTime<Local>>,
-    captured_at: DateTime<Local>,
+    time_reference_at: Option<Timestamp>,
+    captured_at: Timestamp,
 ) -> Option<i64> {
     let time_reference_at = time_reference_at?;
     Some(
         time_reference_at
-            .signed_duration_since(captured_at)
-            .num_seconds()
+            .duration_since(captured_at)
+            .as_secs()
             .max(0),
     )
 }
 
-fn sample_index_at_time(samples: &[GraphSample], captured_at: DateTime<Local>) -> Option<usize> {
+fn sample_index_at_time(samples: &[GraphSample], captured_at: Timestamp) -> Option<usize> {
     samples
         .iter()
         .position(|sample| sample.captured_at == captured_at)
 }
 
 #[cfg(test)]
-fn sample_index_nearest_time(
-    samples: &[GraphSample],
-    captured_at: DateTime<Local>,
-) -> Option<usize> {
+fn sample_index_nearest_time(samples: &[GraphSample], captured_at: Timestamp) -> Option<usize> {
     samples
         .iter()
         .enumerate()
         .min_by_key(|(index, sample)| {
             let diff = (sample.captured_at - captured_at)
-                .num_milliseconds()
+                .as_millis()
                 .unsigned_abs();
             (diff, usize::MAX - *index)
         })
@@ -830,8 +823,8 @@ fn draw_graph_content(
     metric: GraphValueFormat,
     display_mode: GraphDisplayMode,
     aggregate_interval_seconds: Option<u64>,
-    selected_sample_time: Option<DateTime<Local>>,
-    time_reference_at: Option<DateTime<Local>>,
+    selected_sample_time: Option<Timestamp>,
+    time_reference_at: Option<Timestamp>,
     bounds: (i64, i64),
     segments: &[Vec<(f64, f64)>],
     y_bounds: (f64, f64),
@@ -1184,7 +1177,7 @@ fn sample_max_line(
         format!(
             "{label}: {} @ {}",
             format_metric_exact_value(value, metric),
-            sample.captured_at.format("%H:%M:%S")
+            sample.captured_at.format_local("%H:%M:%S")
         ),
         Style::default().fg(theme.muted),
     ))
@@ -1200,7 +1193,7 @@ fn sample_summary_lines(
     theme: Theme,
     show_base_summary: bool,
     aggregate_interval_seconds: Option<u64>,
-    frame_times: Option<&[DateTime<Local>]>,
+    frame_times: Option<&[Timestamp]>,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if show_base_summary {
@@ -1237,7 +1230,7 @@ fn sample_moving_average_line(
     metric: GraphValueFormat,
     theme: Theme,
     aggregate_interval_seconds: Option<u64>,
-    frame_times: Option<&[DateTime<Local>]>,
+    frame_times: Option<&[Timestamp]>,
 ) -> Line<'static> {
     let label = format!(
         "Selected {}",
@@ -1253,7 +1246,7 @@ fn sample_moving_average_line(
         format!(
             "{label}: {} @ {}",
             format_metric_exact_value(value, metric),
-            captured_at.format("%H:%M:%S")
+            captured_at.format_local("%H:%M:%S")
         ),
         Style::default().fg(theme.muted),
     ))
@@ -1262,8 +1255,8 @@ fn sample_moving_average_line(
 fn sample_moving_average(
     samples: &[GraphSample],
     selected: usize,
-    frame_times: Option<&[DateTime<Local>]>,
-) -> Option<(DateTime<Local>, f64)> {
+    frame_times: Option<&[Timestamp]>,
+) -> Option<(Timestamp, f64)> {
     let selected_sample = samples.get(selected)?;
     moving_average_samples(samples, frame_times)
         .into_iter()
@@ -1301,7 +1294,7 @@ impl MovingAverageWindow {
 
 fn moving_average_samples(
     samples: &[GraphSample],
-    frame_times: Option<&[DateTime<Local>]>,
+    frame_times: Option<&[Timestamp]>,
 ) -> Vec<GraphSample> {
     let mut window = MovingAverageWindow::default();
     let Some(frame_times) = frame_times.filter(|times| !times.is_empty()) else {
@@ -1485,9 +1478,9 @@ fn delta_style(value: Option<f64>, previous: Option<f64>, selected: bool, theme:
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct AbRangeStatistics {
     min_value: f64,
-    min_captured_at: DateTime<Local>,
+    min_captured_at: Timestamp,
     max_value: f64,
-    max_captured_at: DateTime<Local>,
+    max_captured_at: Timestamp,
     mean: f64,
     available_sample_count: usize,
     expected_frame_count: Option<usize>,
@@ -1497,7 +1490,7 @@ struct AbRangeStatistics {
 fn ab_range_statistics(
     comparison: Option<&AbComparison>,
     samples: &[GraphSample],
-    frame_times: Option<&[DateTime<Local>]>,
+    frame_times: Option<&[Timestamp]>,
 ) -> Option<AbRangeStatistics> {
     let (a, b) = comparison?.a.zip(comparison?.b)?;
     let (range_start, range_end) = if a.captured_at <= b.captured_at {
@@ -1593,7 +1586,7 @@ fn sample_ab_range_summary_lines(
                 format!(
                     "{} @ {}",
                     format_metric_exact_value(statistics.min_value, metric),
-                    statistics.min_captured_at.format("%H:%M:%S")
+                    statistics.min_captured_at.format_local("%H:%M:%S")
                 ),
                 Style::default().fg(theme.text),
             ),
@@ -1604,7 +1597,7 @@ fn sample_ab_range_summary_lines(
                 format!(
                     "{} @ {}",
                     format_metric_exact_value(statistics.max_value, metric),
-                    statistics.max_captured_at.format("%H:%M:%S")
+                    statistics.max_captured_at.format_local("%H:%M:%S")
                 ),
                 Style::default().fg(theme.text),
             ),
@@ -1673,7 +1666,7 @@ fn format_ab_point(
         .and_then(|sample| metric_value(sample, metric))
         .map(|value| format_metric_exact_value(value, metric))
         .unwrap_or_else(|| "--".to_string());
-    format!("{} {}", point.captured_at.format("%H:%M:%S"), value)
+    format!("{} {}", point.captured_at.format_local("%H:%M:%S"), value)
 }
 
 fn format_ab_delta(delta: f64, metric: GraphValueFormat) -> String {
@@ -1710,7 +1703,7 @@ fn format_ab_delta_with_elapsed(
     format!(
         "{} ({})",
         delta,
-        format_elapsed_delta(b.captured_at.signed_duration_since(a.captured_at))
+        format_elapsed_delta(b.captured_at.duration_since(a.captured_at))
     )
 }
 
@@ -1745,8 +1738,8 @@ fn format_graph_title_ab_delta(
         .unwrap_or_else(|| "--".to_string())
 }
 
-fn format_elapsed_delta(delta: chrono::Duration) -> String {
-    let seconds = delta.num_seconds();
+fn format_elapsed_delta(delta: SignedDuration) -> String {
+    let seconds = delta.as_secs();
     let sign = if seconds < 0 { "-" } else { "+" };
     let abs_seconds = seconds.abs();
     let hours = abs_seconds / 3_600;
@@ -1761,10 +1754,7 @@ fn format_elapsed_delta(delta: chrono::Duration) -> String {
     }
 }
 
-fn sample_ab_marker(
-    comparison: Option<&AbComparison>,
-    captured_at: DateTime<Local>,
-) -> &'static str {
+fn sample_ab_marker(comparison: Option<&AbComparison>, captured_at: Timestamp) -> &'static str {
     let Some(comparison) = comparison else {
         return "";
     };
@@ -2015,7 +2005,7 @@ impl Widget for ChartAxisOverlay {
 struct GraphAbAxisLabels<'a> {
     y_label_width: usize,
     bounds: (i64, i64),
-    time_reference_at: Option<DateTime<Local>>,
+    time_reference_at: Option<Timestamp>,
     comparison: Option<&'a AbComparison>,
     theme: Theme,
 }
@@ -2056,7 +2046,7 @@ fn axis_tick_label_line(
     width: usize,
     y_label_width: usize,
     bounds: (i64, i64),
-    latest_sample_at: Option<DateTime<Local>>,
+    latest_sample_at: Option<Timestamp>,
     theme: Theme,
 ) -> Line<'static> {
     let mut chars = vec![' '; width];
@@ -2143,15 +2133,15 @@ fn write_label_slots(
     }
 }
 
-fn graph_tick_labels(bounds: (i64, i64), latest_sample_at: Option<DateTime<Local>>) -> Vec<String> {
+fn graph_tick_labels(bounds: (i64, i64), latest_sample_at: Option<Timestamp>) -> Vec<String> {
     let span = (bounds.1 - bounds.0).max(1);
     (0..=4)
         .map(|index| {
             let value = bounds.0 + (span * index + 2) / 4;
             latest_sample_at
                 .map(|latest| {
-                    (latest + chrono::Duration::seconds(value))
-                        .format("%H:%M:%S")
+                    (latest + SignedDuration::from_secs(value))
+                        .format_local("%H:%M:%S")
                         .to_string()
                 })
                 .unwrap_or_else(|| "--:--:--".to_string())
@@ -2195,12 +2185,12 @@ fn ab_point_x(
     area: Rect,
     y_label_width: usize,
     bounds: (i64, i64),
-    latest_sample_at: DateTime<Local>,
+    latest_sample_at: Timestamp,
     point: AbComparisonPoint,
 ) -> Option<u16> {
     let age = latest_sample_at
-        .signed_duration_since(point.captured_at)
-        .num_seconds()
+        .duration_since(point.captured_at)
+        .as_secs()
         .max(0);
     age_point_x(area, y_label_width, bounds, age)
 }
@@ -2233,7 +2223,7 @@ fn graph_bounds(span_seconds: u32, offset_seconds: u32) -> (i64, i64) {
 fn chart_points(
     samples: &[GraphSample],
     bounds: (i64, i64),
-    time_reference_at: Option<DateTime<Local>>,
+    time_reference_at: Option<Timestamp>,
 ) -> Vec<(f64, f64)> {
     let Some(time_reference_at) = time_reference_at else {
         return Vec::new();
@@ -2242,8 +2232,8 @@ fn chart_points(
     let mut points = Vec::new();
     for sample in samples.iter().rev() {
         let age = time_reference_at
-            .signed_duration_since(sample.captured_at)
-            .num_seconds()
+            .duration_since(sample.captured_at)
+            .as_secs()
             .max(0);
         let x = -(age as f64);
         if x < bounds.0 as f64 {
@@ -2263,8 +2253,8 @@ fn chart_points(
 fn chart_segments(
     samples: &[GraphSample],
     bounds: (i64, i64),
-    time_reference_at: Option<DateTime<Local>>,
-    frame_times: Option<&[DateTime<Local>]>,
+    time_reference_at: Option<Timestamp>,
+    frame_times: Option<&[Timestamp]>,
 ) -> Vec<Vec<(f64, f64)>> {
     let Some(frame_times) = frame_times.filter(|times| !times.is_empty()) else {
         let points = chart_points(samples, bounds, time_reference_at);
@@ -2286,8 +2276,8 @@ fn chart_segments(
             .filter(|sample| sample.captured_at == *captured_at)
             .and_then(|sample| sample.value);
         let age = time_reference_at
-            .signed_duration_since(*captured_at)
-            .num_seconds()
+            .duration_since(*captured_at)
+            .as_secs()
             .max(0);
         let x = -(age as f64);
         if x < bounds.0 as f64 {
@@ -2311,8 +2301,8 @@ fn chart_segments(
 fn chart_segments_preserving_sample_gaps(
     samples: &[GraphSample],
     bounds: (i64, i64),
-    time_reference_at: Option<DateTime<Local>>,
-    frame_times: Option<&[DateTime<Local>]>,
+    time_reference_at: Option<Timestamp>,
+    frame_times: Option<&[Timestamp]>,
 ) -> Vec<Vec<(f64, f64)>> {
     if frame_times.is_some_and(|times| !times.is_empty()) {
         return chart_segments(samples, bounds, time_reference_at, frame_times);
@@ -2360,10 +2350,7 @@ fn selected_sample_line_points(
     let Some(sample) = samples.get(selected) else {
         return Vec::new();
     };
-    let age = latest
-        .signed_duration_since(sample.captured_at)
-        .num_seconds()
-        .max(0);
+    let age = latest.duration_since(sample.captured_at).as_secs().max(0);
     let x = -(age as f64);
     if x < bounds.0 as f64 || x > bounds.1 as f64 {
         return Vec::new();
@@ -2389,7 +2376,7 @@ fn selected_age_line_points(
 }
 
 fn ab_line_points(
-    time_reference_at: Option<DateTime<Local>>,
+    time_reference_at: Option<Timestamp>,
     point: AbComparisonPoint,
     y_min: f64,
     y_max: f64,
@@ -2400,8 +2387,8 @@ fn ab_line_points(
         return Vec::new();
     };
     let age = time_reference_at
-        .signed_duration_since(point.captured_at)
-        .num_seconds()
+        .duration_since(point.captured_at)
+        .as_secs()
         .max(0);
     let x = -(age as f64);
     if x < bounds.0 as f64 || x > bounds.1 as f64 {
@@ -2451,10 +2438,9 @@ fn fit_graph_label(label: &str, width: usize) -> String {
 mod tests {
     use super::*;
     use crate::ui::THEMES;
-    use chrono::TimeZone;
 
     fn sample(
-        captured_at: chrono::DateTime<chrono::Local>,
+        captured_at: Timestamp,
         private_bytes: Option<u64>,
         _workset_private_bytes: Option<u64>,
     ) -> GraphSample {
@@ -2466,7 +2452,7 @@ mod tests {
 
     #[test]
     fn graph_stats_report_current_and_max() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let samples = [
             sample(now, Some(10), Some(5)),
             sample(now, Some(30), Some(7)),
@@ -2511,12 +2497,12 @@ mod tests {
 
     #[test]
     fn graph_y_bounds_include_raw_and_ma_fractional_points() {
-        let base = chrono::Local::now();
+        let base = Timestamp::now();
         let samples = [4.0, 4.0, 4.0, 4.0, 5.0, 4.0]
             .into_iter()
             .enumerate()
             .map(|(index, value)| GraphSample {
-                captured_at: base + chrono::Duration::seconds(index as i64),
+                captured_at: base + SignedDuration::from_secs(index as i64),
                 value: Some(value),
             })
             .collect::<Vec<_>>();
@@ -2637,12 +2623,8 @@ mod tests {
 
     #[test]
     fn sample_max_line_reports_max_value_and_time() {
-        let first = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
-        let second = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 5)
-            .unwrap();
+        let first = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
+        let second = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 5);
         let samples = [
             sample(first, Some(1_000), Some(5)),
             sample(second, Some(3_000), Some(7)),
@@ -2660,34 +2642,30 @@ mod tests {
 
     #[test]
     fn sample_moving_average_uses_selected_sample_as_window_end() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = [
             sample(base, Some(10), None),
-            sample(base + chrono::Duration::seconds(1), Some(20), None),
-            sample(base + chrono::Duration::seconds(2), Some(30), None),
-            sample(base + chrono::Duration::seconds(3), Some(40), None),
-            sample(base + chrono::Duration::seconds(4), Some(50), None),
-            sample(base + chrono::Duration::seconds(5), Some(110), None),
+            sample(base + SignedDuration::from_secs(1), Some(20), None),
+            sample(base + SignedDuration::from_secs(2), Some(30), None),
+            sample(base + SignedDuration::from_secs(3), Some(40), None),
+            sample(base + SignedDuration::from_secs(4), Some(50), None),
+            sample(base + SignedDuration::from_secs(5), Some(110), None),
         ];
         let refs = samples.to_vec();
 
         assert_eq!(
             sample_moving_average(&refs, 5, None),
-            Some((base + chrono::Duration::seconds(5), 50.0))
+            Some((base + SignedDuration::from_secs(5), 50.0))
         );
     }
 
     #[test]
     fn sample_moving_average_requires_five_contiguous_available_values() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = [
             sample(base, Some(10), None),
-            sample(base + chrono::Duration::seconds(1), None, None),
-            sample(base + chrono::Duration::seconds(2), Some(30), None),
+            sample(base + SignedDuration::from_secs(1), None, None),
+            sample(base + SignedDuration::from_secs(2), Some(30), None),
         ];
         let refs = samples.to_vec();
 
@@ -2705,7 +2683,7 @@ mod tests {
 
     #[test]
     fn sample_moving_average_reports_missing_when_window_has_no_values() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let samples = [sample(now, None, None)];
         let refs = samples.to_vec();
 
@@ -2723,12 +2701,10 @@ mod tests {
 
     #[test]
     fn moving_average_warms_up_rolls_and_stays_linear_at_history_capacity() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = (0..7_200)
             .map(|index| GraphSample {
-                captured_at: base + chrono::Duration::seconds(index as i64),
+                captured_at: base + SignedDuration::from_secs(index as i64),
                 value: Some(index as f64),
             })
             .collect::<Vec<_>>();
@@ -2762,11 +2738,9 @@ mod tests {
 
     #[test]
     fn moving_average_resets_for_missing_values_and_missing_frames() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let frame_times = (0..9)
-            .map(|index| base + chrono::Duration::seconds(index))
+            .map(|index| base + SignedDuration::from_secs(index))
             .collect::<Vec<_>>();
         let samples = frame_times
             .iter()
@@ -2798,12 +2772,10 @@ mod tests {
 
     #[test]
     fn moving_average_segments_never_connect_across_a_gap() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = (0..11)
             .map(|index| GraphSample {
-                captured_at: base + chrono::Duration::seconds(index),
+                captured_at: base + SignedDuration::from_secs(index),
                 value: (index != 5).then_some(index as f64),
             })
             .collect::<Vec<_>>();
@@ -2823,7 +2795,7 @@ mod tests {
     #[test]
     fn moving_average_cursor_formats_cover_graph_metric_kinds() {
         let sample = GraphSample {
-            captured_at: chrono::Local::now(),
+            captured_at: Timestamp::now(),
             value: Some(30.0),
         };
         for (metric, expected) in [
@@ -2854,7 +2826,7 @@ mod tests {
     #[test]
     fn moving_average_log_labels_disclose_every_supported_frame_interval() {
         let sample = GraphSample {
-            captured_at: chrono::Local::now(),
+            captured_at: Timestamp::now(),
             value: Some(30.0),
         };
         for interval in [1, 2, 5, 10] {
@@ -2873,14 +2845,12 @@ mod tests {
 
     #[test]
     fn moving_average_y_axis_uses_only_displayed_values() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = [0.0, 100.0, 0.0, 100.0, 0.0]
             .into_iter()
             .enumerate()
             .map(|(index, value)| GraphSample {
-                captured_at: base + chrono::Duration::seconds(index as i64),
+                captured_at: base + SignedDuration::from_secs(index as i64),
                 value: Some(value),
             })
             .collect::<Vec<_>>();
@@ -2907,14 +2877,12 @@ mod tests {
 
     #[test]
     fn aggregate_sample_summaries_expose_interval_semantics() {
-        let now = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let now = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = [
-            sample(now - chrono::Duration::seconds(40), Some(10), None),
-            sample(now - chrono::Duration::seconds(30), Some(20), None),
-            sample(now - chrono::Duration::seconds(20), Some(30), None),
-            sample(now - chrono::Duration::seconds(10), Some(40), None),
+            sample(now - SignedDuration::from_secs(40), Some(10), None),
+            sample(now - SignedDuration::from_secs(30), Some(20), None),
+            sample(now - SignedDuration::from_secs(20), Some(30), None),
+            sample(now - SignedDuration::from_secs(10), Some(40), None),
             sample(now, Some(50), None),
         ];
         let refs = samples.to_vec();
@@ -2984,7 +2952,7 @@ mod tests {
 
     #[test]
     fn time_axis_labels_remain_whole_and_separated_at_every_width() {
-        let latest = Local.with_ymd_and_hms(2026, 9, 6, 12, 0, 0).unwrap();
+        let latest = crate::datetime::local_test_time(2026, 9, 6, 12, 0, 0);
         let labels = graph_tick_labels((-60, 0), Some(latest));
         for y_width in [0, 8, 14] {
             for width in 0..=120 {
@@ -3042,9 +3010,7 @@ mod tests {
 
     #[test]
     fn graph_tick_labels_use_clock_time() {
-        let latest = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 14, 0)
-            .unwrap();
+        let latest = crate::datetime::local_test_time(2026, 1, 1, 10, 14, 0);
 
         assert_eq!(
             graph_tick_labels((-240, 0), Some(latest)),
@@ -3072,12 +3038,10 @@ mod tests {
     #[test]
     fn graph_ab_axis_labels_draw_on_x_axis_without_clearing_plot_cells() {
         let theme = THEMES[0];
-        let latest = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 1, 0)
-            .unwrap();
+        let latest = crate::datetime::local_test_time(2026, 1, 1, 10, 1, 0);
         let comparison = AbComparison {
             a: Some(AbComparisonPoint {
-                captured_at: latest - chrono::Duration::seconds(30),
+                captured_at: latest - SignedDuration::from_secs(30),
             }),
             b: Some(AbComparisonPoint {
                 captured_at: latest,
@@ -3106,9 +3070,7 @@ mod tests {
 
     #[test]
     fn graph_ab_line_stops_one_terminal_row_above_axis_label() {
-        let latest = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 1, 0)
-            .unwrap();
+        let latest = crate::datetime::local_test_time(2026, 1, 1, 10, 1, 0);
         let line = ab_line_points(
             Some(latest),
             AbComparisonPoint {
@@ -3191,50 +3153,48 @@ mod tests {
 
     #[test]
     fn ab_range_statistics_are_inclusive_chronological_and_choose_earliest_ties() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let samples = [
             GraphSample {
                 captured_at: base,
                 value: Some(3.0),
             },
             GraphSample {
-                captured_at: base + chrono::Duration::seconds(1),
+                captured_at: base + SignedDuration::from_secs(1),
                 value: None,
             },
             GraphSample {
-                captured_at: base + chrono::Duration::seconds(2),
+                captured_at: base + SignedDuration::from_secs(2),
                 value: Some(1.0),
             },
             GraphSample {
-                captured_at: base + chrono::Duration::seconds(3),
+                captured_at: base + SignedDuration::from_secs(3),
                 value: Some(1.0),
             },
             GraphSample {
-                captured_at: base + chrono::Duration::seconds(4),
+                captured_at: base + SignedDuration::from_secs(4),
                 value: Some(5.0),
             },
             GraphSample {
-                captured_at: base + chrono::Duration::seconds(5),
+                captured_at: base + SignedDuration::from_secs(5),
                 value: Some(5.0),
             },
         ];
         let frame_times = (0..=5)
-            .map(|seconds| base + chrono::Duration::seconds(seconds))
+            .map(|seconds| base + SignedDuration::from_secs(seconds))
             .collect::<Vec<_>>();
         let comparison = AbComparison {
             a: Some(AbComparisonPoint { captured_at: base }),
             b: Some(AbComparisonPoint {
-                captured_at: base + chrono::Duration::seconds(5),
+                captured_at: base + SignedDuration::from_secs(5),
             }),
         };
 
         let expected = AbRangeStatistics {
             min_value: 1.0,
-            min_captured_at: base + chrono::Duration::seconds(2),
+            min_captured_at: base + SignedDuration::from_secs(2),
             max_value: 5.0,
-            max_captured_at: base + chrono::Duration::seconds(4),
+            max_captured_at: base + SignedDuration::from_secs(4),
             mean: 3.0,
             available_sample_count: 5,
             expected_frame_count: Some(6),
@@ -3256,19 +3216,19 @@ mod tests {
 
         let equal = AbComparison {
             a: Some(AbComparisonPoint {
-                captured_at: base + chrono::Duration::seconds(2),
+                captured_at: base + SignedDuration::from_secs(2),
             }),
             b: Some(AbComparisonPoint {
-                captured_at: base + chrono::Duration::seconds(2),
+                captured_at: base + SignedDuration::from_secs(2),
             }),
         };
         assert_eq!(
             ab_range_statistics(Some(&equal), &samples, Some(&frame_times)),
             Some(AbRangeStatistics {
                 min_value: 1.0,
-                min_captured_at: base + chrono::Duration::seconds(2),
+                min_captured_at: base + SignedDuration::from_secs(2),
                 max_value: 1.0,
-                max_captured_at: base + chrono::Duration::seconds(2),
+                max_captured_at: base + SignedDuration::from_secs(2),
                 mean: 1.0,
                 available_sample_count: 1,
                 expected_frame_count: Some(1),
@@ -3279,20 +3239,18 @@ mod tests {
 
     #[test]
     fn ab_range_statistics_exclude_missing_values_and_absent_frames() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let frame_times = (0..=2)
-            .map(|seconds| base + chrono::Duration::seconds(seconds))
+            .map(|seconds| base + SignedDuration::from_secs(seconds))
             .collect::<Vec<_>>();
         let comparison = AbComparison {
             a: Some(AbComparisonPoint { captured_at: base }),
             b: Some(AbComparisonPoint {
-                captured_at: base + chrono::Duration::seconds(2),
+                captured_at: base + SignedDuration::from_secs(2),
             }),
         };
         let one_available = [GraphSample {
-            captured_at: base + chrono::Duration::seconds(1),
+            captured_at: base + SignedDuration::from_secs(1),
             value: Some(7.0),
         }];
 
@@ -3300,9 +3258,9 @@ mod tests {
             ab_range_statistics(Some(&comparison), &one_available, Some(&frame_times)),
             Some(AbRangeStatistics {
                 min_value: 7.0,
-                min_captured_at: base + chrono::Duration::seconds(1),
+                min_captured_at: base + SignedDuration::from_secs(1),
                 max_value: 7.0,
-                max_captured_at: base + chrono::Duration::seconds(1),
+                max_captured_at: base + SignedDuration::from_secs(1),
                 mean: 7.0,
                 available_sample_count: 1,
                 expected_frame_count: Some(3),
@@ -3329,7 +3287,7 @@ mod tests {
             ab_range_statistics(
                 Some(&comparison),
                 &[GraphSample {
-                    captured_at: base + chrono::Duration::seconds(1),
+                    captured_at: base + SignedDuration::from_secs(1),
                     value: None,
                 }],
                 Some(&frame_times),
@@ -3352,14 +3310,12 @@ mod tests {
 
     #[test]
     fn ab_range_summary_formats_every_metric_and_recording_interval() {
-        let base = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let base = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let statistics = AbRangeStatistics {
             min_value: 10.0,
             min_captured_at: base,
             max_value: 30.0,
-            max_captured_at: base + chrono::Duration::seconds(2),
+            max_captured_at: base + SignedDuration::from_secs(2),
             mean: 20.0,
             available_sample_count: 2,
             expected_frame_count: Some(3),
@@ -3414,7 +3370,7 @@ mod tests {
 
     #[test]
     fn sample_ab_marker_matches_point_times() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let comparison = AbComparison {
             a: Some(AbComparisonPoint { captured_at: now }),
             b: Some(AbComparisonPoint { captured_at: now }),
@@ -3422,19 +3378,15 @@ mod tests {
 
         assert_eq!(sample_ab_marker(Some(&comparison), now), "AB");
         assert_eq!(
-            sample_ab_marker(Some(&comparison), now + chrono::Duration::seconds(1)),
+            sample_ab_marker(Some(&comparison), now + SignedDuration::from_secs(1)),
             ""
         );
     }
 
     #[test]
     fn sample_ab_summary_lines_format_points_and_delta_vertically() {
-        let first = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
-        let second = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 5)
-            .unwrap();
+        let first = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
+        let second = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 5);
         let comparison = AbComparison {
             a: Some(AbComparisonPoint { captured_at: first }),
             b: Some(AbComparisonPoint {
@@ -3471,9 +3423,7 @@ mod tests {
 
     #[test]
     fn sample_ab_summary_lines_keep_partial_points_compact() {
-        let first = chrono::Local
-            .with_ymd_and_hms(2026, 1, 1, 10, 0, 0)
-            .unwrap();
+        let first = crate::datetime::local_test_time(2026, 1, 1, 10, 0, 0);
         let comparison = AbComparison {
             a: Some(AbComparisonPoint { captured_at: first }),
             b: None,
@@ -3497,13 +3447,13 @@ mod tests {
 
     #[test]
     fn format_elapsed_delta_uses_signed_compact_units() {
-        assert_eq!(format_elapsed_delta(chrono::Duration::seconds(5)), "+5s");
+        assert_eq!(format_elapsed_delta(SignedDuration::from_secs(5)), "+5s");
         assert_eq!(
-            format_elapsed_delta(chrono::Duration::seconds(-65)),
+            format_elapsed_delta(SignedDuration::from_secs(-65)),
             "-1m05s"
         );
         assert_eq!(
-            format_elapsed_delta(chrono::Duration::seconds(3_725)),
+            format_elapsed_delta(SignedDuration::from_secs(3_725)),
             "+1h02m05s"
         );
     }
@@ -3524,35 +3474,35 @@ mod tests {
 
     #[test]
     fn sample_index_at_time_requires_exact_timestamp_but_nearest_can_center_viewport() {
-        let base = Local.with_ymd_and_hms(2026, 5, 10, 10, 0, 0).unwrap();
+        let base = crate::datetime::local_test_time(2026, 5, 10, 10, 0, 0);
         let samples = [
             sample(base, Some(10), None),
-            sample(base + chrono::Duration::seconds(2), Some(20), None),
-            sample(base + chrono::Duration::seconds(4), Some(30), None),
+            sample(base + SignedDuration::from_secs(2), Some(20), None),
+            sample(base + SignedDuration::from_secs(4), Some(30), None),
         ];
         let refs = samples.to_vec();
 
         assert_eq!(
-            sample_index_at_time(&refs, base + chrono::Duration::seconds(2)),
+            sample_index_at_time(&refs, base + SignedDuration::from_secs(2)),
             Some(1)
         );
         assert_eq!(
-            sample_index_at_time(&refs, base + chrono::Duration::seconds(3)),
+            sample_index_at_time(&refs, base + SignedDuration::from_secs(3)),
             None
         );
         assert_eq!(
-            sample_index_nearest_time(&refs, base + chrono::Duration::seconds(3)),
+            sample_index_nearest_time(&refs, base + SignedDuration::from_secs(3)),
             Some(2)
         );
     }
 
     #[test]
     fn sample_index_nearest_age_prefers_latest_row_when_age_ties() {
-        let base = Local.with_ymd_and_hms(2026, 5, 10, 10, 0, 0).unwrap();
+        let base = crate::datetime::local_test_time(2026, 5, 10, 10, 0, 0);
         let samples = [
             sample(base, Some(10), None),
-            sample(base + chrono::Duration::milliseconds(400), Some(20), None),
-            sample(base + chrono::Duration::milliseconds(800), Some(30), None),
+            sample(base + SignedDuration::from_millis(400), Some(20), None),
+            sample(base + SignedDuration::from_millis(800), Some(30), None),
         ];
         let refs = samples.to_vec();
 
@@ -3561,9 +3511,9 @@ mod tests {
 
     #[test]
     fn sample_index_at_age_requires_exact_sample_time() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let samples = [
-            sample(now - chrono::Duration::seconds(30), Some(10), None),
+            sample(now - SignedDuration::from_secs(30), Some(10), None),
             sample(now, Some(20), None),
         ];
         let refs = samples.to_vec();
@@ -3581,9 +3531,9 @@ mod tests {
 
     #[test]
     fn chart_points_use_negative_age_seconds() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let samples = [
-            sample(now - chrono::Duration::seconds(15), Some(10), None),
+            sample(now - SignedDuration::from_secs(15), Some(10), None),
             sample(now, Some(20), None),
         ];
         let refs = samples.to_vec();
@@ -3596,10 +3546,10 @@ mod tests {
 
     #[test]
     fn chart_points_preserve_supported_aggregate_intervals() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         for interval in [1_i64, 2, 5, 10] {
             let samples = [
-                sample(now - chrono::Duration::seconds(interval), Some(10), None),
+                sample(now - SignedDuration::from_secs(interval), Some(10), None),
                 sample(now, Some(20), None),
             ];
             assert_eq!(
@@ -3614,10 +3564,10 @@ mod tests {
 
     #[test]
     fn chart_segments_preserve_missing_log_frames_as_gaps() {
-        let base = chrono::Local::now();
+        let base = Timestamp::now();
         let frame_times = [
-            base - chrono::Duration::seconds(20),
-            base - chrono::Duration::seconds(10),
+            base - SignedDuration::from_secs(20),
+            base - SignedDuration::from_secs(10),
             base,
         ];
         let samples = [
@@ -3633,10 +3583,10 @@ mod tests {
 
     #[test]
     fn chart_segments_keep_contiguous_log_frames_connected() {
-        let base = chrono::Local::now();
+        let base = Timestamp::now();
         let frame_times = [
-            base - chrono::Duration::seconds(20),
-            base - chrono::Duration::seconds(10),
+            base - SignedDuration::from_secs(20),
+            base - SignedDuration::from_secs(10),
             base,
         ];
         let samples = [
@@ -3653,11 +3603,11 @@ mod tests {
 
     #[test]
     fn chart_points_skip_samples_outside_visible_bounds() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let samples = [
-            sample(now - chrono::Duration::seconds(90), Some(5), None),
-            sample(now - chrono::Duration::seconds(45), Some(10), None),
-            sample(now - chrono::Duration::seconds(15), Some(15), None),
+            sample(now - SignedDuration::from_secs(90), Some(5), None),
+            sample(now - SignedDuration::from_secs(45), Some(10), None),
+            sample(now - SignedDuration::from_secs(15), Some(15), None),
             sample(now, Some(20), None),
         ];
         let refs = samples.to_vec();
@@ -3670,15 +3620,15 @@ mod tests {
 
     #[test]
     fn chart_points_use_the_shared_graph_time_reference() {
-        let shared_latest = chrono::Local::now();
+        let shared_latest = Timestamp::now();
         let samples = [
             sample(
-                shared_latest - chrono::Duration::seconds(120),
+                shared_latest - SignedDuration::from_secs(120),
                 Some(10),
                 None,
             ),
             sample(
-                shared_latest - chrono::Duration::seconds(60),
+                shared_latest - SignedDuration::from_secs(60),
                 Some(20),
                 None,
             ),
@@ -3731,7 +3681,7 @@ mod tests {
         use ratatui::{Terminal, backend::TestBackend};
 
         let theme = THEMES[0];
-        let base = chrono::Local::now();
+        let base = Timestamp::now();
         for height in [6, 8, 9, 10, 16, 24] {
             for (lower, upper, values, metric) in [
                 (0.0, 1.0, [0.0, 0.001, 0.5, 1.0], GraphValueFormat::Percent),
@@ -3753,7 +3703,7 @@ mod tests {
             ] {
                 let samples = (0..20)
                     .map(|index| GraphSample {
-                        captured_at: base + chrono::Duration::seconds(index),
+                        captured_at: base + SignedDuration::from_secs(index),
                         value: Some(if index < 8 || lower > 0.0 {
                             values[index as usize % values.len()]
                         } else {
@@ -3838,9 +3788,9 @@ mod tests {
 
     #[test]
     fn selected_sample_line_points_use_selected_age_seconds() {
-        let now = chrono::Local::now();
+        let now = Timestamp::now();
         let samples = [
-            sample(now - chrono::Duration::seconds(15), Some(10), None),
+            sample(now - SignedDuration::from_secs(15), Some(10), None),
             sample(now, Some(20), None),
         ];
         let refs = samples.to_vec();
@@ -3947,8 +3897,8 @@ mod tests {
             start_time: Some(1_700_000_000),
         };
         let slot = GraphSlot::process(identity, crate::app::DetailsMetric::HandleCount);
-        let first = Local.with_ymd_and_hms(2026, 7, 26, 20, 50, 56).unwrap();
-        let second = first + chrono::Duration::seconds(5);
+        let first = crate::datetime::local_test_time(2026, 7, 26, 20, 50, 56);
+        let second = first + SignedDuration::from_secs(5);
         let samples = [
             sample(first, Some(2_080), None),
             sample(second, Some(2_082), None),

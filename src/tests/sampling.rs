@@ -8,7 +8,6 @@ use crate::samplers::pdh::{
     sum_optional_values,
 };
 use crate::samplers::{CollectSnapshotResult, SampleRequest, SamplingWorker};
-use chrono::Local;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use winapi::shared::dxgi::{DXGI_ADAPTER_FLAG_REMOTE, DXGI_ADAPTER_FLAG_SOFTWARE};
@@ -41,8 +40,8 @@ fn sampling_result_updates_snapshot_and_clamps_selection() {
 fn successful_sample_returns_fresh_after_stale_state() {
     let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
     let mut app = make_test_app_with_worker(1, 10, sampling_worker);
-    app.snapshot.captured_at =
-        Local::now() - chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64 + 2);
+    app.snapshot.captured_at = jiff::Timestamp::now()
+        - jiff::SignedDuration::from_secs(SAMPLE_STALE_AFTER_SECONDS as i64 + 2);
     assert!(matches!(
         app.sample_freshness(),
         Some(SampleFreshness::Stale { .. })

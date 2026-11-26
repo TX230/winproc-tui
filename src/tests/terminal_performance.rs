@@ -1,3 +1,4 @@
+use jiff::SignedDuration;
 use std::{
     fs::File,
     io::{self, BufWriter, IsTerminal, Write},
@@ -48,14 +49,14 @@ fn fixture(area: Rect, samples: usize, fit_all: bool) -> App {
         app.show_samples_panel = true;
         app.process_history = ProcessHistory::default();
         let tracked_names = std::collections::HashSet::from([identity.name.to_ascii_lowercase()]);
-        let base = app.snapshot.captured_at - chrono::Duration::seconds(samples as i64 - 1);
+        let base = app.snapshot.captured_at - SignedDuration::from_secs(samples as i64 - 1);
         for offset in 0..samples {
             let process = &mut app.snapshot.processes[0];
             process.private_bytes = Some(offset as u64 * 1024);
             process.workset_bytes = Some(offset as u64 * 2048);
             process.cpu_percent = Some((offset % 100) as f64);
             process.io_read_bytes_per_sec = Some(offset as u64 * 4096);
-            app.snapshot.captured_at = base + chrono::Duration::seconds(offset as i64);
+            app.snapshot.captured_at = base + SignedDuration::from_secs(offset as i64);
             app.process_history.record_snapshot(
                 app.snapshot.captured_at,
                 std::slice::from_ref(process),

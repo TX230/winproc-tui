@@ -1,3 +1,4 @@
+use jiff::{SignedDuration, Timestamp};
 use std::{path::PathBuf, sync::mpsc::TryRecvError};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -562,7 +563,7 @@ fn overflow_resize_dismisses_before_rows_can_change_targets() {
 #[test]
 fn narrow_header_keeps_pause_and_stale_status_after_menu_controls() {
     let mut app = make_test_app(1, 10);
-    app.snapshot.captured_at = chrono::Local::now() - chrono::Duration::seconds(5);
+    app.snapshot.captured_at = Timestamp::now() - SignedDuration::from_secs(5);
     app.toggle_display_pause();
     let text = render_app_to_text(&app, 80, 24);
     let header = text.lines().next().unwrap();
@@ -841,7 +842,7 @@ fn compact_header_keeps_recording_pause_stale_and_stable_geometry() {
     let original = ui::header::header_actions(ui::screen_layout(screen)[0], &app);
     app.recording_interval_index = 3;
     let path = start_recording(&mut app, "menu-critical-status");
-    app.snapshot.captured_at = chrono::Local::now() - chrono::Duration::seconds(999999);
+    app.snapshot.captured_at = Timestamp::now() - SignedDuration::from_secs(999999);
     app.toggle_display_pause();
     app.active_investigation_profile = Some("調査プロファイル".repeat(20));
     let text = render_app_to_text(&app, 80, 24);
@@ -1196,7 +1197,7 @@ fn disabling_mcp_in_settings_preserves_recording_and_log_activity() {
 #[test]
 fn mcp_badge_precedes_activity_in_yellow_and_preserves_header_geometry() {
     let mut app = make_test_app(1, 10);
-    app.snapshot.captured_at = chrono::Local::now();
+    app.snapshot.captured_at = Timestamp::now();
     for theme in 0..ui::THEMES.len() {
         app.theme_index = theme;
         for width in [50, 80, 120] {
@@ -1243,7 +1244,7 @@ fn mcp_badge_survives_recording_pause_and_stale_status() {
     let mut app = make_test_app(1, 10);
     let path = start_recording(&mut app, "mcp-badge-recording");
     app.mcp_connected = true;
-    app.snapshot.captured_at = chrono::Local::now() - chrono::Duration::seconds(4);
+    app.snapshot.captured_at = Timestamp::now() - SignedDuration::from_secs(4);
     app.toggle_display_pause();
     let text = render_app_to_text(&app, 80, 24);
     let header = text.lines().next().unwrap();

@@ -1,3 +1,4 @@
+use crate::datetime::TimestampExt;
 pub(crate) const FILE_WRITE_THROUGH: u32 = 0x0000_0002;
 pub(crate) const FILE_NO_INTERMEDIATE_BUFFERING: u32 = 0x0000_0008;
 pub(crate) const FILE_SYNCHRONOUS_IO_ALERT: u32 = 0x0000_0010;
@@ -48,13 +49,10 @@ pub(crate) fn file_timestamp(value: &Result<u64, FileAttributeError>) -> String 
         Ok(0) => "--".into(),
         Ok(ticks) => {
             let seconds = (ticks / 10_000_000) as i64 - 11_644_473_600;
-            let nanos = ((ticks % 10_000_000) * 100) as u32;
-            chrono::DateTime::from_timestamp(seconds, nanos)
-                .map(|time| {
-                    time.with_timezone(&chrono::Local)
-                        .format("%Y-%m-%d %H:%M:%S%.3f %:z")
-                        .to_string()
-                })
+            let nanos = ((ticks % 10_000_000) * 100) as i32;
+            jiff::Timestamp::new(seconds, nanos)
+                .ok()
+                .map(|time| time.format_local("%Y-%m-%d %H:%M:%S%.3f %:z").to_string())
                 .unwrap_or_else(|| "-- (Invalid timestamp)".into())
         }
         Err(error) => format!("-- ({error})"),

@@ -1,11 +1,12 @@
 use super::path_completion::{PathCompletion, PathCompletionState};
+use crate::datetime::TimestampExt;
 use crate::{
     App,
     app::{DetailsMetric, GraphSlot, GraphValueFormat},
     model::history::{ProcessHistory, SystemHistory, SystemMetric, SystemSample},
 };
-use chrono::{DateTime, Local, SecondsFormat};
 use crossterm::event::{KeyCode, KeyEvent};
+use jiff::{SignedDuration, Timestamp};
 use std::{
     collections::BTreeMap,
     fs::OpenOptions,
@@ -49,11 +50,14 @@ pub(crate) struct CsvSnapshot {
     pub(crate) sources: Vec<GraphSlot>,
     processes: ProcessHistory,
     system: SystemHistory,
-    bounds: Option<(DateTime<Local>, DateTime<Local>)>,
+    bounds: Option<(Timestamp, Timestamp)>,
 }
 impl App {
     pub(crate) fn open_graph_csv(&mut self) {
-        let filename = format!("graphs-{}.csv", Local::now().format("%Y%m%d-%H%M%S"));
+        let filename = format!(
+            "graphs-{}.csv",
+            Timestamp::now().format_local("%Y%m%d-%H%M%S")
+        );
         let (path, error) = match std::env::current_dir() {
             Ok(dir) => (dir.join(filename).display().to_string(), String::new()),
             Err(error) => (
@@ -163,10 +167,10 @@ impl App {
                 let right = self
                     .graph_time_reference_at()
                     .ok_or("No retained samples")?
-                    - chrono::Duration::seconds(self.effective_graph_time_offset_seconds().into());
+                    - SignedDuration::from_secs(self.effective_graph_time_offset_seconds().into());
                 Some((
                     right
-                        - chrono::Duration::seconds(
+                        - SignedDuration::from_secs(
                             self.effective_graph_time_span_seconds().into(),
                         ),
                     right,
@@ -255,7 +259,7 @@ impl App {
     }
 }
 impl CsvSnapshot {
-    pub(crate) fn rows(&self) -> BTreeMap<DateTime<Local>, Vec<String>> {
+    pub(crate) fn rows(&self) -> BTreeMap<Timestamp, Vec<String>> {
         let mut rows = BTreeMap::new();
         for (index, source) in self.sources.iter().enumerate() {
             let mut add = |time, value: Option<String>| {
@@ -301,7 +305,7 @@ impl CsvSnapshot {
             writeln!(
                 output,
                 "{},{}",
-                time.to_rfc3339_opts(SecondsFormat::Nanos, false),
+                time.format_local("%Y-%m-%dT%H:%M:%S%.9f%:z"),
                 values.join(",")
             )?;
         }

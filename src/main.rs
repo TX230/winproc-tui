@@ -15,6 +15,7 @@ use ratatui::Terminal;
 mod app;
 mod cli;
 mod config;
+mod datetime;
 mod mcp;
 mod model;
 mod platform;

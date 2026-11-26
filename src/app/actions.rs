@@ -2836,8 +2836,8 @@ impl App {
                         .into_iter()
                         .min_by_key(|sample| {
                             (reference
-                                .signed_duration_since(sample.captured_at)
-                                .num_seconds()
+                                .duration_since(sample.captured_at)
+                                .as_secs()
                                 .max(0)
                                 - age)
                                 .abs()

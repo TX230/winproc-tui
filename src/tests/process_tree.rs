@@ -280,7 +280,7 @@ fn normal_sample_refresh_keeps_focus_by_identity_after_tree_reorders() {
     let selected = app.selected_visible_process_identity().unwrap();
 
     let mut next = app.snapshot.clone();
-    next.captured_at += chrono::Duration::seconds(1);
+    next.captured_at += jiff::SignedDuration::from_secs(1);
     next.processes.reverse();
     result_tx
         .send(CollectSnapshotResult {

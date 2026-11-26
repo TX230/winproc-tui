@@ -9,7 +9,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::Local;
 use sysinfo::{Pid, System};
 use winapi::{
     shared::winerror::{
@@ -177,7 +176,7 @@ pub(crate) fn collect_process_modules(
     Ok(ProcessModulesReport {
         pid: process.pid,
         process_name: process.name.clone(),
-        captured_at: Local::now(),
+        captured_at: jiff::Timestamp::now(),
         entries,
     })
 }

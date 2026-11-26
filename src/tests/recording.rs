@@ -10,7 +10,6 @@ use crate::app::{AppActivity, FocusedPanel, SAMPLE_STALE_AFTER_SECONDS};
 use crate::samplers::{CollectSnapshotResult, SamplingWorker};
 use crate::ui;
 use crate::ui::tracked_remove_dialog_area;
-use chrono::Local;
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -889,8 +888,8 @@ fn live_header_hides_product_and_version_when_the_row_is_too_narrow() {
 #[test]
 fn live_header_shows_visible_stale_state() {
     let mut app = make_test_app(1, 10);
-    app.snapshot.captured_at =
-        Local::now() - chrono::Duration::seconds(SAMPLE_STALE_AFTER_SECONDS as i64 + 2);
+    app.snapshot.captured_at = jiff::Timestamp::now()
+        - jiff::SignedDuration::from_secs(SAMPLE_STALE_AFTER_SECONDS as i64 + 2);
 
     let rendered = render_app_to_text(&app, 120, 45);
 

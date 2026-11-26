@@ -1,3 +1,4 @@
+use crate::datetime::TimestampExt;
 use ratatui::{
     layout::{Position, Rect},
     prelude::{Modifier, Style},
@@ -151,7 +152,7 @@ fn environment_lines(app: &App, theme: Theme, width: usize) -> Vec<Line<'static>
             "{} / PID {}  Captured {}{}  {}{}",
             report.process_name,
             report.pid,
-            report.captured_at.format("%Y-%m-%d %H:%M:%S"),
+            report.captured_at.format_local("%Y-%m-%d %H:%M:%S"),
             if app.process_info_target_is_currently_live() {
                 ""
             } else {

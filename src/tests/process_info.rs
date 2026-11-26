@@ -11,6 +11,7 @@ use crate::samplers::open_files::OpenFilesWorker;
 use crate::samplers::process_info::{ProcessInfoRequest, ProcessInfoResult, ProcessInfoWorker};
 use crate::ui;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use jiff::SignedDuration;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use std::sync::mpsc::TryRecvError;
@@ -159,8 +160,8 @@ fn stale_process_info_result_cannot_replace_reopened_dialog_request() {
 fn process_info_metrics_follow_current_a_and_b_rules_with_missing_values() {
     let mut app = make_test_app(1, 10);
     let current_at = app.snapshot.captured_at;
-    let a_at = current_at - chrono::Duration::seconds(2);
-    let b_at = current_at - chrono::Duration::seconds(1);
+    let a_at = current_at - SignedDuration::from_secs(2);
+    let b_at = current_at - SignedDuration::from_secs(1);
     let mut a = app.snapshot.processes[0].clone();
     a.cpu_percent = Some(10.8);
     a.private_bytes = Some(375_800_000);
@@ -363,8 +364,8 @@ fn process_info_metrics_follow_current_a_and_b_rules_with_missing_values() {
 fn process_info_renders_range_above_underlined_metric_headers() {
     let mut app = make_test_app(1, 10);
     let current_at = app.snapshot.captured_at;
-    let a_at = current_at - chrono::Duration::seconds(2);
-    let b_at = current_at - chrono::Duration::seconds(1);
+    let a_at = current_at - SignedDuration::from_secs(2);
+    let b_at = current_at - SignedDuration::from_secs(1);
     let process = app.snapshot.processes[0].clone();
     app.process_history
         .record_snapshot_unbounded(a_at, std::slice::from_ref(&process));
@@ -427,7 +428,7 @@ fn process_info_current_delta_updates_while_dialog_remains_open() {
         b: None,
     });
 
-    let later = a_at + chrono::Duration::seconds(1);
+    let later = a_at + SignedDuration::from_secs(1);
     let mut current = a;
     current.private_bytes = Some(125_000_000);
     app.snapshot.captured_at = later;
@@ -460,7 +461,7 @@ fn process_info_uses_paused_history_and_log_view_starts_no_live_worker() {
         process_info_worker,
         open_files_worker,
     );
-    let paused_at = app.snapshot.captured_at - chrono::Duration::seconds(5);
+    let paused_at = app.snapshot.captured_at - SignedDuration::from_secs(5);
     let mut paused_snapshot = app.snapshot.clone();
     paused_snapshot.captured_at = paused_at;
     paused_snapshot.processes[0].private_bytes = Some(42_000_000);

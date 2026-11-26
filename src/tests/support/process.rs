@@ -1,4 +1,4 @@
-use chrono::Local;
+use jiff::Timestamp;
 
 use crate::app::{self, App};
 use crate::model::{
@@ -85,7 +85,7 @@ pub(in crate::tests) fn test_process_modules_report(
     ProcessModulesReport {
         pid,
         process_name: name.to_string(),
-        captured_at: Local::now(),
+        captured_at: Timestamp::now(),
         entries,
     }
 }
@@ -103,7 +103,7 @@ pub(in crate::tests) fn test_process_environment_report(
     ProcessEnvironmentReport {
         pid,
         process_name: name.to_string(),
-        captured_at: Local::now(),
+        captured_at: Timestamp::now(),
         entries,
         malformed_entries: 0,
     }

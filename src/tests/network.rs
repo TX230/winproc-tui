@@ -1,9 +1,9 @@
+use jiff::Timestamp;
 use std::{
     path::PathBuf,
     sync::mpsc::{Receiver, Sender, TryRecvError},
 };
 
-use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, style::Modifier};
 
@@ -54,8 +54,8 @@ fn report(app: &App) -> NetworkReport {
         owner: Some(owner.clone()),
     };
     NetworkReport {
-        started_at: Local::now(),
-        captured_at: Local::now(),
+        started_at: Timestamp::now(),
+        captured_at: Timestamp::now(),
         failures: vec![],
         successful_tables: 4,
         endpoints: vec![

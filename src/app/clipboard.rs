@@ -1,3 +1,4 @@
+use crate::datetime::TimestampExt;
 use anyhow::Result;
 
 use crate::{
@@ -261,7 +262,7 @@ impl App {
         )
     }
 
-    pub(crate) fn sample_time_is_selected(&self, time: chrono::DateTime<chrono::Local>) -> bool {
+    pub(crate) fn sample_time_is_selected(&self, time: jiff::Timestamp) -> bool {
         self.sample_selection.is_some_and(|(id, a, b)| {
             self.active_graph_id == Some(id) && time >= a.min(b) && time <= a.max(b)
         })
@@ -300,7 +301,7 @@ pub(super) fn sample_row_text(
 ) -> String {
     let sample = &samples[index];
     let mut fields = vec![
-        sample.captured_at.format("%H:%M:%S").to_string(),
+        sample.captured_at.format_local("%H:%M:%S").to_string(),
         format_graph_sample_value(sample.value, format),
     ];
     if delta {

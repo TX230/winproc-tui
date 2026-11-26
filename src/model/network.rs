@@ -1,6 +1,5 @@
+use jiff::Timestamp;
 use std::net::SocketAddr;
-
-use chrono::{DateTime, Local};
 
 use super::{ProcessIdentity, ProcessRow};
 
@@ -118,8 +117,8 @@ impl NetworkEndpoint {
 
 #[derive(Debug, Clone)]
 pub(crate) struct NetworkReport {
-    pub(crate) started_at: DateTime<Local>,
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) started_at: Timestamp,
+    pub(crate) captured_at: Timestamp,
     pub(crate) endpoints: Vec<NetworkEndpoint>,
     pub(crate) failures: Vec<String>,
     pub(crate) successful_tables: usize,

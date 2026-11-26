@@ -1,3 +1,5 @@
+use crate::datetime::TimestampExt;
+use jiff::Timestamp;
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -8,7 +10,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Local};
 
 use crate::app::{
     App, AppActivity,
@@ -165,7 +166,7 @@ struct RecordingFrameAggregate {
 impl RecordingFrameAggregate {
     fn add_snapshot(&mut self, snapshot: &Snapshot, tracked: &HashSet<ProcessIdentity>) {
         self.sample_count = self.sample_count.saturating_add(1);
-        self.captured_at_ms = Some(snapshot.captured_at.timestamp_millis());
+        self.captured_at_ms = Some(snapshot.captured_at.epoch_millis());
 
         let V3SystemMetrics(integers, disk_queue_length, _) =
             V3SystemMetrics::from_snapshot(snapshot, Vec::new());
@@ -255,7 +256,7 @@ struct RegisteredGpu {
 pub(crate) struct RecordingSession {
     pub(crate) path: PathBuf,
     session_id: String,
-    started_at: DateTime<Local>,
+    started_at: Timestamp,
     pub(super) started_at_instant: Instant,
     host: String,
     tracked_names: Vec<String>,
@@ -811,9 +812,9 @@ impl App {
         };
         match open_recording_file(&path, overwrite) {
             Ok(file) => {
-                let started_at = Local::now();
+                let started_at = Timestamp::now();
                 let started_at_instant = Instant::now();
-                let session_id = started_at.format("%Y%m%d%H%M%S").to_string();
+                let session_id = started_at.format_local("%Y%m%d%H%M%S").to_string();
                 let host = host_name();
                 let interval_seconds = self.selected_recording_interval_seconds();
                 self.recording_session = Some(RecordingSession {
@@ -924,7 +925,7 @@ fn open_recording_file(path: &Path, overwrite: bool) -> Result<File> {
 }
 
 fn default_recording_path(last_dir: Option<&Path>) -> Result<PathBuf> {
-    let filename = default_recording_filename(Local::now());
+    let filename = default_recording_filename(Timestamp::now());
     let dir = match last_dir {
         Some(path) => path.to_path_buf(),
         None => env::current_dir().context("failed to resolve current directory")?,
@@ -932,8 +933,8 @@ fn default_recording_path(last_dir: Option<&Path>) -> Result<PathBuf> {
     Ok(dir.join(filename))
 }
 
-fn default_recording_filename(now: DateTime<Local>) -> String {
-    format!("winproc-tui-{}.log", now.format("%Y%m%d%H%M%S"))
+fn default_recording_filename(now: Timestamp) -> String {
+    format!("winproc-tui-{}.log", now.format_local("%Y%m%d%H%M%S"))
 }
 
 fn recording_parent_dir(path: &Path) -> Result<Option<PathBuf>> {
@@ -1009,7 +1010,7 @@ fn recording_session_record(session: &RecordingSession, app: &App) -> V3Record {
         session_id: session.session_id.clone(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         host: session.host.clone(),
-        started_at_ms: session.started_at.timestamp_millis(),
+        started_at_ms: session.started_at.epoch_millis(),
         interval_seconds: session.interval_seconds,
         tracked_names: session.tracked_names.clone(),
         columns,
@@ -1032,7 +1033,7 @@ fn recording_session_record(session: &RecordingSession, app: &App) -> V3Record {
 
 fn recording_end_record(reason: &str) -> V3Record {
     V3Record::End(V3EndRecord(
-        Local::now().timestamp_millis(),
+        Timestamp::now().epoch_millis(),
         reason.to_string(),
     ))
 }
@@ -1063,12 +1064,12 @@ fn host_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use jiff::SignedDuration;
     use std::fs::OpenOptions;
 
     #[test]
     fn default_recording_filename_uses_compact_timestamp() {
-        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let now = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
 
         assert_eq!(
             default_recording_filename(now),
@@ -1078,7 +1079,7 @@ mod tests {
 
     #[test]
     fn recording_frame_contains_tracked_processes_only() {
-        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let now = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
         let mut session = test_session(now, &["app.exe"]);
         let snapshot = Snapshot {
             captured_at: now,
@@ -1187,8 +1188,8 @@ mod tests {
 
     #[test]
     fn recording_aggregate_averages_available_values_and_uses_final_timestamp() {
-        let first_at = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
-        let second_at = first_at + chrono::Duration::seconds(1);
+        let first_at = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
+        let second_at = first_at + SignedDuration::from_secs(1);
         let mut session = test_session(first_at, &["app.exe"]);
         let mut first_row = row(1, "app.exe", Some(100), None);
         first_row.cpu_percent = Some(10.0);
@@ -1217,7 +1218,7 @@ mod tests {
         else {
             panic!("aggregate must end with a frame");
         };
-        assert_eq!(*captured_at_ms, second_at.timestamp_millis());
+        assert_eq!(*captured_at_ms, second_at.epoch_millis());
         assert_eq!(
             system.0[crate::app::log_format::system_u64::PHYSICAL_MEMORY],
             Some(101)
@@ -1241,10 +1242,10 @@ mod tests {
 
     #[test]
     fn recording_aggregate_does_not_treat_an_absent_process_as_zero() {
-        let first_at = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let first_at = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
         let mut session = test_session(first_at, &["app.exe"]);
         let first = test_snapshot(first_at, vec![row(1, "app.exe", Some(120), Some(9))]);
-        let second = test_snapshot(first_at + chrono::Duration::seconds(1), Vec::new());
+        let second = test_snapshot(first_at + SignedDuration::from_secs(1), Vec::new());
         let mut aggregate = RecordingFrameAggregate::default();
         session
             .tracking_scope
@@ -1274,12 +1275,12 @@ mod tests {
 
     #[test]
     fn recording_writes_only_when_the_selected_sample_window_is_complete() {
-        let first_at = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let first_at = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
         let mut session = test_session(first_at, &["app.exe"]);
         session.interval_seconds = 2;
         let first = test_snapshot(first_at, vec![row(1, "app.exe", Some(100), None)]);
         let second = test_snapshot(
-            first_at + chrono::Duration::seconds(1),
+            first_at + SignedDuration::from_secs(1),
             vec![row(1, "app.exe", Some(200), None)],
         );
 
@@ -1291,7 +1292,7 @@ mod tests {
 
     #[test]
     fn recording_defines_a_tracked_process_when_it_starts_later() {
-        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let now = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
         let mut session = test_session(now, &["app.exe"]);
         let initial = test_snapshot(now, Vec::new());
 
@@ -1299,7 +1300,7 @@ mod tests {
         assert!(matches!(initial_records.as_slice(), [V3Record::Frame(_)]));
 
         let later = test_snapshot(
-            now + chrono::Duration::seconds(1),
+            now + SignedDuration::from_secs(1),
             vec![row(42, "app.exe", Some(120), None)],
         );
         let later_records = recording_frame_records(&mut session, &later).unwrap();
@@ -1317,7 +1318,7 @@ mod tests {
 
     #[test]
     fn recording_assigns_distinct_ids_to_concurrent_same_name_processes() {
-        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let now = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
         let mut session = test_session(now, &["app.exe"]);
         let snapshot = test_snapshot(
             now,
@@ -1357,7 +1358,7 @@ mod tests {
         );
     }
 
-    fn test_session(now: DateTime<Local>, tracked_names: &[&str]) -> RecordingSession {
+    fn test_session(now: Timestamp, tracked_names: &[&str]) -> RecordingSession {
         RecordingSession {
             path: PathBuf::from("test.log"),
             session_id: "20260504143012".to_string(),
@@ -1390,7 +1391,7 @@ mod tests {
 
     #[test]
     fn recording_duration_limit_is_reached_at_exactly_24_hours() {
-        let now = Local.with_ymd_and_hms(2026, 5, 4, 14, 30, 12).unwrap();
+        let now = crate::datetime::local_test_time(2026, 5, 4, 14, 30, 12);
         let session = test_session(now, &["app.exe"]);
         let limit = session
             .started_at_instant
@@ -1406,7 +1407,7 @@ mod tests {
         assert!(!session.duration_limit_reached_at(just_before_limit));
     }
 
-    fn test_snapshot(captured_at: DateTime<Local>, processes: Vec<ProcessRow>) -> Snapshot {
+    fn test_snapshot(captured_at: Timestamp, processes: Vec<ProcessRow>) -> Snapshot {
         Snapshot {
             captured_at,
             total_memory: 0,

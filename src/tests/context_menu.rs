@@ -7,6 +7,7 @@ use crate::{
     ui,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use jiff::SignedDuration;
 use ratatui::layout::{Position, Rect};
 
 fn menu_key(app: &mut crate::App) {
@@ -119,7 +120,7 @@ fn graph_menu_preserves_time_until_action_and_uses_captured_sample() {
     assign_private_graph(&mut app);
     for offset in [0, 30, 60] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -165,7 +166,7 @@ fn jump_to_latest_is_direct_and_preserves_graph_state() {
         assign_private_graph(&mut app);
         for offset in [0, 1, 2] {
             app.process_history.record_snapshot(
-                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                app.snapshot.captured_at + SignedDuration::from_secs(offset),
                 &app.snapshot.processes,
                 &app.normalized_watch_names,
             );

@@ -5,6 +5,7 @@ use super::support::{
 };
 use crate::app;
 use crate::app::{DetailsMetric, FocusedPanel, GraphSlot, GraphSlotLayout};
+use crate::datetime::TimestampExt;
 use crate::model::{ProcessHistory, ProcessIdentity, SystemHistory, SystemMetric};
 use crate::samplers::open_files::{OpenFilesRequest, OpenFilesWorker};
 use crate::samplers::process_info::ProcessInfoWorker;
@@ -14,8 +15,8 @@ use crate::ui::{
     details_graph_area_for_app, details_samples_area_for_app, details_shared_controls_area_for_app,
     main_panel_areas_for_app,
 };
-use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use jiff::SignedDuration;
 use ratatui::layout::Rect;
 
 #[test]
@@ -59,7 +60,7 @@ fn details_sample_selection_moves_within_samples() {
     app.set_details_sample_page_size(2);
     for offset in [0, 30, 60] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -83,7 +84,7 @@ fn ab_summary_and_resize_keep_selected_sample_visible_and_clickable() {
     assign_private_graph(&mut app);
     for offset in 0..60 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -110,7 +111,7 @@ fn ab_summary_and_resize_keep_selected_sample_visible_and_clickable() {
         let area = details_samples_area_for_app(screen, &app).unwrap();
         let row = area.y + 1 + (app.details_sample_selected - app.details_sample_offset) as u16;
         let buffer = render_app_to_buffer(&app, screen.width, screen.height);
-        let time = selected_time.format("%H:%M:%S").to_string();
+        let time = selected_time.format_local("%H:%M:%S").to_string();
         assert!(
             super::support::find_text_position_in_area(
                 &buffer,
@@ -135,7 +136,7 @@ fn details_sample_selection_scrolls_only_at_view_edges() {
     app.set_details_sample_page_size(3);
     for offset in 0..6 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -164,7 +165,7 @@ fn sample_selection_moves_graph_window_only_when_selected_value_is_outside_it() 
     app.graph_time_span_seconds = 60;
     for offset in [0, 60, 120] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -192,7 +193,7 @@ fn samples_mouse_wheel_moves_cursor_row() {
     app.set_details_sample_page_size(3);
     for offset in 0..8 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -239,7 +240,7 @@ fn samples_scrollbar_drag_scrolls_viewport() {
     let tracked_names = ["proc-0".to_string()].into_iter().collect();
     for offset in 0..100 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &tracked_names,
         );
@@ -328,7 +329,7 @@ fn graph_and_samples_scrollbar_thumbs_follow_their_content_focus() {
     let tracked_names = ["proc-0".to_string()].into_iter().collect();
     for offset in 0..100 {
         samples_app.process_history.record_snapshot(
-            samples_app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            samples_app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &samples_app.snapshot.processes,
             &tracked_names,
         );
@@ -376,7 +377,7 @@ fn samples_scrollbar_keeps_one_column_gap_after_values() {
     let tracked_names = ["proc-0".to_string()].into_iter().collect();
     for offset in 0..100 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &tracked_names,
         );
@@ -419,7 +420,7 @@ fn graph_focus_keys_zoom_pan_and_select_samples() {
     app.focused_panel = FocusedPanel::DetailsGraph;
     for offset in [0, 30, 60] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -466,7 +467,7 @@ fn alt_arrows_pan_the_shared_range_from_graph_and_samples() {
         assign_private_graph(&mut app);
         for offset in 0..=120 {
             app.process_history.record_snapshot(
-                app.snapshot.captured_at + chrono::Duration::seconds(offset),
+                app.snapshot.captured_at + SignedDuration::from_secs(offset),
                 &app.snapshot.processes,
                 &app.normalized_watch_names,
             );
@@ -477,10 +478,10 @@ fn alt_arrows_pan_the_shared_range_from_graph_and_samples() {
         let selected = app.details_sample_selected;
         let selected_time = app.selected_details_sample_time();
         let active = app.active_graph_id;
-        let latest = app.snapshot.captured_at + chrono::Duration::seconds(120);
+        let latest = app.snapshot.captured_at + SignedDuration::from_secs(120);
         app.ab_comparison = Some(app::AbComparison {
             a: Some(app::AbComparisonPoint {
-                captured_at: latest - chrono::Duration::seconds(60),
+                captured_at: latest - SignedDuration::from_secs(60),
             }),
             b: Some(app::AbComparisonPoint {
                 captured_at: latest,
@@ -493,7 +494,7 @@ fn alt_arrows_pan_the_shared_range_from_graph_and_samples() {
         assert_eq!(app.graph_time_offset_seconds, 8, "{focus:?}");
         assert_eq!(
             app.graph_time_window_right_at,
-            Some(latest - chrono::Duration::seconds(8))
+            Some(latest - SignedDuration::from_secs(8))
         );
         assert!(!app.details_live);
         assert_eq!(app.graph_time_span_seconds, 60);
@@ -539,7 +540,7 @@ fn graph_up_down_changes_graph_while_samples_up_down_changes_sample() {
         row.start_time = Some(1_800_000_001);
         row.name = "graph-1.exe".to_string();
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &[row],
             &app.normalized_watch_names,
         );
@@ -569,7 +570,7 @@ fn shift_up_down_reorders_active_graph_without_changing_shared_state() {
     app.details_sample_offset = 3;
     app.graph_time_span_seconds = 300;
     app.graph_time_offset_seconds = 42;
-    app.graph_time_window_right_at = Some(Local::now());
+    app.graph_time_window_right_at = Some(jiff::Timestamp::now());
     app.ab_comparison = Some(app::AbComparison { a: None, b: None });
     let window_right = app.graph_time_window_right_at;
     let comparison = app.ab_comparison.clone();
@@ -681,7 +682,7 @@ fn samples_page_keys_scroll_the_list_without_changing_graph_span() {
     assign_private_graph(&mut app);
     for offset in 0..12 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -828,7 +829,7 @@ fn graph_pan_skips_empty_time_ranges() {
         &app.normalized_watch_names,
     );
     app.process_history.record_snapshot(
-        app.snapshot.captured_at + chrono::Duration::seconds(180),
+        app.snapshot.captured_at + SignedDuration::from_secs(180),
         &app.snapshot.processes,
         &app.normalized_watch_names,
     );
@@ -895,7 +896,7 @@ fn graph_right_button_drag_pans_visible_range() {
     assign_private_graph(&mut app);
     for offset in [0, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -946,7 +947,7 @@ fn graph_right_click_after_drag_preserves_panned_range() {
     assign_private_graph(&mut app);
     for offset in [0, 30, 60, 90, 120, 150, 180, 210, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1017,7 +1018,7 @@ fn graph_drag_clamps_to_range_with_visible_sample() {
     assign_private_graph(&mut app);
     for offset in [0, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1059,7 +1060,7 @@ fn graph_right_click_without_drag_preserves_fit_all_samples() {
     assign_private_graph(&mut app);
     for offset in [0, 120, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1103,7 +1104,7 @@ fn graph_ctrl_left_drag_pans_without_selecting_sample() {
     app.details_live = false;
     for offset in [0, 30, 60, 90, 120, 150, 180, 210, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1159,7 +1160,7 @@ fn graph_stops_live_scroll_when_latest_sample_is_outside_visible_range() {
     app.graph_time_offset_seconds = 60;
     app.sampling_in_progress = true;
     app.process_history.record_snapshot(
-        app.snapshot.captured_at - chrono::Duration::seconds(60),
+        app.snapshot.captured_at - SignedDuration::from_secs(60),
         &app.snapshot.processes,
         &app.normalized_watch_names,
     );
@@ -1169,7 +1170,7 @@ fn graph_stops_live_scroll_when_latest_sample_is_outside_visible_range() {
         &app.normalized_watch_names,
     );
     let mut snapshot = test_snapshot(1);
-    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    snapshot.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(1);
 
     result_tx
         .send(CollectSnapshotResult {
@@ -1184,7 +1185,7 @@ fn graph_stops_live_scroll_when_latest_sample_is_outside_visible_range() {
 
     app.sampling_in_progress = true;
     let mut snapshot = test_snapshot(1);
-    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    snapshot.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(1);
     result_tx
         .send(CollectSnapshotResult {
             snapshot,
@@ -1202,8 +1203,8 @@ fn frozen_graph_window_uses_rounded_subsecond_sample_intervals() {
     let (sampling_worker, _request_rx, result_tx) = SamplingWorker::test_pair();
     let mut app = make_test_app_with_worker(1, 10, sampling_worker);
     assign_private_graph(&mut app);
-    let latest = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap()
-        + chrono::Duration::milliseconds(900);
+    let latest =
+        crate::datetime::local_test_time(2026, 5, 26, 10, 0, 0) + SignedDuration::from_millis(900);
     app.snapshot.captured_at = latest;
     app.process_history.record_snapshot(
         app.snapshot.captured_at,
@@ -1212,10 +1213,10 @@ fn frozen_graph_window_uses_rounded_subsecond_sample_intervals() {
     );
     app.details_live = false;
     app.graph_time_offset_seconds = 60;
-    app.graph_time_window_right_at = Some(latest - chrono::Duration::seconds(60));
+    app.graph_time_window_right_at = Some(latest - SignedDuration::from_secs(60));
     app.sampling_in_progress = true;
     let mut snapshot = test_snapshot(1);
-    snapshot.captured_at = latest + chrono::Duration::milliseconds(950);
+    snapshot.captured_at = latest + SignedDuration::from_millis(950);
 
     result_tx
         .send(CollectSnapshotResult {
@@ -1236,7 +1237,7 @@ fn graph_cursor_movement_stops_graph_auto_scroll() {
     app.focused_panel = FocusedPanel::DetailsGraph;
     app.details_live = true;
     app.process_history.record_snapshot(
-        app.snapshot.captured_at - chrono::Duration::seconds(1),
+        app.snapshot.captured_at - SignedDuration::from_secs(1),
         &app.snapshot.processes,
         &app.normalized_watch_names,
     );
@@ -1256,7 +1257,7 @@ fn graph_cursor_movement_stops_graph_auto_scroll() {
 
     app.sampling_in_progress = true;
     let mut snapshot = test_snapshot(1);
-    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    snapshot.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(1);
     result_tx
         .send(CollectSnapshotResult {
             snapshot,
@@ -1291,7 +1292,7 @@ fn setting_ab_point_does_not_stop_graph_live_scroll() {
 
     app.sampling_in_progress = true;
     let mut snapshot = test_snapshot(1);
-    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(1);
+    snapshot.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(1);
     result_tx
         .send(CollectSnapshotResult {
             snapshot,
@@ -1311,7 +1312,7 @@ fn graph_drag_does_not_clear_fit_all_samples() {
     app.focused_panel = FocusedPanel::DetailsGraph;
     for offset in [0, 120, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1361,7 +1362,7 @@ fn graph_all_samples_checkbox_uses_full_sample_span() {
     app.focused_panel = FocusedPanel::DetailsGraph;
     for offset in [0, 120, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1402,13 +1403,13 @@ fn graph_fit_all_uses_the_time_range_across_every_graph() {
 
     for offset in [120, 240] {
         app.process_history.record_snapshot_unbounded(
-            base + chrono::Duration::seconds(offset),
+            base + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
         );
     }
     for offset in [0, 360] {
         let mut snapshot = app.snapshot.clone();
-        snapshot.captured_at = base + chrono::Duration::seconds(offset);
+        snapshot.captured_at = base + SignedDuration::from_secs(offset);
         snapshot.committed_memory = Some(1_000 + offset as u64);
         app.system_history.record_snapshot_unbounded(&snapshot);
     }
@@ -1424,14 +1425,14 @@ fn graph_fit_all_uses_the_time_range_across_every_graph() {
     assert_eq!(app.effective_graph_time_span_seconds(), 360);
     assert_eq!(
         app.graph_time_reference_at(),
-        Some(base + chrono::Duration::seconds(360))
+        Some(base + SignedDuration::from_secs(360))
     );
 
     assert!(app.set_active_graph(process_graph));
     assert_eq!(app.effective_graph_time_span_seconds(), 360);
     assert_eq!(
         app.graph_time_reference_at(),
-        Some(base + chrono::Duration::seconds(360))
+        Some(base + SignedDuration::from_secs(360))
     );
 }
 
@@ -1442,7 +1443,7 @@ fn graph_f_key_toggles_fit_all_samples() {
     app.focused_panel = FocusedPanel::DetailsGraph;
     for offset in [0, 120, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1469,7 +1470,7 @@ fn graph_shared_keys_work_when_samples_are_focused() {
     app.focused_panel = FocusedPanel::DetailsSamples;
     for offset in [0, 120, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1495,7 +1496,7 @@ fn log_view_all_samples_span_can_exceed_live_history_cap() {
     app.process_history = ProcessHistory::default();
     for offset in [0, 7_201] {
         app.process_history.record_snapshot_unbounded(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
         );
     }
@@ -1513,7 +1514,7 @@ fn log_view_panel_titles_omit_history_counts() {
     app.process_history = ProcessHistory::default();
     app.system_history = SystemHistory::default();
     for offset in 0..=7_200 {
-        app.snapshot.captured_at += chrono::Duration::seconds(i64::from(offset));
+        app.snapshot.captured_at += SignedDuration::from_secs(i64::from(offset));
         app.process_history
             .record_snapshot_unbounded(app.snapshot.captured_at, &app.snapshot.processes);
         app.system_history.record_snapshot_unbounded(&app.snapshot);
@@ -1629,7 +1630,7 @@ fn graph_mouse_selection_uses_full_width_when_samples_panel_is_hidden() {
     app.show_samples_panel = false;
     for offset in [0, 30, 60] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1988,7 +1989,7 @@ fn samples_click_selects_one_scrolled_row_and_clears_keyboard_range() {
     assign_private_graph(&mut app);
     for offset in 0..100 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -2030,7 +2031,7 @@ fn graph_auto_scroll_off_survives_samples_and_end_resumes_latest() {
         let latest = app.snapshot.captured_at;
         for seconds in [120, 60, 0] {
             app.process_history.record_snapshot(
-                latest - chrono::Duration::seconds(seconds),
+                latest - SignedDuration::from_secs(seconds),
                 &app.snapshot.processes,
                 &app.normalized_watch_names,
             );
@@ -2050,7 +2051,7 @@ fn graph_auto_scroll_off_survives_samples_and_end_resumes_latest() {
         assert!(app.graph_visible_range_includes_latest_sample());
         for seconds in 1..=3 {
             let mut snapshot = test_snapshot(1);
-            snapshot.captured_at = latest + chrono::Duration::seconds(seconds);
+            snapshot.captured_at = latest + SignedDuration::from_secs(seconds);
             app.sampling_in_progress = true;
             results
                 .send(CollectSnapshotResult {
@@ -2074,7 +2075,7 @@ fn graph_auto_scroll_off_survives_samples_and_end_resumes_latest() {
         assert_eq!(app.active_graph_id, id);
         assert_eq!(app.details_sample_selected + 1, app.selected_sample_count());
         let mut snapshot = test_snapshot(1);
-        snapshot.captured_at = latest + chrono::Duration::seconds(4);
+        snapshot.captured_at = latest + SignedDuration::from_secs(4);
         app.sampling_in_progress = true;
         results
             .send(CollectSnapshotResult {
@@ -2260,7 +2261,7 @@ fn graph_auto_scroll_becomes_latest_for_paused_and_recorded_data() {
         assign_private_graph(&mut app);
         for seconds in [0, 60] {
             app.process_history.record_snapshot(
-                app.snapshot.captured_at + chrono::Duration::seconds(seconds),
+                app.snapshot.captured_at + SignedDuration::from_secs(seconds),
                 &app.snapshot.processes,
                 &app.normalized_watch_names,
             );
@@ -2296,7 +2297,7 @@ fn graph_auto_scroll_end_uses_workspace_end_when_active_series_has_ended() {
         &app.normalized_watch_names,
     );
     let mut snapshot = test_snapshot(1);
-    snapshot.captured_at = app.snapshot.captured_at + chrono::Duration::seconds(120);
+    snapshot.captured_at = app.snapshot.captured_at + SignedDuration::from_secs(120);
     app.system_history.record_snapshot(&snapshot);
     app.add_or_reveal_graph_source(
         GraphSlot::System {
@@ -2333,7 +2334,7 @@ fn graph_auto_scroll_off_keeps_recording_and_can_freeze_maximum_span() {
     app.activate_graph_auto_scroll();
     for seconds in 1..=3 {
         let mut snapshot = test_snapshot(1);
-        snapshot.captured_at = latest + chrono::Duration::seconds(seconds);
+        snapshot.captured_at = latest + SignedDuration::from_secs(seconds);
         app.sampling_in_progress = true;
         results
             .send(CollectSnapshotResult {
@@ -2364,7 +2365,7 @@ fn graph_auto_scroll_right_drag_back_to_latest_checks_control() {
     assign_private_graph(&mut app);
     for seconds in 0..=120 {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(seconds),
+            app.snapshot.captured_at + SignedDuration::from_secs(seconds),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -2436,7 +2437,7 @@ fn graph_left_click_inspects_value_without_stopping_auto_scroll() {
         let latest = app.snapshot.captured_at;
         for seconds in 0..=120 {
             app.process_history.record_snapshot(
-                latest - chrono::Duration::seconds(120 - seconds),
+                latest - SignedDuration::from_secs(120 - seconds),
                 &app.snapshot.processes,
                 &app.normalized_watch_names,
             );
@@ -2463,7 +2464,7 @@ fn graph_left_click_inspects_value_without_stopping_auto_scroll() {
         assert!(selected < latest);
         for seconds in 1..=3 {
             let mut snapshot = test_snapshot(1);
-            snapshot.captured_at = latest + chrono::Duration::seconds(seconds);
+            snapshot.captured_at = latest + SignedDuration::from_secs(seconds);
             app.sampling_in_progress = true;
             results
                 .send(CollectSnapshotResult {
@@ -2486,7 +2487,7 @@ fn graph_left_click_inspects_value_without_stopping_auto_scroll() {
             .unwrap();
         assert_eq!(
             app.selected_details_sample_time(),
-            Some(latest + chrono::Duration::seconds(3))
+            Some(latest + SignedDuration::from_secs(3))
         );
         assert!(app.details_live);
     }

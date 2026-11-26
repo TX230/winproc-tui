@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use crate::datetime::TimestampExt;
 use ratatui::{
     layout::{Alignment, Position, Rect},
     prelude::{Modifier, Style},
@@ -68,11 +68,11 @@ pub(crate) fn draw_log_list(frame: &mut ratatui::Frame<'_>, area: Rect, app: &Ap
     if let Some(summary) = app.log_summaries.get(app.log_list_index) {
         let start = summary
             .started_at
-            .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+            .map(|t| t.format_local("%Y-%m-%d %H:%M:%S").to_string())
             .unwrap_or_else(|| "--".to_string());
         let end = summary
             .ended_at
-            .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+            .map(|t| t.format_local("%Y-%m-%d %H:%M:%S").to_string())
             .unwrap_or_else(|| "--".to_string());
         let interval = summary
             .interval_seconds
@@ -351,18 +351,18 @@ fn log_list_state_line(app: &App, width: usize, theme: Theme) -> Line<'static> {
     ])
 }
 
-fn format_time(value: DateTime<Local>) -> String {
-    value.format("%Y-%m-%d %H:%M:%S").to_string()
+fn format_time(value: jiff::Timestamp) -> String {
+    value.format_local("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 fn log_duration(summary: &LogSummary) -> Option<String> {
     let started_at = summary.started_at?;
     let ended_at = summary.ended_at?;
-    Some(format_duration(ended_at.signed_duration_since(started_at)))
+    Some(format_duration(ended_at.duration_since(started_at)))
 }
 
-fn format_duration(duration: chrono::Duration) -> String {
-    let total_seconds = duration.num_seconds().max(0);
+fn format_duration(duration: jiff::SignedDuration) -> String {
+    let total_seconds = duration.as_secs().max(0);
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let seconds = total_seconds % 60;

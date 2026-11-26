@@ -1,3 +1,4 @@
+use jiff::Timestamp;
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
@@ -8,7 +9,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Local};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -29,8 +29,8 @@ pub(crate) struct LogSummary {
     pub(crate) path: PathBuf,
     pub(crate) schema_version: Option<u64>,
     pub(crate) session_id: Option<String>,
-    pub(crate) started_at: Option<DateTime<Local>>,
-    pub(crate) ended_at: Option<DateTime<Local>>,
+    pub(crate) started_at: Option<Timestamp>,
+    pub(crate) ended_at: Option<Timestamp>,
     pub(crate) host: Option<String>,
     pub(crate) tracked_names: Vec<String>,
     pub(crate) interval_seconds: Option<u64>,
@@ -54,7 +54,7 @@ pub(crate) struct LoadedLog {
     pub(crate) system_history: SystemHistory,
     pub(crate) tracked_names: Vec<String>,
     pub(crate) interval_seconds: u64,
-    pub(crate) frame_times: Vec<DateTime<Local>>,
+    pub(crate) frame_times: Vec<Timestamp>,
 }
 
 pub(crate) struct LogListWorker {
@@ -1040,15 +1040,12 @@ fn is_supported_schema(schema_version: u64) -> bool {
     )
 }
 
-fn datetime_from_millis(value: i64) -> Option<DateTime<Local>> {
-    DateTime::<chrono::Utc>::from_timestamp_millis(value)
-        .map(|timestamp| timestamp.with_timezone(&Local))
+fn datetime_from_millis(value: i64) -> Option<Timestamp> {
+    Timestamp::from_millisecond(value).ok()
 }
 
-fn parse_datetime(value: &str) -> Option<DateTime<Local>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|value| value.with_timezone(&Local))
+fn parse_datetime(value: &str) -> Option<Timestamp> {
+    value.parse::<Timestamp>().ok()
 }
 
 fn parse_loaded_frame(
@@ -1220,12 +1217,11 @@ fn record_type(record: &Value) -> Option<&str> {
     record.get("record_type").and_then(Value::as_str)
 }
 
-fn datetime_field(record: &Value, name: &str) -> Option<DateTime<Local>> {
+fn datetime_field(record: &Value, name: &str) -> Option<Timestamp> {
     record
         .get(name)
         .and_then(Value::as_str)
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|value| value.with_timezone(&Local))
+        .and_then(parse_datetime)
 }
 
 fn string_field(record: &Value, name: &str) -> Option<String> {
@@ -1246,6 +1242,7 @@ fn normalized_names(names: &[String]) -> HashSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datetime::TimestampExt;
     use crate::model::SystemMetric;
     use std::io::Write;
 
@@ -1254,7 +1251,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "winproc-tui-log-scan-{}-{}",
             std::process::id(),
-            Local::now().timestamp_nanos_opt().unwrap_or_default()
+            Timestamp::now().as_nanosecond()
         ));
         fs::create_dir_all(&dir).unwrap();
         let v1_path = dir.join("old.log");
@@ -1455,9 +1452,10 @@ mod tests {
     #[test]
     fn v3_log_loads_processes_that_start_later_and_separates_same_name_instances() {
         let path = unique_log_path("v3-process-identities");
-        let started_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
+        let started_at = "2026-05-04T14:30:12+09:00"
+            .parse::<Timestamp>()
             .unwrap()
-            .timestamp_millis();
+            .epoch_millis();
         let records = vec![
             V3Record::Session(V3SessionRecord {
                 schema_version: CURRENT_LOG_SCHEMA_VERSION,
@@ -1538,9 +1536,10 @@ mod tests {
 
     #[test]
     fn v3_log_preserves_supported_recording_intervals_and_frame_times() {
-        let started_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
+        let started_at = "2026-05-04T14:30:12+09:00"
+            .parse::<Timestamp>()
             .unwrap()
-            .timestamp_millis();
+            .epoch_millis();
         for interval_seconds in [1_u64, 2, 5, 10] {
             let path = unique_log_path(&format!("v3-{interval_seconds}s-interval"));
             let second_at = started_at + i64::try_from(interval_seconds).unwrap() * 1_000;
@@ -1569,7 +1568,7 @@ mod tests {
                 loaded
                     .frame_times
                     .iter()
-                    .map(DateTime::timestamp_millis)
+                    .map(|t| t.epoch_millis())
                     .collect::<Vec<_>>(),
                 [started_at, second_at]
             );
@@ -1579,9 +1578,10 @@ mod tests {
     #[test]
     fn v3_log_loads_active_metrics_and_ignores_reserved_gc_rate_positions() {
         let path = unique_log_path("v3-all-metrics");
-        let captured_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00")
+        let captured_at = "2026-05-04T14:30:12+09:00"
+            .parse::<Timestamp>()
             .unwrap()
-            .timestamp_millis();
+            .epoch_millis();
         let mut system_values = [None; crate::app::log_format::SYSTEM_U64_FIELD_COUNT];
         for (index, value) in system_values.iter_mut().enumerate() {
             *value = Some(1_000 + index as u64);
@@ -1727,12 +1727,12 @@ mod tests {
         let mut lines = vec![
             r#"{"schema_version":2,"record_type":"session","session_id":"s2","host":"PC","started_at":"2026-05-04T14:30:12+09:00","tracked_names":["app.exe"]}"#.to_string(),
         ];
-        let started_at = chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:12+09:00").unwrap();
+        let started_at = "2026-05-04T14:30:12+09:00".parse::<Timestamp>().unwrap();
         for offset in 0..7_201 {
-            let captured_at = started_at + chrono::Duration::seconds(offset);
+            let captured_at = started_at + jiff::SignedDuration::from_secs(offset);
             lines.push(format!(
                 r#"{{"schema_version":2,"record_type":"frame","session_id":"s2","captured_at":"{}","tracked_names":["app.exe"],"system_metrics":{{"physical_memory_bytes":{},"total_memory_bytes":8000}},"processes":[{{"pid":1,"name":"app.exe","start_time":100,"metrics":{{"private_bytes":{}}}}}]}}"#,
-                captured_at.to_rfc3339(),
+                captured_at.local_rfc3339(),
                 offset,
                 offset
             ));
@@ -1780,11 +1780,12 @@ mod tests {
         assert_eq!(summary.frame_count, 0);
         assert!(summary.error.is_none());
         assert_eq!(
-            summary.ended_at.map(|value| value.timestamp()),
+            summary.ended_at.map(|value| value.as_second()),
             Some(
-                chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:20+09:00")
+                "2026-05-04T14:30:20+09:00"
+                    .parse::<Timestamp>()
                     .unwrap()
-                    .timestamp()
+                    .as_second()
             )
         );
         assert!(load_log(&path, SortSpec::default()).is_err());
@@ -1804,11 +1805,12 @@ mod tests {
         let summary = summarize_log(&path);
 
         assert_eq!(
-            summary.ended_at.map(|value| value.timestamp()),
+            summary.ended_at.map(|value| value.as_second()),
             Some(
-                chrono::DateTime::parse_from_rfc3339("2026-05-04T14:30:15+09:00")
+                "2026-05-04T14:30:15+09:00"
+                    .parse::<Timestamp>()
                     .unwrap()
-                    .timestamp()
+                    .as_second()
             )
         );
     }
@@ -1817,7 +1819,7 @@ mod tests {
         std::env::temp_dir().join(format!(
             "winproc-tui-{name}-{}-{}.log",
             std::process::id(),
-            Local::now().timestamp_nanos_opt().unwrap_or_default()
+            Timestamp::now().as_nanosecond()
         ))
     }
 

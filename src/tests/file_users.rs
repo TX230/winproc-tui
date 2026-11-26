@@ -333,7 +333,7 @@ fn file_users_verified_navigation_retains_search_and_opens_files() {
         "a newly verified owner can precede the next process snapshot"
     );
     assert!(app.process_info_target_is_currently_live());
-    app.snapshot.captured_at += chrono::Duration::seconds(1);
+    app.snapshot.captured_at += jiff::SignedDuration::from_secs(1);
     assert!(
         !app.process_info_target_is_currently_live(),
         "verification allowance expires with the next snapshot"

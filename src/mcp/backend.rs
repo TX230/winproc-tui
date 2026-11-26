@@ -3,8 +3,9 @@ use super::{
     catalog, metrics,
     transport::{Event, Server, error},
 };
+use crate::datetime::TimestampExt;
 use crate::model::{ProcessHistory, ProcessIdentity, Snapshot, SystemHistory};
-use chrono::{Local, Utc};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -522,7 +523,7 @@ fn envelope(session: &Session, view: &View, instance: &str, data: Value) -> Valu
         .and_then(|id| session.captures.get(id))
         .map(|capture| &capture.metadata);
     let mut result = json!({"api_version":"1.0","backend_instance_id":instance,"source":"live",
-        "captured_at":view.snapshot.captured_at.with_timezone(&Utc).to_rfc3339(),"status":"complete","warnings":[]});
+        "captured_at":view.snapshot.captured_at.utc_rfc3339(),"status":"complete","warnings":[]});
     if let Some(metadata) = metadata {
         if metadata.get("capture_started_at").is_some() {
             result.as_object_mut().unwrap().remove("captured_at");
@@ -717,7 +718,7 @@ fn dispatch(session: &mut Session, view: &View, method: &str, args: &Value) -> V
         "winproc_list_logs"=>return list_logs(session,view,args),
         "winproc_open_log"=>return open_log(session,view,args),
         "winproc_close_log"=>{session.logs.remove(args["log_ref"].as_str().unwrap());return json!({"closed":true});},
-        "winproc_get_status" => return json!({"activity":view.activity,"stale":(Local::now()-view.snapshot.captured_at).num_seconds()>=3,"sample_age_ms":(Local::now()-view.snapshot.captured_at).num_milliseconds().max(0),"version":env!("CARGO_PKG_VERSION"),"transport":"named_pipe","connected":true,"permissions":{"same_logon":true,"same_integrity":true},"capabilities":catalog::TOOLS.iter().filter(|t|catalog::available(&t.name)).map(|t|t.name.to_string()).collect::<Vec<_>>(),"limits":{"connections":4,"active_jobs_per_connection":2,"retained_objects_per_connection":8,"result_bytes_per_connection":67108864,"result_ttl_seconds":300,"operation_entries":1024,"operation_ttl_seconds":86400,"pending_operations":1}}),
+        "winproc_get_status" => return json!({"activity":view.activity,"stale":(Timestamp::now()-view.snapshot.captured_at).as_secs()>=3,"sample_age_ms":(Timestamp::now()-view.snapshot.captured_at).as_millis().max(0),"version":env!("CARGO_PKG_VERSION"),"transport":"named_pipe","connected":true,"permissions":{"same_logon":true,"same_integrity":true},"capabilities":catalog::TOOLS.iter().filter(|t|catalog::available(&t.name)).map(|t|t.name.to_string()).collect::<Vec<_>>(),"limits":{"connections":4,"active_jobs_per_connection":2,"retained_objects_per_connection":8,"result_bytes_per_connection":67108864,"result_ttl_seconds":300,"operation_entries":1024,"operation_ttl_seconds":86400,"pending_operations":1}}),
         "winproc_get_system_info" => return view.host.clone(),
         "winproc_get_graphs" => return graph_workspace(session,view,args),
         "winproc_list_metrics" => return metrics::catalog(args["target_kind"].as_str()),
@@ -836,7 +837,7 @@ fn list_processes(session: &mut Session, view: &View, args: &Value) -> Value {
         let range = view.processes.time_range_for(&identity);
         let mut row = json!({"process_ref":session.reference(&identity),"pid":identity.pid,"name":identity.name,
             "lifecycle":if live.is_some() && view.activity != "saved_log" {"live"} else {"unknown"},
-            "last_seen_at":range.map(|range|range.1).unwrap_or(view.snapshot.captured_at).with_timezone(&Utc).to_rfc3339()});
+            "last_seen_at":range.map(|range|range.1).unwrap_or(view.snapshot.captured_at).utc_rfc3339()});
         // Normalize before freezing/projection so every read path sees recorded membership,
         // never a claim that a recorded process is currently alive.
         if view.activity == "saved_log" {
@@ -868,8 +869,8 @@ fn list_processes(session: &mut Session, view: &View, args: &Value) -> Value {
             row["start_time"] = json!(start.to_string());
         }
         if let Some((from, to)) = range {
-            row["history_from"] = json!(from.with_timezone(&Utc).to_rfc3339());
-            row["history_to"] = json!(to.with_timezone(&Utc).to_rfc3339());
+            row["history_from"] = json!(from.utc_rfc3339());
+            row["history_to"] = json!(to.utc_rfc3339());
         }
         if let Some(fields) = args["projection"].as_array() {
             row.as_object_mut()
@@ -881,7 +882,7 @@ fn list_processes(session: &mut Session, view: &View, args: &Value) -> Value {
     session.page_with_context(
         args,
         Some(rows),
-        json!({"captured_at":view.snapshot.captured_at.with_timezone(&Utc).to_rfc3339()}),
+        json!({"captured_at":view.snapshot.captured_at.utc_rfc3339()}),
         Instant::now(),
     )
 }
@@ -942,10 +943,10 @@ fn get_metrics(session: &Session, view: &View, args: &Value) -> Value {
 }
 
 fn get_history(session: &mut Session, view: &View, args: &Value) -> Value {
-    let Ok(from) = chrono::DateTime::parse_from_rfc3339(args["from"].as_str().unwrap()) else {
+    let Ok(from) = args["from"].as_str().unwrap().parse::<Timestamp>() else {
         return error("INVALID_ARGUMENT", "Invalid interval", false);
     };
-    let Ok(to) = chrono::DateTime::parse_from_rfc3339(args["to"].as_str().unwrap()) else {
+    let Ok(to) = args["to"].as_str().unwrap().parse::<Timestamp>() else {
         return error("INVALID_ARGUMENT", "Invalid interval", false);
     };
     if from > to {
@@ -1008,9 +1009,9 @@ fn get_history(session: &mut Session, view: &View, args: &Value) -> Value {
     }
     let max_interval = samples
         .windows(2)
-        .map(|pair| (pair[1].0 - pair[0].0).num_milliseconds())
+        .map(|pair| (pair[1].0 - pair[0].0).as_millis())
         .max();
-    let coverage = json!({"retained_from":bounds.map(|(first,_)|first.with_timezone(&Utc).to_rfc3339()),"retained_to":bounds.map(|(_,last)|last.with_timezone(&Utc).to_rfc3339()),"max_sample_interval_ms":max_interval,"sample_count":samples.len()});
+    let coverage = json!({"retained_from":bounds.map(|(first,_)|first.utc_rfc3339()),"retained_to":bounds.map(|(_,last)|last.utc_rfc3339()),"max_sample_interval_ms":max_interval,"sample_count":samples.len()});
     if args["mode"] == "summary" {
         let mut summaries = serde_json::Map::new();
         for (index, id) in ids.iter().enumerate() {
@@ -1023,8 +1024,8 @@ fn get_history(session: &mut Session, view: &View, args: &Value) -> Value {
                 let (last_time, last) = available.last().unwrap();
                 summary["first"] = (*first).clone();
                 summary["last"] = (*last).clone();
-                summary["first_at"] = json!(first_time.with_timezone(&Utc).to_rfc3339());
-                summary["last_at"] = json!(last_time.with_timezone(&Utc).to_rfc3339());
+                summary["first_at"] = json!(first_time.utc_rfc3339());
+                summary["last_at"] = json!(last_time.utc_rfc3339());
                 if first.is_string() {
                     let values: Vec<u64> = available
                         .iter()
@@ -1069,12 +1070,28 @@ fn get_history(session: &mut Session, view: &View, args: &Value) -> Value {
         }
         return json!({"summaries":summaries,"coverage":coverage});
     }
-    let rows=samples.into_iter().map(|(time,entries)| {
-        let mut values=serde_json::Map::new();let mut unavailable=serde_json::Map::new();
-        for (id,value) in ids.iter().zip(entries) { let id=id.as_str().unwrap();if let Some(value)=value {values.insert(id.into(),value);}else{unavailable.insert(id.into(),json!("unknown"));} }
-        json!({"captured_at":time.with_timezone(&Utc).to_rfc3339(),"values":values,"unavailable":unavailable})
-    }).collect();
-    session.page_with_context(args, Some(rows), json!({"captured_at":view.snapshot.captured_at.with_timezone(&Utc).to_rfc3339(),"temporal_coverage":coverage}), Instant::now())
+    let rows = samples
+        .into_iter()
+        .map(|(time, entries)| {
+            let mut values = serde_json::Map::new();
+            let mut unavailable = serde_json::Map::new();
+            for (id, value) in ids.iter().zip(entries) {
+                let id = id.as_str().unwrap();
+                if let Some(value) = value {
+                    values.insert(id.into(), value);
+                } else {
+                    unavailable.insert(id.into(), json!("unknown"));
+                }
+            }
+            json!({"captured_at":time.utc_rfc3339(),"values":values,"unavailable":unavailable})
+        })
+        .collect();
+    session.page_with_context(
+        args,
+        Some(rows),
+        json!({"captured_at":view.snapshot.captured_at.utc_rfc3339(),"temporal_coverage":coverage}),
+        Instant::now(),
+    )
 }
 
 fn start_capture(session: &mut Session, view: &View, args: &Value) -> Value {
@@ -1375,20 +1392,20 @@ fn start_wait(session: &mut Session, shared: Arc<RwLock<Arc<View>>>, args: &Valu
             if args["condition"] == "process_exited" {
                 match held.as_ref().unwrap().verify() {
                     Err("PROCESS_EXITED") => {
-                        return json!({"condition":"process_exited","observed_at":Utc::now().to_rfc3339()});
+                        return json!({"condition":"process_exited","observed_at":Timestamp::now().utc_rfc3339()});
                     }
                     Err(code) => return error(code, "Wait target cannot be verified", false),
                     Ok(()) => {}
                 }
             } else if view.snapshot.captured_at > initial
-                && (Local::now() - view.snapshot.captured_at).num_seconds() < 3
+                && (Timestamp::now() - view.snapshot.captured_at).as_secs() < 3
             {
                 if args["condition"] == "process_appeared" {
                     if let Some(row) = view.snapshot.processes.iter().find(|p| {
                         p.name
                             .eq_ignore_ascii_case(args["process_name"].as_str().unwrap())
                     }) {
-                        return json!({"condition":"process_appeared","pid":row.pid,"name":row.name,"start_time":row.start_time,"observed_at":view.snapshot.captured_at.to_rfc3339()});
+                        return json!({"condition":"process_appeared","pid":row.pid,"name":row.name,"start_time":row.start_time,"observed_at":view.snapshot.captured_at.local_rfc3339()});
                     }
                 } else {
                     let metric = args["metric_id"].as_str().unwrap();
@@ -1411,7 +1428,7 @@ fn start_wait(session: &mut Session, shared: Arc<RwLock<Arc<View>>>, args: &Valu
                             args["comparison"].as_str().unwrap(),
                         )
                     {
-                        return json!({"condition":"metric_threshold","value":value,"observed_at":view.snapshot.captured_at.to_rfc3339()});
+                        return json!({"condition":"metric_threshold","value":value,"observed_at":view.snapshot.captured_at.local_rfc3339()});
                     }
                 }
             }
@@ -1715,6 +1732,7 @@ pub(crate) fn log_id(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::SignedDuration;
     #[test]
     fn graph_discovery_references_are_display_scoped_and_bounded() {
         let mut view = view();
@@ -1864,7 +1882,7 @@ mod tests {
 
     fn view() -> View {
         let snapshot = Snapshot {
-            captured_at: Local::now(),
+            captured_at: Timestamp::now(),
             total_memory: 0,
             used_memory: 0,
             available_memory: None,
@@ -2130,7 +2148,11 @@ mod tests {
             );
             let reread = read_capture(&mut session, &json!({"capture_id":derived,"limit":1}));
             assert_eq!(reread, projected);
-            let time = session.logs["saved"].view.snapshot.captured_at.to_rfc3339();
+            let time = session.logs["saved"]
+                .view
+                .snapshot
+                .captured_at
+                .local_rfc3339();
             let history = query_log(
                 &mut session,
                 "winproc_get_history",
@@ -2197,7 +2219,7 @@ mod tests {
     #[test]
     fn condition_jobs_use_fresh_samples_and_cancel_or_time_out() {
         let mut view = view();
-        view.snapshot.captured_at = Local::now();
+        view.snapshot.captured_at = Timestamp::now();
         let shared = Arc::new(RwLock::new(Arc::new(view.clone())));
         let mut session = Session::default();
         let started = start_wait(
@@ -2209,7 +2231,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(30));
         session.jobs.get_mut(id).unwrap().poll();
         assert!(session.jobs[id].completed.is_none());
-        view.snapshot.captured_at += chrono::Duration::milliseconds(100);
+        view.snapshot.captured_at += SignedDuration::from_millis(100);
         view.snapshot.processes.push(crate::model::ProcessRow {
             name: "future.exe".into(),
             pid: 55,
@@ -2318,7 +2340,7 @@ mod tests {
                 ..Default::default()
             };
             view.processes.record_snapshot(
-                first + chrono::Duration::seconds(seconds),
+                first + SignedDuration::from_secs(seconds),
                 &[row],
                 &Default::default(),
             );
@@ -2327,7 +2349,7 @@ mod tests {
         let result = get_history(
             &mut session,
             &view,
-            &json!({"source":"live","target":{"process_ref":listed["rows"][0]["process_ref"]},"metric_ids":["private_bytes"],"from":(first-chrono::Duration::seconds(20)).to_rfc3339(),"to":(first+chrono::Duration::seconds(20)).to_rfc3339(),"mode":"summary"}),
+            &json!({"source":"live","target":{"process_ref":listed["rows"][0]["process_ref"]},"metric_ids":["private_bytes"],"from":(first-SignedDuration::from_secs(20)).local_rfc3339(),"to":(first+SignedDuration::from_secs(20)).local_rfc3339(),"mode":"summary"}),
         );
         let summary = &result["summaries"]["private_bytes"];
         assert_eq!(summary["sample_count"], 4);
@@ -2385,14 +2407,14 @@ mod tests {
     fn frozen_sample_timestamp_survives_new_live_samples() {
         let mut view = view();
         let mut session = Session::default();
-        let captured = view.snapshot.captured_at.with_timezone(&Utc).to_rfc3339();
+        let captured = view.snapshot.captured_at.utc_rfc3339();
         let first = session.page_with_context(
             &json!({"limit":1}),
             Some(vec![json!({"pid":1}), json!({"pid":2})]),
             json!({"captured_at":captured}),
             Instant::now(),
         );
-        view.snapshot.captured_at += chrono::Duration::seconds(10);
+        view.snapshot.captured_at += SignedDuration::from_secs(10);
         let next = session.page(&json!({"limit":1,"cursor":first["next_cursor"]}), None);
         assert_eq!(
             envelope(&session, &view, "backend", next)["captured_at"],

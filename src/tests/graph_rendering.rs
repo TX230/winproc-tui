@@ -15,8 +15,8 @@ use crate::model::{
 };
 use crate::ui;
 use crate::ui::{THEMES, details_graph_area_for_app, main_panel_areas_for_app};
-use chrono::{Local, TimeZone};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use jiff::SignedDuration;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use std::time::{Duration, Instant};
@@ -153,7 +153,7 @@ fn active_graph_series_and_slot_tokens_match_in_all_color_schemes() {
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
-        app.snapshot.captured_at = first_time + chrono::Duration::seconds(1);
+        app.snapshot.captured_at = first_time + SignedDuration::from_secs(1);
         app.snapshot.processes[0].private_bytes = Some(1_100);
         app.snapshot.processes[0].workset_bytes = Some(2_200);
         app.process_history.record_snapshot(
@@ -753,7 +753,7 @@ fn graph_fit_all_disables_zoom_out_and_zoom_in_uses_visible_span() {
     app.show_samples_panel = false;
     for offset in [0, 120, 240] {
         app.process_history.record_snapshot(
-            app.snapshot.captured_at + chrono::Duration::seconds(offset),
+            app.snapshot.captured_at + SignedDuration::from_secs(offset),
             &app.snapshot.processes,
             &app.normalized_watch_names,
         );
@@ -1296,7 +1296,7 @@ fn graph_panel_title_omits_the_verbose_slot_list() {
     let selected_at = app.snapshot.captured_at;
     app.ab_comparison = Some(app::AbComparison {
         a: Some(app::AbComparisonPoint {
-            captured_at: selected_at - chrono::Duration::seconds(10),
+            captured_at: selected_at - SignedDuration::from_secs(10),
         }),
         b: Some(app::AbComparisonPoint {
             captured_at: selected_at,
@@ -1503,10 +1503,10 @@ fn fractional_ma_line_survives_keyboard_and_mouse_mode_switches() {
             app.show_samples_panel = false;
             app.graph_y_axis_zero_min = true;
             app.graph_show_all_samples = true;
-            let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+            let base = crate::datetime::local_test_time(2026, 5, 26, 10, 0, 0);
             // Every complete five-sample window averages to 4.2%, above the old 4% bound.
             for seconds in 0..60 {
-                app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+                app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
                 app.snapshot.processes[0].cpu_percent =
                     Some(if seconds % 5 == 4 { 5.0 } else { 4.0 });
                 app.process_history.record_snapshot(
@@ -1578,9 +1578,9 @@ fn moving_average_graph_labels_smoothed_cursor_but_keeps_raw_ab_and_samples() {
     let mut app = make_test_app(1, 10);
     assign_private_graph(&mut app);
     app.focused_panel = FocusedPanel::DetailsGraph;
-    let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 5, 26, 10, 0, 0);
     for (seconds, value) in [(0, 100), (1, 200), (2, 300), (3, 400), (4, 500)] {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(value);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -1626,7 +1626,7 @@ fn moving_average_graph_labels_smoothed_cursor_but_keeps_raw_ab_and_samples() {
 #[test]
 fn ab_range_statistics_recalculate_per_graph_without_merging_reused_pid_identities() {
     let mut app = make_test_app(1, 10);
-    let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 5, 26, 10, 0, 0);
     let mut old_process = app.snapshot.processes[0].clone();
     old_process.pid = 42;
     old_process.name = "reused.exe".to_string();
@@ -1648,7 +1648,7 @@ fn ab_range_statistics_recalculate_per_graph_without_merging_reused_pid_identiti
             2 => 100,
             _ => 200,
         });
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes = vec![process];
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -1671,7 +1671,7 @@ fn ab_range_statistics_recalculate_per_graph_without_merging_reused_pid_identiti
     app.ab_comparison = Some(app::AbComparison {
         a: Some(app::AbComparisonPoint { captured_at: base }),
         b: Some(app::AbComparisonPoint {
-            captured_at: base + chrono::Duration::seconds(3),
+            captured_at: base + SignedDuration::from_secs(3),
         }),
     });
     let screen = Rect::new(0, 0, 180, 60);
@@ -1703,9 +1703,9 @@ fn ab_range_statistics_recalculate_per_graph_without_merging_reused_pid_identiti
 fn ab_range_summary_keeps_samples_accessible_on_narrow_and_short_screens() {
     let mut app = make_test_app(1, 10);
     assign_private_graph(&mut app);
-    let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 5, 26, 10, 0, 0);
     for (seconds, value) in [(0, 10), (1, 20)] {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(value);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -1717,7 +1717,7 @@ fn ab_range_summary_keeps_samples_accessible_on_narrow_and_short_screens() {
     app.ab_comparison = Some(app::AbComparison {
         a: Some(app::AbComparisonPoint { captured_at: base }),
         b: Some(app::AbComparisonPoint {
-            captured_at: base + chrono::Duration::seconds(1),
+            captured_at: base + SignedDuration::from_secs(1),
         }),
     });
 
@@ -1751,9 +1751,9 @@ fn ab_range_summary_survives_delta_toggle_at_reported_size() {
             FocusedPanel::Processes,
         ));
     }
-    let base = Local.with_ymd_and_hms(2026, 5, 26, 8, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 5, 26, 8, 0, 0);
     for (seconds, value) in [(0, 242_569_210), (1, 242_655_232)] {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(value);
         app.snapshot.processes[0].workset_bytes = Some(value);
         app.snapshot.processes[0].workset_private_bytes = Some(value);
@@ -1768,7 +1768,7 @@ fn ab_range_summary_survives_delta_toggle_at_reported_size() {
     app.ab_comparison = Some(app::AbComparison {
         a: Some(app::AbComparisonPoint { captured_at: base }),
         b: Some(app::AbComparisonPoint {
-            captured_at: base + chrono::Duration::seconds(1),
+            captured_at: base + SignedDuration::from_secs(1),
         }),
     });
     app.focused_panel = FocusedPanel::DetailsGraph;
@@ -1812,9 +1812,9 @@ fn graph_ab_labels_render_on_x_axis_not_cursor_value_row() {
     assign_private_graph(&mut app);
     app.focused_panel = FocusedPanel::DetailsGraph;
     app.show_sample_delta = true;
-    let base = Local.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 5, 26, 10, 0, 0);
     for (seconds, value) in [(0, 100), (30, 200), (60, 424_242)] {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(value);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -2053,7 +2053,7 @@ fn narrow_graphs_keep_same_name_pids_and_complete_byte_deltas() {
     for process in &mut app.snapshot.processes {
         process.private_bytes = Some(3_321_956);
     }
-    let b = a + chrono::Duration::seconds(1);
+    let b = a + SignedDuration::from_secs(1);
     app.process_history
         .record_snapshot(b, &app.snapshot.processes, &app.normalized_watch_names);
     let identities: Vec<_> = app
@@ -2086,9 +2086,9 @@ fn narrow_graphs_keep_same_name_pids_and_complete_byte_deltas() {
 fn graph_cursor_units_and_summary_scopes_remain_clear_at_review_size() {
     let mut app = make_test_app(1, 10);
     assign_private_graph(&mut app);
-    let base = Local.with_ymd_and_hms(2026, 9, 17, 10, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 9, 17, 10, 0, 0);
     for seconds in 0..6 {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(540_426_240 + seconds as u64);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -2104,7 +2104,7 @@ fn graph_cursor_units_and_summary_scopes_remain_clear_at_review_size() {
             app.ab_comparison = ab.then_some(app::AbComparison {
                 a: Some(app::AbComparisonPoint { captured_at: base }),
                 b: Some(app::AbComparisonPoint {
-                    captured_at: base + chrono::Duration::seconds(5),
+                    captured_at: base + SignedDuration::from_secs(5),
                 }),
             });
             let screen = Rect::new(0, 0, 180, 60);
@@ -2249,9 +2249,9 @@ fn graph_state_text_stays_readable_in_every_appearance() {
 fn compact_workspace_renders_data_and_restores_samples_and_shared_state() {
     let mut app = make_test_app(30, 10);
     assign_private_graph(&mut app);
-    let base = Local.with_ymd_and_hms(2026, 9, 17, 10, 0, 0).unwrap();
+    let base = crate::datetime::local_test_time(2026, 9, 17, 10, 0, 0);
     for seconds in 0..20 {
-        app.snapshot.captured_at = base + chrono::Duration::seconds(seconds);
+        app.snapshot.captured_at = base + SignedDuration::from_secs(seconds);
         app.snapshot.processes[0].private_bytes = Some(540_426_240 + seconds as u64);
         app.process_history.record_snapshot(
             app.snapshot.captured_at,
@@ -2331,7 +2331,7 @@ fn compact_workspace_renders_data_and_restores_samples_and_shared_state() {
 fn compact_manual_split_and_multiple_graph_navigation_preserve_time() {
     let mut app = make_test_app(30, 10);
     for seconds in 0..20 {
-        app.snapshot.captured_at += chrono::Duration::seconds(1);
+        app.snapshot.captured_at += SignedDuration::from_secs(1);
         for row in &mut app.snapshot.processes {
             row.private_bytes = Some(1_000 + seconds);
         }
