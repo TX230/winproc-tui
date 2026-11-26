@@ -4,6 +4,8 @@
 [![Platform: Windows 11 x64](https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D6?logo=windows&logoColor=white)](#動作環境)
 [![Rust](https://img.shields.io/badge/Rust-2024%20edition-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub downloads](https://img.shields.io/github/downloads/TX230/winproc-tui/total?label=GitHub%20downloads)](https://github.com/TX230/winproc-tui/releases)
+[![WinGet](https://img.shields.io/winget/v/TX230.winproc-tui?label=WinGet)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/t/TX230/winproc-tui)
+[![Scoop](https://img.shields.io/scoop/v/winproc-tui?bucket=https%3A%2F%2Fgithub.com%2FTX230%2Fscoop-bucket&label=Scoop)](https://github.com/TX230/scoop-bucket/blob/master/bucket/winproc-tui.json)
 
 言語: [English](README.md) | [日本語](README.ja.md)
 
