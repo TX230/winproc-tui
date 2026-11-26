@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: Windows 11 x64](https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D6?logo=windows&logoColor=white)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-2024%20edition-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub downloads](https://img.shields.io/github/downloads/TX230/winproc-tui/total?label=GitHub%20downloads)](https://github.com/TX230/winproc-tui/releases)
 
 Language: [English](README.md) | [日本語](README.ja.md)
 
